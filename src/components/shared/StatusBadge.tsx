@@ -1,0 +1,38 @@
+import type { ProjectStatus } from '@/data/db'
+import { cn } from '@/lib/utils'
+
+const statusConfig: Record<ProjectStatus, { label: string; className: string }> = {
+  Draft: { label: 'Draft', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+  'Needs Work': { label: 'Needs Work', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' },
+  'Submitted to Reviewer': { label: 'Submitted to Reviewer', className: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
+  'Clarification Required': { label: 'Clarification Required', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
+  'Submitted to Approver': { label: 'Submitted to Approver', className: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' },
+  Approved: { label: 'Approved', className: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' },
+}
+
+interface StatusBadgeProps {
+  status: ProjectStatus
+  className?: string
+}
+
+export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const config = statusConfig[status] ?? { label: status, className: 'bg-slate-100 text-slate-600' }
+  return (
+    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap', config.className, className)}>
+      {config.label}
+    </span>
+  )
+}
+
+export function RiskBadge({ risk }: { risk: string }) {
+  const config = {
+    Low: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
+    Medium: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+    High: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  }[risk] ?? 'bg-slate-100 text-slate-600'
+  return (
+    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', config)}>
+      {risk} Risk
+    </span>
+  )
+}

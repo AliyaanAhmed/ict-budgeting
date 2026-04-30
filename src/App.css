@@ -1,0 +1,103 @@
+.app-shell {
+  width: min(1100px, 94vw);
+  margin: 2.4rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.topbar {
+  background: linear-gradient(130deg, #f6f9ff, #ffffff);
+  border: 1px solid #d8e4fb;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+}
+
+.topbar button {
+  border: none;
+  border-radius: 10px;
+  background: #0f6cbd;
+  color: #ffffff;
+  padding: 0.7rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #0f6cbd;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+}
+
+h1 {
+  margin: 0.45rem 0;
+  font-size: clamp(1.6rem, 2.5vw, 2.4rem);
+}
+
+.subtitle {
+  margin: 0;
+  color: #465168;
+}
+
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.card {
+  flex: 1 1 300px;
+  background: #ffffff;
+  border: 1px solid #dbe2ee;
+  border-radius: 14px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 15px rgba(17, 35, 67, 0.06);
+}
+
+.card h2 {
+  margin-top: 0;
+  margin-bottom: 0.45rem;
+  font-size: 1.15rem;
+}
+
+.card.wide {
+  flex-basis: 100%;
+}
+
+.muted {
+  color: #5b6478;
+  margin: 0;
+}
+
+.placeholder {
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border: 1px dashed #9fb6db;
+  border-radius: 10px;
+  color: #34425f;
+  background: #f7faff;
+}
+
+ul,
+ol {
+  margin: 0.9rem 0 0 1.1rem;
+  color: #2b3448;
+}
+
+li {
+  margin: 0.35rem 0;
+}
+
+@media (max-width: 760px) {
+  .topbar {
+    flex-direction: column;
+    align-items: start;
+  }
+}
