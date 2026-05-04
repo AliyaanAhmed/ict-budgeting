@@ -2,27 +2,32 @@
 import { approvalQueueProjects } from '@/data/db'
 import { Button } from '@/components/ui/button'
 import { RiskBadge } from '@/components/shared/StatusBadge'
-import { formatAED, formatAEDFull } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { ClarificationModal } from '@/components/shared/ClarificationModal'
+import { useToast } from '@/context/ToastContext'
 
 export default function ApprovalQueue() {
   const [activeFilter, setActiveFilter] = useState<'Pending' | 'Approved' | 'Clarification'>('Pending')
   const [expandedAi, setExpandedAi] = useState<string | null>(null)
   const [aiPortfolioExpanded, setAiPortfolioExpanded] = useState(false)
+  const [clarificationProject, setClarificationProject] = useState<string | null>(null)
+  const { showSuccessToast } = useToast()
 
   const totalRequested = approvalQueueProjects.reduce((s, p) => s + p.requestedBudget, 0)
 
   return (
-    <div className="space-y-5 max-w-[900px]">
+    <div className="space-y-5 w-full max-w-none">
       <div className="flex items-start justify-between gap-4">
         <div>
           <nav className="text-xs text-[#475569] dark:text-slate-400 mb-2">Home › Approver Queue</nav>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Approver Queue</h1>
           <div className="flex items-center gap-2 mt-1">
-            <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 px-2.5 py-0.5 text-xs font-medium">REVIEWER APPROVED</span>
-            <span className="text-sm text-[#475569] dark:text-slate-400">{approvalQueueProjects.length} Items</span>
+            <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 px-2.5 py-0.5 text-xs font-medium">Reviewer Approved</span>
+            <span className="text-xs text-[#475569] dark:text-slate-400">{approvalQueueProjects.length} Items</span>
           </div>
         </div>
         <Button variant="ai" size="sm">
@@ -33,32 +38,32 @@ export default function ApprovalQueue() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Amount Requested', value: formatAEDFull(totalRequested) },
-          { label: 'Amount Approved', value: 'AED 0' },
+          { label: 'Amount Requested', value: <CurrencyAmount amount={totalRequested} full className="text-xl font-bold" iconSize={16} /> },
+          { label: 'Amount Approved', value: <CurrencyAmount amount={0} full className="text-xl font-bold" iconSize={16} /> },
           { label: 'Total Items', value: approvalQueueProjects.length },
           { label: 'Pending Review', value: approvalQueueProjects.length, sub: 'Action needed', amber: true },
         ].map((s) => (
           <div key={s.label} className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
             <p className="text-xs font-medium text-[#475569] dark:text-slate-400 uppercase tracking-wide mb-1">{s.label}</p>
-            <p className={cn('text-xl font-bold font-mono', s.amber ? 'text-amber-600' : 'text-[#0F172A] dark:text-white')}>{s.value}</p>
+            <div className={cn('text-xl font-bold', s.amber ? 'text-amber-600' : 'text-[#0F172A] dark:text-white')}>{s.value}</div>
             {s.sub && <p className="text-xs text-[#475569] dark:text-slate-400 mt-1">{s.sub}</p>}
           </div>
         ))}
       </div>
 
-      <div className="rounded-[10px] border border-dashed border-[#3A7CA5] bg-[#EAF4FB] dark:bg-cyan-950/20 overflow-hidden">
+      <div className="rounded-[10px] border border-dashed border-[#D946EF] bg-[#d946ef1a] overflow-hidden">
         <button
           onClick={() => setAiPortfolioExpanded(!aiPortfolioExpanded)}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          className="ai-panel-trigger"
         >
-          <Sparkles className="h-4 w-4 text-[#1D4E89] shrink-0" />
-          <span className="text-sm font-medium text-[#1D4E89] dark:text-cyan-300">AI Portfolio Summary</span>
-          <span className="text-xs text-[#1D4E89]/70 dark:text-cyan-300/70">• High Portfolio Risk • 3 need attention</span>
-          <ChevronDown className={cn('h-4 w-4 text-[#1D4E89] ml-auto transition-transform', aiPortfolioExpanded && 'rotate-180')} />
+          <Sparkles className="h-4 w-4 text-[var(--ai-accent)] shrink-0" />
+          <span className="ai-panel-title">AI Portfolio Summary</span>
+          <span className="text-xs text-[#D946EF]">• High Portfolio Risk • 3 need attention</span>
+          <ChevronDown className={cn('h-4 w-4 text-[var(--ai-accent)] ml-auto transition-transform', aiPortfolioExpanded && 'rotate-180')} />
         </button>
         {aiPortfolioExpanded && (
           <div className="px-4 pb-4">
-            <p className="text-sm text-[#1D4E89]/70 dark:text-cyan-300/70">
+            <p className="text-sm text-[#D946EF]">
               AI portfolio analysis will appear here once configured.
             </p>
           </div>
@@ -74,7 +79,7 @@ export default function ApprovalQueue() {
               className={cn(
                 'flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors',
                 activeFilter === f
-                  ? 'bg-[#1D4E89] text-white'
+                  ? 'bg-[var(--primary)] text-white'
                   : 'text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
               )}
             >
@@ -149,25 +154,25 @@ export default function ApprovalQueue() {
                     <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 px-2 py-0.5 text-xs font-medium">{proj.budgetCategory}</span>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-end shrink-0">
                   <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide">Requested Budget</p>
-                  <p className="text-2xl font-bold font-mono text-[#0F172A] dark:text-white">{formatAED(proj.requestedBudget)}</p>
+                  <CurrencyAmount amount={proj.requestedBudget} className="text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
                 </div>
               </div>
 
               <div className="mb-4">
                 <div
-                  className="flex items-center gap-2 cursor-pointer rounded-[8px] bg-[#EAF4FB] dark:bg-cyan-950/20 border border-[#B9D8EB] dark:border-cyan-700 px-3 py-2.5"
+                  className="flex items-center gap-2 cursor-pointer rounded-[8px] bg-[var(--surface)] border border-[var(--border)] dark:border-white/10 px-3 py-2.5"
                   onClick={() => setExpandedAi(expandedAi === proj.id ? null : proj.id)}
                 >
-                  <Sparkles className="h-3.5 w-3.5 text-[#1D4E89]" />
-                  <span className="text-xs font-medium text-[#1D4E89] dark:text-cyan-300">AI GENERATED</span>
-                  <span className="text-xs text-[#1D4E89]/70 dark:text-cyan-300/70">• {proj.aiConfidence}% Confidence</span>
-                  <span className="ml-auto text-xs text-[#1D4E89]/60">Ask AI ?</span>
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--ai-accent)]" />
+                  <span className="text-xs font-medium text-[var(--ai-accent)]">AI GENERATED</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">• {proj.aiConfidence}% Confidence</span>
+                  <span className="ml-auto text-xs text-[var(--muted-foreground)]">Ask AI ?</span>
                 </div>
                 {expandedAi === proj.id && (
-                  <div className="mt-2 rounded-[8px] bg-[#EAF4FB] dark:bg-cyan-950/20 border border-[#B9D8EB] dark:border-cyan-700 px-4 py-3">
-                    <p className="text-xs text-[#1D4E89]/80 dark:text-cyan-300/80">{proj.summary}</p>
+                  <div className="mt-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] dark:border-white/10 px-4 py-3">
+                    <p className="text-xs text-[var(--muted-foreground)]">{proj.summary}</p>
                   </div>
                 )}
               </div>
@@ -184,15 +189,40 @@ export default function ApprovalQueue() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm"><Undo2 className="h-4 w-4" />Return for Edit</Button>
-                  <Button variant="outline" size="sm"><Eye className="h-4 w-4" />Review</Button>
+                  <Button variant="outline" size="sm" onClick={() => setClarificationProject(proj.name)}>
+                    <Undo2 className="h-4 w-4" />
+                    Return for Edit
+                  </Button>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to={`/approver/approval-queue/${proj.id}`}>
+                      <Eye className="h-4 w-4" />
+                      Review
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </div>
           </div>
         ))}
       </div>
+
+      <ClarificationModal
+        open={Boolean(clarificationProject)}
+        onOpenChange={(open) => {
+          if (!open) setClarificationProject(null)
+        }}
+        projectName={clarificationProject || ''}
+        onSubmit={() => {
+          showSuccessToast('Returned with clarification', 'The project has been sent back for clarification and is awaiting an updated response.')
+          setClarificationProject(null)
+        }}
+      />
     </div>
   )
 }
+
+
+
+
+
 

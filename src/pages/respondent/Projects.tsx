@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
-import { formatAED } from '@/lib/utils'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { TrendingUp, TrendingDown, Minus, Clock, Eye } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
@@ -75,7 +75,7 @@ export default function RespondentProjects() {
             className={cn(
               'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
               activeTab === tab.id
-                ? 'bg-[#1D4E89] text-white'
+                ? 'bg-[var(--primary)] text-white'
                 : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
             )}
           >
@@ -87,19 +87,19 @@ export default function RespondentProjects() {
         ))}
       </div>
 
-      <div className="rounded-[10px] border border-dashed border-[#3A7CA5] bg-[#EAF4FB] dark:bg-cyan-950/20 overflow-hidden">
+      <div className="rounded-[10px] border border-dashed border-[#D946EF] bg-[#d946ef1a] overflow-hidden">
         <button
           onClick={() => setAiExpanded(!aiExpanded)}
-          className="flex w-full items-center gap-3 px-4 py-3 text-left"
+          className="ai-panel-trigger"
         >
-          <Sparkles className="h-4 w-4 text-[#1D4E89] shrink-0" />
-          <span className="text-sm font-medium text-[#1D4E89] dark:text-cyan-300">AI Portfolio Summary</span>
-          <span className="text-xs text-[#1D4E89]/70 dark:text-cyan-300/70">• {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} projects need attention</span>
-          <ChevronDown className={cn('h-4 w-4 text-[#1D4E89] ml-auto transition-transform', aiExpanded && 'rotate-180')} />
+          <Sparkles className="h-4 w-4 text-[var(--ai-accent)] shrink-0" />
+          <span className="ai-panel-title">AI Portfolio Summary</span>
+          <span className="text-xs text-[#D946EF]">• {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} projects need attention</span>
+          <ChevronDown className={cn('h-4 w-4 text-[var(--primary)] ml-auto transition-transform', aiExpanded && 'rotate-180')} />
         </button>
         {aiExpanded && (
           <div className="px-4 pb-4">
-            <p className="text-sm text-[#1D4E89]/70 dark:text-cyan-300/70">
+            <p className="text-sm text-[#D946EF]">
               AI analysis will appear here once configured - portfolio insights including risk scoring, budget anomalies, and strategic alignment gaps.
             </p>
           </div>
@@ -139,13 +139,13 @@ export default function RespondentProjects() {
           <div className="flex rounded-[8px] border border-[#E2E8F0] dark:border-white/10 overflow-hidden">
             <button
               onClick={() => setViewMode('table')}
-              className={cn('p-2 transition-colors', viewMode === 'table' ? 'bg-[#1D4E89] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}
+              className={cn('p-2 transition-colors', viewMode === 'table' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}
             >
               <LayoutList className="h-4 w-4" />
             </button>
             <button
               onClick={() => setViewMode('cards')}
-              className={cn('p-2 transition-colors', viewMode === 'cards' ? 'bg-[#1D4E89] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}
+              className={cn('p-2 transition-colors', viewMode === 'cards' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}
             >
               <LayoutGrid className="h-4 w-4" />
             </button>
@@ -161,7 +161,7 @@ export default function RespondentProjects() {
             {filtered.map((project) => (
               <div key={project.id} className="rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-[#F8FAFC] dark:bg-[#0F172A] p-4">
                 <div className="flex items-start justify-between gap-2 mb-3">
-                  <Link to={`/respondent/projects/${project.id}`} className="font-semibold text-sm text-[#0F172A] dark:text-white hover:text-[#1D4E89] transition-colors flex items-center gap-1.5">
+                  <Link to={`/respondent/projects/${project.id}`} className="font-semibold text-sm text-[#0F172A] dark:text-white hover:text-[var(--primary)] transition-colors flex items-center gap-1.5">
                     {project.clarifications.some(c => c.status === 'Pending') && <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
                     {project.name}
                   </Link>
@@ -173,8 +173,8 @@ export default function RespondentProjects() {
                 </div>
                 <p className="text-xs text-[#475569] dark:text-slate-400 mb-3">{project.strategicPriority} • {project.classification}</p>
                 <div className="flex items-center justify-between">
-                  <span className="font-mono font-semibold text-sm text-[#0F172A] dark:text-white">{formatAED(project.requestedBudget)}</span>
-                  <Link to={`/respondent/projects/${project.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1D4E89] hover:underline">
+                  <CurrencyAmount amount={project.requestedBudget} className="font-semibold text-sm text-[#0F172A] dark:text-white" />
+                  <Link to={`/respondent/projects/${project.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:underline">
                     <Eye className="h-3.5 w-3.5" />
                     View
                   </Link>
@@ -192,4 +192,8 @@ export default function RespondentProjects() {
     </div>
   )
 }
+
+
+
+
 

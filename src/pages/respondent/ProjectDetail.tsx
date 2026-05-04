@@ -5,7 +5,7 @@ import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { AiPlaceholderCard } from '@/components/shared/AiPlaceholderCard'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { formatAED, formatAEDFull } from '@/lib/utils'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -115,9 +115,9 @@ export default function ProjectDetail() {
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>Budget Type & Amounts</CardTitle>
-                <div className="text-right">
+                <div className="text-end">
                   <p className="text-xs text-[#475569] dark:text-slate-400">Total Requested Budget</p>
-                  <p className="text-xl font-bold font-mono text-[#286CFF]">{formatAEDFull(project.requestedBudget)}</p>
+                  <CurrencyAmount amount={project.requestedBudget} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
                 </div>
               </div>
             </CardHeader>
@@ -131,7 +131,7 @@ export default function ProjectDetail() {
                 <thead className="bg-[#F8FAFC] dark:bg-white/5">
                   <tr>
                     {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'AI'].map((h) => (
-                      <th key={h} className="text-left py-2.5 px-5 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                      <th key={h} className="whitespace-nowrap text-start py-2.5 px-5 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -153,8 +153,8 @@ export default function ProjectDetail() {
                       <td className="py-3 px-5 text-xs font-mono text-[#475569] dark:text-slate-400">
                         {item.glCode} / {item.ebsFusionCode}
                       </td>
-                      <td className="py-3 px-5 font-mono font-semibold text-[#0F172A] dark:text-white">
-                        {formatAEDFull(item.budgetRequested)}
+                      <td className="py-3 px-5 font-semibold text-[#0F172A] dark:text-white">
+                        <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" />
                       </td>
                       <td className="py-3 px-5">
                         <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20 text-green-600">
@@ -167,7 +167,9 @@ export default function ProjectDetail() {
                     <td className="py-3 px-5 font-semibold text-[#0F172A] dark:text-white">Total</td>
                     <td className="py-3 px-5" />
                     <td className="py-3 px-5" />
-                    <td className="py-3 px-5 font-mono font-bold text-[#286CFF]">{formatAEDFull(project.requestedBudget)}</td>
+                    <td className="py-3 px-5 font-bold text-[#286CFF]">
+                      <CurrencyAmount amount={project.requestedBudget} full className="font-bold text-[#286CFF]" />
+                    </td>
                     <td className="py-3 px-5" />
                   </tr>
                 </tbody>

@@ -1,14 +1,20 @@
-import { useState } from 'react'
-import { Search, Download, ChevronDown, Clock, AlertTriangle, FileX, CheckCircle2 } from 'lucide-react'
+﻿import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Search, Download, ChevronDown, Clock, FileX, CheckCircle2, ListFilter } from 'lucide-react'
 import { reviewQueueProjects, currentCycle } from '@/data/db'
 import { Button } from '@/components/ui/button'
 import { RiskBadge } from '@/components/shared/StatusBadge'
-import { formatAED } from '@/lib/utils'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { cn } from '@/lib/utils'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ClarificationModal } from '@/components/shared/ClarificationModal'
+import { useToast } from '@/context/ToastContext'
 
 export default function ReviewQueue() {
   const [search, setSearch] = useState('')
   const [expandedAi, setExpandedAi] = useState<string | null>(null)
+  const [clarificationProject, setClarificationProject] = useState<string | null>(null)
+  const { showSuccessToast } = useToast()
 
   const toReview = reviewQueueProjects.filter((p) => p.status === 'To Review').length
   const reviewed = reviewQueueProjects.filter((p) => p.status === 'Reviewed').length
@@ -30,7 +36,7 @@ export default function ReviewQueue() {
   }
 
   return (
-    <div className="space-y-5 max-w-[1000px]">
+    <div className="space-y-5 w-full max-w-none">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -89,13 +95,34 @@ export default function ReviewQueue() {
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <select className="h-9 rounded-[8px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] text-sm px-3 text-[#475569] dark:text-slate-400 focus:outline-none">
-            <option>All Entities</option>
-          </select>
-          <select className="h-9 rounded-[8px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] text-sm px-3 text-[#475569] dark:text-slate-400 focus:outline-none">
-            <option>Newest Submitted</option>
-          </select>
+        <div className="ml-auto flex items-center gap-2 flex-wrap">
+          <div className="w-[180px]">
+            <Select defaultValue="all-entities">
+              <SelectTrigger>
+                <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                  <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <SelectValue className="truncate" placeholder="All Entities" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-entities">All Entities</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-[190px]">
+            <Select defaultValue="newest-submitted">
+              <SelectTrigger>
+                <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                  <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
+                  <SelectValue className="truncate" placeholder="Newest Submitted" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest-submitted">Newest Submitted</SelectItem>
+                <SelectItem value="oldest-submitted">Oldest Submitted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4" />
             Export
@@ -119,28 +146,28 @@ export default function ReviewQueue() {
           >
             <div className="p-5">
               {/* Top row */}
-              <div className="flex items-start gap-3 flex-wrap mb-3">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <h3 className="font-semibold text-[#0F172A] dark:text-white">{proj.name}</h3>
-                    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', statusBadge(proj.status))}>
-                      {proj.status}
+              <div className="mb-3">
+                <div className="flex items-center gap-2 flex-wrap mb-2">
+                  <h3 className="font-semibold text-[#0F172A] dark:text-white">{proj.name}</h3>
+                  <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium', statusBadge(proj.status))}>
+                    {proj.status}
+                  </span>
+                  <RiskBadge risk={proj.riskLevel} />
+                  {proj.hasMissingDocs && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 px-2 py-0.5 text-xs font-medium">
+                      <FileX className="h-3 w-3" />
+                      Missing Docs
                     </span>
-                    <RiskBadge risk={proj.riskLevel} />
-                    {proj.hasMissingDocs && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 px-2 py-0.5 text-xs font-medium">
-                        <FileX className="h-3 w-3" />
-                        Missing Docs
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-[#475569] dark:text-slate-400 flex-wrap">
+                  )}
+                </div>
+                <div className="flex items-end justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-400 flex-wrap">
                     <span>{proj.entity}</span>
                     <span>·</span>
                     <span>{proj.glCodeCount} GL codes</span>
                     <span>·</span>
-                    <span className="font-mono">CapEx: {formatAED(proj.capex)}</span>
-                    <span className="font-mono">OpEx: {formatAED(proj.opex)}</span>
+                    <span>CapEx: <CurrencyAmount amount={proj.capex} className="font-semibold" /></span>
+                    <span>OpEx: <CurrencyAmount amount={proj.opex} className="font-semibold" /></span>
                     <span>·</span>
                     <span>By {proj.submittedBy}</span>
                     <span>·</span>
@@ -148,10 +175,10 @@ export default function ReviewQueue() {
                     <span>·</span>
                     <span>Updated {proj.updatedDate}</span>
                   </div>
-                </div>
-                <div className="ml-auto text-right shrink-0">
-                  <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide text-right">Requested Budget</p>
-                  <p className="text-xl font-bold font-mono text-[#0F172A] dark:text-white">{formatAED(proj.requestedBudget)}</p>
+                  <div className="text-end shrink-0">
+                    <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide mb-1">Requested Budget</p>
+                    <CurrencyAmount amount={proj.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+                  </div>
                 </div>
               </div>
 
@@ -169,29 +196,37 @@ export default function ReviewQueue() {
               {/* AI Insights */}
               <div className="mb-3">
                 <div
-                  className="flex items-center gap-2 cursor-pointer rounded-[8px] bg-[#FDF4FF] dark:bg-purple-900/10 border border-[#F5D0FE] dark:border-purple-700 px-3 py-2"
+                  className="flex items-center gap-2 cursor-pointer rounded-[8px] bg-[var(--surface)] border border-[var(--border)] px-3 py-2"
                   onClick={() => setExpandedAi(expandedAi === proj.id ? null : proj.id)}
                 >
-                  <span className="text-[#D946EF]">✦</span>
-                  <span className="text-xs font-medium text-[#A21CAF] dark:text-purple-300">AI Review Insights</span>
-                  <span className="text-xs text-[#A21CAF]/70 dark:text-purple-300/70">· {proj.aiConfidence}% Confidence</span>
-                  <span className="ml-auto text-xs text-[#A21CAF]/60 font-medium">Coming Soon</span>
-                  <ChevronDown className={cn('h-4 w-4 text-[#D946EF] ml-1 transition-transform', expandedAi === proj.id && 'rotate-180')} />
+                  <span className="text-[var(--ai-accent)]">?</span>
+                  <span className="text-xs font-medium text-[var(--ai-accent)]">AI Review Insights</span>
+                  <span className="text-xs text-[var(--muted-foreground)]">· {proj.aiConfidence}% Confidence</span>
+                  <span className="ml-auto text-xs text-[var(--muted-foreground)] font-medium">Coming Soon</span>
+                  <ChevronDown className={cn('h-4 w-4 text-[var(--ai-accent)] ml-1 transition-transform', expandedAi === proj.id && 'rotate-180')} />
                 </div>
                 {expandedAi === proj.id && (
-                  <div className="mt-2 rounded-[8px] bg-[#FDF4FF] dark:bg-purple-900/10 border border-[#F5D0FE] dark:border-purple-700 px-4 py-3">
-                    <p className="text-xs text-[#A21CAF]/80 dark:text-purple-300/80">
-                      AI analysis will appear here once configured — budget alignment check, document completeness review, and risk flag summary.
+                  <div className="mt-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] px-4 py-3">
+                    <p className="text-xs text-[var(--muted-foreground)]">
+                      AI analysis will appear here once configured - budget alignment check, document completeness review, and risk flag summary.
                     </p>
-                    <a href="#" className="mt-2 inline-block text-xs text-[#A21CAF] font-medium hover:underline">Ask AI for detailed analysis →</a>
+                    <a href="#" className="mt-2 inline-block text-xs text-[var(--ai-accent)] font-medium hover:underline">Ask AI for detailed analysis ?</a>
                   </div>
                 )}
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="outline" size="sm">Raise Clarification</Button>
-                <Button variant="outline" size="sm">Review</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setClarificationProject(proj.name)}
+                >
+                  Raise Clarification
+                </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/reviewer/review-queue/${proj.id}`}>Review</Link>
+                </Button>
                 <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                   <CheckCircle2 className="h-4 w-4" />
                   Mark Reviewed
@@ -201,6 +236,24 @@ export default function ReviewQueue() {
           </div>
         ))}
       </div>
+
+      <ClarificationModal
+        open={Boolean(clarificationProject)}
+        onOpenChange={(open) => {
+          if (!open) setClarificationProject(null)
+        }}
+        projectName={clarificationProject || ''}
+        onSubmit={() => {
+          showSuccessToast('Clarification request sent', 'The project owner has been notified and the item is awaiting response.')
+          setClarificationProject(null)
+        }}
+      />
     </div>
   )
 }
+
+
+
+
+
+

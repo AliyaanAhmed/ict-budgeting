@@ -9,7 +9,8 @@ import { CapexOpexDonut } from '@/components/charts/CapexOpexDonut'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { formatAED } from '@/lib/utils'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { dashboardStatusColors } from '@/lib/dashboardPalette'
 
 export default function RespondentDashboard() {
   const total = projects.length
@@ -17,6 +18,7 @@ export default function RespondentDashboard() {
   const clarificationRequired = projects.filter((p) => p.status === 'Clarification Required').length
   const needsWork = projects.filter((p) => p.status === 'Needs Work' || p.status === 'Draft').length
   const approved = projects.filter((p) => p.status === 'Approved').length
+  const submittedToApprover = projects.filter((p) => p.status === 'Submitted to Approver').length
   const totalBudget = projects.reduce((s, p) => s + p.requestedBudget, 0)
 
   return (
@@ -49,6 +51,28 @@ export default function RespondentDashboard() {
         <StatCard label="Approved" value={approved} variant="green" icon={<CheckCircle className="h-5 w-5" />} style={{ animationDelay: '200ms' }} />
       </div>
 
+      {/* Project Pipeline */}
+      <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Project Pipeline</p>
+          <p className="text-xs text-[#475569] dark:text-slate-400">{total} projects total</p>
+        </div>
+        <div className="flex rounded-full overflow-hidden h-2.5 gap-[2px]">
+          {approved > 0 && <div className="transition-all" style={{ flex: approved, backgroundColor: dashboardStatusColors.approved }} />}
+          {submittedToReviewer > 0 && <div className="transition-all" style={{ flex: submittedToReviewer, backgroundColor: dashboardStatusColors.withReviewer }} />}
+          {submittedToApprover > 0 && <div className="transition-all" style={{ flex: submittedToApprover, backgroundColor: dashboardStatusColors.withApprover }} />}
+          {clarificationRequired > 0 && <div className="transition-all" style={{ flex: clarificationRequired, backgroundColor: dashboardStatusColors.clarification }} />}
+          {needsWork > 0 && <div className="transition-all" style={{ flex: needsWork, backgroundColor: dashboardStatusColors.needsWork }} />}
+        </div>
+        <div className="flex items-center gap-4 mt-3 flex-wrap">
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.approved }} />Approved ({approved})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />With Reviewer ({submittedToReviewer})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withApprover }} />With Approver ({submittedToApprover})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarification }} />Clarification ({clarificationRequired})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.needsWork }} />Needs Work ({needsWork})</span>
+        </div>
+      </div>
+
       {/* Deadline Banner */}
       <div className="rounded-[12px] border border-[#286CFF]/20 bg-[#E7F5FF] dark:bg-blue-900/10 dark:border-blue-700/30 p-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -65,7 +89,7 @@ export default function RespondentDashboard() {
           </div>
           <div className="flex items-center gap-3 min-w-[200px]">
             <Progress value={currentCycle.completionPercentage} className="flex-1 h-2" />
-            <span className="text-xs font-mono font-medium text-[#286CFF]">{currentCycle.completionPercentage}%</span>
+            <span className="text-xs font-medium text-[#286CFF]">{currentCycle.completionPercentage}%</span>
           </div>
         </div>
       </div>
@@ -84,9 +108,10 @@ export default function RespondentDashboard() {
               <CardTitle>My Projects</CardTitle>
               <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">Recent budget submissions</p>
             </div>
-            <p className="text-xs text-[#475569] dark:text-slate-400">
-              Total: <span className="font-mono font-semibold text-[#0F172A] dark:text-white">{formatAED(totalBudget)}</span>
-            </p>
+           <div className="flex items-center gap-1">
+              <p className="text-xs text-[#475569] dark:text-slate-400">Total:</p>
+              <CurrencyAmount amount={totalBudget} className="font-semibold text-[#0F172A] dark:text-white" />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">

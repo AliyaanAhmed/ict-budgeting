@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { User, Sparkles, Upload, Plus, X, Send, ChevronRight, Bot, CalendarDays, Layers, Briefcase, Building2, Package, FolderKanban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -7,12 +7,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
+import { useToast } from '@/context/ToastContext'
 
 function SectionNumber({ n }: { n: number }) {
   return (
-    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--primary-light)] text-[var(--primary)] text-sm font-bold shrink-0 border border-[var(--primary-subtle)]">
-      {n}
-    </div>
+    <span className="shrink-0 text-base font-bold leading-none text-[#0F172A] dark:text-white">
+      {n}.
+    </span>
   )
 }
 
@@ -38,7 +40,7 @@ function ModernSelect({
 }) {
   return (
     <Select>
-      <SelectTrigger className="h-11 rounded-xl border-[#D7E1EC]">
+      <SelectTrigger className="h-11 rounded-xl border-[var(--border)]">
         <span className="inline-flex w-full items-center gap-2 text-[#64748B] whitespace-nowrap">
           <Icon className="h-4 w-4" />
           <SelectValue className="truncate" placeholder={placeholder} />
@@ -61,12 +63,14 @@ const COPILOT_OPTIONS = [
 
 export default function NewProject() {
   const [mode, setMode] = useState<'manual' | 'ai'>('manual')
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<{ from: 'ai' | 'user'; text: string }[]>([
     { from: 'ai', text: 'Welcome to the Budget Copilot. Before we begin, I need some project context.' },
     { from: 'ai', text: 'Is this a new project, or a continuation of an existing initiative?' },
   ])
   const [optionSelected, setOptionSelected] = useState(false)
+  const { showSuccessToast } = useToast()
 
   const handleOptionSelect = (label: string) => {
     setChatMessages((prev) => [
@@ -85,6 +89,11 @@ export default function NewProject() {
       { from: 'ai', text: 'Thanks. I am now structuring this into the required budget fields.' },
     ])
     setChatInput('')
+  }
+
+  const handleSubmitForReview = () => {
+    setSubmitConfirmOpen(false)
+    showSuccessToast('Submitted for review', 'Your budget item has been routed to the Reviewer queue successfully.')
   }
 
   return (
@@ -109,12 +118,12 @@ export default function NewProject() {
             <span className={cn('text-sm font-medium', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
             <button
               onClick={() => setMode(mode === 'manual' ? 'ai' : 'manual')}
-              className={cn('relative w-10 h-5 rounded-full transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
+              className={cn('relative w-10 h-5 rounded-full transition-colors', mode === 'ai' ? 'bg-[var(--ai-accent)]' : 'bg-[#CBD5E1]')}
             >
               <div className={cn('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-5' : 'translate-x-0.5')} />
             </button>
-            <span className={cn('text-sm font-medium', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>AI Copilot</span>
-            <Bot className={cn('h-4 w-4', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+            <span className={cn('text-sm font-medium', mode === 'ai' ? 'text-[var(--ai-accent)]' : 'text-[#94A3B8]')}>AI Copilot</span>
+            <Bot className={cn('h-4 w-4', mode === 'ai' ? 'text-[var(--ai-accent)]' : 'text-[#94A3B8]')} />
           </div>
         </div>
       </div>
@@ -132,7 +141,7 @@ export default function NewProject() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
                     <FormField label="Initiative / Budget Item Name" required>
-                      <Input className="h-11 rounded-xl border-[#D7E1EC]" placeholder="Enter initiative name" />
+                      <Input className="h-11 rounded-xl border-[var(--border)]" placeholder="Enter initiative name" />
                     </FormField>
                   </div>
 
@@ -175,13 +184,13 @@ export default function NewProject() {
                   <FormField label="Planned Start Date" required>
                     <div className="relative">
                       <CalendarDays className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <Input type="date" className="h-11 rounded-xl border-[#D7E1EC] pl-9" />
+                      <Input type="date" className="h-11 rounded-xl border-[var(--border)] pl-9" />
                     </div>
                   </FormField>
                   <FormField label="Planned End Date" required>
                     <div className="relative">
                       <CalendarDays className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <Input type="date" className="h-11 rounded-xl border-[#D7E1EC] pl-9" />
+                      <Input type="date" className="h-11 rounded-xl border-[var(--border)] pl-9" />
                     </div>
                   </FormField>
                 </div>
@@ -193,7 +202,7 @@ export default function NewProject() {
                   <h3 className="text-lg font-semibold text-[var(--foreground)]">Summary</h3>
                 </div>
                 <FormField label="Summary / Description" required>
-                  <Textarea rows={5} className="rounded-xl border-[#D7E1EC]" placeholder="Provide a detailed description of the budget item..." />
+                  <Textarea rows={5} className="rounded-xl border-[var(--border)]" placeholder="Provide a detailed description of the budget item..." />
                 </FormField>
               </section>
 
@@ -221,12 +230,12 @@ export default function NewProject() {
                   </Button>
                 </div>
 
-                <div className="rounded-xl border border-[#D7E1EC] overflow-hidden">
+                <div className="rounded-xl border border-[var(--border)] overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-[#F8FAFC] border-b border-[#EAF0F6] hidden md:table-header-group">
+                    <thead className="bg-[#F8FAFC] border-b border-[#EAF0F6] hidden md:table-header-group dark:bg-[#0F172A]/20 dark:border-white/10">
                       <tr>
                         {['Account Name', 'Classification (L1/L2/L3)', 'EBS/Fusion Code / Expense Type', 'Budget Requested'].map((h) => (
-                          <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase tracking-wide">{h}</th>
+                          <th key={h} className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -255,7 +264,7 @@ export default function NewProject() {
                   <Upload className="h-4 w-4" />Upload Document
                 </Button>
               </div>
-              <div className="rounded-xl border-2 border-dashed border-[#D7E1EC] p-8 text-center hover:border-[var(--primary)] transition-colors cursor-pointer">
+              <div className="rounded-xl border-2 border-dashed border-[var(--border)] p-8 text-center hover:border-[var(--primary)] transition-colors cursor-pointer">
                 <Upload className="h-8 w-8 text-[#94A3B8] mx-auto mb-2" />
                 <p className="text-sm font-medium text-[#475569]">Drop files here or click to upload</p>
                 <p className="text-xs text-[#94A3B8] mt-1">PDF, DOCX, XLSX supported</p>
@@ -267,32 +276,32 @@ export default function NewProject() {
             <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
               <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
               <Button variant="outline" className="w-full sm:w-auto">Save Draft</Button>
-              <Button className="w-full sm:w-auto">Submit for Review</Button>
+              <Button className="w-full sm:w-auto" onClick={() => setSubmitConfirmOpen(true)}>Submit for Review</Button>
             </div>
           </div>
         </>
       ) : (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden flex flex-col shadow-sm" style={{ minHeight: '560px' }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--muted)]">
+        <div className="ai-panel rounded-2xl overflow-hidden flex flex-col shadow-sm" style={{ minHeight: '560px' }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-white/55 dark:bg-[#0F172A]/20 backdrop-blur-sm">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--primary)]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--ai-accent)]">
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-[var(--primary)]">Budget Copilot</p>
-                <p className="text-xs text-[var(--primary)]/70">Interactive AI Assistant</p>
+                <p className="font-semibold text-[var(--ai-accent)]">Budget Copilot</p>
+                <p className="text-xs text-[var(--muted-foreground)]">Interactive AI Assistant</p>
               </div>
             </div>
-            <button className="text-xs text-[var(--primary)]/70 hover:text-[var(--primary)] flex items-center gap-1">
+            <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] flex items-center gap-1">
               <X className="h-3.5 w-3.5" />Clear
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gradient-to-b from-[#F8FBFF] to-[#F2F7FC] dark:from-[#0F172A] dark:to-[#111C2B]">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent">
             {chatMessages.map((msg, i) => (
               <div key={i} className={cn('flex', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
                 {msg.from === 'ai' && (
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] mr-3 mt-0.5">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ai-accent)] mr-3 mt-0.5">
                     <Sparkles className="h-3.5 w-3.5 text-white" />
                   </div>
                 )}
@@ -300,7 +309,7 @@ export default function NewProject() {
                   className={cn(
                     'max-w-sm rounded-xl px-4 py-3 text-sm whitespace-pre-line',
                     msg.from === 'ai'
-                      ? 'bg-white text-[var(--foreground)] border border-[#D7E1EC]'
+                      ? 'bg-white/85 dark:bg-[#1E293B] text-[var(--foreground)] border border-[var(--border)] dark:border-white/10 shadow-sm'
                       : 'bg-[var(--primary)] text-white'
                   )}
                 >
@@ -315,9 +324,9 @@ export default function NewProject() {
                   <button
                     key={opt.label}
                     onClick={() => handleOptionSelect(opt.label)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[#D7E1EC] bg-white px-4 py-3 text-left hover:border-[var(--primary)] hover:bg-[#F7FAFE] transition-colors"
+                    className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-white/80 dark:bg-[#1E293B] px-4 py-3 text-left hover:border-[var(--ai-accent)] dark:border-white/10 transition-colors shadow-sm"
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--muted)] text-[11px] font-semibold text-[var(--primary)]">{opt.icon}</span>
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--muted)] text-[11px] font-semibold text-[var(--ai-accent)]">{opt.icon}</span>
                     <div>
                       <p className="text-sm font-medium text-[var(--foreground)]">{opt.label}</p>
                       <p className="text-xs text-[var(--muted-foreground)]">{opt.sub}</p>
@@ -328,26 +337,39 @@ export default function NewProject() {
             )}
           </div>
 
-          <div className="border-t border-[var(--border)] px-5 py-4 bg-[var(--surface)]">
+          <div className="border-t border-[var(--border)] px-5 py-4 bg-white/55 dark:bg-[#0F172A]/20 backdrop-blur-sm">
             <div className="flex gap-3">
               <input
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Describe your project or ask a question..."
-                className="flex-1 h-10 rounded-xl border border-[var(--primary-subtle)] bg-white px-4 text-sm text-[var(--foreground)] placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[var(--primary)]"
+                className="flex-1 h-10 rounded-xl border border-[var(--border)] dark:border-white/10 bg-white/85 dark:bg-[#1E293B] px-4 text-sm text-[var(--foreground)] placeholder:text-[#94A3B8] dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--ai-accent)]"
               />
               <button
                 onClick={handleSend}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--ai-accent)] text-white hover:brightness-110 transition-colors"
               >
                 <Send className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-xs text-[var(--primary)]/60 mt-2 text-center">Try: "Cloud migration project for AED 2M starting Q1 2026"</p>
+            <p className="text-xs text-[var(--ai-accent)]/70 mt-2 text-center">Try: "Cloud migration project for 2M starting Q1 2026"</p>
           </div>
         </div>
       )}
+      <ConfirmationModal
+        open={submitConfirmOpen}
+        onOpenChange={setSubmitConfirmOpen}
+        title="Submit this budget item for review?"
+        description="This will move the request into the Reviewer queue for assessment of scope, budget logic, documents, and readiness."
+        confirmLabel="Submit Now"
+        cancelLabel="Keep Editing"
+        onConfirm={handleSubmitForReview}
+        meta={<p className="text-sm font-medium text-[#475569] dark:text-slate-200">One final check before the next governance step.</p>}
+      />
     </div>
   )
 }
+
+
+

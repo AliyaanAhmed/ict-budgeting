@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+﻿import { Link } from 'react-router-dom'
 import { ClipboardList, Eye, AlertTriangle, FileX, AlertCircle, CheckCircle, Clock, TrendingUp, Calendar, BarChart2 } from 'lucide-react'
 import { projects, currentCycle, reviewQueueProjects } from '@/data/db'
 import { StatCard } from '@/components/shared/StatCard'
@@ -9,7 +9,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { RiskBadge } from '@/components/shared/StatusBadge'
-import { formatAED } from '@/lib/utils'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 
 export default function ReviewerDashboard() {
@@ -24,12 +25,12 @@ export default function ReviewerDashboard() {
     .slice(0, 4)
 
   const riskSignals = [
-    { label: 'High Risk', value: 5, color: 'text-red-600', icon: <AlertTriangle className="h-4 w-4" />, desc: 'Require attention' },
-    { label: 'Low Confidence', value: 7, color: 'text-amber-600', icon: <AlertCircle className="h-4 w-4" />, desc: '3 items <60%' },
-    { label: 'Duplicates', value: 3, color: 'text-purple-600', icon: <FileX className="h-4 w-4" />, desc: 'Similar detected' },
-    { label: 'Missing Docs', value: 4, color: 'text-red-600', icon: <FileX className="h-4 w-4" />, desc: 'Blocked' },
-    { label: 'Budget Anomaly', value: 5, color: 'text-orange-600', icon: <TrendingUp className="h-4 w-4" />, desc: 'Unusual patterns' },
-    { label: 'Incomplete', value: 8, color: 'text-slate-600', icon: <Clock className="h-4 w-4" />, desc: 'Missing items' },
+    { label: 'High Risk', value: 5, color: dashboardPalette.aeRed, bgColor: dashboardPalette.aeRedLight, borderColor: '#FECACA', icon: <AlertTriangle className="h-4 w-4" />, desc: 'Require attention' },
+    { label: 'Low Confidence', value: 7, color: dashboardPalette.camelYellow, bgColor: dashboardPalette.camelYellowLight, borderColor: '#FDE68A', icon: <AlertCircle className="h-4 w-4" />, desc: '3 items <60%' },
+    { label: 'Duplicates', value: 3, color: dashboardPalette.techBlue, bgColor: dashboardPalette.techBlueLight, borderColor: '#BFDBFE', icon: <FileX className="h-4 w-4" />, desc: 'Similar detected' },
+    { label: 'Missing Docs', value: 4, color: dashboardPalette.aeRed, bgColor: dashboardPalette.aeRedLight, borderColor: '#FECACA', icon: <FileX className="h-4 w-4" />, desc: 'Blocked' },
+    { label: 'Budget Anomaly', value: 5, color: dashboardPalette.desertOrange, bgColor: dashboardPalette.desertOrangeLight, borderColor: '#FED7AA', icon: <TrendingUp className="h-4 w-4" />, desc: 'Unusual patterns' },
+    { label: 'Incomplete', value: 8, color: dashboardPalette.slate, bgColor: dashboardPalette.slateLight, borderColor: dashboardPalette.slateBorder, icon: <Clock className="h-4 w-4" />, desc: 'Missing items' },
   ]
 
   return (
@@ -56,6 +57,24 @@ export default function ReviewerDashboard() {
         <StatCard label="Missing Docs" value={missingDocs} variant="red" icon={<FileX className="h-5 w-5" />} subtitle="Blocked" style={{ animationDelay: '200ms' }} />
       </div>
 
+      {/* Review Queue Pipeline */}
+      <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Queue Pipeline</p>
+          <p className="text-xs text-[#475569] dark:text-slate-400">{reviewQueueProjects.length} items total</p>
+        </div>
+        <div className="flex rounded-full overflow-hidden h-2.5 gap-[2px]">
+          {toReview > 0 && <div className="transition-all" style={{ flex: toReview, backgroundColor: dashboardStatusColors.withReviewer }} />}
+          {clarificationPending > 0 && <div className="transition-all" style={{ flex: clarificationPending, backgroundColor: dashboardStatusColors.clarificationPending }} />}
+          {reviewed > 0 && <div className="transition-all" style={{ flex: reviewed, backgroundColor: dashboardStatusColors.reviewed }} />}
+        </div>
+        <div className="flex items-center gap-4 mt-3 flex-wrap">
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />To Review ({toReview})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarificationPending }} />Clarification Pending ({clarificationPending})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.reviewed }} />Reviewed ({reviewed})</span>
+        </div>
+      </div>
+
       {/* Deadline banner */}
       <div className="rounded-[12px] border border-[#286CFF]/20 bg-[#E7F5FF] dark:bg-blue-900/10 dark:border-blue-700/30 p-4 flex items-center gap-4 flex-wrap">
         <Calendar className="h-5 w-5 text-[#286CFF] shrink-0" />
@@ -65,7 +84,7 @@ export default function ReviewerDashboard() {
         </div>
         <div className="ml-auto flex items-center gap-3 min-w-[200px]">
           <Progress value={currentCycle.completionPercentage} className="flex-1 h-2" />
-          <span className="text-xs font-mono font-medium text-[#286CFF]">{currentCycle.completionPercentage}%</span>
+          <span className="text-xs font-medium text-[#286CFF]">{currentCycle.completionPercentage}%</span>
         </div>
       </div>
 
@@ -110,8 +129,8 @@ export default function ReviewerDashboard() {
                   <span className="text-xs text-[#475569] dark:text-slate-400">{proj.submittedDate}</span>
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="font-mono font-semibold text-sm text-[#0F172A] dark:text-white">{formatAED(proj.requestedBudget)}</p>
+              <div className="text-end shrink-0">
+                <CurrencyAmount amount={proj.requestedBudget} className="font-semibold text-sm text-[#0F172A] dark:text-white" />
               </div>
               <Button size="sm" asChild>
                 <Link to={`/reviewer/review-queue/${proj.id}`}>Review</Link>
@@ -155,10 +174,10 @@ export default function ReviewerDashboard() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {riskSignals.map((s) => (
-                <div key={s.label} className="rounded-[10px] border border-[#E2E8F0] dark:border-white/10 p-3">
-                  <div className={cn('flex items-center gap-1.5 mb-1', s.color)}>
+                <div key={s.label} className="rounded-[10px] border p-3" style={{ backgroundColor: s.bgColor, borderColor: s.borderColor }}>
+                  <div className="flex items-center gap-1.5 mb-2" style={{ color: s.color }}>
                     {s.icon}
-                    <span className="text-2xl font-bold font-mono">{s.value}</span>
+                    <span className="text-2xl font-bold">{s.value}</span>
                   </div>
                   <p className="text-sm font-medium text-[#0F172A] dark:text-white">{s.label}</p>
                   <p className="text-xs text-[#475569] dark:text-slate-400">{s.desc}</p>

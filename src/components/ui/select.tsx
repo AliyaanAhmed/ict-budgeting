@@ -14,7 +14,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-9 w-full items-center justify-between rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#1E293B] dark:text-[#F1F5F9] [&>span]:flex [&>span]:items-center [&>span]:gap-2 [&>span]:whitespace-nowrap [&>span]:line-clamp-1',
+      'flex h-9 w-full items-center justify-between rounded-[8px] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm shadow-sm ring-offset-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#1E293B] dark:text-[#F1F5F9] [&>span]:flex [&>span]:items-center [&>span]:gap-1 [&>span]:whitespace-nowrap [&>span]:min-w-0 [&>span>span]:truncate [&>span>span]:whitespace-nowrap',
       className
     )}
     {...props}
@@ -63,7 +63,7 @@ const SelectContent = React.forwardRef<
     <SelectPrimitive.Content
       ref={ref}
       className={cn(
-        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-[10px] border border-[#E2E8F0] bg-white text-[#0F172A] shadow-lg dark:border-white/10 dark:bg-[#1E293B] dark:text-[#F1F5F9]',
+        'relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] shadow-lg dark:border-white/10 dark:bg-[#1E293B] dark:text-[#F1F5F9]',
         
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1',
@@ -94,7 +94,7 @@ const SelectLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn('py-1.5 pl-8 pr-2 text-xs font-semibold text-[#475569]', className)}
+    className={cn('py-1.5 pl-8 pr-2 text-xs font-semibold text-[var(--muted-foreground)]', className)}
     {...props}
   />
 ))

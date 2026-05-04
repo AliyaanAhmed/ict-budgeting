@@ -1,43 +1,57 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { budgetByCategory } from '@/data/db'
+import { dashboardPalette } from '@/lib/dashboardPalette'
 
-const COLORS = ['#286CFF', '#4A9D5C', '#D946EF', '#D97706', '#EA4F49', '#06B6D4']
+const BAR_COLORS = [
+  dashboardPalette.chartBlue,
+  dashboardPalette.chartCyan,
+  dashboardPalette.chartYellow,
+  dashboardPalette.chartOrange,
+  dashboardPalette.chartPink,
+  dashboardPalette.chartSlate,
+]
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  const val = (payload[0].value as number) * 1_000_000
+  return (
+    <div className="rounded-[10px] border border-[#E2E8F0] bg-white dark:bg-[#1E293B] dark:border-white/10 p-3 shadow-lg min-w-[160px]">
+      <p className="text-xs font-semibold text-[#0F172A] dark:text-white mb-1">{label}</p>
+      <p className="text-xs text-[#475569] dark:text-slate-400">
+        AED {val.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
+      </p>
+    </div>
+  )
+}
 
 export function BudgetByCategory() {
-  const data = budgetByCategory.map((item) => ({
+  const data = budgetByCategory.map((item, index) => ({
     ...item,
     displayValue: item.value / 1_000_000,
+    fill: BAR_COLORS[index % BAR_COLORS.length],
   }))
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" horizontal={false} />
+    <ResponsiveContainer width="100%" height={240}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 28, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" horizontal={false} />
         <XAxis
           type="number"
           tickFormatter={(v) => `${v}M`}
-          tick={{ fontSize: 11, fill: '#475569' }}
+          tick={{ fontSize: 11, fill: '#94A3B8' }}
           axisLine={false}
           tickLine={false}
-          dataKey="displayValue"
         />
         <YAxis
           type="category"
           dataKey="name"
-          tick={{ fontSize: 11, fill: '#475569' }}
+          tick={{ fontSize: 11, fill: '#94A3B8' }}
           axisLine={false}
           tickLine={false}
-          width={130}
+          width={140}
         />
-        <Tooltip
-          formatter={(value: number) => [`AED ${value.toFixed(1)}M`, 'Budget']}
-          contentStyle={{
-            borderRadius: '8px',
-            border: '1px solid #E2E8F0',
-            fontSize: 12,
-          }}
-        />
-        <Bar dataKey="displayValue" fill="#286CFF" radius={[0, 4, 4, 0]} maxBarSize={20} />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(148,163,184,0.07)' }} />
+        <Bar dataKey="displayValue" radius={[0, 6, 6, 0]} maxBarSize={22} />
       </BarChart>
     </ResponsiveContainer>
   )

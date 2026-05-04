@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react'
+﻿import { Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AiPlaceholderCardProps {
@@ -13,22 +13,22 @@ export function AiPlaceholderCard({ title, description, children, className, com
   return (
     <div
       className={cn(
-        'rounded-[12px] border border-dashed border-[#D946EF] bg-[#FDF4FF] dark:bg-purple-900/10 dark:border-purple-700',
+        'ai-panel',
         compact ? 'p-3' : 'p-5',
         className
       )}
     >
       <div className={cn('flex items-center gap-2', compact ? 'mb-2' : 'mb-3')}>
-        <Sparkles className="h-4 w-4 text-[#D946EF] shrink-0" />
-        <span className={cn('font-semibold text-[#A21CAF] dark:text-purple-300', compact ? 'text-sm' : 'text-base')}>
+        <Sparkles className="h-4 w-4 text-[var(--ai-accent)] shrink-0" />
+        <span className={cn('font-semibold text-[var(--ai-accent)]', compact ? 'text-sm' : 'text-base')}>
           {title}
         </span>
-        <span className="ml-auto inline-flex items-center rounded-full bg-[#F5D0FE] px-2 py-0.5 text-xs font-medium text-[#A21CAF] dark:bg-purple-800/40">
+        <span className="ai-chip ms-auto">
           Coming Soon
         </span>
       </div>
       {description && (
-        <p className={cn('text-[#A21CAF]/70 dark:text-purple-300/70', compact ? 'text-xs' : 'text-sm mb-3')}>
+        <p className={cn('ai-panel-body-text', compact ? 'text-xs' : 'text-sm mb-3')}>
           {description}
         </p>
       )}
@@ -45,24 +45,27 @@ interface AiInsightsBannerProps {
 
 export function AiInsightsBanner({ confidence, issues, className }: AiInsightsBannerProps) {
   return (
-    <div className={cn('flex items-center gap-2 rounded-[8px] bg-[#FDF4FF] border border-[#F5D0FE] px-3 py-2 dark:bg-purple-900/10 dark:border-purple-700', className)}>
-      <Sparkles className="h-3.5 w-3.5 text-[#D946EF] shrink-0" />
-      <span className="text-xs font-medium text-[#A21CAF] dark:text-purple-300">
+    <div className={cn('flex items-center gap-2 rounded-[8px] bg-[var(--surface)] border border-[var(--border)] px-3 py-2', className)}>
+      <Sparkles className="h-3.5 w-3.5 text-[var(--ai-accent)] shrink-0" />
+      <span className="text-xs font-medium text-[var(--ai-accent)]">
         AI Review Insights
       </span>
       {confidence !== undefined && (
-        <span className="ml-1 text-xs text-[#A21CAF]/70 dark:text-purple-300/70">
+        <span className="ml-1 text-xs text-[var(--muted-foreground)]">
           · {confidence}% Confidence
         </span>
       )}
       {issues !== undefined && (
-        <span className="ml-1 text-xs text-[#A21CAF]/70 dark:text-purple-300/70">
+        <span className="ml-1 text-xs text-[var(--muted-foreground)]">
           · {issues} {issues === 1 ? 'issue' : 'issues'}
         </span>
       )}
-      <span className="ml-auto inline-flex items-center rounded-full bg-[#F5D0FE] px-2 py-0.5 text-xs font-medium text-[#A21CAF]">
+      <span className="ms-auto inline-flex items-center rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium text-[var(--muted-foreground)]">
         Coming Soon
       </span>
     </div>
   )
 }
+
+
+

@@ -7,16 +7,16 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatAED(amount: number): string {
   if (amount >= 1_000_000) {
-    return `AED ${(amount / 1_000_000).toFixed(1)}M`
+    return `${(amount / 1_000_000).toFixed(1)}M`
   }
   if (amount >= 1_000) {
-    return `AED ${amount.toLocaleString('en-AE')}`
+    return amount.toLocaleString('en-AE')
   }
-  return `AED ${amount}`
+  return `${amount}`
 }
 
 export function formatAEDFull(amount: number): string {
-  return `AED ${amount.toLocaleString('en-AE')}`
+  return amount.toLocaleString('en-AE')
 }
 
 export function formatDate(dateStr: string): string {

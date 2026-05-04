@@ -1,22 +1,23 @@
-import { Link, useLocation } from 'react-router-dom'
+﻿import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   FolderOpen,
   PlusCircle,
   ClipboardList,
   CheckCircle,
-  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
 import { projects } from '@/data/db'
+import appLogo from '@/assets/app-logo.png'
 
 interface SidebarProps {
   collapsed: boolean
   onToggle: () => void
+  isRTL: boolean
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
   const { activeRole } = useRole()
   const location = useLocation()
 
@@ -41,11 +42,15 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   }
 
   const items = navItems[activeRole] ?? []
+  const activeHref = [...items]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/'))?.href
 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 bottom-0 z-30 flex flex-col bg-[var(--surface)] border-r border-[var(--border)] transition-[width] duration-200 ease-out will-change-[width]',
+        'fixed top-0 bottom-0 z-30 flex flex-col bg-[var(--surface)] border-[var(--border)] transition-[width,left,right] duration-300 ease-in-out will-change-[width,left,right]',
+        isRTL ? 'right-0 border-l' : 'left-0 border-r',
         collapsed ? 'w-[72px]' : 'w-[248px]'
       )}
     >
@@ -53,17 +58,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <button
         onClick={onToggle}
         className={cn(
-          'flex items-center h-16 border-b border-[var(--border)] shrink-0 w-full text-left transition-colors hover:bg-[var(--muted)]',
+          'flex items-center h-16 border-b border-[var(--border)] shrink-0 w-full transition-colors hover:bg-[var(--muted)]',
           collapsed ? 'justify-center px-4' : 'px-5 gap-3'
         )}
+        style={{ textAlign: isRTL ? 'right' : 'left' }}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[var(--primary)] text-white">
-          <Building2 className="h-4 w-4" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[var(--border)] bg-white">
+          <img src={appLogo} alt="Department of Government Enablement logo" className="h-8 w-8 object-contain" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
             <p className="text-sm font-bold text-[var(--foreground)] leading-tight truncate">ICT Budgeting</p>
-            <p className="text-xs text-[var(--muted-foreground)] leading-tight truncate">Government Portfolio</p>
+            <p className="text-xs text-[var(--muted-foreground)] leading-tight truncate">Department of Government Enablement</p>
           </div>
         )}
       </button>
@@ -71,7 +77,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-2">
         {items.map((item) => {
-          const isActive = location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+          const isActive = activeHref === item.href
           return (
             <Link
               key={item.href}
@@ -80,7 +86,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               className={cn(
                 'flex items-center gap-3 rounded-[8px] px-3 py-2.5 mb-1 text-sm font-medium transition-colors duration-150',
                 isActive
-                  ? 'bg-[var(--primary-light)] text-[var(--primary)]'
+                  ? 'bg-[#286CFF] text-white'
                   : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]',
                 collapsed && 'justify-center px-0'
               )}
@@ -124,3 +130,4 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     </aside>
   )
 }
+

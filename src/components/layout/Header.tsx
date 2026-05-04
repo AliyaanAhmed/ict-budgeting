@@ -12,9 +12,10 @@ interface HeaderProps {
   onToggleDark: () => void
   isRTL: boolean
   onToggleRTL: () => void
+  isTranslating: boolean
 }
 
-export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL }: HeaderProps) {
+export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL, isTranslating }: HeaderProps) {
   const { activeRole, setActiveRole } = useRole()
   const [notifOpen, setNotifOpen] = useState(false)
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -29,8 +30,8 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL 
 
   return (
     <header
-      className="fixed top-0 right-0 z-20 flex h-16 items-center bg-[var(--surface)] border-b border-[var(--border)] px-3 sm:px-5 gap-3 transition-[left] duration-200"
-      style={{ left: sidebarWidth }}
+      className="fixed top-0 z-20 flex h-16 items-center bg-[var(--surface)] border-b border-[var(--border)] px-3 sm:px-5 gap-3 transition-[left,right] duration-300 ease-in-out will-change-[left,right]"
+      style={isRTL ? { right: sidebarWidth, left: 0 } : { left: sidebarWidth, right: 0 }}
     >
       <div className="hidden lg:flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--muted)] px-3 py-1.5 min-w-0">
         <ShieldCheck className="h-4 w-4 text-[var(--primary)] shrink-0" />
@@ -45,10 +46,15 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL 
         <span className="text-xs font-semibold text-[var(--muted-foreground)]">FY2026</span>
       </div>
 
-      <div className="flex items-center gap-2 ml-auto">
+      <div className={cn('flex items-center gap-2', isRTL ? 'mr-auto' : 'ml-auto')}>
         <button
           onClick={onToggleRTL}
-          className="hidden sm:flex h-8 items-center gap-0 rounded-full border border-[var(--border)] overflow-hidden text-xs font-medium"
+          data-no-translate="true"
+          disabled={isTranslating}
+          className={cn(
+            'hidden sm:flex h-8 items-center gap-0 rounded-full border border-[var(--border)] overflow-hidden text-xs font-medium transition-opacity',
+            isTranslating && 'opacity-60 cursor-wait'
+          )}
         >
           <span className={cn('px-3 py-1.5 transition-colors', !isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>EN</span>
           <span className={cn('px-3 py-1.5 transition-colors', isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>AR</span>
@@ -79,7 +85,13 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL 
                 <p className="font-semibold text-sm text-[var(--foreground)]">Notifications</p>
               </div>
               {notifications.map((n) => (
-                <div key={n.id} className={cn('px-4 py-3 border-b border-[var(--muted)] hover:bg-[var(--muted)] cursor-pointer', !n.read && 'bg-[var(--primary-subtle)]')}>
+                <div
+                  key={n.id}
+                  className={cn(
+                    'px-4 py-3 border-b border-[var(--muted)] hover:bg-[var(--muted)] cursor-pointer transition-colors',
+                    !n.read && 'bg-[#EAF2FF] dark:bg-[#286CFF]/15'
+                  )}
+                >
                   <p className="text-sm font-medium text-[var(--foreground)]">{n.title}</p>
                   <p className="text-xs text-[var(--muted-foreground)] mt-0.5">{n.message}</p>
                   <p className="text-xs text-[#94A3B8] mt-1">{n.time}</p>

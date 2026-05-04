@@ -23,7 +23,7 @@ export default {
       },
       fontFamily: {
         sans: ['DM Sans', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        mono: ['Outfit', 'DM Sans', 'sans-serif'],
       },
       keyframes: {
         fadeInUp: {
@@ -43,4 +43,3 @@ export default {
   },
   plugins: [],
 }
-
