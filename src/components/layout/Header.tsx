@@ -128,15 +128,27 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL,
                   onClick={() => setActiveRole(role)}
                   className={cn(
                     'rounded-xl p-3 mb-1 items-start',
-                    activeRole === role && 'bg-[var(--primary-light)] text-[var(--primary)]'
+                    activeRole === role && 'bg-[var(--primary-light)] text-[var(--primary)] dark:bg-[#286CFF]/25 dark:text-white'
                   )}
                 >
-                  <div className="h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5">
+                  <div
+                    className={cn(
+                      'h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5',
+                      activeRole === role && 'dark:bg-[#286CFF]/30 dark:border-[#4F98FF]/50 dark:text-white'
+                    )}
+                  >
                     <RoleIcon className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold leading-tight">{role}</p>
-                    <p className="text-xs text-[var(--muted-foreground)] leading-tight mt-1">{roleMeta[role].sub}</p>
+                    <p
+                      className={cn(
+                        'text-xs text-[var(--muted-foreground)] leading-tight mt-1',
+                        activeRole === role && 'dark:text-slate-100'
+                      )}
+                    >
+                      {roleMeta[role].sub}
+                    </p>
                   </div>
                   {activeRole === role && <Check className="ml-auto h-4 w-4 mt-1" />}
                 </DropdownMenuItem>
