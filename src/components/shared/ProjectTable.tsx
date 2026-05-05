@@ -27,15 +27,15 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[#E2E8F0] dark:border-white/10">
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide w-20">AI Score</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">Project Name</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide hidden md:table-cell">Strategic Priority</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide hidden lg:table-cell">Classification</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">Budget</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">Status</th>
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide hidden md:table-cell">Pending With</th>
-            {showCreatedBy && <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide hidden xl:table-cell">Created By</th>}
-            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">Action</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide w-20">AI Score</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide">Project Name</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide hidden md:table-cell">Strategic Priority</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide hidden lg:table-cell">Classification</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide">Budget</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide">Status</th>
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide hidden md:table-cell">Pending With</th>
+            {showCreatedBy && <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide hidden xl:table-cell">Created By</th>}
+            <th className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -59,10 +59,10 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
                 </Link>
               </td>
               <td className="py-3 px-4 hidden md:table-cell">
-                <span className="text-[#475569] dark:text-slate-400 text-xs">{project.strategicPriority}</span>
+                <span className="text-[#475569] dark:text-slate-200 text-xs">{project.strategicPriority}</span>
               </td>
               <td className="py-3 px-4 hidden lg:table-cell">
-                <span className="text-[#475569] dark:text-slate-400 text-xs">{project.classification}</span>
+                <span className="text-[#475569] dark:text-slate-200 text-xs">{project.classification}</span>
               </td>
               <td className="py-3 px-4">
                 <CurrencyAmount amount={project.requestedBudget} className="font-semibold text-[#0F172A] dark:text-white text-xs" />
@@ -79,7 +79,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
               </td>
               {showCreatedBy && (
                 <td className="py-3 px-4 hidden xl:table-cell">
-                  <span className="text-[#475569] dark:text-slate-400 text-xs">{project.submittedBy}</span>
+                  <span className="text-[#475569] dark:text-slate-200 text-xs">{project.submittedBy}</span>
                 </td>
               )}
               <td className="py-3 px-4">
@@ -98,3 +98,4 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
     </div>
   )
 }
+

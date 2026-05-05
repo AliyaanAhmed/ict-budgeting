@@ -89,24 +89,9 @@ export function DataverseDebugModal() {
     setCreating(true)
     setCreateMessage('')
     try {
-      const response = await fetch('/api/data/v9.2/accounts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json; charset=utf-8',
-          'OData-MaxVersion': '4.0',
-          'OData-Version': '4.0',
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-        }),
-      })
-
-      if (!response.ok) {
-        const details = await response.text()
-        throw new Error(`HTTP ${response.status}: ${details}`)
-      }
+      await AccountsService.create({
+        name: name.trim(),
+      } as never)
 
       setCreateMessage('Account created successfully (payload: name only).')
       setName('')

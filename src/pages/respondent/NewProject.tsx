@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { User, Sparkles, Upload, Plus, X, Send, ChevronRight, Bot, CalendarDays, Layers, Briefcase, Building2, Package, FolderKanban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -21,7 +21,7 @@ function SectionNumber({ n }: { n: number }) {
 function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-[#64748B] uppercase tracking-wide">
+      <label className="text-xs font-semibold text-[#64748B] dark:text-white uppercase tracking-wide">
         {label} {required && <span className="text-red-500 normal-case">*</span>}
       </label>
       {children}
@@ -247,7 +247,7 @@ export default function NewProject() {
                     <thead className="bg-[#F8FAFC] border-b border-[#EAF0F6] hidden md:table-header-group dark:bg-[#0F172A]/20 dark:border-white/10">
                       <tr>
                         {['Account Name', 'Classification (L1/L2/L3)', 'EBS/Fusion Code / Expense Type', 'Budget Requested'].map((h) => (
-                          <th key={h} className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#64748B] dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                          <th key={h} className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#64748B] dark:text-slate-200 uppercase tracking-wide">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -382,6 +382,7 @@ export default function NewProject() {
     </div>
   )
 }
+
 
 
 

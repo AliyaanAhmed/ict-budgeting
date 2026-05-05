@@ -39,11 +39,11 @@ export default function ReviewerDashboard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Review Dashboard</h1>
-          <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">{currentCycle.name} • Review Period</p>
+          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">{currentCycle.name} • Review Period</p>
         </div>
         <Button asChild>
           <Link to="/reviewer/review-queue">
-            Open Review Queue →
+            Open Review Queue ?
           </Link>
         </Button>
       </div>
@@ -61,7 +61,7 @@ export default function ReviewerDashboard() {
       <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Queue Pipeline</p>
-          <p className="text-xs text-[#475569] dark:text-slate-400">{reviewQueueProjects.length} items total</p>
+          <p className="text-xs text-[#475569] dark:text-slate-200">{reviewQueueProjects.length} items total</p>
         </div>
         <div className="flex rounded-full overflow-hidden h-2.5 gap-[2px]">
           {toReview > 0 && <div className="transition-all" style={{ flex: toReview, backgroundColor: dashboardStatusColors.withReviewer }} />}
@@ -69,18 +69,18 @@ export default function ReviewerDashboard() {
           {reviewed > 0 && <div className="transition-all" style={{ flex: reviewed, backgroundColor: dashboardStatusColors.reviewed }} />}
         </div>
         <div className="flex items-center gap-4 mt-3 flex-wrap">
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />To Review ({toReview})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarificationPending }} />Clarification Pending ({clarificationPending})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.reviewed }} />Reviewed ({reviewed})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />To Review ({toReview})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarificationPending }} />Clarification Pending ({clarificationPending})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.reviewed }} />Reviewed ({reviewed})</span>
         </div>
       </div>
 
       {/* Deadline banner */}
       <div className="rounded-[12px] border border-[#286CFF]/20 bg-[#E7F5FF] dark:bg-blue-900/10 dark:border-blue-700/30 p-4 flex items-center gap-4 flex-wrap">
-        <Calendar className="h-5 w-5 text-[#286CFF] shrink-0" />
+        <Calendar className="h-5 w-5 text-[#286CFF] dark:text-white shrink-0" />
         <div>
           <p className="text-sm font-semibold text-[#286CFF]">Submission Deadline: {currentCycle.daysRemaining} days — Submit to Approver by {currentCycle.submissionDeadline}</p>
-          <p className="text-xs text-[#475569] dark:text-slate-400 mt-0.5">All reviewed projects must reach Approver before the deadline</p>
+          <p className="text-xs text-[#475569] dark:text-slate-200 mt-0.5">All reviewed projects must reach Approver before the deadline</p>
         </div>
         <div className="ml-auto flex items-center gap-3 min-w-[200px]">
           <Progress value={currentCycle.completionPercentage} className="flex-1 h-2" />
@@ -100,7 +100,7 @@ export default function ReviewerDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Projects Requiring Attention</CardTitle>
-              <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">High priority items that need your review</p>
+              <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">High priority items that need your review</p>
             </div>
             <button className="text-xs text-[#286CFF] font-medium hover:underline">+ Collapse</button>
           </div>
@@ -126,7 +126,7 @@ export default function ReviewerDashboard() {
                       Missing Docs
                     </span>
                   )}
-                  <span className="text-xs text-[#475569] dark:text-slate-400">{proj.submittedDate}</span>
+                  <span className="text-xs text-[#475569] dark:text-slate-200">{proj.submittedDate}</span>
                 </div>
               </div>
               <div className="text-end shrink-0">
@@ -139,7 +139,7 @@ export default function ReviewerDashboard() {
           ))}
           <div className="px-5 py-3 border-t border-[#F1F5F9] dark:border-white/5">
             <Link to="/reviewer/review-queue" className="text-sm text-[#286CFF] hover:underline font-medium">
-              View All Projects →
+              View All Projects ?
             </Link>
           </div>
         </CardContent>
@@ -150,7 +150,7 @@ export default function ReviewerDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Budget by Category</CardTitle>
-            <p className="text-sm text-[#475569] dark:text-slate-400">Distribution of requested budget</p>
+            <p className="text-sm text-[#475569] dark:text-slate-200">Distribution of requested budget</p>
           </CardHeader>
           <CardContent>
             <BudgetByCategory />
@@ -159,7 +159,7 @@ export default function ReviewerDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>New vs Recurring Projects</CardTitle>
-            <p className="text-sm text-[#475569] dark:text-slate-400">Project type distribution</p>
+            <p className="text-sm text-[#475569] dark:text-slate-200">Project type distribution</p>
           </CardHeader>
           <CardContent>
             <NewVsRecurringDonut />
@@ -180,7 +180,7 @@ export default function ReviewerDashboard() {
                     <span className="text-2xl font-bold">{s.value}</span>
                   </div>
                   <p className="text-sm font-medium text-[#0F172A] dark:text-white">{s.label}</p>
-                  <p className="text-xs text-[#475569] dark:text-slate-400">{s.desc}</p>
+                  <p className="text-xs text-[#475569] dark:text-slate-200">{s.desc}</p>
                 </div>
               ))}
             </div>
@@ -209,3 +209,5 @@ export default function ReviewerDashboard() {
     </div>
   )
 }
+
+

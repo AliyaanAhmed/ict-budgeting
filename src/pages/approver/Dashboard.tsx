@@ -48,14 +48,14 @@ export default function ApproverDashboard() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <nav className="text-xs text-[#475569] dark:text-slate-400 mb-2">Home › Approver Dashboard</nav>
+          <nav className="text-xs text-[#475569] dark:text-slate-200 mb-2">Home › Approver Dashboard</nav>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Approver Workbench</h1>
-          <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">{currentCycle.name} • Final ADGE Approval</p>
+          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">{currentCycle.name} • Final ADGE Approval</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-[8px] border border-[#E2E8F0] dark:border-white/10 overflow-hidden">
-            <button onClick={() => setPlanningTab(true)} className={cn('px-4 py-2 text-sm font-medium transition-colors', planningTab ? 'bg-[#286CFF] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400')}>Planning</button>
-            <button onClick={() => setPlanningTab(false)} className={cn('px-4 py-2 text-sm font-medium transition-colors', !planningTab ? 'bg-[#286CFF] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-400')}>Allocation</button>
+            <button onClick={() => setPlanningTab(true)} className={cn('px-4 py-2 text-sm font-medium transition-colors', planningTab ? 'bg-[#286CFF] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-200')}>Planning</button>
+            <button onClick={() => setPlanningTab(false)} className={cn('px-4 py-2 text-sm font-medium transition-colors', !planningTab ? 'bg-[#286CFF] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-200')}>Allocation</button>
           </div>
           <Button variant="outline" size="sm">Refresh</Button>
           <Button variant="ai" size="sm">
@@ -68,7 +68,7 @@ export default function ApproverDashboard() {
       {/* Summary banner */}
       <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 flex items-center gap-3 flex-wrap shadow-sm">
         <BarChart2 className="h-5 w-5 text-[#286CFF] shrink-0" />
-        <p className="text-sm text-[#475569] dark:text-slate-400">
+        <p className="text-sm text-[#475569] dark:text-slate-200">
           <span className="font-semibold text-[#0F172A] dark:text-white">54 projects</span> in cycle,{' '}
           <span className="font-semibold text-[#0F172A] dark:text-white">12</span> with Respondent,{' '}
           <span className="font-semibold text-[#0F172A] dark:text-white">9</span> with Reviewer,{' '}
@@ -105,7 +105,7 @@ export default function ApproverDashboard() {
                 {s.isBudget ? (
                   <CurrencyAmount amount={totalBudget} full className="text-xl font-bold text-[#0F172A] dark:text-white" iconColor={dashboardPalette.techBlue} iconSize={18} />
                 ) : (
-                  <p className="text-xl font-bold leading-none" style={{ color: s.color }}>{s.value}</p>
+                  <p className="text-xl font-bold leading-none text-[#0F172A] dark:text-white">{s.value}</p>
                 )}
               </div>
               <div className="flex items-end">
@@ -119,7 +119,7 @@ export default function ApproverDashboard() {
       {/* Cannot Submit alert */}
       <div className="rounded-[12px] border border-red-200 dark:border-red-700/30 bg-red-50 dark:bg-red-900/10 p-4">
         <div className="flex items-center gap-3 flex-wrap">
-          <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-white shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-red-700 dark:text-red-400">Cannot Submit to DGE</p>
             <p className="text-sm text-red-600 dark:text-red-400 mt-0.5">
@@ -146,10 +146,10 @@ export default function ApproverDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Projects Requiring My Approval</CardTitle>
-              <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">Items pending your decision</p>
+              <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">Items pending your decision</p>
             </div>
             <button onClick={() => setAttentionCollapsed(!attentionCollapsed)} className="text-xs text-[#286CFF] hover:underline">
-              {attentionCollapsed ? '+ Expand' : '− Collapse'}
+              {attentionCollapsed ? '+ Expand' : '- Collapse'}
             </button>
           </div>
         </CardHeader>
@@ -175,12 +175,12 @@ export default function ApproverDashboard() {
                       <span className="inline-flex items-center rounded-full bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400 px-2 py-0.5 text-xs font-medium">Missing Docs</span>
                     )}
                   </div>
-                  <p className="text-xs text-[#475569] dark:text-slate-400">
+                  <p className="text-xs text-[#475569] dark:text-slate-200">
                     Submitted {project.submittedDate} · Updated {project.lastModified}
                   </p>
                 </div>
                 <div className="text-end shrink-0">
-                  <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide">Requested Budget</p>
+                  <p className="text-xs text-[#475569] dark:text-slate-200 uppercase tracking-wide">Requested Budget</p>
                   <CurrencyAmount amount={project.requestedBudget} className="font-semibold text-[#0F172A] dark:text-white" />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -193,7 +193,7 @@ export default function ApproverDashboard() {
               </div>
             ))}
             <div className="px-5 py-3 border-t border-[#F1F5F9] dark:border-white/5">
-              <Link to="/approver/approval-queue" className="text-sm text-[#286CFF] hover:underline font-medium">View Full Approval Queue →</Link>
+              <Link to="/approver/approval-queue" className="text-sm text-[#286CFF] hover:underline font-medium">View Full Approval Queue ?</Link>
             </div>
           </CardContent>
         )}
@@ -204,7 +204,7 @@ export default function ApproverDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Entity Progress Snapshot</CardTitle>
-            <p className="text-sm text-[#475569] dark:text-slate-400">ADGE pipeline at a glance</p>
+            <p className="text-sm text-[#475569] dark:text-slate-200">ADGE pipeline at a glance</p>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -224,7 +224,7 @@ export default function ApproverDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Clarification Monitor</CardTitle>
-                <p className="text-sm text-[#475569] dark:text-slate-400">Tracking pending clarifications</p>
+                <p className="text-sm text-[#475569] dark:text-slate-200">Tracking pending clarifications</p>
               </div>
               <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium">2 pending</span>
             </div>
@@ -235,7 +235,7 @@ export default function ApproverDashboard() {
                 <div key={c.project} className="flex items-center gap-3 rounded-[8px] border border-[#E2E8F0] dark:border-white/10 p-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#0F172A] dark:text-white truncate">{c.project}</p>
-                    <p className="text-xs text-[#475569] dark:text-slate-400 mt-0.5">Pending with {c.assignee}</p>
+                    <p className="text-xs text-[#475569] dark:text-slate-200 mt-0.5">Pending with {c.assignee}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
@@ -245,7 +245,7 @@ export default function ApproverDashboard() {
                     )}>
                       {c.status}
                     </span>
-                    <Bell className="h-4 w-4 text-[#94A3B8] cursor-pointer hover:text-[#286CFF]" />
+                    <Bell className="h-4 w-4 text-[#94A3B8] dark:text-white cursor-pointer hover:text-[#286CFF]" />
                   </div>
                 </div>
               ))}
@@ -267,9 +267,9 @@ export default function ApproverDashboard() {
               <div key={tile.label} className="relative rounded-[8px] border border-[var(--border)] bg-white dark:bg-[#1E293B] p-3 opacity-70">
                 <p className="text-2xl font-bold font-mono mb-1" style={{ color: tile.color }}>{tile.value}</p>
                 <p className="text-xs font-medium text-[#0F172A] dark:text-white">{tile.label}</p>
-                <p className="text-xs text-[#475569] dark:text-slate-400">{tile.desc}</p>
+                <p className="text-xs text-[#475569] dark:text-slate-200">{tile.desc}</p>
                 <div className="absolute top-2 right-2">
-                  <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">🔒</span>
+                  <span className="inline-flex items-center rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted-foreground)]">??</span>
                 </div>
               </div>
             ))}
@@ -314,3 +314,5 @@ export default function ApproverDashboard() {
     </div>
   )
 }
+
+

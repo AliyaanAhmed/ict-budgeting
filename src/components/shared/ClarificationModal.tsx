@@ -71,7 +71,7 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
 
           <div className="mt-5 space-y-5">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-300">Quick prompts</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-white">Quick prompts</p>
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map((item) => (
                   <button
@@ -87,7 +87,7 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
             </div>
 
             <div>
-              <label className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-300">
+              <label className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-white">
                 <MessageSquareText className="h-3.5 w-3.5" />
                 Clarification Message
               </label>
@@ -124,3 +124,4 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
     </Dialog>
   )
 }
+

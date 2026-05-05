@@ -27,7 +27,7 @@ export default function RespondentDashboard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">My Dashboard</h1>
-          <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">
+          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">
             Track and manage your budget submissions
           </p>
           <p className="text-xs text-[#286CFF] font-medium mt-1">
@@ -55,7 +55,7 @@ export default function RespondentDashboard() {
       <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Project Pipeline</p>
-          <p className="text-xs text-[#475569] dark:text-slate-400">{total} projects total</p>
+          <p className="text-xs text-[#475569] dark:text-slate-200">{total} projects total</p>
         </div>
         <div className="flex rounded-full overflow-hidden h-2.5 gap-[2px]">
           {approved > 0 && <div className="transition-all" style={{ flex: approved, backgroundColor: dashboardStatusColors.approved }} />}
@@ -65,11 +65,11 @@ export default function RespondentDashboard() {
           {needsWork > 0 && <div className="transition-all" style={{ flex: needsWork, backgroundColor: dashboardStatusColors.needsWork }} />}
         </div>
         <div className="flex items-center gap-4 mt-3 flex-wrap">
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.approved }} />Approved ({approved})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />With Reviewer ({submittedToReviewer})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withApprover }} />With Approver ({submittedToApprover})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarification }} />Clarification ({clarificationRequired})</span>
-          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-400"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.needsWork }} />Needs Work ({needsWork})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.approved }} />Approved ({approved})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withReviewer }} />With Reviewer ({submittedToReviewer})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.withApprover }} />With Approver ({submittedToApprover})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.clarification }} />Clarification ({clarificationRequired})</span>
+          <span className="flex items-center gap-1.5 text-xs text-[#475569] dark:text-slate-200"><span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: dashboardStatusColors.needsWork }} />Needs Work ({needsWork})</span>
         </div>
       </div>
 
@@ -77,12 +77,12 @@ export default function RespondentDashboard() {
       <div className="rounded-[12px] border border-[#286CFF]/20 bg-[#E7F5FF] dark:bg-blue-900/10 dark:border-blue-700/30 p-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <Calendar className="h-5 w-5 text-[#286CFF] shrink-0" />
+            <Calendar className="h-5 w-5 text-[#286CFF] dark:text-white shrink-0" />
             <div>
               <p className="text-sm font-semibold text-[#286CFF]">
                 Submission Deadline: {currentCycle.daysRemaining} days remaining
               </p>
-              <p className="text-xs text-[#475569] dark:text-slate-400">
+              <p className="text-xs text-[#475569] dark:text-slate-200">
                 Submit to Approver by {currentCycle.submissionDeadline}
               </p>
             </div>
@@ -106,10 +106,10 @@ export default function RespondentDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>My Projects</CardTitle>
-              <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">Recent budget submissions</p>
+              <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">Recent budget submissions</p>
             </div>
            <div className="flex items-center gap-1">
-              <p className="text-xs text-[#475569] dark:text-slate-400">Total:</p>
+              <p className="text-xs text-[#475569] dark:text-slate-200">Total:</p>
               <CurrencyAmount amount={totalBudget} className="font-semibold text-[#0F172A] dark:text-white" />
             </div>
           </div>
@@ -129,7 +129,7 @@ export default function RespondentDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Budget by Category</CardTitle>
-            <p className="text-sm text-[#475569] dark:text-slate-400">Distribution of requested budget</p>
+            <p className="text-sm text-[#475569] dark:text-slate-200">Distribution of requested budget</p>
           </CardHeader>
           <CardContent>
             <BudgetByCategory />
@@ -138,7 +138,7 @@ export default function RespondentDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>CapEx vs OpEx Split</CardTitle>
-            <p className="text-sm text-[#475569] dark:text-slate-400">Budget type distribution</p>
+            <p className="text-sm text-[#475569] dark:text-slate-200">Budget type distribution</p>
           </CardHeader>
           <CardContent>
             <CapexOpexDonut />
@@ -147,7 +147,7 @@ export default function RespondentDashboard() {
       </div>
 
       {/* Footer stat */}
-      <div className="flex items-center gap-4 text-sm text-[#475569] dark:text-slate-400 pb-4">
+      <div className="flex items-center gap-4 text-sm text-[#475569] dark:text-slate-200 pb-4">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
           {approved} Approved
@@ -164,3 +164,4 @@ export default function RespondentDashboard() {
     </div>
   )
 }
+

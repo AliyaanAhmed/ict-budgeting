@@ -1,4 +1,4 @@
-﻿import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   FolderOpen,
@@ -9,6 +9,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
 import { projects } from '@/data/db'
+import appLogo from '@/assets/app-logo-v3.png?inline'
 
 interface SidebarProps {
   collapsed: boolean
@@ -17,7 +18,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
-  const appLogo = 'https://i.ibb.co/nN6t9W8J/unnamed-1.png'
   const { activeRole } = useRole()
   const location = useLocation()
 
@@ -64,7 +64,11 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
         style={{ textAlign: isRTL ? 'right' : 'left' }}
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] border border-[var(--border)] bg-white">
-          <img src={appLogo} alt="Department of Government Enablement logo" className="h-8 w-8 object-contain" />
+          <img
+            src={appLogo}
+            alt="Department of Government Enablement logo"
+            className="h-8 w-8 object-contain"
+          />
         </div>
         {!collapsed && (
           <div className="min-w-0">
@@ -115,7 +119,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
               <span
                 className={cn(
                   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                  activeRole === 'Respondent' && 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300',
+                  activeRole === 'Respondent' && 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
                   activeRole === 'Reviewer' && 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
                   activeRole === 'Approver' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
                 )}
@@ -130,3 +134,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     </aside>
   )
 }
+
+
+
+

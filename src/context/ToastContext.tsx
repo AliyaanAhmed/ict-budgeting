@@ -188,7 +188,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={() => dismissToast(toast.id)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#64748B] transition-colors hover:bg-[#EEF3F8] hover:text-[#0F172A] dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[#64748B] transition-colors hover:bg-[#EEF3F8] hover:text-[#0F172A] dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -196,7 +196,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             {toast.description && (
               <div className="px-4 py-3">
-                <p className="text-xs leading-5 text-[#64748B] dark:text-slate-300">{toast.description}</p>
+                <p className="text-xs leading-5 text-[#64748B] dark:text-slate-100">{toast.description}</p>
               </div>
             )}
             <div className="h-1 w-full bg-[#EAF2FF] dark:bg-white/5">
@@ -224,3 +224,4 @@ export function useToast() {
   }
   return context
 }
+

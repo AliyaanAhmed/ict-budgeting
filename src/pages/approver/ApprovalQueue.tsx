@@ -27,11 +27,11 @@ export default function ApprovalQueue() {
     <div className="space-y-5 w-full max-w-none">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <nav className="text-xs text-[#475569] dark:text-slate-400 mb-2">Home › Approver Queue</nav>
+          <nav className="text-xs text-[#475569] dark:text-slate-200 mb-2">Home › Approver Queue</nav>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Approver Queue</h1>
           <div className="flex items-center gap-2 mt-1">
             <span className="inline-flex items-center rounded-full bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400 px-2.5 py-0.5 text-xs font-medium">Reviewer Approved</span>
-            <span className="text-xs text-[#475569] dark:text-slate-400">{approvalQueueProjects.length} Items</span>
+            <span className="text-xs text-[#475569] dark:text-slate-200">{approvalQueueProjects.length} Items</span>
           </div>
         </div>
         <Button variant="ai" size="sm">
@@ -48,9 +48,9 @@ export default function ApprovalQueue() {
           { label: 'Pending Review', value: approvalQueueProjects.length, sub: 'Action needed', amber: true },
         ].map((s) => (
           <div key={s.label} className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-4 shadow-sm">
-            <p className="text-xs font-medium text-[#475569] dark:text-slate-400 uppercase tracking-wide mb-1">{s.label}</p>
-            <div className={cn('text-xl font-bold', s.amber ? 'text-amber-600' : 'text-[#0F172A] dark:text-white')}>{s.value}</div>
-            {s.sub && <p className="text-xs text-[#475569] dark:text-slate-400 mt-1">{s.sub}</p>}
+            <p className="text-xs font-medium text-[#475569] dark:text-slate-200 uppercase tracking-wide mb-1">{s.label}</p>
+            <div className={cn('text-xl font-bold dark:text-white', s.amber ? 'text-amber-600' : 'text-[#0F172A] dark:text-white')}>{s.value}</div>
+            {s.sub && <p className="text-xs text-[#475569] dark:text-white mt-1">{s.sub}</p>}
           </div>
         ))}
       </div>
@@ -75,7 +75,7 @@ export default function ApprovalQueue() {
       </div>
 
       <div className="flex items-center gap-3 rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-3 flex-wrap">
-        <label className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-400 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-200 cursor-pointer">
           <input type="checkbox" className="rounded border-[#CBD5E1]" />
           Select items for bulk actions
         </label>
@@ -100,7 +100,7 @@ export default function ApprovalQueue() {
                 'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                 activeFilter === tab.id
                   ? 'bg-[var(--primary)] text-white'
-                  : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
+                  : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
               )}
             >
               {tab.label}
@@ -112,7 +112,7 @@ export default function ApprovalQueue() {
         </div>
 
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8] dark:text-white" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -171,19 +171,19 @@ export default function ApprovalQueue() {
               <div className="flex items-start gap-4 flex-wrap mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-2">
-                    <span className="text-xs font-mono text-[#94A3B8]">{proj.id}</span>
+                    <span className="text-xs font-mono text-[#94A3B8] dark:text-white">{proj.id}</span>
                     <RiskBadge risk={proj.riskLevel} />
                   </div>
                   <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
-                  <div className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-400 mt-1 flex-wrap">
+                  <div className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-200 mt-1 flex-wrap">
                     <span>{proj.entity}</span>
                     <span>•</span>
                     <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 px-2 py-0.5 text-xs font-medium">{proj.budgetType}</span>
-                    <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 px-2 py-0.5 text-xs font-medium">{proj.budgetCategory}</span>
+                    <span className="inline-flex items-center rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-100 px-2 py-0.5 text-xs font-medium">{proj.budgetCategory}</span>
                   </div>
                 </div>
                 <div className="text-end shrink-0">
-                  <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide">Requested Budget</p>
+                  <p className="text-xs text-[#475569] dark:text-slate-200 uppercase tracking-wide">Requested Budget</p>
                   <CurrencyAmount amount={proj.requestedBudget} className="text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
                 </div>
               </div>
@@ -205,10 +205,10 @@ export default function ApprovalQueue() {
                 )}
               </div>
 
-              <p className="text-sm text-[#475569] dark:text-slate-400 mb-4">{proj.summary}</p>
+              <p className="text-sm text-[#475569] dark:text-slate-200 mb-4">{proj.summary}</p>
 
               <div className="flex items-center justify-between gap-3 flex-wrap pt-3 border-t border-[#F1F5F9] dark:border-white/5">
-                <div className="flex items-center gap-2 text-xs text-[#475569] dark:text-slate-400">
+                <div className="flex items-center gap-2 text-xs text-[#475569] dark:text-slate-200">
                   <span>{proj.glCodeCount} budget codes</span>
                   <span>•</span>
                   <span className="flex items-center gap-1">
@@ -248,6 +248,8 @@ export default function ApprovalQueue() {
     </div>
   )
 }
+
+
 
 
 

@@ -17,7 +17,7 @@ function CustomTooltip({ active, payload, label }: any) {
   return (
     <div className="rounded-[10px] border border-[#E2E8F0] bg-white dark:bg-[#1E293B] dark:border-white/10 p-3 shadow-lg min-w-[160px]">
       <p className="text-xs font-semibold text-[#0F172A] dark:text-white mb-1">{label}</p>
-      <p className="text-xs text-[#475569] dark:text-slate-400">
+      <p className="text-xs text-[#475569] dark:text-slate-200">
         AED {val.toLocaleString('en-AE', { maximumFractionDigits: 0 })}
       </p>
     </div>
@@ -56,3 +56,4 @@ export function BudgetByCategory() {
     </ResponsiveContainer>
   )
 }
+

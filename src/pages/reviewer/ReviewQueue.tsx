@@ -42,7 +42,7 @@ export default function ReviewQueue() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Review Queue</h1>
-          <p className="text-sm text-[#475569] dark:text-slate-400 mt-1">
+          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">
             Submitted by Respondent: {reviewQueueProjects.length} &bull; Reviewed by You: {reviewed}/{reviewQueueProjects.length}
           </p>
           <p className="text-xs text-[#286CFF] font-medium mt-1">FY2026 ICT Budget Cycle · Submission Deadline: {currentCycle.daysRemaining} days</p>
@@ -52,22 +52,22 @@ export default function ReviewQueue() {
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
-          { label: 'To Review', value: toReview, color: 'text-amber-600' },
-          { label: 'Reviewed', value: reviewed, color: 'text-green-600' },
-          { label: 'Clarification Pending', value: clarification, color: 'text-orange-600' },
-          { label: 'Avg Readiness', value: `${avgReadiness}%`, color: 'text-blue-600' },
-          { label: 'Missing Docs', value: missingDocs, color: 'text-red-600' },
+          { label: 'To Review', value: toReview, color: 'text-amber-600 dark:text-white' },
+          { label: 'Reviewed', value: reviewed, color: 'text-green-600 dark:text-white' },
+          { label: 'Clarification Pending', value: clarification, color: 'text-orange-600 dark:text-white' },
+          { label: 'Avg Readiness', value: `${avgReadiness}%`, color: 'text-blue-600 dark:text-white' },
+          { label: 'Missing Docs', value: missingDocs, color: 'text-red-600 dark:text-white' },
         ].map((s) => (
           <div key={s.label} className="rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-3 text-center shadow-sm">
             <p className={cn('text-2xl font-bold font-mono', s.color)}>{s.value}</p>
-            <p className="text-xs text-[#475569] dark:text-slate-400 mt-1">{s.label}</p>
+            <p className="text-xs text-[#475569] dark:text-white mt-1">{s.label}</p>
           </div>
         ))}
       </div>
 
       {/* Bulk actions */}
       <div className="flex items-center gap-3 rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-3 flex-wrap">
-        <label className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-400 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-200 cursor-pointer">
           <input type="checkbox" className="rounded border-[#CBD5E1]" />
           Select items for bulk actions
         </label>
@@ -92,7 +92,7 @@ export default function ReviewQueue() {
               'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
               activeFilter === tab.id
                 ? 'bg-[var(--primary)] text-white'
-                : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
+                : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
             )}
           >
             {tab.label}
@@ -106,7 +106,7 @@ export default function ReviewQueue() {
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8] dark:text-white" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -116,7 +116,7 @@ export default function ReviewQueue() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {['High AI Risk', 'Clarification Likely', 'Recently Updated'].map((chip) => (
-            <button key={chip} className="inline-flex items-center gap-1.5 rounded-full border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] px-3 py-1 text-xs font-medium text-[#475569] dark:text-slate-400 hover:border-[#286CFF] hover:text-[#286CFF] transition-colors">
+            <button key={chip} className="inline-flex items-center gap-1.5 rounded-full border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] px-3 py-1 text-xs font-medium text-[#475569] dark:text-slate-200 hover:border-[#286CFF] hover:text-[#286CFF] transition-colors">
               {chip}
             </button>
           ))}
@@ -187,7 +187,7 @@ export default function ReviewQueue() {
                   )}
                 </div>
                 <div className="flex items-end justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-400 flex-wrap">
+                  <div className="flex items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200 flex-wrap">
                     <span>{proj.entity}</span>
                     <span>·</span>
                     <span>{proj.glCodeCount} GL codes</span>
@@ -202,7 +202,7 @@ export default function ReviewQueue() {
                     <span>Updated {proj.updatedDate}</span>
                   </div>
                   <div className="text-end shrink-0">
-                    <p className="text-xs text-[#475569] dark:text-slate-400 uppercase tracking-wide mb-1">Requested Budget</p>
+                    <p className="text-xs text-[#475569] dark:text-slate-200 uppercase tracking-wide mb-1">Requested Budget</p>
                     <CurrencyAmount amount={proj.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
                   </div>
                 </div>
@@ -277,6 +277,8 @@ export default function ReviewQueue() {
     </div>
   )
 }
+
+
 
 
 

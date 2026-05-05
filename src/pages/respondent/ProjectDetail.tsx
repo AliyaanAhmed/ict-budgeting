@@ -10,7 +10,7 @@ import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 function Field({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <p className="text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide mb-1">{label}</p>
       <p className="text-sm text-[#0F172A] dark:text-white">{value || '—'}</p>
     </div>
   )
@@ -25,7 +25,7 @@ export default function ProjectDetail() {
   return (
     <div className="max-w-[1200px] space-y-5">
       {/* Breadcrumb */}
-      <nav className="text-xs text-[#475569] dark:text-slate-400">
+      <nav className="text-xs text-[#475569] dark:text-slate-200">
         <Link to="/respondent/dashboard" className="hover:text-[#286CFF]">Home</Link>
         {' › '}
         <Link to="/respondent/projects" className="hover:text-[#286CFF]">My Projects</Link>
@@ -55,12 +55,12 @@ export default function ProjectDetail() {
           <span className="text-sm font-medium text-green-700 dark:text-green-400">Ready for Review</span>
         </div>
         <span className="text-[#94A3B8]">·</span>
-        <span className="text-sm text-[#475569] dark:text-slate-400">{project.aiScore}% Confidence</span>
+        <span className="text-sm text-[#475569] dark:text-slate-200">{project.aiScore}% Confidence</span>
         <span className="text-[#94A3B8]">·</span>
-        <span className="text-sm text-[#475569] dark:text-slate-400">
+        <span className="text-sm text-[#475569] dark:text-slate-200">
           {project.clarifications.length === 0 ? '0 Issues Found' : `${project.clarifications.length} issue(s)`}
         </span>
-        <span className="ml-auto text-xs text-[#475569] dark:text-slate-400">Project submission appears complete and well-documented.</span>
+        <span className="ml-auto text-xs text-[#475569] dark:text-slate-200">Project submission appears complete and well-documented.</span>
       </div>
 
       {/* Two-col layout */}
@@ -116,7 +116,7 @@ export default function ProjectDetail() {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>Budget Type & Amounts</CardTitle>
                 <div className="text-end">
-                  <p className="text-xs text-[#475569] dark:text-slate-400">Total Requested Budget</p>
+                  <p className="text-xs text-[#475569] dark:text-slate-200">Total Requested Budget</p>
                   <CurrencyAmount amount={project.requestedBudget} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
                 </div>
               </div>
@@ -131,7 +131,7 @@ export default function ProjectDetail() {
                 <thead className="bg-[#F8FAFC] dark:bg-white/5">
                   <tr>
                     {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'AI'].map((h) => (
-                      <th key={h} className="whitespace-nowrap text-start py-2.5 px-5 text-xs font-semibold text-[#475569] dark:text-slate-400 uppercase tracking-wide">{h}</th>
+                      <th key={h} className="whitespace-nowrap text-start py-2.5 px-5 text-xs font-semibold text-[#475569] dark:text-slate-200 uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -140,7 +140,7 @@ export default function ProjectDetail() {
                     <tr key={item.id} className="border-t border-[#F1F5F9] dark:border-white/5">
                       <td className="py-3 px-5 font-medium text-[#0F172A] dark:text-white">{item.accountName}</td>
                       <td className="py-3 px-5">
-                        <div className="text-xs text-[#475569] dark:text-slate-400">
+                        <div className="text-xs text-[#475569] dark:text-slate-200">
                           {item.l1} / {item.l2} / {item.l3}
                         </div>
                         <span className={cn(
@@ -150,7 +150,7 @@ export default function ProjectDetail() {
                           {item.classification}
                         </span>
                       </td>
-                      <td className="py-3 px-5 text-xs font-mono text-[#475569] dark:text-slate-400">
+                      <td className="py-3 px-5 text-xs font-mono text-[#475569] dark:text-slate-200">
                         {item.glCode} / {item.ebsFusionCode}
                       </td>
                       <td className="py-3 px-5 font-semibold text-[#0F172A] dark:text-white">
@@ -202,7 +202,7 @@ export default function ProjectDetail() {
                       <FileText className="h-5 w-5 text-[#286CFF] shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-[#0F172A] dark:text-white truncate">{doc.name}</p>
-                        <p className="text-xs text-[#475569] dark:text-slate-400">{doc.size} · Uploaded {doc.uploadedDate}</p>
+                        <p className="text-xs text-[#475569] dark:text-slate-200">{doc.size} · Uploaded {doc.uploadedDate}</p>
                       </div>
                       <button className="text-[#475569] hover:text-[#286CFF] transition-colors">
                         <Download className="h-4 w-4" />
@@ -288,7 +288,7 @@ export default function ProjectDetail() {
                 </>
               )}
               {!isDraftOrNeedsWork && (
-                <p className="text-sm text-[#475569] dark:text-slate-400">
+                <p className="text-sm text-[#475569] dark:text-slate-200">
                   {project.status === 'Submitted to Reviewer' && 'Project is pending Reviewer action.'}
                   {project.status === 'Submitted to Approver' && 'Project is pending Approver action.'}
                   {project.status === 'Clarification Required' && 'Please respond to the clarification request.'}
@@ -312,3 +312,4 @@ export default function ProjectDetail() {
 function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ')
 }
+

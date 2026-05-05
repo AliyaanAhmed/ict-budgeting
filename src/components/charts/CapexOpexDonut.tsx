@@ -8,7 +8,7 @@ function CustomTooltip({ active, payload }: any) {
   return (
     <div className="rounded-[10px] border border-[#E2E8F0] bg-white dark:bg-[#1E293B] dark:border-white/10 p-3 shadow-lg">
       <p className="text-xs font-semibold text-[#0F172A] dark:text-white mb-0.5">{entry.name}</p>
-      <p className="text-xs text-[#475569] dark:text-slate-400">
+      <p className="text-xs text-[#475569] dark:text-slate-200">
         AED {((entry.value as number) / 1_000_000).toFixed(1)}M
       </p>
       <p className="text-xs font-semibold mt-0.5" style={{ color: entry.payload.fill }}>
@@ -113,3 +113,4 @@ export function NewVsRecurringDonut() {
     </div>
   )
 }
+

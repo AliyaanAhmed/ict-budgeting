@@ -8,6 +8,11 @@ const TEXT_NODE_BLACKLIST = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT'])
 const nodeCache = new WeakMap<Text, string>()
 const BIDI_CONTROL_REGEX = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g
 
+function isPowerAppsHost() {
+  const host = window.location.hostname.toLowerCase()
+  return host.includes('powerapps.com') || host.includes('powerplatformusercontent.com')
+}
+
 function stripBidiControls(value: string) {
   return value.replace(BIDI_CONTROL_REGEX, '')
 }
@@ -43,12 +48,12 @@ function setCachedTranslation(input: string, output: string) {
 async function translateBatch(texts: string[]): Promise<Map<string, string>> {
   const result = new Map<string, string>()
   const unique = Array.from(new Set(texts))
-  const uncached = unique.filter((t) => !getCachedTranslation(t))
 
   unique.forEach((t) => {
     const cached = getCachedTranslation(t)
     if (cached) result.set(t, cached)
   })
+  const uncached = unique.filter((t) => !getCachedTranslation(t))
 
   if (uncached.length === 0) return result
 
@@ -74,8 +79,10 @@ async function translateBatch(texts: string[]): Promise<Map<string, string>> {
       result.set(original, cleaned)
       setCachedTranslation(original, cleaned)
     })
-  } catch {
-    // On failure keep English fallback as-is.
+  } catch (error) {
+    if (isPowerAppsHost()) {
+      console.warn('Translation API call failed in Power Apps host. Check Code App CSP connect-src or use a connector-backed translation service.', error)
+    }
   }
 
   return result
