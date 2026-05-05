@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "appId": "7017b486-f770-4545-b249-727d7843056e",
+  "appDisplayName": "ICT Budgeting",
+  "region": "prod",
+  "environmentId": "15ab2845-43e0-e696-a0c3-fc6bd6333055",
+  "description": "ICT Budgeting React app",
+  "buildPath": "dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "public/powerapp-logo.png",
+  "connectionReferences": {},
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "users": {
+          "entitySetName": "systemusers",
+          "logicalName": "systemuser"
+        },
+        "accounts": {
+          "entitySetName": "accounts",
+          "logicalName": "account"
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}

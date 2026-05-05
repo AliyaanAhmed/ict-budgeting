@@ -237,3 +237,11 @@ vite.config.ts
 - Translation toggle behavior: implemented
 - Mock-first architecture for Dataverse migration: implemented
 - Full page wiring to service layer: partially complete (foundation ready)
+
+15. Deployment:
+What I did:
+
+Built your app (dist)
+Initialized Power Apps code config (power.config.json)
+Pushed to your DGE environment with pac code push
+Received live play URL

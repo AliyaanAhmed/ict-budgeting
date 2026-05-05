@@ -11,6 +11,7 @@ import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { useToast } from '@/context/ToastContext'
 
 export default function ReviewQueue() {
+  const [activeFilter, setActiveFilter] = useState<'to-review' | 'reviewed' | 'clarification'>('to-review')
   const [search, setSearch] = useState('')
   const [expandedAi, setExpandedAi] = useState<string | null>(null)
   const [clarificationProject, setClarificationProject] = useState<string | null>(null)
@@ -77,6 +78,31 @@ export default function ReviewQueue() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {[
+          { id: 'to-review' as const, label: 'To Review', count: toReview },
+          { id: 'reviewed' as const, label: 'Reviewed', count: reviewed },
+          { id: 'clarification' as const, label: 'Clarification', count: clarification },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveFilter(tab.id)}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+              activeFilter === tab.id
+                ? 'bg-[var(--primary)] text-white'
+                : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
+            )}
+          >
+            {tab.label}
+            <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-bold', activeFilter === tab.id ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10')}>
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-xs">
@@ -96,7 +122,7 @@ export default function ReviewQueue() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2 flex-wrap">
-          <div className="w-[180px]">
+          <div className="w-[210px]">
             <Select defaultValue="all-entities">
               <SelectTrigger>
                 <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
@@ -109,7 +135,7 @@ export default function ReviewQueue() {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-[190px]">
+          <div className="w-[210px]">
             <Select defaultValue="newest-submitted">
               <SelectTrigger>
                 <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">

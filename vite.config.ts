@@ -68,6 +68,7 @@ function translationApiPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [react(), translationApiPlugin()],
   resolve: {
     alias: {

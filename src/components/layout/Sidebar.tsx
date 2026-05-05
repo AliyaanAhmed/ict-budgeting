@@ -9,7 +9,6 @@ import {
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
 import { projects } from '@/data/db'
-import appLogo from '@/assets/app-logo.png'
 
 interface SidebarProps {
   collapsed: boolean
@@ -18,6 +17,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
+  const appLogo = 'https://i.ibb.co/nN6t9W8J/unnamed-1.png'
   const { activeRole } = useRole()
   const location = useLocation()
 
@@ -130,4 +130,3 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     </aside>
   )
 }
-

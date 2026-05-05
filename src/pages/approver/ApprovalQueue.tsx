@@ -1,4 +1,4 @@
-﻿import { Sparkles, ChevronDown, Download, ListFilter, Undo2, Eye } from 'lucide-react'
+﻿import { Sparkles, ChevronDown, Download, ListFilter, Undo2, Eye, Search } from 'lucide-react'
 import { approvalQueueProjects } from '@/data/db'
 import { Button } from '@/components/ui/button'
 import { RiskBadge } from '@/components/shared/StatusBadge'
@@ -11,13 +11,17 @@ import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { useToast } from '@/context/ToastContext'
 
 export default function ApprovalQueue() {
-  const [activeFilter, setActiveFilter] = useState<'Pending' | 'Approved' | 'Clarification'>('Pending')
+  const [activeFilter, setActiveFilter] = useState<'pending' | 'approved' | 'clarification'>('pending')
+  const [search, setSearch] = useState('')
   const [expandedAi, setExpandedAi] = useState<string | null>(null)
   const [aiPortfolioExpanded, setAiPortfolioExpanded] = useState(false)
   const [clarificationProject, setClarificationProject] = useState<string | null>(null)
   const { showSuccessToast } = useToast()
 
   const totalRequested = approvalQueueProjects.reduce((s, p) => s + p.requestedBudget, 0)
+  const pendingCount = approvalQueueProjects.length
+  const approvedCount = approvalQueueProjects.filter((p) => (p as { status?: string }).status === 'Approved').length
+  const clarificationCount = approvalQueueProjects.filter((p) => (p as { status?: string }).status?.includes('Clarification')).length
 
   return (
     <div className="space-y-5 w-full max-w-none">
@@ -70,30 +74,54 @@ export default function ApprovalQueue() {
         )}
       </div>
 
+      <div className="flex items-center gap-3 rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-3 flex-wrap">
+        <label className="flex items-center gap-2 text-sm text-[#475569] dark:text-slate-400 cursor-pointer">
+          <input type="checkbox" className="rounded border-[#CBD5E1]" />
+          Select items for bulk actions
+        </label>
+        <div className="flex items-center gap-2 ml-auto flex-wrap">
+          <Button variant="outline" size="sm" disabled>Approve Selected</Button>
+          <Button variant="outline" size="sm" disabled>Return for Clarification</Button>
+          <Button size="sm" disabled>Submit to DGE</Button>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1 rounded-[8px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] p-1">
-          {(['Pending', 'Approved', 'Clarification'] as const).map((f) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {[
+            { id: 'pending' as const, label: 'Pending', count: pendingCount },
+            { id: 'approved' as const, label: 'Approved', count: approvedCount },
+            { id: 'clarification' as const, label: 'Clarification', count: clarificationCount },
+          ].map((tab) => (
             <button
-              key={f}
-              onClick={() => setActiveFilter(f)}
+              key={tab.id}
+              onClick={() => setActiveFilter(tab.id)}
               className={cn(
-                'flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors',
-                activeFilter === f
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+                activeFilter === tab.id
                   ? 'bg-[var(--primary)] text-white'
-                  : 'text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
+                  : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-400 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
               )}
             >
-              {f}
-              {f === 'Pending' && (
-                <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-bold', activeFilter === f ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10')}>
-                  {approvalQueueProjects.length}
-                </span>
-              )}
+              {tab.label}
+              <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-bold', activeFilter === tab.id ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10')}>
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
 
-        <div className="w-[180px]">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by project name, entity, or ID..."
+            className="w-full h-9 pl-9 pr-4 rounded-[8px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] text-sm text-[#0F172A] dark:text-white placeholder:text-[#94A3B8] focus:outline-none focus:ring-1 focus:ring-[#286CFF]"
+          />
+        </div>
+
+        <div className="w-[210px]">
           <Select defaultValue="all-risks">
             <SelectTrigger>
               <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
@@ -110,7 +138,7 @@ export default function ApprovalQueue() {
           </Select>
         </div>
 
-        <div className="w-[190px]">
+        <div className="w-[210px]">
           <Select defaultValue="all-categories">
             <SelectTrigger>
               <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
@@ -220,6 +248,7 @@ export default function ApprovalQueue() {
     </div>
   )
 }
+
 
 
 

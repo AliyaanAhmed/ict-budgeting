@@ -89,6 +89,10 @@ export function AppLayout() {
     }
   }, [location.pathname, isRTL])
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [location.pathname])
+
   // When role changes, redirect to that role's dashboard
   useEffect(() => {
     const rolePaths: Record<string, string> = {

@@ -1,5 +1,3 @@
-﻿@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Outfit:wght@500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -24,7 +22,7 @@
   --ai-accent: #D946EF;
   --ai-text: #E879F9;
   --radius: 12px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -74,6 +72,30 @@ body {
   to { opacity: 1; }
 }
 
+@keyframes appLoaderSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes appLoaderPulse {
+  0%, 100% { opacity: 0.45; scale: 0.8; }
+  50% { opacity: 1; scale: 1; }
+}
+
+@keyframes toastSuccess {
+  0% { transform: scale(0.72); opacity: 0.7; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes toastError {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+}
+
 .animate-fadeInUp {
   opacity: 0;
   animation: fadeInUp 0.3s ease forwards;
@@ -83,6 +105,14 @@ body {
   animation: fadeIn 0.25s ease forwards;
 }
 
+.animate-toastSuccess {
+  animation: toastSuccess 0.38s ease-out;
+}
+
+.animate-toastError {
+  animation: toastError 0.36s ease-in-out;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
@@ -90,6 +120,14 @@ body {
 .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 
 @layer components {
+  .app-loader-wheel {
+    animation: appLoaderSpin 1.1s linear infinite;
+  }
+
+  .app-loader-dot {
+    animation: appLoaderPulse 1s ease-in-out infinite;
+  }
+
   .ai-panel {
     @apply rounded-[10px] border border-dashed overflow-hidden;
     border-color: #D946EF;
@@ -131,5 +169,6 @@ body {
     color: #F5D0FE;
   }
 }
+
 
 

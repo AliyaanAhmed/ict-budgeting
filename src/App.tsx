@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { RoleProvider } from '@/context/RoleContext'
 import { ToastProvider } from '@/context/ToastContext'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { DataverseDebugModal } from '@/components/shared/DataverseDebugModal'
 
 import RespondentDashboard from '@/pages/respondent/Dashboard'
 import RespondentProjects from '@/pages/respondent/Projects'
@@ -19,7 +20,7 @@ export default function App() {
   return (
     <RoleProvider>
       <ToastProvider>
-        <BrowserRouter>
+        <HashRouter>
           <Routes>
             <Route path="/" element={<Navigate to="/respondent/dashboard" replace />} />
             <Route element={<AppLayout />}>
@@ -39,7 +40,8 @@ export default function App() {
               <Route path="/approver/approval-queue/:id" element={<ProjectDetail />} />
             </Route>
           </Routes>
-        </BrowserRouter>
+          <DataverseDebugModal />
+        </HashRouter>
       </ToastProvider>
     </RoleProvider>
   )

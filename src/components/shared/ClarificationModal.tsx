@@ -44,30 +44,27 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="overflow-hidden p-0">
-        <div
-          className="border-b border-black/5 px-6 pb-5 pt-6 dark:border-white/10"
-          style={{ background: 'linear-gradient(135deg, rgba(40,108,255,0.14), rgba(176,219,255,0.24))' }}
-        >
-          <div className="flex items-center gap-4">
-            <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[22px] bg-[#286CFF] text-white shadow-lg">
-              <HelpCircle className="h-9 w-9" />
+      <DialogContent className="p-0">
+        <div className="rounded-t-[28px] border-b border-[var(--border)] px-6 py-4 bg-[var(--muted)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#286CFF] text-white">
+              <HelpCircle className="h-5 w-5" />
             </div>
-            <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#475569] shadow-sm dark:bg-white/10 dark:text-slate-200">
-                <WandSparkles className="h-3.5 w-3.5" />
-                Clarification Request
-              </div>
-              <p className="text-[13px] font-medium text-[#0F172A] dark:text-white">{projectName}</p>
-              <p className="text-xs text-[#64748B] dark:text-slate-300">Send a precise request back to the project owner.</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[var(--foreground)]">Raise Clarification</p>
+              <p className="text-xs text-[var(--muted-foreground)] truncate">{projectName}</p>
             </div>
+            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-white/80 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#475569] dark:text-slate-200">
+              <WandSparkles className="h-3 w-3" />
+              Quick Action
+            </span>
           </div>
         </div>
 
-        <div className="px-6 pb-6 pt-5">
+        <div className="px-6 pb-6 pt-4">
           <DialogHeader>
-            <DialogTitle className="text-[18px]">Raise Clarification</DialogTitle>
-            <DialogDescription className="text-[14px] leading-6">
+            <DialogTitle className="text-base">Clarification Message</DialogTitle>
+            <DialogDescription className="text-sm">
               Ask for the missing detail clearly so the next review cycle can move faster.
             </DialogDescription>
           </DialogHeader>
@@ -99,24 +96,24 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Describe exactly what needs to be clarified..."
-                className="rounded-2xl border-[var(--border)] text-[14px] leading-6"
+                className="rounded-xl border-[var(--border)] text-[14px] leading-6"
               />
               <p className="mt-2 text-[11px] text-[#94A3B8]">Be specific so the next submission cycle can move faster.</p>
             </div>
           </div>
 
-          <DialogFooter className="mt-8">
+          <DialogFooter className="mt-6">
             <Button
               variant="outline"
               onClick={() => handleClose(false)}
-              className="h-11 rounded-2xl border-[#E2E8F0] px-6 text-[#64748B] dark:border-white/10 dark:text-slate-200"
+              className="h-10 rounded-xl border-[#E2E8F0] px-5 text-[#64748B] dark:border-white/10 dark:text-slate-200"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={!isValid}
-              className="h-11 rounded-2xl px-6 text-white disabled:opacity-50"
+              className="h-10 rounded-xl px-5 text-white disabled:opacity-50"
               style={{ backgroundColor: '#286CFF' }}
             >
               Send Clarification

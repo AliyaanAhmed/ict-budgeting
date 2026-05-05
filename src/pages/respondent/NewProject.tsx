@@ -70,7 +70,7 @@ export default function NewProject() {
     { from: 'ai', text: 'Is this a new project, or a continuation of an existing initiative?' },
   ])
   const [optionSelected, setOptionSelected] = useState(false)
-  const { showSuccessToast } = useToast()
+  const { runActionToast } = useToast()
 
   const handleOptionSelect = (label: string) => {
     setChatMessages((prev) => [
@@ -93,7 +93,19 @@ export default function NewProject() {
 
   const handleSubmitForReview = () => {
     setSubmitConfirmOpen(false)
-    showSuccessToast('Submitted for review', 'Your budget item has been routed to the Reviewer queue successfully.')
+    void runActionToast(
+      async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 3200))
+      },
+      {
+        processingTitle: 'Submitting to reviewer',
+        processingDescription: 'Validating budget details and routing the request...',
+        successTitle: 'Submitted for review',
+        successDescription: 'Your budget item has been routed to the Reviewer queue successfully.',
+        errorTitle: 'Submission failed',
+        minDurationMs: 3400,
+      }
+    )
   }
 
   return (
