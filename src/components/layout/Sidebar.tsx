@@ -5,6 +5,8 @@ import {
   PlusCircle,
   ClipboardList,
   CheckCircle,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
@@ -38,6 +40,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     Approver: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/approver/dashboard' },
       { label: 'Approval Queue', icon: CheckCircle, href: '/approver/approval-queue', badge: pendingApproval },
+      { label: 'Projects', icon: FolderOpen, href: '/approver/projects' },
     ],
   }
 
@@ -45,6 +48,14 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
   const activeHref = [...items]
     .sort((a, b) => b.href.length - a.href.length)
     .find((item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/'))?.href
+  const ToggleIcon = collapsed
+    ? isRTL
+      ? ChevronsLeft
+      : ChevronsRight
+    : isRTL
+      ? ChevronsRight
+      : ChevronsLeft
+  const toggleLabel = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
 
   return (
     <aside
@@ -57,8 +68,10 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       {/* Logo */}
       <button
         onClick={onToggle}
+        aria-label={toggleLabel}
+        title={toggleLabel}
         className={cn(
-          'flex items-center h-16 border-b border-[var(--border)] shrink-0 w-full transition-colors hover:bg-[var(--muted)]',
+          'flex h-16 w-full shrink-0 items-center border-b border-[var(--border)] transition-colors hover:bg-[var(--muted)]',
           collapsed ? 'justify-center px-4' : 'px-5 gap-3'
         )}
         style={{ textAlign: isRTL ? 'right' : 'left' }}
@@ -78,8 +91,21 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
         )}
       </button>
 
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={toggleLabel}
+        title={toggleLabel}
+        className={cn(
+          'absolute top-1/2 z-40 flex h-9 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-[#DDEBFF] bg-white/85 text-[#286CFF]/70 shadow-sm backdrop-blur-sm transition-all hover:w-6 hover:border-[#B0DBFF] hover:bg-[#E7F5FF] hover:text-[#286CFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:border-white/10 dark:bg-[#1E293B]/85 dark:text-[#93C5FD] dark:hover:bg-[#286CFF]/15',
+          isRTL ? '-left-2.5' : '-right-2.5'
+        )}
+      >
+        <ToggleIcon className="h-3.5 w-3.5" />
+      </button>
+
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2">
+      <nav className="flex-1 overflow-y-auto py-4 px-2" style={{ marginTop: "2rem" }}>
         {items.map((item) => {
           const isActive = activeHref === item.href
           return (

@@ -4,10 +4,7 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog'
 
 interface ConfirmationModalProps {
@@ -45,17 +42,16 @@ export function ConfirmationModal({
               <ConfirmIcon className="h-5 w-5" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-[var(--foreground)]">Confirm Action</p>
+              <h2 className="text-lg font-bold text-[var(--foreground)]">{title}</h2>
               {meta}
             </div>
           </div>
         </div>
 
         <div className="px-6 pb-6 pt-4">
-          <DialogHeader>
-            <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
-          </DialogHeader>
+          <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+            {description}
+          </div>
 
           <DialogFooter className="mt-6">
             <Button

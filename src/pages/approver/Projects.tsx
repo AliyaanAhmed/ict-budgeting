@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Search, Download, LayoutList, LayoutGrid, ChevronDown, ListFilter, Eye, Sparkles, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { projects } from '@/data/db'
 import { ProjectTable } from '@/components/shared/ProjectTable'
@@ -11,7 +11,7 @@ import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import type { ProjectStatus } from '@/data/db'
 
-type FilterTab = 'all' | 'pending-review' | 'clarification' | 'submitted-approver'
+type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter = 'all-budget-types' | 'CapEx' | 'OpEx' | 'Mixed'
 
@@ -49,7 +49,7 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
               <StatusBadge status={project.status} />
               <RiskBadge risk={project.riskLevel} />
             </div>
-            <Link to={`/reviewer/review-queue/${project.id}`} className="line-clamp-2 text-base font-bold text-[#0F172A] transition-colors group-hover:text-[#286CFF] dark:text-white">
+            <Link to={`/approver/approval-queue/${project.id}`} className="line-clamp-2 text-base font-bold text-[#0F172A] transition-colors group-hover:text-[#286CFF] dark:text-white">
               {project.name}
             </Link>
           </div>
@@ -74,10 +74,10 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
         </div>
 
         <div className="flex items-center justify-between border-t border-[#EAF0F6] pt-3 dark:border-white/10">
-          <span className="truncate text-xs text-[#64748B] dark:text-slate-200">By {project.submittedBy}</span>
-          <Link to={`/reviewer/review-queue/${project.id}`} className="inline-flex items-center gap-1 rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-xs font-bold text-[#286CFF] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:hover:bg-[#286CFF]/25">
+          <span className="truncate text-xs text-[#64748B] dark:text-slate-200">Pending With {project.pendingWith || 'Approver'}</span>
+          <Link to={`/approver/approval-queue/${project.id}`} className="inline-flex items-center gap-1 rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-xs font-bold text-[#286CFF] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:hover:bg-[#286CFF]/25">
             <Eye className="h-3.5 w-3.5" />
-            Review
+            View
           </Link>
         </div>
       </div>
@@ -85,7 +85,7 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
   )
 }
 
-export default function ReviewerProjects() {
+export default function ApproverProjects() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
@@ -95,18 +95,18 @@ export default function ReviewerProjects() {
 
   const tabs: { id: FilterTab; label: string; count: number }[] = [
     { id: 'all', label: 'All Projects', count: projects.length },
-    { id: 'pending-review', label: 'Pending Review', count: projects.filter((p) => p.status === 'Submitted to Reviewer').length },
+    { id: 'pending-approval', label: 'Pending Approval', count: projects.filter((p) => p.status === 'Submitted to Approver').length },
     { id: 'clarification', label: 'Clarification Required', count: projects.filter((p) => p.status === 'Clarification Required').length },
-    { id: 'submitted-approver', label: 'Submitted to Approver', count: projects.filter((p) => p.status === 'Submitted to Approver').length },
+    { id: 'approved', label: 'Approved', count: projects.filter((p) => p.status === 'Approved').length },
   ]
 
   const filtered = projects.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase())
     const matchesTab =
       activeTab === 'all' ||
-      (activeTab === 'pending-review' && p.status === 'Submitted to Reviewer') ||
+      (activeTab === 'pending-approval' && p.status === 'Submitted to Approver') ||
       (activeTab === 'clarification' && p.status === 'Clarification Required') ||
-      (activeTab === 'submitted-approver' && p.status === 'Submitted to Approver')
+      (activeTab === 'approved' && p.status === 'Approved')
     const matchesStatus = statusFilter === 'all-statuses' || p.status === statusFilter
     const matchesBudgetType = budgetTypeFilter === 'all-budget-types' || getBudgetType(p) === budgetTypeFilter
     return matchesSearch && matchesTab && matchesStatus && matchesBudgetType
@@ -116,10 +116,10 @@ export default function ReviewerProjects() {
     <div className="w-full space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">Projects</h1>
-        <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">Entity-wide project overview</p>
+        <p className="mt-1 text-sm text-[#475569] dark:text-slate-200">Final approval project overview</p>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -128,7 +128,7 @@ export default function ReviewerProjects() {
               'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
               activeTab === tab.id
                 ? 'bg-[var(--primary)] text-white'
-                : 'bg-white dark:bg-[#1E293B] border border-[#E2E8F0] dark:border-white/10 text-[#475569] dark:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-white/5'
+                : 'border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-200 dark:hover:bg-white/5'
             )}
           >
             {tab.label}
@@ -139,28 +139,25 @@ export default function ReviewerProjects() {
         ))}
       </div>
 
-      <div className="rounded-[10px] border border-dashed border-[#D946EF] bg-[#d946ef1a] overflow-hidden">
-        <button
-          onClick={() => setAiExpanded(!aiExpanded)}
-          className="ai-panel-trigger"
-        >
-          <Sparkles className="h-4 w-4 text-[var(--ai-accent)]" />
+      <div className="overflow-hidden rounded-[10px] border border-dashed border-[#D946EF] bg-[#d946ef1a]">
+        <button onClick={() => setAiExpanded(!aiExpanded)} className="ai-panel-trigger">
+          <Sparkles className="h-4 w-4 shrink-0 text-[var(--ai-accent)]" />
           <span className="ai-panel-title">AI Portfolio Summary</span>
-          <span className="text-xs text-[#D946EF]">- High Portfolio Risk - {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} need attention</span>
-          <ChevronDown className={cn('h-4 w-4 text-[var(--primary)] ml-auto transition-transform', aiExpanded && 'rotate-180')} />
+          <span className="text-xs text-[#D946EF]">- {projects.filter((p) => p.aiScore < 75 || p.riskLevel === 'High').length} projects need approver attention</span>
+          <ChevronDown className={cn('ml-auto h-4 w-4 text-[var(--primary)] transition-transform', aiExpanded && 'rotate-180')} />
         </button>
         {aiExpanded && (
           <div className="px-4 pb-4">
             <p className="text-sm text-[#D946EF]">
-              AI portfolio analysis will appear here once configured.
+              AI portfolio analysis will appear here once configured for final approval readiness, DGE submission blockers, and risk scoring.
             </p>
           </div>
         )}
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#94A3B8]" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search projects..." className="pl-9" />
         </div>
         <div className="w-[210px]">
@@ -200,16 +197,16 @@ export default function ReviewerProjects() {
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm"><Download className="h-4 w-4" />Export</Button>
-          <div className="flex rounded-[8px] border border-[#E2E8F0] dark:border-white/10 overflow-hidden">
-            <button onClick={() => setViewMode('table')} className={cn('p-2 transition-colors', viewMode === 'table' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}><LayoutList className="h-4 w-4" /></button>
-            <button onClick={() => setViewMode('cards')} className={cn('p-2 transition-colors', viewMode === 'cards' ? 'bg-[var(--primary)] text-white' : 'bg-white dark:bg-[#1E293B] text-[#475569] dark:text-slate-200 hover:bg-[#F1F5F9] dark:hover:bg-white/5')}><LayoutGrid className="h-4 w-4" /></button>
+          <div className="flex overflow-hidden rounded-[8px] border border-[#E2E8F0] dark:border-white/10">
+            <button onClick={() => setViewMode('table')} className={cn('p-2 transition-colors', viewMode === 'table' ? 'bg-[var(--primary)] text-white' : 'bg-white text-[#475569] hover:bg-[#F1F5F9] dark:bg-[#1E293B] dark:text-slate-200 dark:hover:bg-white/5')}><LayoutList className="h-4 w-4" /></button>
+            <button onClick={() => setViewMode('cards')} className={cn('p-2 transition-colors', viewMode === 'cards' ? 'bg-[var(--primary)] text-white' : 'bg-white text-[#475569] hover:bg-[#F1F5F9] dark:bg-[#1E293B] dark:text-slate-200 dark:hover:bg-white/5')}><LayoutGrid className="h-4 w-4" /></button>
           </div>
         </div>
       </div>
 
       <div className={cn(viewMode === 'table' && 'overflow-hidden rounded-[12px] border border-[#E2E8F0] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]')}>
         {viewMode === 'table' ? (
-          <ProjectTable projects={filtered} linkBase="/reviewer/review-queue" showCreatedBy />
+          <ProjectTable projects={filtered} linkBase="/approver/approval-queue" showCreatedBy />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (
@@ -217,20 +214,12 @@ export default function ReviewerProjects() {
             ))}
           </div>
         )}
-        <div className="px-5 py-3 border-t border-[#F1F5F9] dark:border-white/5 flex items-center gap-4 text-sm text-[#475569] dark:text-slate-200">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500 inline-block" />{projects.filter(p => p.status === 'Approved').length} Approved</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500 inline-block" />{projects.filter(p => ['Submitted to Reviewer', 'Submitted to Approver'].includes(p.status)).length} Pending</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500 inline-block" />{projects.filter(p => ['Needs Work', 'Draft', 'Clarification Required'].includes(p.status)).length} Needs Attention</span>
+        <div className="flex items-center gap-4 border-t border-[#F1F5F9] px-5 py-3 text-sm text-[#475569] dark:border-white/5 dark:text-slate-200">
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-green-500" />{projects.filter((p) => p.status === 'Approved').length} Approved</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-amber-500" />{projects.filter((p) => ['Submitted to Reviewer', 'Submitted to Approver'].includes(p.status)).length} Pending</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-red-500" />{projects.filter((p) => ['Needs Work', 'Draft', 'Clarification Required'].includes(p.status)).length} Needs Attention</span>
         </div>
       </div>
     </div>
   )
 }
-
-
-
-
-
-
-
-

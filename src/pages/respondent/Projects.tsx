@@ -13,18 +13,23 @@ import { TrendingUp, TrendingDown, Minus, Clock, Eye } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 function AiScore({ score }: { score: number }) {
-  const color = score >= 85 ? 'text-green-600' : score >= 65 ? 'text-amber-600' : 'text-red-600'
+  const tone =
+    score >= 85
+      ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-700/30 dark:bg-green-900/20 dark:text-green-300'
+      : score >= 65
+        ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/20 dark:text-amber-300'
+        : 'border-red-200 bg-red-50 text-red-700 dark:border-red-700/30 dark:bg-red-900/20 dark:text-red-300'
   const Icon = score >= 85 ? TrendingUp : score >= 65 ? Minus : TrendingDown
   return (
-    <span className={`inline-flex items-center gap-1 font-semibold font-mono text-sm ${color}`}>
+    <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold', tone)}>
       <Icon className="h-3.5 w-3.5" />
-      {score}%
+      AI {score}%
     </span>
   )
 }
 
 function ProjectCard({ project }: { project: (typeof projects)[number] }) {
-  const pendingClarification = project.clarifications.some((c) => c.status === 'Pending')
+  const pendingClarification = project.clarifications.some((c) => c.status === 'Open')
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_18px_40px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
@@ -44,10 +49,7 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
               {project.name}
             </Link>
           </div>
-          <div className="rounded-xl border border-[#B0DBFF] bg-[#E7F5FF] px-2.5 py-2 text-center dark:border-white/10 dark:bg-white/5">
-            <p className="mb-1 text-[10px] font-semibold text-[#64748B] dark:text-slate-200">AI Score</p>
-            <AiScore score={project.aiScore} />
-          </div>
+          <AiScore score={project.aiScore} />
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -74,7 +76,7 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
 
         <div className="flex items-center justify-between border-t border-[#EAF0F6] pt-3 dark:border-white/10">
           <span className="text-xs text-[#64748B] dark:text-slate-200">Updated {project.lastModified}</span>
-          <Link to={`/respondent/projects/${project.id}`} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#286CFF] transition-colors hover:bg-[#E7F5FF]">
+          <Link to={`/respondent/projects/${project.id}`} className="inline-flex items-center gap-1 rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-xs font-bold text-[#286CFF] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:hover:bg-[#286CFF]/25">
             <Eye className="h-3.5 w-3.5" />
             View
           </Link>
@@ -85,12 +87,23 @@ function ProjectCard({ project }: { project: (typeof projects)[number] }) {
 }
 
 type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
+type StatusFilter = 'all-statuses' | ProjectStatus
+type BudgetTypeFilter = 'all-budget-types' | 'CapEx' | 'OpEx' | 'Mixed'
+
+function getBudgetType(project: (typeof projects)[number]): Exclude<BudgetTypeFilter, 'all-budget-types'> {
+  const hasCapex = project.budgetItems.some((item) => item.classification === 'CapEx')
+  const hasOpex = project.budgetItems.some((item) => item.classification === 'OpEx')
+  if (hasCapex && hasOpex) return 'Mixed'
+  return hasCapex ? 'CapEx' : 'OpEx'
+}
 
 export default function RespondentProjects() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [aiExpanded, setAiExpanded] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all-statuses')
+  const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
 
   const tabs: { id: FilterTab; label: string; count: number; status?: ProjectStatus }[] = [
     { id: 'all', label: 'All Projects', count: projects.length },
@@ -106,7 +119,9 @@ export default function RespondentProjects() {
       (activeTab === 'needs-work' && (p.status === 'Needs Work' || p.status === 'Draft')) ||
       (activeTab === 'clarification' && p.status === 'Clarification Required') ||
       (activeTab === 'submitted-reviewer' && p.status === 'Submitted to Reviewer')
-    return matchesSearch && matchesTab
+    const matchesStatus = statusFilter === 'all-statuses' || p.status === statusFilter
+    const matchesBudgetType = budgetTypeFilter === 'all-budget-types' || getBudgetType(p) === budgetTypeFilter
+    return matchesSearch && matchesTab && matchesStatus && matchesBudgetType
   })
 
   const approved = projects.filter((p) => p.status === 'Approved').length
@@ -114,11 +129,11 @@ export default function RespondentProjects() {
   const attention = projects.filter((p) => ['Needs Work', 'Draft', 'Clarification Required'].includes(p.status)).length
 
   return (
-    <div className="space-y-5 max-w-[1400px]">
+    <div className="w-full space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A] dark:text-white">My Projects</h1>
-          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">FY2026 ICT Budget Cycle • Planning Stage</p>
+          <p className="text-sm text-[#475569] dark:text-slate-200 mt-1">FY2026 ICT Budget Cycle - Planning Stage</p>
         </div>
         <Button asChild className="shrink-0">
           <Link to="/respondent/projects/new">
@@ -155,7 +170,7 @@ export default function RespondentProjects() {
         >
           <Sparkles className="h-4 w-4 text-[var(--ai-accent)] shrink-0" />
           <span className="ai-panel-title">AI Portfolio Summary</span>
-          <span className="text-xs text-[#D946EF]">• {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} projects need attention</span>
+          <span className="text-xs text-[#D946EF]">- {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} projects need attention</span>
           <ChevronDown className={cn('h-4 w-4 text-[var(--primary)] ml-auto transition-transform', aiExpanded && 'rotate-180')} />
         </button>
         {aiExpanded && (
@@ -178,17 +193,37 @@ export default function RespondentProjects() {
           />
         </div>
         <div className="w-[210px]">
-          <Select defaultValue="all-priorities">
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
             <SelectTrigger>
               <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
                 <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
-                <SelectValue className="truncate" placeholder="All Priorities" />
+                <SelectValue className="truncate" placeholder="Status" />
               </span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all-priorities">All Priorities</SelectItem>
-              <SelectItem value="high-priority">High Priority</SelectItem>
-              <SelectItem value="medium-priority">Medium Priority</SelectItem>
+              <SelectItem value="all-statuses">Status</SelectItem>
+              <SelectItem value="Draft">Draft</SelectItem>
+              <SelectItem value="Needs Work">Needs Work</SelectItem>
+              <SelectItem value="Clarification Required">Clarification Required</SelectItem>
+              <SelectItem value="Submitted to Reviewer">Submitted to Reviewer</SelectItem>
+              <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
+              <SelectItem value="Approved">Approved</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-[210px]">
+          <Select value={budgetTypeFilter} onValueChange={(value) => setBudgetTypeFilter(value as BudgetTypeFilter)}>
+            <SelectTrigger>
+              <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <SelectValue className="truncate" placeholder="Budget Type" />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-budget-types">Budget Type</SelectItem>
+              <SelectItem value="CapEx">CapEx</SelectItem>
+              <SelectItem value="OpEx">OpEx</SelectItem>
+              <SelectItem value="Mixed">Mixed</SelectItem>
             </SelectContent>
           </Select>
         </div>

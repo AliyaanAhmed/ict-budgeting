@@ -62,7 +62,7 @@ export function CapexOpexDonut() {
         style={{ left: '50%', top: '44%', transform: 'translate(-50%, -50%)' }}
       >
         <span className="text-[15px] font-bold text-[#0F172A] dark:text-white leading-none">{totalM}M</span>
-        <span className="text-[10px] text-[#94A3B8] mt-1">AED Total</span>
+        <span className="text-xs text-[#94A3B8] mt-1">AED Total</span>
       </div>
     </div>
   )
@@ -108,7 +108,7 @@ export function NewVsRecurringDonut() {
         style={{ left: '50%', top: '44%', transform: 'translate(-50%, -50%)' }}
       >
         <span className="text-[15px] font-bold text-[#0F172A] dark:text-white leading-none">{totalM}M</span>
-        <span className="text-[10px] text-[#94A3B8] mt-1">AED Total</span>
+        <span className="text-xs text-[#94A3B8] mt-1">AED Total</span>
       </div>
     </div>
   )

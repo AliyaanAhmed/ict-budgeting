@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bot,
@@ -6,6 +6,7 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   ClipboardList,
@@ -22,6 +23,18 @@ import {
   User,
   Zap,
 } from 'lucide-react'
+import {
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -45,10 +58,10 @@ function FormField({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <label className="text-xs font-bold text-[#64748B] dark:text-slate-200">
+        <label className="text-sm font-medium text-[#0F172A] dark:text-white">
           {label} {required && <span className="text-red-500">*</span>}
         </label>
-        {hint && <span className="hidden text-[11px] font-medium text-[#94A3B8] sm:inline">{hint}</span>}
+        {hint && <span className="hidden text-xs font-medium text-[#94A3B8] sm:inline">{hint}</span>}
       </div>
       {children}
     </div>
@@ -64,12 +77,16 @@ function ModernSelect({
   options: string[]
   icon: React.ElementType
 }) {
+  const [value, setValue] = useState('')
+
   return (
-    <Select>
-      <SelectTrigger className="h-12 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]">
-        <span className="inline-flex w-full min-w-0 items-center gap-2 text-[#64748B] whitespace-nowrap">
+    <Select value={value} onValueChange={setValue}>
+      <SelectTrigger
+        className="h-12 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]"
+      >
+        <span className={cn('inline-flex w-full min-w-0 items-center gap-5 whitespace-nowrap', value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]')}>
           <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
-          <SelectValue className="truncate" placeholder={placeholder} />
+          <SelectValue placeholder={placeholder} />
         </span>
       </SelectTrigger>
       <SelectContent className="rounded-xl">
@@ -78,6 +95,111 @@ function ModernSelect({
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+function DatePickerField({ placeholder = 'Pick a date' }: { placeholder?: string }) {
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const [value, setValue] = useState('')
+  const [open, setOpen] = useState(false)
+  const [viewMonth, setViewMonth] = useState(() => new Date())
+
+  const selectedDate = value ? new Date(`${value}T00:00:00`) : null
+  const today = new Date()
+  const calendarStart = startOfWeek(startOfMonth(viewMonth))
+  const calendarEnd = endOfWeek(endOfMonth(viewMonth))
+  const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
+  const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+  const formattedValue = selectedDate ? format(selectedDate, 'MMM d, yyyy') : placeholder
+
+  const selectDate = (date: Date) => {
+    setValue(format(date, 'yyyy-MM-dd'))
+    setViewMonth(date)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={pickerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={cn(
+          'inline-flex h-10 w-full shrink-0 items-center justify-start gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2 text-left text-sm font-normal transition-colors duration-150 outline-none hover:border-[#043DFF] hover:bg-[#E7F5FF] hover:text-[#043DFF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5',
+          selectedDate ? 'text-[#0F172A]' : 'text-[#64748B]'
+        )}
+      >
+        <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+        <span>{formattedValue}</span>
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          className="absolute left-1/2 top-full z-50 mt-2 w-auto -translate-x-1/2 rounded-md border border-[#DDEBFF] bg-white p-0 text-[#0F172A] shadow-md outline-none dark:border-white/10 dark:bg-[#1E293B] dark:text-white"
+        >
+          <div className="w-fit bg-white p-3 dark:bg-[#1E293B]">
+            <div className="relative flex w-full flex-col gap-4">
+              <nav className="absolute inset-x-0 top-0 flex w-full items-center justify-between" aria-label="Calendar navigation">
+                <button
+                  type="button"
+                  onClick={() => setViewMonth((month) => subMonths(month, 1))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-transparent p-0 text-[#286CFF] transition-colors hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2"
+                  aria-label="Go to the previous month"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMonth((month) => addMonths(month, 1))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-transparent p-0 text-[#286CFF] transition-colors hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2"
+                  aria-label="Go to the next month"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </nav>
+
+              <div className="flex h-8 w-full items-center justify-center px-8">
+                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMMM yyyy')}</span>
+              </div>
+
+              <div className="grid w-56 grid-cols-7 gap-y-2">
+                {weekDays.map((day) => (
+                  <div key={day} className="flex h-8 items-center justify-center rounded-md text-[0.8rem] font-normal text-[#64748B] dark:text-slate-300">
+                    {day}
+                  </div>
+                ))}
+
+                {days.map((date) => {
+                  const selected = selectedDate ? isSameDay(date, selectedDate) : false
+                  const currentMonth = isSameMonth(date, viewMonth)
+                  const isToday = isSameDay(date, today)
+
+                  return (
+                    <button
+                      key={date.toISOString()}
+                      type="button"
+                      onClick={() => selectDate(date)}
+                      className={cn(
+                        'flex h-8 w-8 items-center justify-center rounded-lg p-2 text-sm font-normal leading-none text-[#286CFF] transition-colors outline-none hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:hover:bg-white/10',
+                        !currentMonth && 'text-[#94A3B8]',
+                        isToday && !selected && 'bg-[#E7F5FF] text-[#043DFF]',
+                        selected && 'bg-[#286CFF] text-white hover:bg-[#286CFF] hover:text-white'
+                      )}
+                      aria-label={format(date, 'EEEE, MMMM do, yyyy')}
+                    >
+                      {format(date, 'd')}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -188,15 +310,15 @@ export default function NewProject() {
           <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto xl:items-center">
             <div className="grid w-full grid-cols-1 gap-2 rounded-2xl border border-[#DDEBFF] bg-white p-2 text-center shadow-sm dark:border-white/10 dark:bg-white/5 sm:grid-cols-3 lg:min-w-[360px] xl:w-auto">
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-[11px] font-semibold text-[#64748B]">Cycle</p>
+                <p className="text-xs font-semibold text-[#64748B]">Cycle</p>
                 <p className="text-sm font-bold text-[#0F172A] dark:text-white">2026</p>
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-[11px] font-semibold text-[#64748B]">Status</p>
+                <p className="text-xs font-semibold text-[#64748B]">Status</p>
                 <p className="text-sm font-bold text-[#0F172A] dark:text-white">Draft</p>
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-[11px] font-semibold text-[#64748B]">Readiness</p>
+                <p className="text-xs font-semibold text-[#64748B]">Readiness</p>
                 <p className="text-sm font-bold text-[var(--primary)]">0%</p>
               </div>
             </div>
@@ -224,7 +346,7 @@ export default function NewProject() {
               <FormSection title="Budget Item Details" description="Define the initiative, strategic alignment, work stream, technology, and category." icon={ClipboardList}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <FormField label="Initiative / Budget Item Name" required hint="Make it specific and searchable">
+                    <FormField label="Initiative / Budget Item Name" required>
                       <Input className="h-12 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus-visible:ring-[var(--primary)]" placeholder="Example: Cloud Migration Platform for Citizen Services" />
                     </FormField>
                   </div>
@@ -262,22 +384,16 @@ export default function NewProject() {
               <FormSection title="Budget Item Timelines" description="Set planned delivery dates so reviewers can understand the funding window." icon={CalendarDays}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <FormField label="Planned Start Date" required>
-                    <div className="relative">
-                      <CalendarDays className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--primary)]" />
-                      <Input type="date" className="h-12 rounded-xl border-[#D9E6F7] bg-white pl-11 shadow-sm focus-visible:ring-[var(--primary)]" />
-                    </div>
+                    <DatePickerField />
                   </FormField>
                   <FormField label="Planned End Date" required>
-                    <div className="relative">
-                      <CalendarDays className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--primary)]" />
-                      <Input type="date" className="h-12 rounded-xl border-[#D9E6F7] bg-white pl-11 shadow-sm focus-visible:ring-[var(--primary)]" />
-                    </div>
+                    <DatePickerField />
                   </FormField>
                 </div>
               </FormSection>
 
               <FormSection title="Project Summary" description="Explain the business need, expected outcome, beneficiaries, and delivery approach." icon={FileText}>
-                <FormField label="Summary / Description" required hint="Recommended: 3-5 clear sentences">
+                <FormField label="Summary / Description" required>
                   <Textarea rows={6} className="rounded-xl border-[#D9E6F7] bg-white shadow-sm focus-visible:ring-[var(--primary)]" placeholder="Describe the problem, proposed solution, departments impacted, measurable benefits, and any dependencies..." />
                 </FormField>
               </FormSection>

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2, X } from 'lucide-react'
 
 interface ToastItem {
   id: number
@@ -179,8 +179,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   {toast.state === 'error' && <AlertTriangle className="h-5 w-5 animate-toastError" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-[#E7F5FF] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#B0DBFF]">
-                    <Sparkles className="h-3 w-3" />
+                  <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-[#E7F5FF] px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.16em] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#B0DBFF]">
                     {toast.state === 'processing' ? 'Processing' : toast.state === 'success' ? 'Success' : 'Error'}
                   </div>
                   <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{toast.title}</p>

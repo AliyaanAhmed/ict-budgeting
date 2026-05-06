@@ -122,24 +122,24 @@ function MetricCard({
   return (
     <div
       className={cn(
-        'group overflow-hidden rounded-[24px] border bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,#FFFFFF_0%,#F1F7FF_100%)] hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:bg-[#18263F] dark:hover:bg-[#1D2D48] dark:hover:shadow-[0_14px_30px_rgba(2,8,23,0.32)]',
+        'group overflow-hidden rounded-[24px] border bg-white p-4 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-none dark:bg-[#18263F] sm:p-5',
         className
       )}
-      style={{ borderColor: `${accent}3D` }}
+      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">
             {title}
           </p>
-          <div className="mt-4 text-[34px] font-bold leading-none text-[#0F172A] dark:text-white">
+          <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
             {value}
           </div>
         </div>
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-inner"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-11 sm:w-11"
           style={{
-            background: `linear-gradient(135deg, ${accent}1F 0%, ${accent}12 100%)`,
+            backgroundColor: `${accent}14`,
             color: accent,
           }}
         >
@@ -152,7 +152,6 @@ function MetricCard({
           style={{
             backgroundColor: `${accent}14`,
             color: accent,
-            boxShadow: `inset 0 0 0 1px ${accent}12`,
           }}
         >
           {badge}
@@ -163,7 +162,59 @@ function MetricCard({
 }
 
 function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; iconColor?: string }) {
-  return <CurrencyAmount amount={amount} className="text-[34px] font-bold leading-none" iconColor={iconColor} iconSize={18} />
+  return <CurrencyAmount amount={amount} className="text-2xl font-bold leading-none sm:text-[30px] xl:text-[32px]" iconColor={iconColor} iconSize={18} />
+}
+
+function ActionMetricCard({
+  title,
+  value,
+  accent,
+  badge,
+  icon,
+  href,
+}: {
+  title: string
+  value: number
+  accent: string
+  badge: string
+  icon: React.ReactNode
+  href: string
+}) {
+  return (
+    <Link
+      to={href}
+      className="group flex h-full flex-col overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
+      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+          <div className="mt-4 flex items-end gap-3">
+            <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+            <span
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ backgroundColor: `${accent}14`, color: accent }}
+            >
+              {badge}
+            </span>
+          </div>
+        </div>
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105"
+          style={{ backgroundColor: `${accent}14`, color: accent }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
+        Open related projects and continue the next workflow step.
+      </div>
+      <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
+        <span>Open Projects</span>
+        <MoveRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-1" />
+      </div>
+    </Link>
+  )
 }
 
 export default function RespondentDashboard() {
@@ -318,7 +369,7 @@ export default function RespondentDashboard() {
 
   return (
     <div className="w-full space-y-6 pb-4">
-      <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-[0_28px_80px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
+      <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
         <div className="absolute -left-10 top-0 h-36 w-36 rounded-full bg-[#286CFF]/10 blur-3xl dark:bg-[#286CFF]/20" />
         <div className="absolute right-0 top-8 h-40 w-40 rounded-full bg-[#22C55E]/10 blur-3xl dark:bg-[#22C55E]/10" />
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -328,10 +379,10 @@ export default function RespondentDashboard() {
               Respondent Workspace
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
-              Budget planning with sharper signals, cleaner decisions, and faster follow-through.
+              ICT Cycle - 2026
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              Monitor requested budgets, compare this cycle against last year, and spot where AI predicts stronger approval outcomes before you move work into the next governance step.
+              Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-2 rounded-full bg-[#E7F5FF] px-3 py-1.5 font-medium text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
@@ -355,60 +406,95 @@ export default function RespondentDashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <MetricCard
-          title="Requested Budgets"
-          value={<CompactAmount amount={totalBudget} />}
-          accent={dashboardPalette.techBlue}
-          badge="AED Total"
-          icon={<BadgeDollarSign className="h-5 w-5" />}
-          className="xl:shadow-[0_10px_24px_rgba(40,108,255,0.08)]"
-        />
-        <MetricCard
-          title="Last Year Requested"
-          value={<CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.slate} />}
-          accent={dashboardPalette.slate}
-          badge="FY2025 Baseline"
-          icon={<TrendingUp className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="AI Predicted Approval"
-          value={<CompactAmount amount={predictedBudget} iconColor="#0F9D7A" />}
-          accent="#0F9D7A"
-          badge="AI Estimate"
-          icon={<BrainCircuit className="h-5 w-5" />}
-          className="xl:shadow-[0_10px_24px_rgba(15,157,122,0.08)]"
-        />
-        <MetricCard
-          title="Submitted to Review"
-          value={submittedToReviewer}
-          accent={dashboardPalette.seaBlue}
-          badge="In Review"
-          icon={<Radar className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="Needs Work / Draft"
-          value={needsWork}
-          accent={dashboardPalette.camelYellow}
-          badge="Action Needed"
-          icon={<TrendingDown className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="Clarification Required"
-          value={clarificationRequired}
-          accent={dashboardPalette.aeRed}
-          badge="Urgent"
-          icon={<FolderOpen className="h-5 w-5" />}
-          className="shadow-none"
-        />
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ActionMetricCard
+            title="Submitted to Review"
+            value={submittedToReviewer}
+            accent={dashboardPalette.seaBlue}
+            badge="In Review"
+            icon={<Radar className="h-5 w-5" />}
+            href="/respondent/projects"
+          />
+          <ActionMetricCard
+            title="Needs Work / Draft"
+            value={needsWork}
+            accent={dashboardPalette.camelYellow}
+            badge="Action Needed"
+            icon={<TrendingDown className="h-5 w-5" />}
+            href="/respondent/projects"
+          />
+          <ActionMetricCard
+            title="Clarification Required"
+            value={clarificationRequired}
+            accent={dashboardPalette.aeRed}
+            badge="Urgent"
+            icon={<FolderOpen className="h-5 w-5" />}
+            href="/respondent/projects"
+          />
+        </div>
+
+        <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
+                  <InfoHint text="Consolidated budget view for the current cycle, previous-year baseline, and AI-estimated approval outlook." />
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                  Informational metrics for planning context and approval outlook
+                </p>
+              </div>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-white">
+                <BadgeDollarSign className="h-5 w-5" />
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Requested Budgets</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15">
+                    <BadgeDollarSign className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={totalBudget} />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Last Year Requested</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EEF3F8] text-[#64748B] dark:bg-white/10 dark:text-slate-100">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.slate} />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F6FBF9_0%,#FFFFFF_100%)] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+                    <BrainCircuit className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={predictedBudget} iconColor="#0F9D7A" />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       <section
         title="AI summary of portfolio-wide risks, confidence, and recommended cleanup before submission."
-        className="overflow-hidden rounded-[28px] border border-[#F6C9CF] bg-[linear-gradient(135deg,#FFF8FA_0%,#FFF9F6_100%)] shadow-[0_18px_48px_rgba(234,79,73,0.08)] dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
+        className="overflow-hidden rounded-[28px] border border-[#F6C9CF] bg-[linear-gradient(135deg,#FFF8FA_0%,#FFF9F6_100%)] shadow-none dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
       >
         <button
           type="button"
@@ -423,7 +509,7 @@ export default function RespondentDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</h2>
                 <InfoHint text="AI reviews portfolio-wide risk patterns, duplicate signals, document gaps, and strategic alignment concerns before respondent submissions move forward." />
-                <span className="inline-flex items-center rounded-full bg-[#FFF1F2] px-2.5 py-1 text-[11px] font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
+                <span className="inline-flex items-center rounded-full bg-[#FFF1F2] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
                   High Portfolio Risk
                 </span>
               </div>
@@ -471,7 +557,7 @@ export default function RespondentDashboard() {
                     </div>
                   </div>
                   <span
-                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold"
                     style={{ backgroundColor: `${issue.tone}14`, color: issue.tone }}
                   >
                     {issue.badge}
@@ -502,10 +588,10 @@ export default function RespondentDashboard() {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
           title="Projects that were returned to the respondent for clarification and need response."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -528,7 +614,7 @@ export default function RespondentDashboard() {
                 <Link
                   key={project.id}
                   to={`/respondent/projects/${project.id}`}
-                  className="group block rounded-[24px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#FBFDFF_0%,#F4F8FD_100%)] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
+                  className="group block rounded-[22px] border border-[#DCE8F6] bg-white p-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-none dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -539,7 +625,7 @@ export default function RespondentDashboard() {
                         <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm text-[#64748B] dark:text-slate-100">
-                        {project.clarifications.find((item) => item.status === 'Pending')?.message || project.summary}
+                        {project.clarifications.find((item) => item.status === 'Open')?.message || project.summary}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
                         <span className="inline-flex items-center rounded-full bg-[#FFF4E5] px-2.5 py-1 font-semibold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
@@ -567,7 +653,7 @@ export default function RespondentDashboard() {
 
         <Card
           title="Requested budget distribution across your current project statuses."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -615,7 +701,7 @@ export default function RespondentDashboard() {
 
               <div className="space-y-3">
                 {requestedBudgetByStatus.map((item) => (
-                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
@@ -635,10 +721,10 @@ export default function RespondentDashboard() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
           title="Compare current requested budgets against a reconstructed previous-year baseline across priorities."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -678,7 +764,7 @@ export default function RespondentDashboard() {
 
         <Card
           title="Shows which account codes are driving the largest share of your requested budget."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -697,10 +783,10 @@ export default function RespondentDashboard() {
             </div>
             <div className="space-y-4">
               {accountBreakdown.map((item) => (
-                <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
+                <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <div className="flex items-center gap-3">
                     <span
-                      className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
                       style={{ backgroundColor: `${item.color}16`, color: item.color }}
                     >
                       {item.type}
@@ -726,10 +812,10 @@ export default function RespondentDashboard() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr]">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr] [&_*]:shadow-none">
         <Card
           title="Quick access to active submission states and the next actions you should take in Projects."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-[linear-gradient(135deg,#F8FBFF_0%,#FDFEFF_60%,#EEF6FF_100%)] shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#12233A_0%,#18263F_52%,#112846_100%)]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="flex h-full flex-col p-6">
             <div className="flex items-start justify-between gap-3">
@@ -754,7 +840,7 @@ export default function RespondentDashboard() {
                 { label: 'With Approver', value: submittedToApprover, tone: dashboardStatusColors.withApprover },
                 { label: 'Needs Attention', value: attentionCount, tone: dashboardStatusColors.clarification },
               ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 backdrop-blur dark:border-white/10 dark:bg-[#20314D]">
+                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                     {item.label}
                   </p>
@@ -766,7 +852,7 @@ export default function RespondentDashboard() {
               ))}
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white/70 p-4 dark:border-[#315389] dark:bg-white/5">
+            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#1B2A41]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
                   <Sparkles className="h-4.5 w-4.5" />
@@ -780,7 +866,7 @@ export default function RespondentDashboard() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-[#F6FAFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4.5 w-4.5 text-[var(--ai-accent)]" />
                 <p className="text-xs font-semibold tracking-[0.06em] text-[var(--ai-accent)]">
@@ -802,7 +888,7 @@ export default function RespondentDashboard() {
             </div>
 
             <div className="mt-auto pt-5">
-              <Button asChild className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]">
+              <Button asChild className="h-12 w-full rounded-2xl shadow-none">
                 <Link to="/respondent/projects">
                   View All Projects
                   <MoveRight className="h-4 w-4" />
@@ -815,7 +901,7 @@ export default function RespondentDashboard() {
         <div className="grid h-full gap-5">
           <Card
             title="Shows the split between new initiatives and recurring budget demand in the current cycle."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5">
@@ -828,7 +914,7 @@ export default function RespondentDashboard() {
                 </p>
               </div>
               <div className="grid gap-3">
-                <div className="rounded-[22px] border border-[#D8E7FF] bg-[linear-gradient(135deg,#EFF5FF_0%,#FFFFFF_100%)] p-4 shadow-[0_14px_30px_rgba(40,108,255,0.08)] dark:border-[#315389] dark:bg-[linear-gradient(135deg,#132844_0%,#18263F_100%)]">
+                <div className="rounded-[22px] border border-[#D8E7FF] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#18263F]">
                   <div className="flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCEAFE] text-2xl font-bold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
                       {newProjects.length}
@@ -840,7 +926,7 @@ export default function RespondentDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-[22px] border border-[#D5F1E0] bg-[linear-gradient(135deg,#F2FCF6_0%,#FFFFFF_100%)] p-4 shadow-[0_14px_30px_rgba(34,197,94,0.08)] dark:border-[#29583C] dark:bg-[linear-gradient(135deg,#102A22_0%,#183126_100%)]">
+                <div className="rounded-[22px] border border-[#D5F1E0] bg-white p-4 shadow-none dark:border-[#29583C] dark:bg-[#18263F]">
                   <div className="flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCFCE7] text-2xl font-bold text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-white">
                       {recurringProjects.length}
@@ -870,7 +956,7 @@ export default function RespondentDashboard() {
 
           <Card
             title="AI model estimate for how much of the requested budget is likely to be approved."
-            className="overflow-hidden rounded-[28px] border-[#F5D3DC] bg-[linear-gradient(135deg,#FFF7F9_0%,#FFF8F2_100%)] shadow-[0_18px_44px_rgba(124,58,237,0.10)] dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
+            className="overflow-hidden rounded-[28px] border-[#F5D3DC] bg-white shadow-none dark:border-[#5D3240] dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="flex flex-col gap-4">
@@ -882,7 +968,7 @@ export default function RespondentDashboard() {
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Budget Prediction</h2>
                         <InfoHint text="AI estimates how much of the currently requested budget is likely to be approved based on approval history, risk, and project profile signals." />
-                        <span className="inline-flex items-center rounded-full bg-[#F3E8FF] px-2.5 py-1 text-[11px] font-semibold text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#DAC0FF]">
+                        <span className="inline-flex items-center rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#DAC0FF]">
                           Beta
                         </span>
                     </div>
@@ -907,7 +993,7 @@ export default function RespondentDashboard() {
                     { label: 'Approved now', value: approved },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl bg-white/80 px-3 py-3 text-center dark:bg-white/5">
-                      <p className="text-[11px] font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
+                      <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                         {item.label}
                       </p>
                       <p className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">{item.value}</p>

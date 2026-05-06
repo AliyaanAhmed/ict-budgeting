@@ -74,7 +74,7 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL,
           >
             <Bell className="h-4 w-4" />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--destructive)] text-white text-[10px] font-bold">
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--destructive)] text-white text-xs font-bold">
                 {unreadCount}
               </span>
             )}

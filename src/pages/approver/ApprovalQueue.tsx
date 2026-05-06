@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
   Download,
@@ -69,13 +70,13 @@ function SelectionControl({ selected, onClick, label }: { selected: boolean; onC
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-all',
+        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all',
         selected
-          ? 'border-[#286CFF] bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-md shadow-blue-100'
+          ? 'border-transparent bg-[#286CFF] text-white shadow-sm shadow-blue-100'
           : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5'
       )}
     >
-      <CheckCircle2 className="h-5 w-5" />
+      {selected && <Check className="h-4 w-4" />}
     </button>
   )
 }
@@ -182,7 +183,7 @@ export default function ApprovalQueue() {
           <div className="flex flex-1 flex-col gap-2 lg:flex-row xl:justify-end">
             <div className="relative min-w-0 flex-1 xl:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by project name, entity, or ID..." className="h-10 w-full rounded-xl border border-[#DDEBFF] bg-white pl-9 pr-4 text-sm text-[#0F172A] shadow-sm placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#286CFF]/15 dark:border-white/10 dark:bg-[#0F172A]/30 dark:text-white" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by Project Names" className="h-10 w-full rounded-xl border border-[#DDEBFF] bg-white pl-9 pr-4 text-sm text-[#0F172A] shadow-sm placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#286CFF]/15 dark:border-white/10 dark:bg-[#0F172A]/30 dark:text-white" />
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex">
               <Select defaultValue="all-risks">
@@ -231,14 +232,12 @@ export default function ApprovalQueue() {
                 <div className="rounded-xl bg-[#F8FBFF] px-4 py-3 text-left dark:bg-white/5 lg:text-end"><p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">Requested Budget</p><CurrencyAmount amount={proj.requestedBudget} className="text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} /></div>
               </div>
 
-              <div className="mt-4 rounded-xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
+              <div className="mt-4 rounded-xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B] sm:ml-10">
                 <button onClick={() => setExpandedAi(expandedAi === proj.id ? null : proj.id)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left"><Sparkles className="h-4 w-4 text-[#286CFF]" /><span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Approval Insight</span><span className="text-xs text-[#64748B] dark:text-slate-200">{proj.aiConfidence}% confidence</span><ChevronDown className={cn('ml-auto h-4 w-4 text-[#286CFF] transition-transform', expandedAi === proj.id && 'rotate-180')} /></button>
                 {expandedAi === proj.id && <div className="border-t border-[#B0DBFF]/70 px-4 py-3 text-xs leading-5 text-[#475569] dark:border-white/10 dark:text-slate-200">{proj.summary}</div>}
               </div>
 
-              <p className="mt-4 text-sm leading-6 text-[#475569] dark:text-slate-200">{proj.summary}</p>
-
-              <div className="mt-4 flex flex-col gap-2 border-t border-[#EAF0F6] pt-4 dark:border-white/10 sm:flex-row sm:justify-end">
+              <div className="mt-4 flex flex-col gap-2 border-t border-[#EAF0F6] pt-4 dark:border-white/10 sm:ml-10 sm:flex-row sm:justify-end">
                 <Button variant="outline" size="sm" onClick={() => setClarificationProject(proj.name)}><Undo2 className="h-4 w-4" />Raise Clarification</Button>
                 <Button variant="outline" size="sm" asChild><Link to={`/approver/approval-queue/${proj.id}`}><Eye className="h-4 w-4" />Review</Link></Button>
                 <Button size="sm" className="bg-green-600 text-white hover:bg-green-700"><ShieldCheck className="h-4 w-4" />Approve & Submit to DGE</Button>

@@ -90,24 +90,24 @@ function MetricCard({
   return (
     <div
       className={cn(
-        'group overflow-hidden rounded-[24px] border bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,#FFFFFF_0%,#F1F7FF_100%)] hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:bg-[#18263F] dark:hover:bg-[#1D2D48] dark:hover:shadow-[0_14px_30px_rgba(2,8,23,0.32)]',
+        'group overflow-hidden rounded-[24px] border bg-white p-4 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-none dark:bg-[#18263F] sm:p-5',
         className
       )}
-      style={{ borderColor: `${accent}3D` }}
+      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">
             {title}
           </p>
-          <div className="mt-4 text-[34px] font-bold leading-none text-[#0F172A] dark:text-white">
+          <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
             {value}
           </div>
         </div>
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full shadow-inner"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-11 sm:w-11"
           style={{
-            background: `linear-gradient(135deg, ${accent}1F 0%, ${accent}12 100%)`,
+            backgroundColor: `${accent}14`,
             color: accent,
           }}
         >
@@ -120,7 +120,6 @@ function MetricCard({
           style={{
             backgroundColor: `${accent}14`,
             color: accent,
-            boxShadow: `inset 0 0 0 1px ${accent}12`,
           }}
         >
           {badge}
@@ -131,7 +130,59 @@ function MetricCard({
 }
 
 function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; iconColor?: string }) {
-  return <CurrencyAmount amount={amount} className="text-[34px] font-bold leading-none" iconColor={iconColor} iconSize={18} />
+  return <CurrencyAmount amount={amount} className="text-2xl font-bold leading-none sm:text-[30px] xl:text-[32px]" iconColor={iconColor} iconSize={18} />
+}
+
+function ActionMetricCard({
+  title,
+  value,
+  accent,
+  badge,
+  icon,
+  href,
+}: {
+  title: string
+  value: number
+  accent: string
+  badge: string
+  icon: React.ReactNode
+  href: string
+}) {
+  return (
+    <Link
+      to={href}
+      className="group flex h-full flex-col overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
+      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+          <div className="mt-4 flex items-end gap-3">
+            <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+            <span
+              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+              style={{ backgroundColor: `${accent}14`, color: accent }}
+            >
+              {badge}
+            </span>
+          </div>
+        </div>
+        <div
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105"
+          style={{ backgroundColor: `${accent}14`, color: accent }}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
+        Open the queue and take action on the items that need your review.
+      </div>
+      <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
+        <span>Open Queue</span>
+        <MoveRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-1" />
+      </div>
+    </Link>
+  )
 }
 
 export default function ReviewerDashboard() {
@@ -253,7 +304,7 @@ export default function ReviewerDashboard() {
   return (
     <div className="w-full space-y-6 pb-4">
       {/* ─── Hero banner ─── */}
-      <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-[0_28px_80px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
+      <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
         <div className="absolute -left-10 top-0 h-36 w-36 rounded-full bg-[#286CFF]/10 blur-3xl dark:bg-[#286CFF]/20" />
         <div className="absolute right-0 top-8 h-40 w-40 rounded-full bg-[#22C55E]/10 blur-3xl dark:bg-[#22C55E]/10" />
         <div className="relative">
@@ -263,10 +314,10 @@ export default function ReviewerDashboard() {
               Reviewer Workspace
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
-              Review incoming budgets with clarity, raise clarifications where needed, and move quality submissions forward.
+              ICT Cycle - 2026
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              Assess submitted project budgets, identify risk signals, raise clarifications to respondents, and approve projects for the next governance stage. All clarifications are directed to the Respondent for response.
+              Current cycle status: reviewer assessment is active, submitted projects are being validated, and clarifications are routed to respondents before items move to approver review.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-2 rounded-full bg-[#E7F5FF] px-3 py-1.5 font-medium text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
@@ -287,61 +338,96 @@ export default function ReviewerDashboard() {
       </section>
 
       {/* ─── Metric cards ─── */}
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <MetricCard
-          title="Total Queue Budget"
-          value={<CompactAmount amount={totalQueueBudget} />}
-          accent={dashboardPalette.techBlue}
-          badge="AED In Queue"
-          icon={<BadgeDollarSign className="h-5 w-5" />}
-          className="xl:shadow-[0_10px_24px_rgba(40,108,255,0.08)]"
-        />
-        <MetricCard
-          title="Reviewed Budget"
-          value={<CompactAmount amount={reviewedBudget} iconColor={dashboardPalette.aeGreen} />}
-          accent={dashboardPalette.aeGreen}
-          badge="Ready to Forward"
-          icon={<ClipboardCheck className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="AI Predicted Approval"
-          value={<CompactAmount amount={predictedApproval} iconColor="#0F9D7A" />}
-          accent="#0F9D7A"
-          badge="AI Estimate"
-          icon={<BrainCircuit className="h-5 w-5" />}
-          className="xl:shadow-[0_10px_24px_rgba(15,157,122,0.08)]"
-        />
-        <MetricCard
-          title="Pending Review"
-          value={toReview}
-          accent={dashboardPalette.seaBlue}
-          badge="Awaiting Review"
-          icon={<Radar className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="Clarification Sent"
-          value={clarificationPending}
-          accent={dashboardPalette.camelYellow}
-          badge="Awaiting Respondent"
-          icon={<MessageSquareMore className="h-5 w-5" />}
-          className="shadow-none"
-        />
-        <MetricCard
-          title="High Risk Items"
-          value={highRisk}
-          accent={dashboardPalette.aeRed}
-          badge="Needs Attention"
-          icon={<ShieldAlert className="h-5 w-5" />}
-          className="shadow-none"
-        />
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ActionMetricCard
+            title="Pending Review"
+            value={toReview}
+            accent={dashboardPalette.seaBlue}
+            badge="Awaiting Review"
+            icon={<Radar className="h-5 w-5" />}
+            href="/reviewer/review-queue"
+          />
+          <ActionMetricCard
+            title="Clarification Sent"
+            value={clarificationPending}
+            accent={dashboardPalette.camelYellow}
+            badge="Awaiting Respondent"
+            icon={<MessageSquareMore className="h-5 w-5" />}
+            href="/reviewer/review-queue"
+          />
+          <ActionMetricCard
+            title="High Risk Items"
+            value={highRisk}
+            accent={dashboardPalette.aeRed}
+            badge="Needs Attention"
+            icon={<ShieldAlert className="h-5 w-5" />}
+            href="/reviewer/review-queue"
+          />
+        </div>
+
+        <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Review Snapshot</h3>
+                  <InfoHint text="Consolidated reviewer view of queue budget, completed review value, and AI-estimated approval outlook." />
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                  Informational metrics for queue size, reviewed value, and likely approval volume
+                </p>
+              </div>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-white">
+                <BadgeDollarSign className="h-5 w-5" />
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Total Queue Budget</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15">
+                    <BadgeDollarSign className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={totalQueueBudget} />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Reviewed Budget</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ECFDF3] text-[#16A34A] dark:bg-[#16A34A]/15">
+                    <ClipboardCheck className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={reviewedBudget} iconColor={dashboardPalette.aeGreen} />
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ECFDF6] text-[#0F9D7A] dark:bg-[#0F9D7A]/15">
+                    <BrainCircuit className="h-4 w-4" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <CompactAmount amount={predictedApproval} iconColor="#0F9D7A" />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
 
       {/* ─── AI Portfolio Summary ─── */}
       <section
         title="AI summary of portfolio-wide risks, quality signals, and review priorities."
-        className="overflow-hidden rounded-[28px] border border-[#F6C9CF] bg-[linear-gradient(135deg,#FFF8FA_0%,#FFF9F6_100%)] shadow-[0_18px_48px_rgba(234,79,73,0.08)] dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
+        className="overflow-hidden rounded-[28px] border border-[#F6C9CF] bg-[linear-gradient(135deg,#FFF8FA_0%,#FFF9F6_100%)] shadow-none dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
       >
         <button
           type="button"
@@ -356,7 +442,7 @@ export default function ReviewerDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</h2>
                 <InfoHint text="AI scans all submitted projects for quality gaps, documentation issues, budget anomalies, duplicate scope, and strategic alignment concerns to guide review priorities." />
-                <span className="inline-flex items-center rounded-full bg-[#FFF1F2] px-2.5 py-1 text-[11px] font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
+                <span className="inline-flex items-center rounded-full bg-[#FFF1F2] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
                   Action Required
                 </span>
               </div>
@@ -405,7 +491,7 @@ export default function ReviewerDashboard() {
                     </div>
                   </div>
                   <span
-                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold"
                     style={{ backgroundColor: `${issue.tone}14`, color: issue.tone }}
                   >
                     {issue.badge}
@@ -437,10 +523,10 @@ export default function ReviewerDashboard() {
       </section>
 
       {/* ─── Projects Requiring Attention + Budget Mix ─── */}
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
           title="High-priority items in the review queue that need immediate reviewer action."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -466,7 +552,7 @@ export default function ReviewerDashboard() {
                   <Link
                     key={project.id}
                     to={`/reviewer/review-queue/${project.id}`}
-                    className="group block rounded-[24px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#FBFDFF_0%,#F4F8FD_100%)] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
+                    className="group block rounded-[22px] border border-[#DCE8F6] bg-white p-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-none dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
@@ -518,7 +604,7 @@ export default function ReviewerDashboard() {
 
         <Card
           title="Requested budget distribution across review statuses in the current queue."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
@@ -566,7 +652,7 @@ export default function ReviewerDashboard() {
 
               <div className="space-y-3">
                 {budgetByReviewStatus.map((item) => (
-                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
@@ -587,10 +673,10 @@ export default function ReviewerDashboard() {
       </section>
 
       {/* ─── Budget by Category + Account codes ─── */}
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
           title="Budget distribution across ICT strategic categories for the current review cycle."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -613,7 +699,7 @@ export default function ReviewerDashboard() {
 
         <Card
           title="Account codes receiving the largest share of budget across submitted projects."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -632,10 +718,10 @@ export default function ReviewerDashboard() {
             </div>
             <div className="space-y-4">
               {accountBreakdown.map((item) => (
-                <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
+                <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <div className="flex items-center gap-3">
                     <span
-                      className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
                       style={{ backgroundColor: `${item.color}16`, color: item.color }}
                     >
                       {item.type}
@@ -662,10 +748,10 @@ export default function ReviewerDashboard() {
       </section>
 
       {/* ─── Review Queue Workspace + (New vs Recurring + AI Budget Prediction) ─── */}
-      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr]">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr] [&_*]:shadow-none">
         <Card
           title="Reviewer workspace with submission statuses, risk signals, and suggested next actions."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-[linear-gradient(135deg,#F8FBFF_0%,#FDFEFF_60%,#EEF6FF_100%)] shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#12233A_0%,#18263F_52%,#112846_100%)]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="flex h-full flex-col p-6">
             <div className="flex items-start justify-between gap-3">
@@ -690,7 +776,7 @@ export default function ReviewerDashboard() {
                 { label: 'Clarif. Sent', value: clarificationPending, tone: dashboardStatusColors.clarificationPending },
                 { label: 'High Risk', value: highRisk, tone: dashboardPalette.aeRed },
               ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 backdrop-blur dark:border-white/10 dark:bg-[#20314D]">
+                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                     {item.label}
                   </p>
@@ -702,7 +788,7 @@ export default function ReviewerDashboard() {
               ))}
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white/70 p-4 dark:border-[#315389] dark:bg-white/5">
+            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#1B2A41]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
                   <Sparkles className="h-4 w-4" />
@@ -718,7 +804,7 @@ export default function ReviewerDashboard() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-[#F6FAFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-[var(--ai-accent)]" />
                 <p className="text-xs font-semibold tracking-[0.06em] text-[var(--ai-accent)]">
@@ -740,7 +826,7 @@ export default function ReviewerDashboard() {
             </div>
 
             <div className="mt-auto pt-5">
-              <Button asChild className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]">
+              <Button asChild className="h-12 w-full rounded-2xl shadow-none">
                 <Link to="/reviewer/review-queue">
                   Open Review Queue
                   <MoveRight className="h-4 w-4" />
@@ -753,7 +839,7 @@ export default function ReviewerDashboard() {
         <div className="grid h-full gap-5">
           <Card
             title="Shows the split between new and recurring project budget requests in the current review queue."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5">
@@ -766,7 +852,7 @@ export default function ReviewerDashboard() {
                 </p>
               </div>
               <div className="grid gap-3">
-                <div className="rounded-[22px] border border-[#D8E7FF] bg-[linear-gradient(135deg,#EFF5FF_0%,#FFFFFF_100%)] p-4 shadow-[0_14px_30px_rgba(40,108,255,0.08)] dark:border-[#315389] dark:bg-[linear-gradient(135deg,#132844_0%,#18263F_100%)]">
+                <div className="rounded-[22px] border border-[#D8E7FF] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#18263F]">
                   <div className="flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCEAFE] text-2xl font-bold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
                       {newProjects.length}
@@ -778,7 +864,7 @@ export default function ReviewerDashboard() {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-[22px] border border-[#D5F1E0] bg-[linear-gradient(135deg,#F2FCF6_0%,#FFFFFF_100%)] p-4 shadow-[0_14px_30px_rgba(34,197,94,0.08)] dark:border-[#29583C] dark:bg-[linear-gradient(135deg,#102A22_0%,#183126_100%)]">
+                <div className="rounded-[22px] border border-[#D5F1E0] bg-white p-4 shadow-none dark:border-[#29583C] dark:bg-[#18263F]">
                   <div className="flex items-center gap-3">
                     <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCFCE7] text-2xl font-bold text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-white">
                       {recurringProjects.length}
@@ -808,7 +894,7 @@ export default function ReviewerDashboard() {
 
           <Card
             title="AI estimate of how much submitted budget is likely to receive final approval."
-            className="overflow-hidden rounded-[28px] border-[#F5D3DC] bg-[linear-gradient(135deg,#FFF7F9_0%,#FFF8F2_100%)] shadow-[0_18px_44px_rgba(124,58,237,0.10)] dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
+            className="overflow-hidden rounded-[28px] border-[#F5D3DC] bg-white shadow-none dark:border-[#5D3240] dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="flex flex-col gap-4">
@@ -820,7 +906,7 @@ export default function ReviewerDashboard() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Budget Prediction</h2>
                       <InfoHint text="AI estimates how much of the currently reviewed budget is likely to be approved through the full governance chain, based on submission quality, risk levels, and historical approval patterns." />
-                      <span className="inline-flex items-center rounded-full bg-[#F3E8FF] px-2.5 py-1 text-[11px] font-semibold text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#DAC0FF]">
+                      <span className="inline-flex items-center rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#DAC0FF]">
                         Beta
                       </span>
                     </div>
@@ -845,7 +931,7 @@ export default function ReviewerDashboard() {
                     { label: 'Reviewed', value: reviewed },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl bg-white/80 px-3 py-3 text-center dark:bg-white/5">
-                      <p className="text-[11px] font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
+                      <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                         {item.label}
                       </p>
                       <p className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">{item.value}</p>

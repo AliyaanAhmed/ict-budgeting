@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
   Bot,
+  Check,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -72,13 +73,13 @@ function SelectionControl({ selected, onClick, label }: { selected: boolean; onC
       aria-pressed={selected}
       onClick={onClick}
       className={cn(
-        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-all',
+        'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all',
         selected
-          ? 'border-[#286CFF] bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-md shadow-blue-100'
+          ? 'border-transparent bg-[#286CFF] text-white shadow-sm shadow-blue-100'
           : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5'
       )}
     >
-      <CheckCircle2 className="h-5 w-5" />
+      {selected && <Check className="h-4 w-4" />}
     </button>
   )
 }
@@ -86,7 +87,6 @@ function SelectionControl({ selected, onClick, label }: { selected: boolean; onC
 export default function ReviewQueue() {
   const [activeFilter, setActiveFilter] = useState<ReviewFilter>('to-review')
   const [search, setSearch] = useState('')
-  const [expandedAi, setExpandedAi] = useState<string | null>(null)
   const [clarificationProject, setClarificationProject] = useState<string | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -194,7 +194,7 @@ export default function ReviewQueue() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by project name, entity, or ID..."
+                placeholder="Search by Project Names"
                 className="h-10 w-full rounded-xl border border-[#DDEBFF] bg-white pl-9 pr-4 text-sm text-[#0F172A] shadow-sm placeholder:text-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#286CFF]/15 dark:border-white/10 dark:bg-[#0F172A]/30 dark:text-white"
               />
             </div>
@@ -270,22 +270,24 @@ export default function ReviewQueue() {
                 </div>
               )}
 
-              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                <AiInsightRow expanded={expandedAi === proj.id} onClick={() => setExpandedAi(expandedAi === proj.id ? null : proj.id)} confidence={proj.aiConfidence}>
-                  <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">AI recommends validating the budget assumptions, document evidence, and strategic alignment before forwarding this request.</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Scope OK</span>
-                    <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Budget Check</span>
-                    <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Docs Scan</span>
-                  </div>
-                </AiInsightRow>
-                <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
+              <div className="mt-4 flex flex-col gap-3 sm:ml-10 lg:flex-row lg:items-start">
+                <div className="min-w-0 flex-1">
+                  <AiInsightRow expanded onClick={() => undefined} confidence={proj.aiConfidence}>
+                    <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">AI recommends validating the budget assumptions, document evidence, and strategic alignment before forwarding this request.</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Scope OK</span>
+                      <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Budget Check</span>
+                      <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Docs Scan</span>
+                    </div>
+                  </AiInsightRow>
+                </div>
+                <div className="grid shrink-0 grid-cols-2 gap-2 lg:w-[220px] lg:grid-cols-1">
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5"><p className="text-xs text-[#64748B]">CapEx</p><CurrencyAmount amount={proj.capex} className="font-bold" /></div>
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5"><p className="text-xs text-[#64748B]">OpEx</p><CurrencyAmount amount={proj.opex} className="font-bold" /></div>
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-col gap-2 border-t border-[#EAF0F6] pt-4 dark:border-white/10 sm:flex-row sm:justify-end">
+              <div className="mt-4 flex flex-col gap-2 border-t border-[#EAF0F6] pt-4 dark:border-white/10 sm:ml-10 sm:flex-row sm:justify-end">
                 <Button variant="outline" size="sm" onClick={() => setClarificationProject(proj.name)}><MessageSquare className="h-4 w-4" />Raise Clarification</Button>
                 <Button variant="outline" size="sm" asChild><Link to={`/reviewer/review-queue/${proj.id}`}><Eye className="h-4 w-4" />Review</Link></Button>
                 <Button size="sm" className="bg-green-600 text-white hover:bg-green-700"><CheckCircle2 className="h-4 w-4" />Mark Reviewed</Button>

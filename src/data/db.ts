@@ -41,14 +41,24 @@ export interface BudgetItem {
   budgetRequested: number
 }
 
+export interface ClarificationReply {
+  id: string
+  fromRole: 'Respondent' | 'Reviewer' | 'Approver'
+  fromName: string
+  message: string
+  date: string
+}
+
 export interface Clarification {
   id: string
-  raisedBy: string
+  raisedBy: 'Reviewer' | 'Approver'
+  raisedByName: string
   raisedTo: string
   message: string
-  status: 'Pending' | 'Responded'
+  status: 'Open' | 'Closed'
   date: string
-  response?: string
+  closedAt?: string
+  replies: ClarificationReply[]
 }
 
 export interface ProjectDocument {
@@ -300,12 +310,64 @@ export const projects: Project[] = [
     clarifications: [
       {
         id: 'CLR-001',
-        raisedBy: 'Reviewer',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Aisha Al Hashmi',
         raisedTo: 'Respondent',
         message:
           'Please provide a detailed implementation timeline for the ERP migration, including data migration plan and parallel run period.',
-        status: 'Pending',
+        status: 'Open' as const,
         date: '2026-04-18',
+        replies: [
+          {
+            id: 'CLR-001-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Maryam Al Suwaidi',
+            message: 'Thank you for raising this. We have prepared a phased implementation plan spanning 4 months with a 6-week parallel run period. I will upload the detailed Gantt chart and vendor readiness confirmation by Friday.',
+            date: '2026-04-20',
+          },
+          {
+            id: 'CLR-001-R2',
+            fromRole: 'Reviewer' as const,
+            fromName: 'Aisha Al Hashmi',
+            message: 'Thank you for the update. Please also include the rollback contingency plan in case of data migration issues, and confirm if the vendor has completed similar government migrations.',
+            date: '2026-04-21',
+          },
+        ],
+      },
+      {
+        id: 'CLR-001-B',
+        raisedBy: 'Approver' as const,
+        raisedByName: 'Fatima Al Nuaimi',
+        raisedTo: 'Respondent',
+        message: 'The ERP licensing cost of AED 2M for Oracle Fusion appears higher than the government framework pricing. Has the vendor provided an official government pricing schedule to justify this amount?',
+        status: 'Open' as const,
+        date: '2026-04-19',
+        replies: [
+          {
+            id: 'CLR-001-B-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Maryam Al Suwaidi',
+            message: 'The vendor has applied GITEX government special pricing which is 18% below their standard commercial rate. We hold the official Oracle government pricing schedule and will attach it to the submission today.',
+            date: '2026-04-21',
+          },
+          {
+            id: 'CLR-001-B-R2',
+            fromRole: 'Approver' as const,
+            fromName: 'Fatima Al Nuaimi',
+            message: 'Confirmed. Please attach the Oracle government pricing letter as a supporting document so it is part of the official submission record.',
+            date: '2026-04-22',
+          },
+        ],
+      },
+      {
+        id: 'CLR-001-C',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Aisha Al Hashmi',
+        raisedTo: 'Respondent',
+        message: 'The integration scope mentions HR, Finance, and Procurement. Are there any additional legacy systems not listed that will require integration or data migration as part of this programme?',
+        status: 'Open' as const,
+        date: '2026-04-22',
+        replies: [],
       },
     ],
     aiScore: 76,
@@ -361,12 +423,105 @@ export const projects: Project[] = [
     clarifications: [
       {
         id: 'CLR-002',
-        raisedBy: 'Reviewer',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Mohammed Al-Farsi',
         raisedTo: 'Respondent',
         message:
-          'The budget for device management seems high. Please provide a breakdown of device count, model specifications, and unit costs. Also clarify if devices are already owned or need procurement.',
-        status: 'Pending',
+          'The budget for device management seems high at AED 400,000. Please provide a full breakdown of device count, model specifications, and unit costs. Also clarify whether these devices are to be procured new or if any are already owned by the department.',
+        status: 'Open' as const,
         date: '2026-04-22',
+        replies: [
+          {
+            id: 'CLR-002-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'Thank you for the query. The AED 400,000 covers 120 ruggedised Samsung Galaxy Tab A9+ tablets at AED 1,800 each (AED 216,000), Microsoft Intune MDM licensing for 2 years at AED 95,000, protective cases and peripherals at AED 42,000, and initial configuration and staging services at AED 47,000. All devices are new procurements — the department currently has no field-grade tablets in inventory.',
+            date: '2026-04-24',
+          },
+          {
+            id: 'CLR-002-R2',
+            fromRole: 'Reviewer' as const,
+            fromName: 'Mohammed Al-Farsi',
+            message: 'Thank you for the breakdown. Can you confirm whether the Samsung Galaxy Tab A9+ has been approved on the Government Device Register, and whether an existing government framework agreement covers the procurement to avoid a standalone tender?',
+            date: '2026-04-25',
+          },
+          {
+            id: 'CLR-002-R3',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'Confirmed — the Samsung Galaxy Tab A9+ is on the Government Device Register (GDR-2025-114). We will use the Whole of Government ICT Hardware Framework (WGICTF-2024) for procurement, which eliminates the need for a standalone tender and allows direct award to the approved supplier. I will attach the framework reference and GDR certificate to the submission.',
+            date: '2026-04-26',
+          },
+        ],
+      },
+      {
+        id: 'CLR-002-B',
+        raisedBy: 'Approver' as const,
+        raisedByName: 'Fatima Al Nuaimi',
+        raisedTo: 'Respondent',
+        message: 'The AED 800,000 for custom mobile app development is substantial. Has a build-vs-buy analysis been conducted? Several GovTech solutions already offer configurable field workforce apps. Please justify the decision to develop a fully custom application rather than adopting an existing platform.',
+        status: 'Open' as const,
+        date: '2026-04-23',
+        replies: [
+          {
+            id: 'CLR-002-B-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'A formal build-vs-buy analysis was completed in March 2026 covering five commercial platforms including ServiceNow Field Service, Salesforce Mobile, and two GovTech solutions. None of the evaluated platforms support the deep integration required with our legacy HRMS (Oracle 11g) and the real-time geofencing mandate for field compliance tracking. The custom build was selected on this basis and the full analysis report is available for review.',
+            date: '2026-04-25',
+          },
+          {
+            id: 'CLR-002-B-R2',
+            fromRole: 'Approver' as const,
+            fromName: 'Fatima Al Nuaimi',
+            message: 'Understood. Please attach the build-vs-buy analysis report as a mandatory supporting document. Also confirm the development vendor is on the approved government ICT supplier list and that the contract will be subject to a source code escrow arrangement.',
+            date: '2026-04-27',
+          },
+          {
+            id: 'CLR-002-B-R3',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'The selected vendor, Techbridge LLC, is on the Government ICT Supplier Register (GISR-DEV-0094). We will include a source code escrow clause in the contract and have already obtained indicative escrow pricing from Iron Mountain. I will attach the build-vs-buy report, supplier registration certificate, and escrow arrangement summary today.',
+            date: '2026-04-28',
+          },
+        ],
+      },
+      {
+        id: 'CLR-002-C',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Sara Al Mahmoud',
+        raisedTo: 'Respondent',
+        message: 'The submission does not address data residency and information classification for data accessed via the mobile app. Field staff will handle Confidential and Restricted government data on personal or shared devices. Please confirm the data classification levels involved and how the solution meets UAE PDPL and National Information Assurance Policy requirements.',
+        status: 'Open' as const,
+        date: '2026-04-27',
+        replies: [
+          {
+            id: 'CLR-002-C-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'The mobile app will handle data classified as Internal and Confidential under the National Information Assurance Policy. All data in transit is encrypted using TLS 1.3, and at-rest encryption is enforced on device via Intune conditional access policies. The solution has been assessed against the UAE PDPL data residency requirement — all data will be stored and processed within UAE data centres only, with no cross-border transfers. A full NIAP compliance checklist is being finalised with our Information Security team and will be attached within 48 hours.',
+            date: '2026-04-29',
+          },
+        ],
+      },
+      {
+        id: 'CLR-002-D',
+        raisedBy: 'Approver' as const,
+        raisedByName: 'Hassan Al Blooshi',
+        raisedTo: 'Respondent',
+        message: 'Please confirm whether the Microsoft Intune licensing will be purchased through the existing government EA (Enterprise Agreement) with Microsoft, or as a standalone subscription. The EA typically provides a 30–35% discount over commercial pricing and I want to ensure the budget reflects the correct rate.',
+        status: 'Closed' as const,
+        date: '2026-04-24',
+        closedAt: '2026-04-29',
+        replies: [
+          {
+            id: 'CLR-002-D-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Noura Al Kaabi',
+            message: 'Confirmed — Intune licensing will be added to the existing Government Microsoft EA managed by the Digital Government Authority. The quoted AED 95,000 already reflects EA-tier government pricing, which is 32% below commercial list price. I have confirmed this with the DGA licensing desk and will attach their written confirmation as supporting evidence.',
+            date: '2026-04-26',
+          },
+        ],
       },
     ],
     aiScore: 52,
@@ -477,12 +632,87 @@ export const projects: Project[] = [
     clarifications: [
       {
         id: 'CLR-003',
-        raisedBy: 'Reviewer',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Sara Al Mahmoud',
         raisedTo: 'Respondent',
         message:
           'Project summary lacks specific deliverables and success metrics. Please provide detailed scope and expected outcomes.',
-        status: 'Pending',
+        status: 'Open' as const,
         date: '2026-04-20',
+        replies: [],
+      },
+      {
+        id: 'CLR-003-B',
+        raisedBy: 'Approver' as const,
+        raisedByName: 'Hassan Al Blooshi',
+        raisedTo: 'Respondent',
+        message:
+          'The WAN connectivity costs appear higher than benchmark for similar scope projects. Please provide competitive quotations from at least two vendors to justify the pricing.',
+        status: 'Open' as const,
+        date: '2026-04-21',
+        replies: [
+          {
+            id: 'CLR-003-B-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Abdulla Al Romaithi',
+            message: 'We have obtained quotes from Etisalat and du. The Etisalat quote was 12% lower for equivalent bandwidth capacity. We will upload both quotations along with a technical comparison today.',
+            date: '2026-04-23',
+          },
+        ],
+      },
+      {
+        id: 'CLR-003-C',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Sara Al Mahmoud',
+        raisedTo: 'Respondent',
+        message: 'Please confirm whether existing network equipment will be decommissioned or repurposed after the upgrade. This impacts the total cost of ownership and asset disposal plan.',
+        status: 'Open' as const,
+        date: '2026-04-22',
+        replies: [
+          {
+            id: 'CLR-003-C-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Abdulla Al Romaithi',
+            message: 'The existing Cisco 3800 series switches will be repurposed for our DR site rather than decommissioned. The newer Catalyst 9000 series will serve as the primary production network, saving approximately AED 280,000 in decommissioning and disposal costs.',
+            date: '2026-04-25',
+          },
+          {
+            id: 'CLR-003-C-R2',
+            fromRole: 'Reviewer' as const,
+            fromName: 'Sara Al Mahmoud',
+            message: 'Good clarification. Please also confirm the DR site capacity requirements and whether the repurposed equipment fully meets those specifications before we sign off.',
+            date: '2026-04-26',
+          },
+        ],
+      },
+      {
+        id: 'CLR-003-D',
+        raisedBy: 'Approver' as const,
+        raisedByName: 'Hassan Al Blooshi',
+        raisedTo: 'Respondent',
+        message: 'The project timeline of 12 months appears aggressive for a full network overhaul across multiple sites. Please provide a risk-adjusted timeline with buffer periods clearly identified.',
+        status: 'Closed' as const,
+        date: '2026-04-22',
+        closedAt: '2026-04-28',
+        replies: [
+          {
+            id: 'CLR-003-D-R1',
+            fromRole: 'Respondent' as const,
+            fromName: 'Abdulla Al Romaithi',
+            message: 'We have revised the timeline to 14 months with 2 buffer months built into the schedule. The phased rollout covers 4 office sites per quarter starting Q3 2026, with a dedicated 6-week stabilisation window at the end.',
+            date: '2026-04-24',
+          },
+        ],
+      },
+      {
+        id: 'CLR-003-E',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Mohammed Al-Farsi',
+        raisedTo: 'Respondent',
+        message: 'Please clarify the SD-WAN vendor selection process. Will this go through a formal RFP given the contract value exceeds the direct award threshold under the Procurement Policy?',
+        status: 'Open' as const,
+        date: '2026-04-28',
+        replies: [],
       },
     ],
     aiScore: 71,
@@ -538,12 +768,14 @@ export const projects: Project[] = [
     clarifications: [
       {
         id: 'CLR-004',
-        raisedBy: 'Reviewer',
+        raisedBy: 'Reviewer' as const,
+        raisedByName: 'Khalid Al-Mansoori',
         raisedTo: 'Respondent',
         message:
-          'Missing documents: Please upload vendor quotation and technical migration assessment. Current submission is incomplete.',
-        status: 'Pending',
+          'Missing documents: Please upload vendor quotation and technical migration assessment. Current submission is incomplete without these supporting documents.',
+        status: 'Open' as const,
         date: '2026-04-19',
+        replies: [],
       },
     ],
     aiScore: 45,

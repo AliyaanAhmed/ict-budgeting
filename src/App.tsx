@@ -15,6 +15,7 @@ import ReviewerProjects from '@/pages/reviewer/Projects'
 
 import ApproverDashboard from '@/pages/approver/Dashboard'
 import ApprovalQueue from '@/pages/approver/ApprovalQueue'
+import ApproverProjects from '@/pages/approver/Projects'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/approver/dashboard" element={<ApproverDashboard />} />
               <Route path="/approver/approval-queue" element={<ApprovalQueue />} />
               <Route path="/approver/approval-queue/:id" element={<ProjectDetail />} />
+              <Route path="/approver/projects" element={<ApproverProjects />} />
             </Route>
           </Routes>
           <DataverseDebugModal />

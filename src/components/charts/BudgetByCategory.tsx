@@ -25,7 +25,7 @@ export function BudgetByCategory() {
         <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
           <div className="flex items-center gap-3">
             <span
-              className="inline-flex min-w-[44px] items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+              className="inline-flex min-w-[44px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ backgroundColor: `${item.color}18`, color: item.color }}
             >
               {item.pct}%
