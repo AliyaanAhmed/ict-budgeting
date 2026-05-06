@@ -1,6 +1,27 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { User, Sparkles, Upload, Plus, X, Send, ChevronRight, Bot, CalendarDays, Layers, Briefcase, Building2, Package, FolderKanban } from 'lucide-react'
+import {
+  Bot,
+  Briefcase,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  ChevronRight,
+  CircleDollarSign,
+  ClipboardList,
+  FileText,
+  FolderKanban,
+  Layers,
+  Package,
+  Plus,
+  RefreshCw,
+  Send,
+  Sparkles,
+  TrendingUp,
+  Upload,
+  User,
+  Zap,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,20 +31,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { useToast } from '@/context/ToastContext'
 
-function SectionNumber({ n }: { n: number }) {
+function FormField({
+  label,
+  required,
+  hint,
+  children,
+}: {
+  label: string
+  required?: boolean
+  hint?: string
+  children: React.ReactNode
+}) {
   return (
-    <span className="shrink-0 text-base font-bold leading-none text-[#0F172A] dark:text-white">
-      {n}.
-    </span>
-  )
-}
-
-function FormField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <label className="text-xs font-semibold text-[#64748B] dark:text-white uppercase tracking-wide">
-        {label} {required && <span className="text-red-500 normal-case">*</span>}
-      </label>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-xs font-bold text-[#64748B] dark:text-slate-200">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        {hint && <span className="hidden text-[11px] font-medium text-[#94A3B8] sm:inline">{hint}</span>}
+      </div>
       {children}
     </div>
   )
@@ -40,9 +66,9 @@ function ModernSelect({
 }) {
   return (
     <Select>
-      <SelectTrigger className="h-11 rounded-xl border-[var(--border)]">
-        <span className="inline-flex w-full items-center gap-2 text-[#64748B] whitespace-nowrap">
-          <Icon className="h-4 w-4" />
+      <SelectTrigger className="h-12 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]">
+        <span className="inline-flex w-full min-w-0 items-center gap-2 text-[#64748B] whitespace-nowrap">
+          <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
           <SelectValue className="truncate" placeholder={placeholder} />
         </span>
       </SelectTrigger>
@@ -55,10 +81,42 @@ function ModernSelect({
   )
 }
 
+function FormSection({
+  title,
+  description,
+  icon: Icon,
+  children,
+  action,
+}: {
+  title: string
+  description: string
+  icon: React.ElementType
+  children: React.ReactNode
+  action?: React.ReactNode
+}) {
+  return (
+    <section className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B] sm:p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
+            <Icon className="h-6 w-6" />
+          </div>
+          <div>
+            <h3 className="mb-1 text-lg font-bold text-[var(--foreground)]">{title}</h3>
+            <p className="max-w-2xl text-sm leading-6 text-[var(--muted-foreground)]">{description}</p>
+          </div>
+        </div>
+        {action}
+      </div>
+      <div>{children}</div>
+    </section>
+  )
+}
+
 const COPILOT_OPTIONS = [
-  { icon: 'NP', label: 'New Project', sub: 'Starting fresh, no prior submissions' },
-  { icon: 'CE', label: 'Continuation of Existing Project', sub: 'Project already exists, requesting additional budget' },
-  { icon: 'P2', label: 'Phase 2 or Later', sub: 'Subsequent phase of a multi-phase project' },
+  { icon: Sparkles, label: 'New Project', sub: 'Starting fresh, no prior submissions' },
+  { icon: RefreshCw, label: 'Continuation of Existing Project', sub: 'Project already exists, requesting additional budget' },
+  { icon: TrendingUp, label: 'Phase 2 or Later', sub: 'Subsequent phase of a multi-phase project' },
 ]
 
 export default function NewProject() {
@@ -66,8 +124,8 @@ export default function NewProject() {
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<{ from: 'ai' | 'user'; text: string }[]>([
-    { from: 'ai', text: 'Welcome to the Budget Copilot. Before we begin, I need some project context.' },
-    { from: 'ai', text: 'Is this a new project, or a continuation of an existing initiative?' },
+    { from: 'ai', text: 'Welcome to the Budget Copilot!\n\nBefore we begin, I need to understand a few things about your project to help you better.' },
+    { from: 'ai', text: "Is this a new project you're starting, or is it a continuation of an existing initiative?" },
   ])
   const [optionSelected, setOptionSelected] = useState(false)
   const { runActionToast } = useToast()
@@ -109,9 +167,9 @@ export default function NewProject() {
   }
 
   return (
-    <div className="max-w-[1080px] mx-auto space-y-5">
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-4 sm:px-6 py-5">
-        <nav className="text-xs text-[#64748B] mb-2 flex items-center gap-1 flex-wrap">
+    <div className="mx-auto max-w-[1180px] space-y-6">
+      <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
+        <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-[#64748B]">
           <Link to="/respondent/dashboard" className="hover:text-[var(--primary)]">Home</Link>
           <ChevronRight className="h-3 w-3" />
           <Link to="/respondent/projects" className="hover:text-[var(--primary)]">My Dashboard</Link>
@@ -119,41 +177,55 @@ export default function NewProject() {
           <span className="text-[var(--foreground)]">New Budget Item</span>
         </nav>
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">New Budget Item</h1>
-            <p className="text-sm text-[var(--muted-foreground)] mt-1">Create a new budget request with modern guided form experience</p>
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-2xl min-w-0">
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--foreground)] sm:text-3xl lg:text-[32px]">Create New Project</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">
+              Capture scope, timeline, budget logic, and supporting documents in a cleaner step-by-step workspace.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--muted)] px-4 py-2 w-full md:w-auto justify-center md:justify-start">
-            <User className={cn('h-4 w-4', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
-            <span className={cn('text-sm font-medium', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
-            <button
-              onClick={() => setMode(mode === 'manual' ? 'ai' : 'manual')}
-              className={cn('relative w-10 h-5 rounded-full transition-colors', mode === 'ai' ? 'bg-[var(--ai-accent)]' : 'bg-[#CBD5E1]')}
-            >
-              <div className={cn('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-5' : 'translate-x-0.5')} />
-            </button>
-            <span className={cn('text-sm font-medium', mode === 'ai' ? 'text-[var(--ai-accent)]' : 'text-[#94A3B8]')}>AI Copilot</span>
-            <Bot className={cn('h-4 w-4', mode === 'ai' ? 'text-[var(--ai-accent)]' : 'text-[#94A3B8]')} />
+          <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto xl:items-center">
+            <div className="grid w-full grid-cols-1 gap-2 rounded-2xl border border-[#DDEBFF] bg-white p-2 text-center shadow-sm dark:border-white/10 dark:bg-white/5 sm:grid-cols-3 lg:min-w-[360px] xl:w-auto">
+              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#64748B]">Cycle</p>
+                <p className="text-sm font-bold text-[#0F172A] dark:text-white">2026</p>
+              </div>
+              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#64748B]">Status</p>
+                <p className="text-sm font-bold text-[#0F172A] dark:text-white">Draft</p>
+              </div>
+              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#64748B]">Readiness</p>
+                <p className="text-sm font-bold text-[var(--primary)]">0%</p>
+              </div>
+            </div>
+
+            <div className="flex w-full flex-wrap items-center justify-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/5 sm:flex-nowrap lg:w-auto">
+              <User className={cn('h-4 w-4', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+              <span className={cn('text-sm font-bold', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
+              <button
+                onClick={() => setMode(mode === 'manual' ? 'ai' : 'manual')}
+                className={cn('relative h-6 w-12 overflow-hidden rounded-full p-1 transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
+                aria-label="Toggle input mode"
+              >
+                <div className={cn('h-4 w-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-6' : 'translate-x-0')} />
+              </button>
+              <span className={cn('text-sm font-bold', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>AI Copilot</span>
+              <Bot className={cn('h-4 w-4', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+            </div>
           </div>
         </div>
       </div>
 
       {mode === 'manual' ? (
         <>
-          <Card className="rounded-2xl border-[#DCE6F1] shadow-sm overflow-hidden">
-            <CardContent className="p-0">
-              <section className="p-4 sm:p-6 border-b border-[#EAF0F6]">
-                <div className="flex items-center gap-3 mb-5">
-                  <SectionNumber n={1} />
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">Budget Item Details</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-5">
+              <FormSection title="Budget Item Details" description="Define the initiative, strategic alignment, work stream, technology, and category." icon={ClipboardList}>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <FormField label="Initiative / Budget Item Name" required>
-                      <Input className="h-11 rounded-xl border-[var(--border)]" placeholder="Enter initiative name" />
+                    <FormField label="Initiative / Budget Item Name" required hint="Make it specific and searchable">
+                      <Input className="h-12 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus-visible:ring-[var(--primary)]" placeholder="Example: Cloud Migration Platform for Citizen Services" />
                     </FormField>
                   </div>
 
@@ -185,187 +257,199 @@ export default function NewProject() {
                     <ModernSelect icon={FolderKanban} placeholder="Select category" options={['Data Management', 'Citizen Services', 'Cybersecurity', 'Enterprise Applications', 'Infrastructure']} />
                   </FormField>
                 </div>
-              </section>
+              </FormSection>
 
-              <section className="p-4 sm:p-6 border-b border-[#EAF0F6]">
-                <div className="flex items-center gap-3 mb-5">
-                  <SectionNumber n={2} />
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">Budget Item Timelines</h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormSection title="Budget Item Timelines" description="Set planned delivery dates so reviewers can understand the funding window." icon={CalendarDays}>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <FormField label="Planned Start Date" required>
                     <div className="relative">
-                      <CalendarDays className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <Input type="date" className="h-11 rounded-xl border-[var(--border)] pl-9" />
+                      <CalendarDays className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--primary)]" />
+                      <Input type="date" className="h-12 rounded-xl border-[#D9E6F7] bg-white pl-11 shadow-sm focus-visible:ring-[var(--primary)]" />
                     </div>
                   </FormField>
                   <FormField label="Planned End Date" required>
                     <div className="relative">
-                      <CalendarDays className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <Input type="date" className="h-11 rounded-xl border-[var(--border)] pl-9" />
+                      <CalendarDays className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--primary)]" />
+                      <Input type="date" className="h-12 rounded-xl border-[#D9E6F7] bg-white pl-11 shadow-sm focus-visible:ring-[var(--primary)]" />
                     </div>
                   </FormField>
                 </div>
-              </section>
+              </FormSection>
 
-              <section className="p-4 sm:p-6 border-b border-[#EAF0F6]">
-                <div className="flex items-center gap-3 mb-5">
-                  <SectionNumber n={3} />
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">Summary</h3>
-                </div>
-                <FormField label="Summary / Description" required>
-                  <Textarea rows={5} className="rounded-xl border-[var(--border)]" placeholder="Provide a detailed description of the budget item..." />
+              <FormSection title="Project Summary" description="Explain the business need, expected outcome, beneficiaries, and delivery approach." icon={FileText}>
+                <FormField label="Summary / Description" required hint="Recommended: 3-5 clear sentences">
+                  <Textarea rows={6} className="rounded-xl border-[#D9E6F7] bg-white shadow-sm focus-visible:ring-[var(--primary)]" placeholder="Describe the problem, proposed solution, departments impacted, measurable benefits, and any dependencies..." />
                 </FormField>
-              </section>
+              </FormSection>
 
-              <section className="p-4 sm:p-6 border-b border-[#EAF0F6]">
-                <div className="flex items-center gap-3 mb-5">
-                  <SectionNumber n={4} />
-                  <h3 className="text-lg font-semibold text-[var(--foreground)]">Budget Type</h3>
-                </div>
+              <FormSection title="Budget Type" description="Classify the requested spend so finance and review teams can assess it correctly." icon={CircleDollarSign}>
                 <div className="max-w-md">
                   <FormField label="Budget Type" required>
                     <ModernSelect icon={Briefcase} placeholder="Select budget type" options={['CapEx', 'OpEx', 'Mixed']} />
                   </FormField>
                 </div>
-              </section>
+              </FormSection>
 
-              <section className="p-4 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-                  <div className="flex items-center gap-3">
-                    <SectionNumber n={5} />
-                    <h3 className="text-lg font-semibold text-[var(--foreground)]">Budget Items</h3>
-                  </div>
-                  <Button size="sm" className="h-10 rounded-xl">
+              <FormSection
+                title="Budget Items"
+                description="Add account-level amounts and codes for the requested project budget."
+                icon={CircleDollarSign}
+                action={
+                  <Button size="sm" className="h-10 rounded-xl shadow-sm">
                     <Plus className="h-4 w-4" />
                     Add Budget Item
                   </Button>
-                </div>
-
-                <div className="rounded-xl border border-[var(--border)] overflow-hidden">
+                }
+              >
+                <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white shadow-inner dark:border-white/10 dark:bg-[#0F172A]/20">
                   <table className="w-full text-sm">
-                    <thead className="bg-[#F8FAFC] border-b border-[#EAF0F6] hidden md:table-header-group dark:bg-[#0F172A]/20 dark:border-white/10">
+                    <thead className="hidden border-b border-[#EAF0F6] bg-[#F8FAFC] md:table-header-group dark:border-white/10 dark:bg-[#0F172A]/20">
                       <tr>
                         {['Account Name', 'Classification (L1/L2/L3)', 'EBS/Fusion Code / Expense Type', 'Budget Requested'].map((h) => (
-                          <th key={h} className="whitespace-nowrap text-start py-3 px-4 text-xs font-semibold text-[#64748B] dark:text-slate-200 uppercase tracking-wide">{h}</th>
+                          <th key={h} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td colSpan={4} className="py-12 text-center px-4">
-                          <div className="mx-auto w-12 h-12 rounded-full bg-[#EEF3F8] flex items-center justify-center mb-2">
-                            <Plus className="h-5 w-5 text-[#94A3B8]" />
+                        <td colSpan={4} className="px-4 py-12 text-center">
+                          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-[#E9F4FF]">
+                            <Plus className="h-6 w-6 text-[var(--primary)]" />
                           </div>
-                          <p className="text-sm text-[#475569] font-medium">No budget items added</p>
-                          <p className="text-xs text-[#94A3B8] mt-1">Click Add Budget Item or use copilot mode</p>
+                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">No budget items added yet</p>
+                          <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">Add a row manually or switch to Copilot and let AI draft the line items.</p>
                         </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-              </section>
-            </CardContent>
-          </Card>
+              </FormSection>
+          </div>
 
-          <Card className="rounded-2xl border-[#DCE6F1] shadow-sm">
+          <Card className="overflow-hidden rounded-2xl border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
             <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-[var(--foreground)]">Documents</h3>
-                <Button variant="outline" size="sm" className="rounded-xl">
+              <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
+                    <Upload className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[var(--foreground)]">Documents</h3>
+                    <p className="text-sm text-[var(--muted-foreground)]">Attach business cases, cost sheets, quotations, or technical evidence.</p>
+                  </div>
+                </div>
+                <Button variant="outline" size="sm" className="h-10 rounded-xl border-[#DDEBFF] bg-white shadow-sm">
                   <Upload className="h-4 w-4" />Upload Document
                 </Button>
               </div>
-              <div className="rounded-xl border-2 border-dashed border-[var(--border)] p-8 text-center hover:border-[var(--primary)] transition-colors cursor-pointer">
-                <Upload className="h-8 w-8 text-[#94A3B8] mx-auto mb-2" />
-                <p className="text-sm font-medium text-[#475569]">Drop files here or click to upload</p>
-                <p className="text-xs text-[#94A3B8] mt-1">PDF, DOCX, XLSX supported</p>
+              <div className="group rounded-xl border-2 border-dashed border-[#BFD8FF] bg-[#F8FBFF] p-8 text-center transition-colors hover:border-[var(--primary)] dark:bg-white/5">
+                <Upload className="mx-auto mb-3 h-9 w-9 text-[var(--primary)] transition-transform group-hover:-translate-y-1" />
+                <p className="text-sm font-bold text-[#0F172A] dark:text-white">Drop files here or click to upload</p>
+                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">PDF, DOCX, XLSX supported</p>
               </div>
             </CardContent>
           </Card>
 
-          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
-            <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
-              <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
-              <Button variant="outline" className="w-full sm:w-auto">Save Draft</Button>
-              <Button className="w-full sm:w-auto" onClick={() => setSubmitConfirmOpen(true)}>Submit for Review</Button>
+          <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B] sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
+                <CheckCircle2 className="h-5 w-5 text-[var(--primary)]" />
+                <span>Draft autosave-ready. Submit when required fields and documents are complete.</span>
+              </div>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+                <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
+                <Button variant="outline" className="w-full rounded-xl sm:w-auto">Save Draft</Button>
+                <Button className="w-full rounded-xl shadow-sm sm:w-auto" onClick={() => setSubmitConfirmOpen(true)}>Submit for Review</Button>
+              </div>
             </div>
           </div>
         </>
       ) : (
-        <div className="ai-panel rounded-2xl overflow-hidden flex flex-col shadow-sm" style={{ minHeight: '560px' }}>
-          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-white/55 dark:bg-[#0F172A]/20 backdrop-blur-sm">
+        <div className="sticky top-6 flex h-[calc(100vh-180px)] w-full flex-col overflow-hidden rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white shadow-md dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
+          <div className="flex items-center justify-between border-b border-[#B0DBFF] bg-gradient-to-r from-[#286CFF]/5 to-transparent px-5 py-4 dark:border-white/10">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--ai-accent)]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-lg shadow-blue-200 dark:shadow-none">
                 <Sparkles className="h-5 w-5 text-white" />
               </div>
               <div>
-                <p className="font-semibold text-[var(--ai-accent)]">Budget Copilot</p>
-                <p className="text-xs text-[var(--muted-foreground)]">Interactive AI Assistant</p>
+                <h3 className="font-semibold text-slate-900 dark:text-white">Budget Copilot</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-300">Interactive AI Assistant</p>
               </div>
             </div>
-            <button className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] flex items-center gap-1">
-              <X className="h-3.5 w-3.5" />Clear
+            <button className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-transparent px-3 text-sm font-medium text-slate-500 transition-colors hover:bg-[#E7F5FF] hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:text-slate-200 dark:hover:bg-white/10">
+              <RefreshCw className="mr-1 h-4 w-4" />
+              Clear
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-transparent">
-            {chatMessages.map((msg, i) => (
-              <div key={i} className={cn('flex', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
-                {msg.from === 'ai' && (
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--ai-accent)] mr-3 mt-0.5">
-                    <Sparkles className="h-3.5 w-3.5 text-white" />
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    'max-w-sm rounded-xl px-4 py-3 text-sm whitespace-pre-line',
-                    msg.from === 'ai'
-                      ? 'bg-white/85 dark:bg-[#1E293B] text-[var(--foreground)] border border-[var(--border)] dark:border-white/10 shadow-sm'
-                      : 'bg-[var(--primary)] text-white'
-                  )}
-                >
-                  {msg.text}
-                </div>
-              </div>
-            ))}
-
-            {!optionSelected && (
-              <div className="ml-10 space-y-2">
-                {COPILOT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.label}
-                    onClick={() => handleOptionSelect(opt.label)}
-                    className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-white/80 dark:bg-[#1E293B] px-4 py-3 text-left hover:border-[var(--ai-accent)] dark:border-white/10 transition-colors shadow-sm"
-                  >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--muted)] text-[11px] font-semibold text-[var(--ai-accent)]">{opt.icon}</span>
-                    <div>
-                      <p className="text-sm font-medium text-[var(--foreground)]">{opt.label}</p>
-                      <p className="text-xs text-[var(--muted-foreground)]">{opt.sub}</p>
+          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={cn('flex gap-3', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
+                  {msg.from === 'ai' && (
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-xs text-white shadow-md">
+                      <Zap className="h-4 w-4 text-white" />
                     </div>
-                  </button>
-                ))}
-              </div>
-            )}
+                  )}
+                  <div className="max-w-[90%] space-y-3">
+                    <div
+                      className={cn(
+                        'rounded-2xl px-4 py-3 text-sm shadow-sm',
+                        msg.from === 'ai'
+                          ? 'rounded-tl-none border border-slate-200 bg-white text-slate-800 dark:border-white/10 dark:bg-[#1E293B] dark:text-white'
+                          : 'rounded-tr-none bg-[#286CFF] text-white'
+                      )}
+                    >
+                      <p className="whitespace-pre-line">{msg.text}</p>
+                    </div>
+                    {msg.from === 'ai' && i === 1 && !optionSelected && (
+                      <div className="space-y-2">
+                        {COPILOT_OPTIONS.map((opt) => {
+                          const Icon = opt.icon
+                          return (
+                            <button
+                              key={opt.label}
+                              onClick={() => handleOptionSelect(opt.label)}
+                              className="group w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-[#286CFF] hover:bg-blue-50/30 dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-[#24344E]"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#E7F5FF] transition-colors group-hover:bg-[#286CFF]">
+                                  <Icon className="h-5 w-5 text-[#286CFF] group-hover:text-white" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-slate-800 group-hover:text-[#286CFF] dark:text-white">{opt.label}</p>
+                                  <p className="text-xs text-slate-500 dark:text-slate-300">{opt.sub}</p>
+                                </div>
+                                <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-[#286CFF]" />
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
           </div>
 
-          <div className="border-t border-[var(--border)] px-5 py-4 bg-white/55 dark:bg-[#0F172A]/20 backdrop-blur-sm">
-            <div className="flex gap-3">
+          <div className="px-5 pb-5">
+            <input accept=".pdf,.docx,.xlsx" className="hidden" multiple type="file" />
+            <div className="flex gap-2">
               <input
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Describe your project or ask a question..."
-                className="flex-1 h-10 rounded-xl border border-[var(--border)] dark:border-white/10 bg-white/85 dark:bg-[#1E293B] px-4 text-sm text-[var(--foreground)] placeholder:text-[#94A3B8] dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[var(--ai-accent)]"
+                className="h-9 min-w-0 flex-1 rounded-xl border border-[#B0DBFF] bg-white px-3 py-1 text-base shadow-sm outline-none transition-[color,box-shadow] placeholder:text-slate-400 focus:border-[#286CFF] focus:ring-2 focus:ring-[#286CFF]/10 dark:border-white/10 dark:bg-[#0F172A]/35 dark:text-white dark:placeholder:text-slate-500 md:text-sm"
               />
               <button
                 onClick={handleSend}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--ai-accent)] text-white hover:brightness-110 transition-colors"
+                disabled={!chatInput.trim()}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-transparent bg-gradient-to-r from-[#286CFF] to-[#4F98FF] p-0 text-white shadow-md transition-colors hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#002DC2] focus-visible:ring-offset-2"
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 text-white" />
               </button>
             </div>
-            <p className="text-xs text-[var(--ai-accent)]/70 mt-2 text-center">Try: "Cloud migration project for 2M starting Q1 2026"</p>
+            <p className="mt-2 text-center text-xs text-slate-400 dark:text-slate-300">Try: "Cloud migration project for AED 2M starting Q1 2026"</p>
           </div>
         </div>
       )}
@@ -382,7 +466,3 @@ export default function NewProject() {
     </div>
   )
 }
-
-
-
-

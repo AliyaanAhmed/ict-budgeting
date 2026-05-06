@@ -12,7 +12,6 @@ import {
   CopyPlus,
   FolderOpen,
   Info,
-  Layers3,
   MessageSquareMore,
   MoveRight,
   Radar,
@@ -123,14 +122,14 @@ function MetricCard({
   return (
     <div
       className={cn(
-        'group overflow-hidden rounded-[24px] border bg-[linear-gradient(180deg,#FFFFFF_0%,#F8FBFF_100%)] p-5 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,#FFFFFF_0%,#F1F7FF_100%)] hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:bg-[#18263F] dark:hover:bg-[#1D2D48] dark:hover:shadow-[0_14px_30px_rgba(2,8,23,0.32)]',
+        'group overflow-hidden rounded-[24px] border bg-white p-5 transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,#FFFFFF_0%,#F1F7FF_100%)] hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)] dark:bg-[#18263F] dark:hover:bg-[#1D2D48] dark:hover:shadow-[0_14px_30px_rgba(2,8,23,0.32)]',
         className
       )}
       style={{ borderColor: `${accent}3D` }}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B] dark:text-slate-100">
+          <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">
             {title}
           </p>
           <div className="mt-4 text-[34px] font-bold leading-none text-[#0F172A] dark:text-white">
@@ -149,7 +148,7 @@ function MetricCard({
       </div>
       <div className="mt-5">
         <span
-          className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
           style={{
             backgroundColor: `${accent}14`,
             color: accent,
@@ -322,11 +321,11 @@ export default function RespondentDashboard() {
       <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-[0_28px_80px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
         <div className="absolute -left-10 top-0 h-36 w-36 rounded-full bg-[#286CFF]/10 blur-3xl dark:bg-[#286CFF]/20" />
         <div className="absolute right-0 top-8 h-40 w-40 rounded-full bg-[#22C55E]/10 blur-3xl dark:bg-[#22C55E]/10" />
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#CFE0FF] bg-white/75 px-3 py-1 text-xs font-semibold text-[#286CFF] backdrop-blur dark:border-[#4F98FF]/30 dark:bg-white/5 dark:text-[#9FC4FF]">
               <Sparkles className="h-3.5 w-3.5" />
-              Respondent workspace
+              Respondent Workspace
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
               Budget planning with sharper signals, cleaner decisions, and faster follow-through.
@@ -345,36 +344,8 @@ export default function RespondentDashboard() {
               </span>
             </div>
           </div>
-
-          <div className="grid w-full gap-3 rounded-[26px] border border-white/70 bg-white/80 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] backdrop-blur dark:border-white/10 dark:bg-white/5 xl:max-w-[360px]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B] dark:text-slate-100">
-                  Submission pulse
-                </p>
-                <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">
-                  {submittedToReviewer + submittedToApprover + respondentActive}
-                </p>
-              </div>
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#286CFF]/10 text-[#286CFF] dark:bg-[#286CFF]/20 dark:text-white">
-                <Layers3 className="h-5 w-5" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-2xl bg-[#F8FAFC] px-3 py-2 dark:bg-white/5">
-                <p className="text-[#64748B] dark:text-slate-100">Reviewer</p>
-                <p className="mt-1 font-bold text-[#0F172A] dark:text-white">{submittedToReviewer}</p>
-              </div>
-              <div className="rounded-2xl bg-[#F8FAFC] px-3 py-2 dark:bg-white/5">
-                <p className="text-[#64748B] dark:text-slate-100">Approver</p>
-                <p className="mt-1 font-bold text-[#0F172A] dark:text-white">{submittedToApprover}</p>
-              </div>
-              <div className="rounded-2xl bg-[#F8FAFC] px-3 py-2 dark:bg-white/5">
-                <p className="text-[#64748B] dark:text-slate-100">Respondent</p>
-                <p className="mt-1 font-bold text-[#0F172A] dark:text-white">{respondentActive}</p>
-              </div>
-            </div>
-            <Button asChild className="h-11 rounded-2xl shadow-[0_14px_30px_rgba(40,108,255,0.22)]">
+          <div className="flex shrink-0 lg:self-center">
+            <Button asChild className="h-11 w-full rounded-2xl px-6 shadow-[0_14px_30px_rgba(40,108,255,0.22)] sm:w-auto">
               <Link to="/respondent/projects/new">
                 Start New Project
                 <ArrowRight className="h-4 w-4" />
@@ -386,47 +357,47 @@ export default function RespondentDashboard() {
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard
-          title="Requested budgets"
+          title="Requested Budgets"
           value={<CompactAmount amount={totalBudget} />}
           accent={dashboardPalette.techBlue}
-          badge="AED total"
+          badge="AED Total"
           icon={<BadgeDollarSign className="h-5 w-5" />}
           className="xl:shadow-[0_10px_24px_rgba(40,108,255,0.08)]"
         />
         <MetricCard
-          title="Last year requested"
+          title="Last Year Requested"
           value={<CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.slate} />}
           accent={dashboardPalette.slate}
-          badge="FY2025 baseline"
+          badge="FY2025 Baseline"
           icon={<TrendingUp className="h-5 w-5" />}
           className="shadow-none"
         />
         <MetricCard
-          title="AI predicted approval"
+          title="AI Predicted Approval"
           value={<CompactAmount amount={predictedBudget} iconColor="#0F9D7A" />}
           accent="#0F9D7A"
-          badge="AI estimate"
+          badge="AI Estimate"
           icon={<BrainCircuit className="h-5 w-5" />}
           className="xl:shadow-[0_10px_24px_rgba(15,157,122,0.08)]"
         />
         <MetricCard
-          title="Submitted to review"
+          title="Submitted to Review"
           value={submittedToReviewer}
           accent={dashboardPalette.seaBlue}
-          badge="In review"
+          badge="In Review"
           icon={<Radar className="h-5 w-5" />}
           className="shadow-none"
         />
         <MetricCard
-          title="Needs work / draft"
+          title="Needs Work / Draft"
           value={needsWork}
           accent={dashboardPalette.camelYellow}
-          badge="Action needed"
+          badge="Action Needed"
           icon={<TrendingDown className="h-5 w-5" />}
           className="shadow-none"
         />
         <MetricCard
-          title="Clarification required"
+          title="Clarification Required"
           value={clarificationRequired}
           accent={dashboardPalette.aeRed}
           badge="Urgent"
@@ -510,8 +481,8 @@ export default function RespondentDashboard() {
             </div>
 
             <div className="mt-5 border-t border-[#F3D8DD] pt-5 dark:border-white/10">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7C3AED] dark:text-[#DAC0FF]">
-                Recommended next actions
+              <p className="text-xs font-semibold tracking-[0.06em] text-[#7C3AED] dark:text-[#DAC0FF]">
+                Recommended Next Actions
               </p>
               <div className="mt-3 grid gap-2 text-sm text-[#475569] dark:text-slate-100">
                 {[
@@ -531,7 +502,7 @@ export default function RespondentDashboard() {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
           title="Projects that were returned to the respondent for clarification and need response."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] shadow-none dark:border-white/10 dark:bg-[#162339]"
@@ -565,12 +536,12 @@ export default function RespondentDashboard() {
                         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FFF4E5] text-xs font-bold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
                           {index + 1}
                         </span>
-                        <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
+                        <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm text-[#64748B] dark:text-slate-100">
                         {project.clarifications.find((item) => item.status === 'Pending')?.message || project.summary}
                       </p>
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#64748B] dark:text-slate-100">
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
                         <span className="inline-flex items-center rounded-full bg-[#FFF4E5] px-2.5 py-1 font-semibold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
                           Clarification needed
                         </span>
@@ -637,7 +608,7 @@ export default function RespondentDashboard() {
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-100">Total</span>
+                  <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Total</span>
                   <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
                 </div>
               </div>
@@ -784,7 +755,7 @@ export default function RespondentDashboard() {
                 { label: 'Needs Attention', value: attentionCount, tone: dashboardStatusColors.clarification },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 backdrop-blur dark:border-white/10 dark:bg-[#20314D]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-100">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                     {item.label}
                   </p>
                   <div className="mt-2 flex items-center gap-2">
@@ -801,7 +772,7 @@ export default function RespondentDashboard() {
                   <Sparkles className="h-4.5 w-4.5" />
                 </div>
                 <div>
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Suggested next move</p>
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Suggested Next Move</p>
                   <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
                     Resolve {attentionCount} active blocker{attentionCount === 1 ? '' : 's'} before the next submission window to improve approval odds and reduce back-and-forth.
                   </p>
@@ -812,8 +783,8 @@ export default function RespondentDashboard() {
             <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-[#F6FAFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4.5 w-4.5 text-[var(--ai-accent)]" />
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ai-accent)]">
-                  Recommended next actions
+                <p className="text-xs font-semibold tracking-[0.06em] text-[var(--ai-accent)]">
+                  Recommended Next Actions
                 </p>
               </div>
               <div className="mt-3 grid gap-2">
@@ -936,7 +907,7 @@ export default function RespondentDashboard() {
                     { label: 'Approved now', value: approved },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl bg-white/80 px-3 py-3 text-center dark:bg-white/5">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-100">
+                      <p className="text-[11px] font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                         {item.label}
                       </p>
                       <p className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">{item.value}</p>

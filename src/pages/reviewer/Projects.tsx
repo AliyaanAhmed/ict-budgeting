@@ -12,6 +12,50 @@ import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 
 type FilterTab = 'all' | 'pending-review' | 'clarification' | 'submitted-approver'
 
+function ProjectCard({ project }: { project: (typeof projects)[number] }) {
+  return (
+    <article className="group overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_18px_40px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="p-4">
+        <div className="mb-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs text-[#94A3B8]">{project.id}</span>
+            <StatusBadge status={project.status} />
+            <RiskBadge risk={project.riskLevel} />
+          </div>
+          <Link to={`/reviewer/review-queue/${project.id}`} className="line-clamp-2 text-base font-bold text-[#0F172A] transition-colors group-hover:text-[#286CFF] dark:text-white">
+            {project.name}
+          </Link>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Strategic Priority</p>
+          <p className="mt-1 text-sm font-medium text-[#0F172A] dark:text-white">{project.strategicPriority}</p>
+          <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">{project.classification} / {project.workStream}</p>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <CurrencyAmount amount={project.requestedBudget} className="text-sm font-bold text-[#0F172A] dark:text-white" />
+          </div>
+          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+            <p className="text-xs text-[#64748B] dark:text-slate-200">AI Score</p>
+            <p className="text-sm font-bold text-[#286CFF]">{project.aiScore}%</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-[#EAF0F6] pt-3 dark:border-white/10">
+          <span className="truncate text-xs text-[#64748B] dark:text-slate-200">By {project.submittedBy}</span>
+          <Link to={`/reviewer/review-queue/${project.id}`} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#286CFF] transition-colors hover:bg-[#E7F5FF]">
+            <Eye className="h-3.5 w-3.5" />
+            Review
+          </Link>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export default function ReviewerProjects() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
@@ -69,7 +113,7 @@ export default function ReviewerProjects() {
         >
           <Sparkles className="h-4 w-4 text-[var(--ai-accent)]" />
           <span className="ai-panel-title">AI Portfolio Summary</span>
-          <span className="text-xs text-[#D946EF]">• High Portfolio Risk • {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} need attention</span>
+          <span className="text-xs text-[#D946EF]">â€¢ High Portfolio Risk â€¢ {projects.filter(p => p.aiScore < 75 || p.riskLevel === 'High').length} need attention</span>
           <ChevronDown className={cn('h-4 w-4 text-[var(--primary)] ml-auto transition-transform', aiExpanded && 'rotate-180')} />
         </button>
         {aiExpanded && (
@@ -110,31 +154,13 @@ export default function ReviewerProjects() {
         </div>
       </div>
 
-      <div className="rounded-[12px] border border-[#E2E8F0] dark:border-white/10 bg-white dark:bg-[#1E293B] shadow-sm overflow-hidden">
+      <div className={cn(viewMode === 'table' && 'overflow-hidden rounded-[12px] border border-[#E2E8F0] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]')}>
         {viewMode === 'table' ? (
           <ProjectTable projects={filtered} linkBase="/reviewer/review-queue" showCreatedBy />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (
-              <div key={project.id} className="rounded-[10px] border border-[#E2E8F0] dark:border-white/10 bg-[#F8FAFC] dark:bg-[#0F172A] p-4">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <Link to={`/reviewer/review-queue/${project.id}`} className="font-semibold text-sm text-[#0F172A] dark:text-white hover:text-[var(--primary)] transition-colors">
-                    {project.name}
-                  </Link>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap mb-3">
-                  <StatusBadge status={project.status} />
-                  <RiskBadge risk={project.riskLevel} />
-                </div>
-                <p className="text-xs text-[#475569] dark:text-slate-200 mb-3">{project.strategicPriority} • {project.classification}</p>
-                <div className="flex items-center justify-between">
-                  <CurrencyAmount amount={project.requestedBudget} className="font-semibold text-sm text-[#0F172A] dark:text-white" />
-                  <Link to={`/reviewer/review-queue/${project.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[var(--primary)] hover:underline">
-                    <Eye className="h-3.5 w-3.5" />
-                    Review
-                  </Link>
-                </div>
-              </div>
+              <ProjectCard key={project.id} project={project} />
             ))}
           </div>
         )}
@@ -147,6 +173,8 @@ export default function ReviewerProjects() {
     </div>
   )
 }
+
+
 
 
 

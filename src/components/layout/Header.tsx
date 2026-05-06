@@ -52,12 +52,12 @@ export function Header({ sidebarWidth, isDark, onToggleDark, isRTL, onToggleRTL,
           data-no-translate="true"
           disabled={isTranslating}
           className={cn(
-            'hidden sm:flex h-8 items-center gap-0 rounded-full border border-[var(--border)] overflow-hidden text-xs font-medium transition-opacity',
+            'hidden sm:flex h-8 items-stretch gap-0 rounded-full border border-[var(--border)] overflow-hidden p-0 text-xs font-medium transition-opacity',
             isTranslating && 'opacity-60 cursor-wait'
           )}
         >
-          <span className={cn('px-3 py-1.5 transition-colors', !isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>EN</span>
-          <span className={cn('px-3 py-1.5 transition-colors', isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>AR</span>
+          <span className={cn('flex h-full items-center px-3 transition-colors', !isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>EN</span>
+          <span className={cn('flex h-full items-center px-3 transition-colors', isRTL ? 'bg-[var(--primary)] text-white' : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]')}>AR</span>
         </button>
 
         <button

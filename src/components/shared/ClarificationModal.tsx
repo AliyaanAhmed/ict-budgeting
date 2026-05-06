@@ -45,8 +45,8 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="p-0">
-        <div className="rounded-t-[28px] border-b border-[var(--border)] px-6 py-4 bg-[var(--muted)]">
-          <div className="flex items-center gap-3">
+        <div className="rounded-t-[28px] border-b border-[var(--border)] bg-[var(--muted)] py-4 pl-6 pr-12">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#286CFF] text-white">
               <HelpCircle className="h-5 w-5" />
             </div>
@@ -54,7 +54,7 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
               <p className="text-sm font-semibold text-[var(--foreground)]">Raise Clarification</p>
               <p className="text-xs text-[var(--muted-foreground)] truncate">{projectName}</p>
             </div>
-            <span className="ms-auto inline-flex items-center gap-1 rounded-full bg-white/80 dark:bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#475569] dark:text-slate-200">
+            <span className="ml-0 inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-200 sm:ml-auto">
               <WandSparkles className="h-3 w-3" />
               Quick Action
             </span>
@@ -71,7 +71,7 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
 
           <div className="mt-5 space-y-5">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-white">Quick prompts</p>
+              <p className="mb-2 text-xs font-semibold text-[#64748B] dark:text-white">Quick Prompts</p>
               <div className="flex flex-wrap gap-2">
                 {SUGGESTIONS.map((item) => (
                   <button
@@ -87,7 +87,7 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
             </div>
 
             <div>
-              <label className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-white">
+              <label className="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-[#64748B] dark:text-white">
                 <MessageSquareText className="h-3.5 w-3.5" />
                 Clarification Message
               </label>
