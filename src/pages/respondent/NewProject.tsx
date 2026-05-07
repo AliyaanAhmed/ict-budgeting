@@ -14,7 +14,6 @@ import {
   FolderKanban,
   Layers,
   Package,
-  Plus,
   RefreshCw,
   Send,
   Sparkles,
@@ -42,7 +41,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
+import { BudgetItemsBuilder } from '@/components/shared/BudgetItemsBuilder'
 import { useToast } from '@/context/ToastContext'
+import type { BudgetItemDraft } from '@/domain/classification'
 
 function FormField({
   label,
@@ -244,6 +245,7 @@ const COPILOT_OPTIONS = [
 export default function NewProject() {
   const [mode, setMode] = useState<'manual' | 'ai'>('manual')
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false)
+  const [budgetItems, setBudgetItems] = useState<BudgetItemDraft[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<{ from: 'ai' | 'user'; text: string }[]>([
     { from: 'ai', text: 'Welcome to the Budget Copilot!\n\nBefore we begin, I need to understand a few things about your project to help you better.' },
@@ -410,35 +412,8 @@ export default function NewProject() {
                 title="Budget Items"
                 description="Add account-level amounts and codes for the requested project budget."
                 icon={CircleDollarSign}
-                action={
-                  <Button size="sm" className="h-10 rounded-xl shadow-sm">
-                    <Plus className="h-4 w-4" />
-                    Add Budget Item
-                  </Button>
-                }
               >
-                <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white shadow-inner dark:border-white/10 dark:bg-[#0F172A]/20">
-                  <table className="w-full text-sm">
-                    <thead className="hidden border-b border-[#EAF0F6] bg-[#F8FAFC] md:table-header-group dark:border-white/10 dark:bg-[#0F172A]/20">
-                      <tr>
-                        {['Account Name', 'Classification (L1/L2/L3)', 'EBS/Fusion Code / Expense Type', 'Budget Requested'].map((h) => (
-                          <th key={h} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td colSpan={4} className="px-4 py-12 text-center">
-                          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-[#E9F4FF]">
-                            <Plus className="h-6 w-6 text-[var(--primary)]" />
-                          </div>
-                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">No budget items added yet</p>
-                          <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">Add a row manually or switch to Copilot and let AI draft the line items.</p>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <BudgetItemsBuilder items={budgetItems} onChange={setBudgetItems} />
               </FormSection>
           </div>
 

@@ -6,8 +6,12 @@
 // Models
 export * as AccountsModel from './models/AccountsModel';
 export * as CommonModels from './models/CommonModels';
+export * as Dga_classificationsModel from './models/Dga_classificationsModel';
+export * as Dga_ict_budget_line_itemsModel from './models/Dga_ict_budget_line_itemsModel';
 export * as SystemusersModel from './models/SystemusersModel';
 
 // Services
 export * from './services/AccountsService';
+export * from './services/Dga_classificationsService';
+export * from './services/Dga_ict_budget_line_itemsService';
 export * from './services/SystemusersService';

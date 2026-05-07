@@ -20,6 +20,16 @@
         "accounts": {
           "entitySetName": "accounts",
           "logicalName": "account"
+        },
+        "classifications": {
+          "entitySetName": "dga_classifications",
+          "logicalName": "dga_classification",
+          "isHidden": false
+        },
+        "ictbudgetlineitems": {
+          "entitySetName": "dga_ict_budget_line_items",
+          "logicalName": "dga_ict_budget_line_item",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

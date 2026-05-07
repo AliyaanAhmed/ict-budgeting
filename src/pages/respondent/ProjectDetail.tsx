@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useParams, Link } from 'react-router-dom'
 import {
@@ -52,8 +52,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { ClarificationThread } from '@/components/shared/ClarificationThread'
+import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
+import type { BudgetItemDraft } from '@/domain/classification'
+import {
+  createBudgetLineItems,
+  getBudgetLineItemsByBudgetId,
+  toBudgetItemDraft,
+  updateBudgetLineItemAmount,
+  type BudgetLineItemRecord,
+} from '@/services/budgetLineItemService'
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
@@ -293,6 +302,132 @@ function AiSignal({ label, value, tone = 'blue' }: { label: string; value: strin
   )
 }
 
+function BudgetItemsTable({
+  items,
+  loading,
+  error,
+  editable,
+  savingId,
+  onSaveBudgetRequested,
+}: {
+  items: BudgetLineItemRecord[]
+  loading: boolean
+  error: string | null
+  editable: boolean
+  savingId: string | null
+  onSaveBudgetRequested: (lineItemId: string, amount: number) => Promise<void>
+}) {
+  const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    setDraftAmounts(
+      Object.fromEntries(items.map((item) => [item.id, String(item.budgetRequested)]))
+    )
+  }, [items])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-6 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+        Loading budget line items...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-6 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+        {error}
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-6 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+        No budget line items have been created for this project yet.
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white dark:border-white/10 dark:bg-[#0F172A]/20">
+      <table className="w-full text-sm">
+        <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
+          <tr>
+            {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', editable ? 'Action' : 'Status'].map((header) => (
+              <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const classificationLabel = item.expenseTypeLabel ?? 'Not Set'
+            const isCapex = classificationLabel.toLowerCase() === 'capex'
+            const draftValue = draftAmounts[item.id] ?? String(item.budgetRequested)
+            const parsedAmount = Number(draftValue)
+            const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount >= 0
+            const hasChanged = isValidAmount && parsedAmount !== item.budgetRequested
+            const isSaving = savingId === item.id
+
+            return (
+              <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
+                <td className="block py-2 font-medium text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">{item.accountName}</td>
+                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                  <div className="text-xs text-[#475569] dark:text-slate-200">{item.l1} / {item.l2} / {item.l3}</div>
+                  <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', isCapex ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400')}>
+                    {classificationLabel}
+                  </span>
+                </td>
+                <td className="block py-2 text-xs font-mono text-[#475569] dark:text-slate-200 md:table-cell md:px-4 md:py-3">
+                  EBS {item.ebsCode} / Fusion {item.fusionCode}
+                </td>
+                <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  {editable ? (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={draftValue}
+                      onChange={(event) =>
+                        setDraftAmounts((current) => ({ ...current, [item.id]: event.target.value }))
+                      }
+                      className="h-10 min-w-[170px] rounded-xl border-[#D9E6F7] bg-white text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
+                    />
+                  ) : (
+                    <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                  )}
+                </td>
+                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                  {editable ? (
+                    <Button
+                      size="sm"
+                      className="gap-2 rounded-xl text-white"
+                      style={{ backgroundColor: '#286CFF' }}
+                      disabled={!hasChanged || isSaving}
+                      onClick={() => void onSaveBudgetRequested(item.id, parsedAmount)}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Synced
+                    </span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 // ─── Section registry (used by nav + IntersectionObserver) ───────────────────
 
 const FORM_SECTIONS = [
@@ -413,9 +548,11 @@ function ChangeLogTable() {
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { pathname } = useLocation()
-  const { showSuccessToast } = useToast()
+  const { runActionToast, showErrorToast, showSuccessToast } = useToast()
 
   const project = projects.find((p) => p.id === id) ?? projects[0]
+  const ictBudgetId = project.ictBudgetId ?? null
+  const hasDataverseBudgetProject = Boolean(ictBudgetId && GUID_PATTERN.test(ictBudgetId))
 
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
@@ -454,6 +591,28 @@ export default function ProjectDetail() {
     summary: project.summary,
   })
   const [savedForm, setSavedForm] = useState(editForm)
+  const [budgetModalOpen, setBudgetModalOpen] = useState(false)
+  const [budgetItemsLoading, setBudgetItemsLoading] = useState(false)
+  const [budgetItemsError, setBudgetItemsError] = useState<string | null>(null)
+  const [budgetLineItems, setBudgetLineItems] = useState<BudgetLineItemRecord[]>([])
+  const [savingBudgetLineItemId, setSavingBudgetLineItemId] = useState<string | null>(null)
+
+  const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
+    () =>
+      project.budgetItems.map((item) => ({
+        id: item.id,
+        classificationId: item.id,
+        accountName: item.accountName,
+        l1: item.l1,
+        l2: item.l2,
+        l3: item.l3,
+        expenseTypeLabel: item.classification,
+        ebsCode: item.ebsFusionCode,
+        fusionCode: item.glCode,
+        budgetRequested: item.budgetRequested,
+      })),
+    [project.budgetItems]
+  )
 
   const handleSaveEdit = () => {
     setSavedForm(editForm)
@@ -519,6 +678,105 @@ export default function ProjectDetail() {
   const showClarificationSection = localClarifications.length > 0 || isGovernanceView
 
   // ── Section navigation ───────────────────────────────────────────────────────
+  const displayedBudgetItems = hasDataverseBudgetProject ? budgetLineItems : fallbackBudgetItems
+  const budgetTotal = hasDataverseBudgetProject
+    ? displayedBudgetItems.reduce((total, item) => total + item.budgetRequested, 0)
+    : project.requestedBudget
+  const existingBudgetDrafts = useMemo<BudgetItemDraft[]>(
+    () =>
+      displayedBudgetItems
+        .filter((item) => item.classificationId)
+        .map((item) => toBudgetItemDraft(item)),
+    [displayedBudgetItems]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!hasDataverseBudgetProject) {
+      setBudgetLineItems([])
+      setBudgetItemsError(null)
+      setBudgetItemsLoading(false)
+      return
+    }
+
+    const loadBudgetLineItems = async () => {
+      setBudgetItemsLoading(true)
+      try {
+        const items = await getBudgetLineItemsByBudgetId(ictBudgetId!)
+        if (cancelled) return
+        setBudgetLineItems(items)
+        setBudgetItemsError(null)
+      } catch (error) {
+        if (cancelled) return
+        setBudgetLineItems([])
+        setBudgetItemsError(error instanceof Error ? error.message : 'Unable to load budget line items.')
+      } finally {
+        if (!cancelled) {
+          setBudgetItemsLoading(false)
+        }
+      }
+    }
+
+    void loadBudgetLineItems()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasDataverseBudgetProject, ictBudgetId])
+
+  const handleCreateBudgetItems = async (items: BudgetItemDraft[]) => {
+    if (!hasDataverseBudgetProject) {
+      showErrorToast('Budget items unavailable', 'This project is not linked to a Dataverse ICT budget record.')
+      return
+    }
+
+    const createdItems = await runActionToast(
+      async () => {
+        await createBudgetLineItems(ictBudgetId!, items)
+        const refreshedItems = await getBudgetLineItemsByBudgetId(ictBudgetId!)
+        setBudgetLineItems(refreshedItems)
+        setBudgetItemsError(null)
+        return refreshedItems
+      },
+      {
+        processingTitle: 'Creating budget line items',
+        processingDescription: 'Saving the selected GL codes and refreshing the budget grid.',
+        successTitle: 'Budget line items created',
+        successDescription: `${items.length} budget line item${items.length > 1 ? 's were' : ' was'} added successfully.`,
+        errorTitle: 'Unable to create budget line items',
+      }
+    )
+
+    setBudgetLineItems(createdItems)
+  }
+
+  const handleSaveBudgetRequested = async (lineItemId: string, amount: number) => {
+    setSavingBudgetLineItemId(lineItemId)
+    try {
+      await runActionToast(
+        async () => {
+          await updateBudgetLineItemAmount(lineItemId, amount)
+          setBudgetLineItems((current) =>
+            current.map((item) =>
+              item.id === lineItemId ? { ...item, budgetRequested: amount } : item
+            )
+          )
+        },
+        {
+          processingTitle: 'Updating requested budget',
+          processingDescription: 'Saving the requested budget amount for this line item.',
+          successTitle: 'Requested budget updated',
+          successDescription: 'The line item amount was updated successfully.',
+          errorTitle: 'Unable to update requested budget',
+          minDurationMs: 1800,
+        }
+      )
+    } finally {
+      setSavingBudgetLineItemId(null)
+    }
+  }
+
   const visibleSectionIds = [
     'sec-details',
     'sec-timelines',
@@ -851,52 +1109,35 @@ export default function ProjectDetail() {
                 </EditField>
               </DetailSection>
 
-              {/* Budget items and documents remain read-only in edit mode */}
+              {/* Budget line items are editable through the classification picker modal */}
               <DetailSection
                 title="Budget Type & Amounts"
                 id="sec-budget"
-                description="Account-level spend breakdown — read-only in edit mode."
+                description="Create and review project budget line items from the classification hierarchy."
                 icon={WalletCards}
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
-                    <CurrencyAmount amount={project.requestedBudget} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
+                    <CurrencyAmount amount={budgetTotal} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
                   </div>
                 }
               >
-                <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white dark:border-white/10 dark:bg-[#0F172A]/20">
-                  <table className="w-full text-sm">
-                    <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
-                      <tr>
-                        {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'AI Check'].map((h) => (
-                          <th key={h} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {project.budgetItems.map((item) => (
-                        <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
-                          <td className="block py-2 font-medium text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">{item.accountName}</td>
-                          <td className="block py-2 md:table-cell md:px-4 md:py-3">
-                            <div className="text-xs text-[#475569] dark:text-slate-200">{item.l1} / {item.l2} / {item.l3}</div>
-                            <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', item.classification === 'CapEx' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400')}>
-                              {item.classification}
-                            </span>
-                          </td>
-                          <td className="block py-2 text-xs font-mono text-[#475569] dark:text-slate-200 md:table-cell md:px-4 md:py-3">{item.glCode} / {item.ebsFusionCode}</td>
-                          <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                            <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
-                          </td>
-                          <td className="block py-2 md:table-cell md:px-4 md:py-3">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Aligned
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {hasDataverseBudgetProject && (
+                  <div className="mb-4 flex justify-end">
+                    <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
+                      <Layers className="h-4 w-4" />
+                      Add Budget Item
+                    </Button>
+                  </div>
+                )}
+                <BudgetItemsTable
+                  items={displayedBudgetItems}
+                  loading={budgetItemsLoading}
+                  error={budgetItemsError}
+                  editable
+                  savingId={savingBudgetLineItemId}
+                  onSaveBudgetRequested={handleSaveBudgetRequested}
+                />
               </DetailSection>
 
               {/* Clarifications section always visible in edit mode (respondent can reply) */}
@@ -966,43 +1207,18 @@ export default function ProjectDetail() {
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
-                    <CurrencyAmount amount={project.requestedBudget} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
+                    <CurrencyAmount amount={budgetTotal} full className="text-xl font-bold text-[#286CFF]" iconSize={18} />
                   </div>
                 }
               >
-                <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white dark:border-white/10 dark:bg-[#0F172A]/20">
-                  <table className="w-full text-sm">
-                    <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
-                      <tr>
-                        {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'AI Check'].map((h) => (
-                          <th key={h} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {project.budgetItems.map((item) => (
-                        <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
-                          <td className="block py-2 font-medium text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">{item.accountName}</td>
-                          <td className="block py-2 md:table-cell md:px-4 md:py-3">
-                            <div className="text-xs text-[#475569] dark:text-slate-200">{item.l1} / {item.l2} / {item.l3}</div>
-                            <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', item.classification === 'CapEx' ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400')}>
-                              {item.classification}
-                            </span>
-                          </td>
-                          <td className="block py-2 text-xs font-mono text-[#475569] dark:text-slate-200 md:table-cell md:px-4 md:py-3">{item.glCode} / {item.ebsFusionCode}</td>
-                          <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                            <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
-                          </td>
-                          <td className="block py-2 md:table-cell md:px-4 md:py-3">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Aligned
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <BudgetItemsTable
+                  items={displayedBudgetItems}
+                  loading={budgetItemsLoading}
+                  error={budgetItemsError}
+                  editable={false}
+                  savingId={savingBudgetLineItemId}
+                  onSaveBudgetRequested={handleSaveBudgetRequested}
+                />
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
@@ -1169,6 +1385,12 @@ export default function ProjectDetail() {
       </div>
 
       {/* Clarification raise modal */}
+      <ClassificationPickerModal
+        open={budgetModalOpen}
+        onOpenChange={setBudgetModalOpen}
+        existingItems={existingBudgetDrafts}
+        onCreate={handleCreateBudgetItems}
+      />
       <ClarificationModal
         open={clarificationModalOpen}
         onOpenChange={setClarificationModalOpen}

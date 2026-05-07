@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ArrowDownAZ, ArrowUpAZ, Check, Clock, Eye, Filter, Minus, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Minus, Search, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '@/data/db'
 import { cn } from '@/lib/utils'
@@ -10,7 +10,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
@@ -91,23 +90,51 @@ function matchesFilter<T>(row: T, column: ColumnDefinition<T>, filter: ColumnFil
   return rowValue.includes(filterValue)
 }
 
+function SortButton({
+  columnId,
+  columnHeader,
+  sort,
+  onSortChange,
+}: {
+  columnId: string
+  columnHeader: string
+  sort?: SortState
+  onSortChange: (direction: SortDirection) => void
+}) {
+  const isActive = sort?.columnId === columnId
+  const direction = isActive ? sort.direction : undefined
+  const Icon = direction === 'asc' ? ArrowUpAZ : direction === 'desc' ? ArrowDownAZ : ArrowUpDown
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSortChange(direction === 'asc' ? 'desc' : 'asc')}
+      className={cn(
+        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors',
+        isActive
+          ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
+          : 'border-transparent text-[#94A3B8] hover:border-[#B0DBFF] hover:bg-[#E7F5FF] hover:text-[#286CFF]'
+      )}
+      aria-label={`Sort ${columnHeader}`}
+      title={isActive ? `Sorted ${direction === 'asc' ? 'ascending' : 'descending'}` : `Sort ${columnHeader}`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+    </button>
+  )
+}
+
 function ColumnFilterMenu<T>({
   column,
   filter,
-  sort,
   onFilterChange,
-  onSortChange,
   onClear,
 }: {
   column: ColumnDefinition<T>
   filter?: ColumnFilter
-  sort?: SortState
   onFilterChange: (filter: ColumnFilter) => void
-  onSortChange: (direction: SortDirection) => void
   onClear: () => void
 }) {
-  const isActive = Boolean(filter?.value || filter?.option || sort?.columnId === column.id)
-  const selectedSort = sort?.columnId === column.id ? sort.direction : undefined
+  const isActive = Boolean(filter?.value || filter?.option)
   const currentFilter = filter ?? {}
   const textOperator = (currentFilter.operator as TextOperator | undefined) ?? 'contains'
   const numberOperator = (currentFilter.operator as NumberOperator | undefined) ?? 'equals'
@@ -128,145 +155,140 @@ function ColumnFilterMenu<T>({
           <Filter className="h-3.5 w-3.5" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-72 p-3">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <DropdownMenuLabel className="p-0 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-              {column.header}
-            </DropdownMenuLabel>
-            <p className="mt-1 text-xs text-[#94A3B8]">Column filter</p>
+      <DropdownMenuContent align="start" className="w-56 rounded-xl border-[#DCE6F1] p-0 shadow-[0_12px_24px_rgba(15,23,42,0.08)]">
+        <div className="border-b border-[#EEF3F8] px-3 py-2.5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <DropdownMenuLabel className="p-0 text-xs font-semibold text-[#0F172A]">
+                Filter {column.header}
+              </DropdownMenuLabel>
+              <p className="mt-0.5 text-[11px] text-[#64748B]">
+                {column.type === 'text' && 'Choose operator and value'}
+                {column.type === 'number' && 'Filter numeric values'}
+                {column.type === 'option' && 'Select one value'}
+              </p>
+            </div>
+            {isActive && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+                aria-label={`Clear ${column.header} filter`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
-          {isActive && (
-            <button
-              type="button"
-              onClick={onClear}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[#64748B] transition-colors hover:bg-[#F1F5F9] hover:text-[#0F172A]"
-              aria-label={`Clear ${column.header} filter`}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => onSortChange('asc')}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors',
-              selectedSort === 'asc'
-                ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
-                : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-            )}
-          >
-            <ArrowUpAZ className="h-3.5 w-3.5" />
-            Asc
-          </button>
-          <button
-            type="button"
-            onClick={() => onSortChange('desc')}
-            className={cn(
-              'inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors',
-              selectedSort === 'desc'
-                ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
-                : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-            )}
-          >
-            <ArrowDownAZ className="h-3.5 w-3.5" />
-            Desc
-          </button>
-        </div>
-
-        {column.type !== 'option' && (
-          <>
-            <DropdownMenuSeparator className="my-3" />
+        <div className="space-y-2.5 p-3">
+          {column.type !== 'option' && (
             <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                {column.type === 'text' ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onFilterChange({ ...currentFilter, operator: 'contains' })}
-                      className={cn(
-                        'rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors',
-                        textOperator === 'contains'
-                          ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
-                          : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-                      )}
-                    >
-                      Contains
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onFilterChange({ ...currentFilter, operator: 'equals' })}
-                      className={cn(
-                        'rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors',
-                        textOperator === 'equals'
-                          ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
-                          : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]'
-                      )}
-                    >
-                      Equals
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {[
-                      ['equals', 'Equals'],
-                      ['greaterThan', 'Greater'],
-                      ['lessThan', 'Less'],
-                    ].map(([operator, label]) => (
+              <div className="rounded-lg bg-[#F8FAFC] p-1">
+                <div className={cn('grid gap-1', column.type === 'number' ? 'grid-cols-3' : 'grid-cols-2')}>
+                  {column.type === 'text' ? (
+                    <>
                       <button
-                        key={operator}
                         type="button"
-                        onClick={() => onFilterChange({ ...currentFilter, operator: operator as NumberOperator })}
+                        onClick={() => onFilterChange({ ...currentFilter, operator: 'contains' })}
                         className={cn(
-                          'rounded-lg border px-2.5 py-2 text-xs font-semibold transition-colors',
-                          numberOperator === operator
-                            ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
-                            : 'border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F8FAFC]',
-                          operator === 'lessThan' && 'col-span-2'
+                          'rounded-lg px-2 py-1.5 text-[10px] font-semibold transition-colors',
+                          textOperator === 'contains'
+                            ? 'bg-white text-[#286CFF] shadow-sm'
+                            : 'text-[#64748B] hover:text-[#0F172A]'
                         )}
                       >
-                        {label}
+                        Contains
                       </button>
-                    ))}
-                  </>
-                )}
-              </div>
-              <Input
-                value={currentFilter.value ?? ''}
-                onChange={(event) => onFilterChange({ ...currentFilter, value: event.target.value })}
-                placeholder={column.type === 'number' ? 'Enter value' : `Filter ${column.header}`}
-                className="h-9 text-sm"
-              />
-            </div>
-          </>
-        )}
-
-        {column.type === 'option' && (
-          <>
-            <DropdownMenuSeparator className="my-3" />
-            <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
-              {(column.options ?? []).map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => onFilterChange({ option })}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-                    currentFilter.option === option
-                      ? 'bg-[#E7F5FF] font-semibold text-[#286CFF]'
-                      : 'text-[#475569] hover:bg-[#F8FAFC]'
+                      <button
+                        type="button"
+                        onClick={() => onFilterChange({ ...currentFilter, operator: 'equals' })}
+                        className={cn(
+                          'rounded-lg px-2 py-1.5 text-[10px] font-semibold transition-colors',
+                          textOperator === 'equals'
+                            ? 'bg-white text-[#286CFF] shadow-sm'
+                            : 'text-[#64748B] hover:text-[#0F172A]'
+                        )}
+                      >
+                        Equals To
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {[
+                        ['equals', 'Equals'],
+                        ['greaterThan', 'Greater'],
+                        ['lessThan', 'Less'],
+                      ].map(([operator, label]) => (
+                        <button
+                          key={operator}
+                          type="button"
+                          onClick={() => onFilterChange({ ...currentFilter, operator: operator as NumberOperator })}
+                          className={cn(
+                            'rounded-lg px-1.5 py-1.5 text-[10px] font-semibold transition-colors',
+                            numberOperator === operator
+                              ? 'bg-white text-[#286CFF] shadow-sm'
+                              : 'text-[#64748B] hover:text-[#0F172A]'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </>
                   )}
-                >
-                  <span className="truncate">{option}</span>
-                  {currentFilter.option === option && <Check className="h-3.5 w-3.5" />}
-                </button>
-              ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#94A3B8]" />
+                <Input
+                  value={currentFilter.value ?? ''}
+                  onChange={(event) => onFilterChange({ ...currentFilter, value: event.target.value })}
+                  placeholder={column.type === 'number' ? 'Enter amount' : `Enter ${column.header.toLowerCase()}`}
+                  className="h-8 rounded-lg border-[#DCE6F1] pl-8 text-xs shadow-none"
+                />
+              </div>
             </div>
-          </>
-        )}
+          )}
+
+          {column.type === 'option' && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">
+                Options
+              </p>
+              <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
+                {(column.options ?? []).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => onFilterChange({ option })}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-lg border px-2.5 py-1.5 text-left text-xs transition-colors',
+                      currentFilter.option === option
+                        ? 'border-[#B0DBFF] bg-[#E7F5FF] font-semibold text-[#286CFF]'
+                        : 'border-transparent text-[#475569] hover:border-[#E2E8F0] hover:bg-[#F8FAFC]'
+                    )}
+                  >
+                    <span className="truncate">{option}</span>
+                    {currentFilter.option === option && <Check className="h-3.5 w-3.5" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t border-[#EEF3F8] pt-2">
+            <p className="text-[10px] text-[#94A3B8]">
+              {isActive ? 'Filter applied to this column' : 'No filter applied'}
+            </p>
+            {isActive && (
+              <Button variant="outline" size="sm" onClick={onClear}>
+                <X className="h-3 w-3" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -420,7 +442,6 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
       delete next[columnId]
       return next
     })
-    setSort((current) => (current?.columnId === columnId ? undefined : current))
   }
 
   return (
@@ -439,14 +460,20 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
                 <div className="flex items-center gap-2">
                   <span>{column.header}</span>
                   {column.filterable !== false && (
-                    <ColumnFilterMenu
-                      column={column}
-                      filter={filters[column.id]}
-                      sort={sort}
-                      onFilterChange={(filter) => updateFilter(column.id, filter)}
-                      onSortChange={(direction) => setSort({ columnId: column.id, direction })}
-                      onClear={() => clearColumn(column.id)}
-                    />
+                    <>
+                      <SortButton
+                        columnId={column.id}
+                        columnHeader={column.header}
+                        sort={sort}
+                        onSortChange={(direction) => setSort({ columnId: column.id, direction })}
+                      />
+                      <ColumnFilterMenu
+                        column={column}
+                        filter={filters[column.id]}
+                        onFilterChange={(filter) => updateFilter(column.id, filter)}
+                        onClear={() => clearColumn(column.id)}
+                      />
+                    </>
                   )}
                 </div>
               </th>

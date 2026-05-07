@@ -12,6 +12,20 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_classifications": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_classificationid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_ict_budget_line_items": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_budget_line_itemid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "systemusers": {
     "tableId": "",
     "version": "",

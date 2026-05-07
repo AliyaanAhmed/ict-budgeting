@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   Calendar,
   ChevronDown,
+  ChevronRight,
   CircleAlert,
   ClipboardCheck,
   Clock3,
@@ -179,7 +180,7 @@ function ActionMetricCard({
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Queue</span>
-        <MoveRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-1" />
+        <ChevronRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
       </div>
     </Link>
   )

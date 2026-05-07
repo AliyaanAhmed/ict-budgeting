@@ -69,6 +69,7 @@ export interface ProjectDocument {
 
 export interface Project {
   id: string
+  ictBudgetId?: string
   name: string
   strategicPriority: string
   classification: string
@@ -98,6 +99,7 @@ export interface Project {
 export const projects: Project[] = [
   {
     id: 'BI-001',
+    ictBudgetId: '250b0713-e249-f111-bec6-7ced8d57c0d1',
     name: 'Enterprise Data Platform Upgrade',
     strategicPriority: 'Digital Infrastructure',
     classification: 'Cloud & Hosting',
