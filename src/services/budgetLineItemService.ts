@@ -53,6 +53,7 @@ function buildCreateRecord(projectId: string, item: BudgetItemDraft) {
     dga_name: item.accountName,
     dga_fusion_account_code: item.fusionCode === 'N/A' ? null : item.fusionCode,
     dga_ebs_account_code: item.ebsCode === 'N/A' ? null : item.ebsCode,
+    dga_budget_requested: Number(item.budgetRequested.toFixed(4)),
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>> as Omit<
     Dga_ict_budget_line_itemsBase,
     'dga_ict_budget_line_itemid'
@@ -97,6 +98,10 @@ export async function updateBudgetLineItemAmount(lineItemId: string, budgetReque
   await Dga_ict_budget_line_itemsService.update(lineItemId, {
     dga_budget_requested: Number(budgetRequested.toFixed(4)),
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
+}
+
+export async function deleteBudgetLineItem(lineItemId: string) {
+  await Dga_ict_budget_line_itemsService.delete(lineItemId)
 }
 
 export async function getBudgetLineItemsByBudgetId(projectId: string) {

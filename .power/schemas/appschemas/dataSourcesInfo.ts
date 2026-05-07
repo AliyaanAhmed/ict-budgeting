@@ -26,10 +26,38 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_ict_budgets": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_budgetid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_strategic_prioritieses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_strategic_prioritiesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_technologies": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_technologyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "systemusers": {
     "tableId": "",
     "version": "",
     "primaryKey": "systemuserid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_work_streams": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_work_streamid",
     "dataSourceType": "Dataverse",
     "apis": {}
   }

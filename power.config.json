@@ -30,6 +30,26 @@
           "entitySetName": "dga_ict_budget_line_items",
           "logicalName": "dga_ict_budget_line_item",
           "isHidden": false
+        },
+        "strategicpriorities": {
+          "entitySetName": "dga_strategic_prioritieses",
+          "logicalName": "dga_strategic_priorities",
+          "isHidden": false
+        },
+        "workstreams": {
+          "entitySetName": "dga_work_streams",
+          "logicalName": "dga_work_stream",
+          "isHidden": false
+        },
+        "technologies": {
+          "entitySetName": "dga_technologies",
+          "logicalName": "dga_technology",
+          "isHidden": false
+        },
+        "ictbudgets": {
+          "entitySetName": "dga_ict_budgets",
+          "logicalName": "dga_ict_budget",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

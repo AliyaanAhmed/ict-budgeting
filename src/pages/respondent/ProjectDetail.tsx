@@ -50,14 +50,18 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
 import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { ClarificationThread } from '@/components/shared/ClarificationThread'
+import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
 import { useToast } from '@/context/ToastContext'
 import { cn } from '@/lib/utils'
+import { formatAEDFull } from '@/lib/utils'
 import type { BudgetItemDraft } from '@/domain/classification'
 import {
   createBudgetLineItems,
+  deleteBudgetLineItem,
   getBudgetLineItemsByBudgetId,
   toBudgetItemDraft,
   updateBudgetLineItemAmount,
@@ -308,20 +312,24 @@ function BudgetItemsTable({
   error,
   editable,
   savingId,
+  deletingId,
   onSaveBudgetRequested,
+  onDelete,
 }: {
   items: BudgetLineItemRecord[]
   loading: boolean
   error: string | null
   editable: boolean
   savingId: string | null
+  deletingId: string | null
   onSaveBudgetRequested: (lineItemId: string, amount: number) => Promise<void>
+  onDelete: (item: BudgetLineItemRecord) => void
 }) {
   const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setDraftAmounts(
-      Object.fromEntries(items.map((item) => [item.id, String(item.budgetRequested)]))
+      Object.fromEntries(items.map((item) => [item.id, item.budgetRequested > 0 ? formatAEDFull(item.budgetRequested) : '']))
     )
   }, [items])
 
@@ -354,7 +362,7 @@ function BudgetItemsTable({
       <table className="w-full text-sm">
         <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
           <tr>
-            {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', editable ? 'Action' : 'Status'].map((header) => (
+            {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'Action'].map((header) => (
               <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
                 {header}
               </th>
@@ -366,10 +374,12 @@ function BudgetItemsTable({
             const classificationLabel = item.expenseTypeLabel ?? 'Not Set'
             const isCapex = classificationLabel.toLowerCase() === 'capex'
             const draftValue = draftAmounts[item.id] ?? String(item.budgetRequested)
-            const parsedAmount = Number(draftValue)
+            const normalizedDraftValue = draftValue.replace(/,/g, '')
+            const parsedAmount = Number(normalizedDraftValue)
             const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount >= 0
             const hasChanged = isValidAmount && parsedAmount !== item.budgetRequested
             const isSaving = savingId === item.id
+            const isDeleting = deletingId === item.id
 
             return (
               <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
@@ -385,37 +395,63 @@ function BudgetItemsTable({
                 </td>
                 <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
                   {editable ? (
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.0001"
-                      value={draftValue}
-                      onChange={(event) =>
-                        setDraftAmounts((current) => ({ ...current, [item.id]: event.target.value }))
-                      }
-                      className="h-10 min-w-[170px] rounded-xl border-[#D9E6F7] bg-white text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
-                    />
+                    <div className="relative min-w-[190px]">
+                      <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Input
+                        inputMode="decimal"
+                        value={draftValue}
+                        onChange={(event) => {
+                          const digitsAndDecimal = event.target.value.replace(/[^\d.]/g, '')
+                          const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
+                          const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '') || (integerPart ? '0' : '')
+                          const formattedInteger = normalizedInteger ? formatAEDFull(Number(normalizedInteger)) : ''
+                          const nextValue = decimalPart !== undefined
+                            ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
+                            : formattedInteger
+
+                          setDraftAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                        }}
+                        placeholder="0"
+                        className="h-10 rounded-xl border-[#D9E6F7] bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
+                      />
+                    </div>
                   ) : (
                     <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
                   )}
                 </td>
                 <td className="block py-2 md:table-cell md:px-4 md:py-3">
-                  {editable ? (
-                    <Button
-                      size="sm"
-                      className="gap-2 rounded-xl text-white"
-                      style={{ backgroundColor: '#286CFF' }}
-                      disabled={!hasChanged || isSaving}
-                      onClick={() => void onSaveBudgetRequested(item.id, parsedAmount)}
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {isSaving ? 'Saving...' : 'Save'}
-                    </Button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Synced
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {editable ? (
+                      <>
+                        <Button
+                          size="sm"
+                          className="h-9 w-9 rounded-xl p-0 text-white"
+                          style={{ backgroundColor: '#286CFF' }}
+                          disabled={!hasChanged || isSaving || isDeleting}
+                          onClick={() => void onSaveBudgetRequested(item.id, parsedAmount)}
+                          title={isSaving ? 'Saving' : 'Save'}
+                          aria-label={isSaving ? `Saving ${item.accountName}` : `Save ${item.accountName}`}
+                        >
+                          <Save className={cn('h-4 w-4', isSaving && 'animate-pulse')} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 w-9 rounded-xl border-[#F5C2C7] p-0 text-[#B42318] hover:bg-[#FFF1F3] hover:text-[#B42318] dark:border-[#B42318]/30 dark:text-[#FCA5A5]"
+                          disabled={isSaving || isDeleting}
+                          onClick={() => onDelete(item)}
+                          title={isDeleting ? 'Deleting' : 'Delete'}
+                          aria-label={isDeleting ? `Deleting ${item.accountName}` : `Delete ${item.accountName}`}
+                        >
+                          <Trash2 className={cn('h-4 w-4', isDeleting && 'animate-pulse')} />
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Synced
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             )
@@ -596,6 +632,8 @@ export default function ProjectDetail() {
   const [budgetItemsError, setBudgetItemsError] = useState<string | null>(null)
   const [budgetLineItems, setBudgetLineItems] = useState<BudgetLineItemRecord[]>([])
   const [savingBudgetLineItemId, setSavingBudgetLineItemId] = useState<string | null>(null)
+  const [deletingBudgetLineItemId, setDeletingBudgetLineItemId] = useState<string | null>(null)
+  const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
     () =>
@@ -774,6 +812,33 @@ export default function ProjectDetail() {
       )
     } finally {
       setSavingBudgetLineItemId(null)
+    }
+  }
+
+  const handleConfirmDeleteBudgetLineItem = async () => {
+    if (!lineItemToDelete) return
+
+    const lineItemId = lineItemToDelete.id
+    setDeletingBudgetLineItemId(lineItemId)
+
+    try {
+      await runActionToast(
+        async () => {
+          await deleteBudgetLineItem(lineItemId)
+          setBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+        },
+        {
+          processingTitle: 'Deleting budget line item',
+          processingDescription: 'Removing the selected line item from this project budget.',
+          successTitle: 'Budget line item deleted',
+          successDescription: 'The selected line item was removed successfully.',
+          errorTitle: 'Unable to delete budget line item',
+          minDurationMs: 1800,
+        }
+      )
+      setLineItemToDelete(null)
+    } finally {
+      setDeletingBudgetLineItemId(null)
     }
   }
 
@@ -1136,7 +1201,9 @@ export default function ProjectDetail() {
                   error={budgetItemsError}
                   editable
                   savingId={savingBudgetLineItemId}
+                  deletingId={deletingBudgetLineItemId}
                   onSaveBudgetRequested={handleSaveBudgetRequested}
+                  onDelete={setLineItemToDelete}
                 />
               </DetailSection>
 
@@ -1217,7 +1284,9 @@ export default function ProjectDetail() {
                   error={budgetItemsError}
                   editable={false}
                   savingId={savingBudgetLineItemId}
+                  deletingId={deletingBudgetLineItemId}
                   onSaveBudgetRequested={handleSaveBudgetRequested}
+                  onDelete={setLineItemToDelete}
                 />
               </DetailSection>
 
@@ -1334,21 +1403,6 @@ export default function ProjectDetail() {
           ) : (
             <>
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
-                <CardContent className="space-y-3 p-4">
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Submission Details</p>
-                  <Field label="Submitted By" value={project.submittedBy} />
-                  <Field label="Submitted Date" value={project.submittedDate} />
-                  <Field label="Last Modified" value={project.lastModified} />
-                </CardContent>
-              </Card>
-
-              <AiCard title="AI Review Insights">
-                <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
-                  AI will analyze this project for completeness, budget alignment, strategic fit, and risk signals once configured.
-                </p>
-              </AiCard>
-
-              <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-2 p-4">
                   <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
                   {isDraftOrNeedsWork ? (
@@ -1361,7 +1415,6 @@ export default function ProjectDetail() {
                         <Edit className="h-4 w-4" />
                         Edit Project
                       </Button>
-                      <Button className="w-full justify-start gap-2"><Send className="h-4 w-4" />Submit to Reviewer</Button>
                       <Button variant="destructive" className="w-full justify-start gap-2"><Trash2 className="h-4 w-4" />Delete Project</Button>
                     </>
                   ) : (
@@ -1379,6 +1432,35 @@ export default function ProjectDetail() {
                   )}
                 </CardContent>
               </Card>
+
+              <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                <CardContent className="space-y-3 p-4">
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Submission Details</p>
+                  <Field label="Submitted By" value={project.submittedBy} />
+                  <Field label="Submitted Date" value={project.submittedDate} />
+                  <Field label="Last Modified" value={project.lastModified} />
+                </CardContent>
+              </Card>
+
+              <AiCard title="AI Review Insights">
+                <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
+                  AI will analyze this project for completeness, budget alignment, strategic fit, and risk signals once configured.
+                </p>
+              </AiCard>
+
+              <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                <CardContent className="space-y-2 p-4">
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Project Signals</p>
+                  <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Status</p>
+                    <div className="mt-2"><StatusBadge status={project.status} /></div>
+                  </div>
+                  <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Risk Level</p>
+                    <div className="mt-2"><RiskBadge risk={project.riskLevel} /></div>
+                  </div>
+                </CardContent>
+              </Card>
             </>
           )}
         </aside>
@@ -1390,6 +1472,31 @@ export default function ProjectDetail() {
         onOpenChange={setBudgetModalOpen}
         existingItems={existingBudgetDrafts}
         onCreate={handleCreateBudgetItems}
+      />
+      <ConfirmationModal
+        open={lineItemToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLineItemToDelete(null)
+          }
+        }}
+        title="Delete this budget line item?"
+        description={
+          lineItemToDelete
+            ? `This will permanently remove "${lineItemToDelete.accountName}" from the project budget grid.`
+            : 'This will permanently remove the selected budget line item.'
+        }
+        confirmLabel="Delete Line Item"
+        cancelLabel="Keep Item"
+        onConfirm={() => void handleConfirmDeleteBudgetLineItem()}
+        tone="danger"
+        meta={
+          lineItemToDelete ? (
+            <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
+              {lineItemToDelete.l1} / {lineItemToDelete.l2} / {lineItemToDelete.l3}
+            </p>
+          ) : null
+        }
       />
       <ClarificationModal
         open={clarificationModalOpen}

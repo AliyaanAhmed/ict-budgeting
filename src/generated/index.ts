@@ -8,10 +8,18 @@ export * as AccountsModel from './models/AccountsModel';
 export * as CommonModels from './models/CommonModels';
 export * as Dga_classificationsModel from './models/Dga_classificationsModel';
 export * as Dga_ict_budget_line_itemsModel from './models/Dga_ict_budget_line_itemsModel';
+export * as Dga_ict_budgetsModel from './models/Dga_ict_budgetsModel';
+export * as Dga_strategic_prioritiesesModel from './models/Dga_strategic_prioritiesesModel';
+export * as Dga_technologiesModel from './models/Dga_technologiesModel';
+export * as Dga_work_streamsModel from './models/Dga_work_streamsModel';
 export * as SystemusersModel from './models/SystemusersModel';
 
 // Services
 export * from './services/AccountsService';
 export * from './services/Dga_classificationsService';
 export * from './services/Dga_ict_budget_line_itemsService';
+export * from './services/Dga_ict_budgetsService';
+export * from './services/Dga_strategic_prioritiesesService';
+export * from './services/Dga_technologiesService';
+export * from './services/Dga_work_streamsService';
 export * from './services/SystemusersService';

@@ -49,7 +49,7 @@ export function ConfirmationModal({
         </div>
 
         <div className="px-6 pb-6 pt-4">
-          <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+          <div className="rounded-2xl bg-[#F8FBFF] px-4 pb-4 pt-4 text-sm leading-6 text-black dark:bg-white/5 dark:text-white">
             {description}
           </div>
 

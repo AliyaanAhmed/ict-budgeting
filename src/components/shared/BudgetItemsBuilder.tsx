@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
+import { formatAEDFull } from '@/lib/utils'
 
 interface BudgetItemsBuilderProps {
   items: BudgetItemDraft[]
@@ -27,7 +29,8 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
   }
 
   const updateBudgetRequested = (id: string, value: string) => {
-    const nextValue = Number.parseInt(value, 10)
+    const digitsOnly = value.replace(/[^\d]/g, '')
+    const nextValue = Number.parseInt(digitsOnly, 10)
     onChange(
       items.map((item) =>
         item.id === id
@@ -114,14 +117,16 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                     </td>
                     <td className="block py-2 md:table-cell md:px-4 md:py-4">
                       <div className="max-w-[180px]">
-                        <Input
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={item.budgetRequested}
-                          onChange={(event) => updateBudgetRequested(item.id, event.target.value)}
-                          className="h-11 rounded-xl border-[#D9E6F7]"
-                        />
+                        <div className="relative">
+                          <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                          <Input
+                            inputMode="numeric"
+                            value={item.budgetRequested > 0 ? formatAEDFull(item.budgetRequested) : ''}
+                            onChange={(event) => updateBudgetRequested(item.id, event.target.value)}
+                            placeholder="0"
+                            className="h-11 rounded-xl border-[#D9E6F7] pl-9"
+                          />
+                        </div>
                       </div>
                     </td>
                     <td className="block py-2 md:table-cell md:px-4 md:py-4">
