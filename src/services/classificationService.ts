@@ -67,6 +67,8 @@ export function buildBudgetItemDraft(nodeId: string, nodeMap: Map<string, Classi
     l2: l2.name,
     l3: l3.name,
     glCode: gl.name,
+    accountGroup: gl.accountGroup ?? null,
+    description: gl.description ?? null,
     ebsCode: gl.ebsCode ?? 'N/A',
     fusionCode: gl.fusionCode ?? 'N/A',
     expenseTypeValue: gl.expenseTypeValue,

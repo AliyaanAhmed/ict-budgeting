@@ -11,7 +11,12 @@ We are using the Power Apps Code App generated service pattern with:
 Current generated services:
 - `src/generated/services/AccountsService.ts`
 - `src/generated/services/Dga_classificationsService.ts`
+- `src/generated/services/Dga_ict_budgetsService.ts`
+- `src/generated/services/Dga_ict_budget_dga_technology_productsetService.ts`
 - `src/generated/services/Dga_ict_budget_line_itemsService.ts`
+- `src/generated/services/Dga_strategic_prioritiesesService.ts`
+- `src/generated/services/Dga_technologiesService.ts`
+- `src/generated/services/Dga_work_streamsService.ts`
 - `src/generated/services/SystemusersService.ts`
 
 Both services use:
@@ -110,6 +115,52 @@ Generated outputs to verify:
 - `src/generated/models/Dga_ict_budget_line_itemsModel.ts`
 - `src/generated/services/Dga_ict_budget_line_itemsService.ts`
 
+### Real Example We Also Did: `dga_ict_budget_dga_technology_product`
+
+We added the ICT Budget ↔ Technology Product relationship table with:
+
+- `npx power-apps add-data-source --api-id dataverse --resource-name dga_ict_budget_dga_technology_product --org-url "https://dge.crm15.dynamics.com"`
+
+Generated outputs to verify:
+
+- `src/generated/models/Dga_ict_budget_dga_technology_productsetModel.ts`
+- `src/generated/services/Dga_ict_budget_dga_technology_productsetService.ts`
+- `power.config.json`
+- `.power/schemas/appschemas/dataSourcesInfo.ts`
+
+### Real Example We Also Did: `dga_cycle`
+
+We added the Assessment Cycle table for the ICT Admin role with:
+
+- `npx power-apps add-data-source --api-id dataverse --resource-name dga_cycle --org-url "https://dge.crm15.dynamics.com"`
+
+Generated outputs to verify:
+
+- `src/generated/models/Dga_cyclesModel.ts`
+- `src/generated/services/Dga_cyclesService.ts`
+
+Key fields retrieved: `dga_cycleid`, `dga_name`, `_dga_module_type_value`, `dga_planned_start_date`, `dga_planned_end_date`, `statuscode`
+
+Status codes:
+- `1` → Draft (fields editable, Publish + Add ADGE buttons)
+- `776140001` → Published (read-only, Revise + Mark As Closed buttons)
+- `776140002` → Completed (fully read-only, no action buttons)
+
+### Real Example We Also Did: `dga_ict_budget_instance`
+
+We added the ICT Budget Instance table (request instances per cycle) with:
+
+- `npx power-apps add-data-source --api-id dataverse --resource-name dga_ict_budget_instance --org-url "https://dge.crm15.dynamics.com"`
+
+Generated outputs to verify:
+
+- `src/generated/models/Dga_ict_budget_instancesModel.ts`
+- `src/generated/services/Dga_ict_budget_instancesService.ts`
+
+Key fields retrieved: `dga_ict_budget_instanceid`, `_dga_cycle_value`, `_dga_entity_value`, `dga_entity_abbr`, `_dga_module_configuration_value`, `dga_name`, `dga_planning_start_date`, `dga_planning_end_date`, `statuscode`
+
+On create: `dga_cycle@odata.bind` → `/dga_cycles(id)`, `dga_entity@odata.bind` → `/accounts(id)`, `dga_name` → account name
+
 ## Retrieval Pattern For New Tables
 
 Preferred pattern: use the generated service, not raw fetch.
@@ -150,6 +201,333 @@ Important retrieval note:
 
 - this table only gives the classification lookup id/name directly
 - to show `L1 / L2 / L3` in UI, we also retrieve `dga_classification` records and rebuild the hierarchy path from `_dga_classification_value`
+
+For `dga_ict_budget_dga_technology_product`, we retrieve with:
+
+- `Dga_ict_budget_dga_technology_productsetService.getAll({ select: ['dga_ict_budgetid', 'dga_technologyid'], filter: \`dga_ict_budgetid eq ${ictBudgetId}\` })`
+
+Purpose:
+
+- get the related `dga_technologyid` values for a specific ICT budget
+- use those ids to auto-select the Technology Product multi-select in the View/Edit form
+- keep the implementation Code App-safe without using direct `Xrm` browser APIs
+
+## Dynamic Create Form Pattern
+
+The Create Project form is now fully dynamic against Dataverse.
+
+Main screen:
+
+- `src/pages/respondent/NewProject.tsx`
+
+Main wrapper/business services:
+
+- `src/services/ictBudgetDraftService.ts`
+- `src/services/strategicPriorityService.ts`
+- `src/services/workStreamService.ts`
+- `src/services/technologyService.ts`
+- `src/services/budgetLineItemService.ts`
+
+### Create Form Lookups And Dependencies
+
+Strategic Priorities:
+
+- retrieve from `dga_strategic_priorities`
+- top-level records (no parent) populate `Strategic Priorities`
+- child records populate `Strategic Priority Classifications`
+- when parent changes:
+  - clear selected classification
+  - repopulate child dropdown
+
+Work Stream:
+
+- retrieve from `dga_work_stream`
+- dropdown populated from Dataverse
+- inline create supported through:
+  - `createWorkStream(name)`
+
+Technology Company:
+
+- retrieve from `dga_technology`
+- only records with company type populate `Technology (Company)`
+
+Technology Product:
+
+- multi-select
+- enabled only after company is selected
+- create product supported through:
+  - `createTechnologyProductForCompany(companyId, name)`
+
+Budget Type:
+
+- uses `dga_activity_type`
+- shown as custom radio-style UI
+- visible currency fields depend on selected activity type
+- when activity type changes:
+  - clear budget fields that should no longer be visible
+
+### Create Form Save Draft Flow
+
+When user clicks `Save Draft`:
+
+1. validate required fields
+2. create `dga_ict_budget`
+3. include lookup bindings and option-set values in payload
+4. include:
+   - `dga_added_in_allocation = 1`
+5. include selected technology product bindings through:
+   - `'dga_ict_budget_technology_product@odata.bind': ['/dga_technologies(id)', ...]`
+6. create `dga_ict_budget_line_item` rows from selected classification grid
+
+Required field validation we implemented:
+
+- Initiative / Budget Item Name
+- Strategic Priorities
+- Strategic Priority Classifications
+- ICT Budget Items Type
+- Planned Start Date
+- Planned End Date
+- Summary / Description
+- Budget Type
+- all visible budget currency fields under selected Budget Type
+- at least one budget line item
+
+### Create Form Budget Line Items
+
+Budget line items are selected from classification modal and then saved into:
+
+- `dga_ict_budget_line_item`
+
+Each line item uses:
+
+- `dga_ict_budget@odata.bind`
+- `dga_classification@odata.bind`
+- `dga_name`
+- `dga_ebs_account_code`
+- `dga_fusion_account_code`
+- `dga_budget_requested`
+
+## Dynamic View / Edit Form Pattern
+
+Main screen:
+
+- `src/pages/respondent/ProjectDetail.tsx`
+
+View/Edit form now uses the same field logic as Create Form, but loads data from the opened ICT budget record using:
+
+- `project.ictBudgetId`
+
+### View / Edit Retrieval Flow
+
+1. load dropdown sources:
+   - strategic priorities
+   - work streams
+   - technology companies/products
+2. retrieve ICT budget main record using:
+   - `Dga_ict_budgetsService.get(ictBudgetId, { select: [...] })`
+3. retrieve related technology product ids using:
+   - `Dga_ict_budget_dga_technology_productsetService.getAll({ select: ['dga_ict_budgetid', 'dga_technologyid'], filter: \`dga_ict_budgetid eq ${ictBudgetId}\` })`
+4. map retrieved `dga_technologyid` values into the Technology Product multi-select so products appear auto-selected
+5. retrieve budget line items separately through:
+   - `Dga_ict_budget_line_itemsService.getAll(...)`
+
+### View / Edit Metadata We Show
+
+From ICT budget retrieve, we also use:
+
+- `_createdby_value`
+- `createdon`
+- `modifiedon`
+- `dga_status_for_adge`
+
+For display, we prefer Dataverse formatted values when available:
+
+- `_createdby_value@OData.Community.Display.V1.FormattedValue`
+- `createdon@OData.Community.Display.V1.FormattedValue`
+- `modifiedon@OData.Community.Display.V1.FormattedValue`
+- `dga_status_for_adge@OData.Community.Display.V1.FormattedValue`
+
+This is used in:
+
+- header status
+- header created by
+- Project Creation Details card
+- Project Signals status
+
+### View / Edit Save Changes Flow
+
+When user clicks `Save Changes`:
+
+1. validate the same required fields as Create Form
+2. update the ICT budget main record using:
+   - `Dga_ict_budgetsService.update(...)`
+3. save requested budget changes in line items using:
+   - `Dga_ict_budget_line_itemsService.update(...)`
+4. delete line items using:
+   - `Dga_ict_budget_line_itemsService.delete(...)`
+5. create additional line items using:
+   - `Dga_ict_budget_line_itemsService.create(...)`
+
+### Important Code App Limitation We Hit
+
+Generated Code App `get(...)` / `getAll(...)` helpers do not expose `$expand`.
+
+Because of that:
+
+- we do not rely on `$expand` for Technology Product auto-selection in the Code App
+- instead, we added the relationship table datasource:
+  - `dga_ict_budget_dga_technology_product`
+- then retrieve related `dga_technologyid` rows directly using its generated service
+
+This is the preferred Code App-safe pattern for this scenario.
+
+## Role-Based Project Visibility Logic
+
+Our project pages and dashboards should follow the same status mapping per role.
+
+Dataverse status source:
+
+- `dga_status_for_adge`
+
+Mapped app statuses:
+
+- `1` -> `Draft`
+- `2` -> `Submitted to Reviewer`
+- `3` -> `Submitted to Approver`
+- `4` -> `Approved`
+- `5` -> `Clarification Required`
+
+### Respondent
+
+Respondent project list / dashboard logic:
+
+- `Draft` -> respondent-owned draft work
+- `Clarification Required` -> respondent must respond
+- `Submitted to Reviewer` -> currently with reviewer
+- `Submitted to Approver` -> currently with approver
+- `Approved` -> completed
+
+Respondent project tabs:
+
+- `needs-work` -> `Draft`
+- `clarification` -> `Clarification Required`
+- `submitted-reviewer` -> `Submitted to Reviewer`
+
+Respondent dashboard dynamic rules:
+
+- metric cards deep-link into `/respondent/projects?tab=<tab-id>`
+- clarification panel:
+  - if clarification records exist, show top 2 latest clarification projects
+  - otherwise show top 2 latest ICT budget records
+- requested budget mix:
+  - aggregate requested budget by respondent-visible project status
+- projects workspace:
+  - `On Respondent` = `Draft + Clarification Required`
+  - `On Reviewer` = `Submitted to Reviewer`
+  - `On Approver` = `Submitted to Approver`
+  - `Needs Attention` = `Draft`
+- budget type distribution:
+  - `Operational Non-Recurring`
+  - `Operational Recurring`
+  - `New Project`
+  - `Project Continuation`
+
+### Reviewer
+
+Reviewer project list logic:
+
+- `pending-review` -> `Submitted to Reviewer`
+- `clarification` -> `Clarification Required`
+- `submitted-approver` -> `Submitted to Approver`
+
+Reviewer queue:
+
+- `To Review` = `dga_status_for_adge = 2`
+- `Reviewed` = `dga_status_for_adge = 3`
+- `Clarification Pending` = `dga_status_for_adge = 5`
+
+Reviewer dashboard dynamic rules:
+
+- top metric cards:
+  - `Pending Review` -> count of `Submitted to Reviewer`
+  - `Clarification Sent` -> count of `Clarification Required`
+  - `Sent To Approver` -> count of `Submitted to Approver`
+- top metric card deep links:
+  - `/reviewer/projects?tab=pending-review`
+  - `/reviewer/projects?tab=clarification`
+  - `/reviewer/projects?tab=submitted-approver`
+- `Projects Requiring Attention`:
+  - show top 2 latest records with `Submitted to Reviewer`
+  - if none exist, switch heading to `Latest ICT Budgets`
+  - fallback shows top 2 latest reviewer-visible projects
+- `Queue Budget Mix`:
+  - aggregate requested budget across:
+    - `Pending Review`
+    - `Clarification Sent`
+    - `Sent To Approver`
+  - keep all cards visible even when a budget bucket is `0`
+- `Review Queue Workspace`:
+  - `Pending Review` = `Submitted to Reviewer`
+  - `Clarif. Sent` = `Clarification Required`
+  - `Sent To Approver` = `Submitted to Approver`
+  - `Approved` = `Approved`
+- reviewer budget type distribution:
+  - `Operational Non-Recurring`
+  - `Operational Recurring`
+  - `New Project`
+  - `Project Continuation`
+
+### Approver
+
+Approver project list logic:
+
+- `pending-approval` -> `Submitted to Approver`
+- `clarification` -> `Clarification Required`
+- `approved` -> `Approved`
+
+Approver queue:
+
+- `Pending` = `dga_status_for_adge = 3`
+- `Approved` = `dga_status_for_adge = 4`
+- `Clarification Pending` = `dga_status_for_adge = 5`
+
+Approver dashboard dynamic rules:
+
+- top metric cards:
+  - `Pending My Approval` -> count of `Submitted to Approver`
+  - `Clarification Open` -> count of `Clarification Required`
+  - `Approved Project` -> count of `Approved`
+- top metric card deep links:
+  - `/approver/projects?tab=pending-approval`
+  - `/approver/projects?tab=clarification`
+  - `/approver/projects?tab=approved`
+- `Approval Snapshot`:
+  - `Requested Budget` = total requested budget of approver-visible projects
+  - `Approved Budget` = total requested budget of `Approved` projects
+- `Projects Requiring My Approval`:
+  - show top 2 latest records with `Submitted to Approver`
+  - if none exist, switch heading to `Latest ICT Budgets`
+  - fallback shows top 2 latest approver-visible projects
+- `Budget Queue Mix`:
+  - aggregate requested budget across:
+    - `Drafts on Respondent`
+    - `With Reviewer`
+    - `Pending My Approval`
+    - `Clarification Open`
+    - `Approved`
+  - keep all cards visible even when a budget bucket is `0`
+- `Clarification Monitor`:
+  - show only when clarification projects exist
+  - list active `Clarification Required` records
+  - when hidden, `Quick Actions` stays in the two-column layout beside readiness
+- `Quick Actions`:
+  - when clarification projects exist, render as a full-width row
+  - action cards stay in a single row on large screens
+- `Final Approval Readiness`:
+  - `Approved` = `Approved`
+  - `Pending Approval` = `Submitted to Approver`
+  - `With Reviewer` = `Submitted to Reviewer`
+  - `On Respondent` = `Draft + Clarification Required`
 
 ## Create / Update Pattern For New Tables
 
@@ -223,3 +601,106 @@ After push, app is available from the Power Apps play URL for this environment/a
 
 - Generated files include header: "This file is autogenerated. Do not edit this file directly."
 - For custom operations, use wrapper utilities or custom files that call generated services, instead of modifying generated files manually.
+
+---
+
+## App Initialization Flow (Boot Sequence)
+
+The app runs a sequential async boot chain in `src/main.tsx` before React renders:
+
+```
+initUserContext()
+  → initCycleContext()
+  → initInstanceContext()
+  → createRoot(...).render(...)
+```
+
+### Step 1 — `initUserContext()` (`src/services/userContextService.ts`)
+
+1. Calls `getContext()` from `@microsoft/power-apps/app` to get the AAD user (objectId, fullName, etc.)
+2. Queries `systemusers` by `azureactivedirectoryobjectid` to get the Dataverse `systemuserid`
+3. Queries `teammemberships` filtered by `systemuserid` to get all team IDs the user belongs to
+4. Queries `dga_module_configuration` with an OR filter across all three role columns (`_dga_respondent_team_value`, `_dga_reviewer_team_value`, `_dga_approver_team_value`) to find which account each team is linked to
+5. Fetches team names from `teams` and account names from `accounts`
+6. Stores results in sessionStorage:
+   - `ict_app_user` → `{ fullName, systemUserId, objectId, ... }`
+   - `userTeams` → `[{ teamid, name, role: 'Respondent'|'Reviewer'|'Approver' }]`
+   - `respondentAccount` → account GUID for Respondent role
+   - `respondentAccountName` → account display name for Respondent role
+   - `respondentModuleConfigId` → module config GUID for Respondent role
+   - same keys for `reviewer` and `approver`
+
+### Step 2 — `initCycleContext()` (`src/services/cycleService.ts`)
+
+1. Fetches all records from `dga_cycles` (table IS registered in `dataSourcesInfo`)
+2. Filters client-side for ICT Budgeting cycles using `dga_module_typename` (formatted lookup value returned automatically by Dataverse)
+3. Classifies cycles by today's date:
+   - **Current cycle**: today falls within `dga_planned_start_date` → `dga_planned_end_date`
+   - **Previous cycle**: most recently ended cycle whose `dga_planned_end_date` is before today
+4. Stores results in sessionStorage:
+   - `cycles` → `{ allCycles: AppCycle[], currentCycle: AppCycle|null, previousCycle: AppCycle|null }`
+   - `currentCycle` → the selected cycle object `{ id, name, startDate, endDate }` (defaults to current cycle, or first in list)
+
+Note: `dga_module_types` is **not** registered in `dataSourcesInfo` — do NOT use `Dga_module_typesService`. The module type filter is handled client-side via `dga_module_typename`.
+
+### Step 3 — `initInstanceContext()` (`src/services/instanceService.ts`)
+
+1. Reads `userTeams` from sessionStorage to determine the default role (first team entry)
+2. Gets the account ID for that role from sessionStorage (e.g. `respondentAccount`)
+3. Gets the current cycle ID from `sessionStorage["currentCycle"]`
+4. Queries `dga_ict_budget_instances` with filter:
+   - `_dga_cycle_value eq <cycleId> and _dga_entity_value eq <accountId>`
+5. Stores the first matching record in sessionStorage:
+   - `instanceID` → GUID string of the instance (`dga_ict_budget_instanceid`)
+   - `instanceDetail` → `{ id, name, abbr, planningStartDate, planningEndDate }`
+
+### React-Side Re-fetch (InstanceContext)
+
+After React renders, `src/context/InstanceContext.tsx` watches `activeRole` and `selectedCycle`. When either changes (role switch or cycle switch), it calls `fetchAndStoreInstance(cycleId, accountId)` and updates both sessionStorage and React state.
+
+The account key mapping used in `instanceService.ts`:
+- `Respondent` → `sessionStorage["respondentAccount"]`
+- `Reviewer` → `sessionStorage["reviewerAccount"]`
+- `Approver` → `sessionStorage["approverAccount"]`
+
+### SessionStorage Key Reference
+
+| Key | Type | Set by | Description |
+|-----|------|--------|-------------|
+| `ict_app_user` | JSON object | `initUserContext` | Full AAD + Dataverse user context |
+| `userTeams` | JSON array | `initUserContext` | User's role teams with role labels |
+| `respondentAccount` | string | `initUserContext` | Account GUID for Respondent role |
+| `respondentAccountName` | string | `initUserContext` | Account display name for Respondent |
+| `respondentModuleConfigId` | string | `initUserContext` | Module config GUID for Respondent |
+| `reviewerAccount` | string | `initUserContext` | Account GUID for Reviewer role |
+| `reviewerAccountName` | string | `initUserContext` | Account display name for Reviewer |
+| `reviewerModuleConfigId` | string | `initUserContext` | Module config GUID for Reviewer |
+| `approverAccount` | string | `initUserContext` | Account GUID for Approver role |
+| `approverAccountName` | string | `initUserContext` | Account display name for Approver |
+| `approverModuleConfigId` | string | `initUserContext` | Module config GUID for Approver |
+| `cycles` | JSON object | `initCycleContext` | All cycles + current + previous classification |
+| `currentCycle` | JSON object | `initCycleContext` / `CycleContext` | Currently selected cycle |
+| `currentRole` | string | `RoleContext` | Display name of active role (e.g. `ICT - Respondent`) |
+| `instanceID` | string | `initInstanceContext` / `InstanceContext` | GUID of the budget instance for current role+cycle |
+| `instanceDetail` | JSON object | `initInstanceContext` / `InstanceContext` | Instance detail: id, name, abbr, dates |
+
+### How instanceID Is Used In Budget Retrieval
+
+All ICT budget queries in `src/api/dataverse/dataverseProjectsApi.ts` add an OData filter:
+
+```
+_dga_ict_budget_instance_value eq <instanceID>
+```
+
+This scopes every project list, review queue, and approval queue to the current entity's instance for the selected cycle. If no instance ID is found in sessionStorage the filter is omitted (returns all records as fallback).
+
+### How instanceID Is Used In ICT Budget Create
+
+When creating a new ICT budget draft (`src/services/ictBudgetDraftService.ts`), the payload includes:
+
+```typescript
+'dga_ict_budget_instance@odata.bind': `/dga_ict_budget_instances(${instanceId})`
+dga_abbr_of_entity: entityAbbr  // from instanceDetail.abbr (dga_entity_abbr)
+```
+
+These fields link the new budget to the correct instance and stamp the entity abbreviation.

@@ -5,8 +5,10 @@ import type { Dga_classifications } from '@/generated/models/Dga_classifications
 
 const SELECT_FIELDS = [
   'dga_classificationid',
+  'dga_account_group',
   'dga_arabic_name',
   'dga_classification_level',
+  'dga_description',
   'dga_ebs_account_code',
   'dga_expense_type',
   'dga_fusion_account_code',
@@ -60,6 +62,8 @@ function normalizeClassification(record: Dga_classifications): ClassificationRec
     parentId,
     parentName: getAnnotation(record, '_dga_parent_classification_value@OData.Community.Display.V1.FormattedValue') ?? asString(record.dga_parent_classificationname),
     parentLookupLogicalName: getAnnotation(record, '_dga_parent_classification_value@Microsoft.Dynamics.CRM.lookuplogicalname'),
+    accountGroup: asString(record.dga_account_group),
+    description: asString(record.dga_description),
     ebsCode: asString(record.dga_ebs_account_code),
     fusionCode: asString(record.dga_fusion_account_code),
     expenseTypeValue: asNumber(record.dga_expense_type),

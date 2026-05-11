@@ -50,6 +50,41 @@
           "entitySetName": "dga_ict_budgets",
           "logicalName": "dga_ict_budget",
           "isHidden": false
+        },
+        "dga_ict_budget_dga_technology_product": {
+          "entitySetName": "dga_ict_budget_dga_technology_productset",
+          "logicalName": "dga_ict_budget_dga_technology_product",
+          "isHidden": false
+        },
+        "cycles": {
+          "entitySetName": "dga_cycles",
+          "logicalName": "dga_cycle",
+          "isHidden": false
+        },
+        "ictbudgetinstances": {
+          "entitySetName": "dga_ict_budget_instances",
+          "logicalName": "dga_ict_budget_instance",
+          "isHidden": false
+        },
+        "moduleconfigurations": {
+          "entitySetName": "dga_module_configurations",
+          "logicalName": "dga_module_configuration",
+          "isHidden": false
+        },
+        "moduletypes": {
+          "entitySetName": "dga_module_types",
+          "logicalName": "dga_module_type",
+          "isHidden": false
+        },
+        "teammembership": {
+          "entitySetName": "teammemberships",
+          "logicalName": "teammembership",
+          "isHidden": false
+        },
+        "teams": {
+          "entitySetName": "teams",
+          "logicalName": "team",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

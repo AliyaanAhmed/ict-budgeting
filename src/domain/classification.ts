@@ -9,6 +9,8 @@ export interface ClassificationRecord {
   parentId: string | null
   parentName: string | null
   parentLookupLogicalName: string | null
+  accountGroup: string | null
+  description: string | null
   ebsCode: string | null
   fusionCode: string | null
   expenseTypeValue: number | null
@@ -45,6 +47,8 @@ export interface BudgetItemDraft {
   l2: string
   l3: string
   glCode: string
+  accountGroup: string | null
+  description: string | null
   ebsCode: string
   fusionCode: string
   expenseTypeValue: number | null

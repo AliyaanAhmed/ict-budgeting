@@ -17,7 +17,7 @@ export const currentUser = {
   activeRole: 'Respondent' as Role,
 }
 
-export type Role = 'Respondent' | 'Reviewer' | 'Approver'
+export type Role = 'Respondent' | 'Reviewer' | 'Approver' | 'ICT Admin'
 
 export type ProjectStatus =
   | 'Draft'
@@ -78,14 +78,16 @@ export interface Project {
   budgetItems: BudgetItem[]
   status: ProjectStatus
   approvalStatus: string
-  pendingWith: 'Respondent' | 'Reviewer' | 'Approver' | null
+  pendingWith: string | null
   submittedBy: string
   submittedDate: string
+  submittedDateRaw?: string
   lastModified: string
+  lastModifiedRaw?: string
   plannedStartDate: string
   plannedEndDate: string
   workStream: string
-  budgetType: 'New' | 'Enhancement' | 'Continuation' | 'Phase 2'
+  budgetType: string
   technology: { company: string; product: string }
   summary: string
   documents: ProjectDocument[]
@@ -99,7 +101,7 @@ export interface Project {
 export const projects: Project[] = [
   {
     id: 'BI-001',
-    ictBudgetId: '250b0713-e249-f111-bec6-7ced8d57c0d1',
+    ictBudgetId: 'dbe7dbca-9a4a-f111-bec6-70a8a522d043',
     name: 'Enterprise Data Platform Upgrade',
     strategicPriority: 'Digital Infrastructure',
     classification: 'Cloud & Hosting',

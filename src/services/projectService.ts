@@ -19,6 +19,10 @@ export const projectService = {
     return projectsApi.getReviewerProjects(filters)
   },
 
+  getApproverProjects(filters?: RoleProjectFilters): Promise<Project[]> {
+    return projectsApi.getApproverProjects(filters)
+  },
+
   getProjectById(projectId: string): Promise<Project | null> {
     return projectsApi.getProjectById(projectId)
   },
@@ -60,17 +64,24 @@ export const projectService = {
   },
 
   // Shared list logic for Respondent + Reviewer project screens.
-  buildRoleStatusFilter(role: 'respondent' | 'reviewer', tab: string): ProjectStatus[] | undefined {
+  buildRoleStatusFilter(role: 'respondent' | 'reviewer' | 'approver', tab: string): ProjectStatus[] | undefined {
     if (role === 'respondent') {
-      if (tab === 'needs-work') return ['Needs Work', 'Draft']
+      if (tab === 'needs-work') return ['Draft']
       if (tab === 'clarification') return ['Clarification Required']
       if (tab === 'submitted-reviewer') return ['Submitted to Reviewer']
       return undefined
     }
 
-    if (tab === 'pending-review') return ['Submitted to Reviewer']
+    if (role === 'reviewer') {
+      if (tab === 'pending-review') return ['Submitted to Reviewer']
+      if (tab === 'clarification') return ['Clarification Required']
+      if (tab === 'submitted-approver') return ['Submitted to Approver']
+      return undefined
+    }
+
+    if (tab === 'pending-approval') return ['Submitted to Approver']
     if (tab === 'clarification') return ['Clarification Required']
-    if (tab === 'submitted-approver') return ['Submitted to Approver']
+    if (tab === 'approved') return ['Approved']
     return undefined
   },
 }

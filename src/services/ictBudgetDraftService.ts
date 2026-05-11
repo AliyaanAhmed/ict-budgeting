@@ -2,8 +2,18 @@ import type {
   Dga_ict_budgetsBase,
   Dga_ict_budgetsdga_activity_type,
   Dga_ict_budgetsdga_budget_item_type,
+  Dga_ict_budgetsdga_category,
+  Dga_ict_budgetsdga_status_for_adge,
 } from '@/generated/models/Dga_ict_budgetsModel'
+import { SESSION_INSTANCE_ID_KEY, SESSION_INSTANCE_DETAIL_KEY } from '@/services/instanceService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
+import { Dga_ict_budget_dga_technology_productsetService } from '@/generated/services/Dga_ict_budget_dga_technology_productsetService'
+import {
+  INITIAL_ICT_BUDGET_FORM_VALUES,
+  parseCurrencyValue,
+  type IctBudgetFormValues,
+} from '@/features/ictBudgetForm'
+import type { TechnologyCompanyOption } from '@/services/technologyService'
 
 export interface CreateIctBudgetDraftInput {
   initiativeName: string
@@ -17,17 +27,208 @@ export interface CreateIctBudgetDraftInput {
   summary: string
   activityType: Dga_ict_budgetsdga_activity_type
   budgetItemType: Dga_ict_budgetsdga_budget_item_type
+  category: Dga_ict_budgetsdga_category | null
   totalBudgetPaidPreviousYear: number | null
   totalBudgetPayableFutureYear: number | null
   totalBudgetPayableNextYear: number | null
   totalBudgetPayableForYearAfterNext: number | null
 }
 
+export interface RetrievedIctBudgetDraft {
+  id: string
+  formValues: IctBudgetFormValues
+  displayTechnologyProducts: string[]
+  createdByName: string | null
+  createdOn: string | null
+  modifiedOn: string | null
+  statusLabel: string | null
+}
+
+export interface CreatedIctBudgetDraft {
+  id: string
+  budgetRefId: string | null
+}
+
+export const ICT_BUDGET_STATUS = {
+  draft: 1,
+  underReviewerReview: 2,
+  underApproverReview: 3,
+  approvedByApprover: 4,
+  clarificationPending: 5,
+} as const satisfies Record<string, Dga_ict_budgetsdga_status_for_adge>
+
+function getFormattedAnnotation(record: unknown, key: string) {
+  const value = (record as Record<string, unknown> | null)?.[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
 function toLookupBinding(entitySet: string, id: string | null) {
   return id ? `/${entitySet}(${id})` : undefined
 }
 
+function toBoundLookupValue(entitySet: string, id: string) {
+  return `/${entitySet}(${id})`
+}
+
+function matchTechnologyProductIds(
+  companyId: string,
+  technologyCompanies: TechnologyCompanyOption[],
+  fallbackDisplayNames: string[]
+) {
+  if (fallbackDisplayNames.length === 0) {
+    return []
+  }
+
+  const selectedCompany = technologyCompanies.find((company) => company.id === companyId)
+  if (!selectedCompany) {
+    return []
+  }
+
+  const normalizedNames = fallbackDisplayNames.map((name) => name.trim().toLowerCase()).filter(Boolean)
+
+  return selectedCompany.products
+    .filter((product) => normalizedNames.includes(product.name.trim().toLowerCase()))
+    .map((product) => product.id)
+}
+
+function toCurrencyInputValue(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return ''
+  }
+
+  return value.toLocaleString('en-AE')
+}
+
+function toDisplayTechnologyProducts(
+  selectedProductIds: string[],
+  companyId: string,
+  technologyCompanies: TechnologyCompanyOption[],
+  fallbackDisplayNames: string[]
+) {
+  if (selectedProductIds.length === 0) {
+    return fallbackDisplayNames
+  }
+
+  const selectedCompany = technologyCompanies.find((company) => company.id === companyId)
+  if (!selectedCompany) {
+    return fallbackDisplayNames
+  }
+
+  const matchedNames = selectedCompany.products
+    .filter((product) => selectedProductIds.includes(product.id))
+    .map((product) => product.name)
+
+  return matchedNames.length > 0 ? matchedNames : fallbackDisplayNames
+}
+
+async function getAssociatedTechnologyProductIds(ictBudgetId: string) {
+  const result = await Dga_ict_budget_dga_technology_productsetService.getAll({
+    select: ['dga_ict_budgetid', 'dga_technologyid'],
+    filter: `dga_ict_budgetid eq ${ictBudgetId}`,
+  })
+
+  return (result.data ?? [])
+    .map((record) => record.dga_technologyid)
+    .filter((id): id is string => Boolean(id))
+}
+
+function mapRetrievedBudgetRecord(
+  record: Awaited<ReturnType<typeof Dga_ict_budgetsService.get>>['data'],
+  technologyCompanies: TechnologyCompanyOption[],
+  fallbackTechnologyProducts: string[],
+  associatedTechnologyProductIds: string[]
+) {
+  if (!record?.dga_ict_budgetid) {
+    throw new Error('Unable to retrieve the ICT budget record for this project.')
+  }
+
+  const strategicPriorityId =
+    record._dga_strategic_priority_value ?? record._dga_previous_strategic_priority_value ?? ''
+  const strategicPriorityClassificationId =
+    record._dga_strategic_priority_classification_value ??
+    record._dga_previous_strategic_priorityclassification_value ??
+    ''
+  const technologyCompanyId = record._dga_technology_company_value ?? ''
+  const selectedTechnologyProductIds = associatedTechnologyProductIds.length > 0
+    ? associatedTechnologyProductIds
+    : technologyCompanyId
+    ? matchTechnologyProductIds(
+        technologyCompanyId,
+        technologyCompanies,
+        fallbackTechnologyProducts
+      )
+    : []
+
+  const formValues: IctBudgetFormValues = {
+    ...INITIAL_ICT_BUDGET_FORM_VALUES,
+    initiativeName: record.dga_initiative_project_requirement_name ?? '',
+    strategicPriorityId,
+    strategicPriorityClassificationId,
+    workStreamId: record._dga_work_stream_value ?? '',
+    technologyCompanyId,
+    technologyProductIds: selectedTechnologyProductIds,
+    budgetItemType: record.dga_budget_item_type ?? null,
+    category: record.dga_category ?? null,
+    plannedStartDate: record.dga_planned_start_date?.slice(0, 10) ?? '',
+    plannedEndDate: record.dga_planned_end_date?.slice(0, 10) ?? '',
+    summary: record.dga_summary ?? '',
+    activityType: record.dga_activity_type ?? null,
+    totalBudgetPaidPreviousYear: toCurrencyInputValue(record.dga_total_budget_paid_previous_year),
+    totalBudgetPayableFutureYear: toCurrencyInputValue(record.dga_total_budget_payable_future_year),
+    totalBudgetPayableNextYear: toCurrencyInputValue(record.dga_total_budget_payable_next_year),
+    totalBudgetPayableForYearAfterNext: toCurrencyInputValue(
+      record.dga_total_budget_payable_for_year_after_next
+    ),
+  }
+
+  return {
+    id: record.dga_ict_budgetid,
+    formValues,
+    displayTechnologyProducts: toDisplayTechnologyProducts(
+      selectedTechnologyProductIds,
+      technologyCompanyId,
+      technologyCompanies,
+      fallbackTechnologyProducts
+    ),
+    createdByName:
+      getFormattedAnnotation(
+        record,
+        '_createdby_value@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.createdbyname ??
+      null,
+    createdOn:
+      getFormattedAnnotation(
+        record,
+        'createdon@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.createdon ??
+      null,
+    modifiedOn:
+      getFormattedAnnotation(
+        record,
+        'modifiedon@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.modifiedon ??
+      null,
+    statusLabel:
+      getFormattedAnnotation(
+        record,
+        'dga_status_for_adge@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_status_for_adgename ??
+      null,
+  } satisfies RetrievedIctBudgetDraft
+}
+
 export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
+  // Resolve the current budget instance and entity abbreviation from sessionStorage
+  const instanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
+  const instanceDetailRaw = sessionStorage.getItem(SESSION_INSTANCE_DETAIL_KEY)
+  const entityAbbr: string | undefined = instanceDetailRaw
+    ? (JSON.parse(instanceDetailRaw) as { abbr?: string }).abbr
+    : undefined
+
   const payload = {
     dga_initiative_project_requirement_name: input.initiativeName.trim(),
     'dga_previous_strategic_priority@odata.bind': toLookupBinding(
@@ -59,12 +260,20 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
     dga_planned_end_date: input.plannedEndDate,
     dga_summary: input.summary.trim(),
     dga_activity_type: input.activityType,
+    dga_added_in_allocation: 1,
     dga_budget_item_type: input.budgetItemType,
+    dga_category: input.category ?? undefined,
     dga_total_budget_paid_previous_year: input.totalBudgetPaidPreviousYear ?? undefined,
     dga_total_budget_payable_future_year: input.totalBudgetPayableFutureYear ?? undefined,
     dga_total_budget_payable_next_year: input.totalBudgetPayableNextYear ?? undefined,
     dga_total_budget_payable_for_year_after_next:
       input.totalBudgetPayableForYearAfterNext ?? undefined,
+    // Bind to the current budget instance (cycle + entity combination)
+    ...(instanceId
+      ? { 'dga_ict_budget_instance@odata.bind': `/dga_ict_budget_instances(${instanceId})` }
+      : {}),
+    // Store the entity abbreviation from the instance
+    ...(entityAbbr ? { dga_abbr_of_entity: entityAbbr } : {}),
   } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>> as Omit<
     Dga_ict_budgetsBase,
     'dga_ict_budgetid'
@@ -76,5 +285,119 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
     throw new Error('ICT budget record was created, but the response did not include an id.')
   }
 
-  return result.data.dga_ict_budgetid
+  return {
+    id: result.data.dga_ict_budgetid,
+    budgetRefId: result.data.dga_budget_ref_id?.trim() || null,
+  } satisfies CreatedIctBudgetDraft
+}
+
+export async function getIctBudgetDraftById(
+  ictBudgetId: string,
+  technologyCompanies: TechnologyCompanyOption[],
+  fallbackTechnologyProducts: string[] = []
+) {
+  const [result, associatedTechnologyProductIds] = await Promise.all([
+    Dga_ict_budgetsService.get(ictBudgetId, {
+      select: [
+        'dga_ict_budgetid',
+        'dga_initiative_project_requirement_name',
+        '_dga_strategic_priority_value',
+        '_dga_previous_strategic_priority_value',
+        '_dga_strategic_priority_classification_value',
+        '_dga_previous_strategic_priorityclassification_value',
+        '_dga_work_stream_value',
+        '_dga_technology_company_value',
+        'dga_planned_start_date',
+        'dga_planned_end_date',
+        'dga_summary',
+        'dga_activity_type',
+        'dga_budget_item_type',
+        'dga_category',
+        'dga_status_for_adge',
+        'dga_total_budget_paid_previous_year',
+        'dga_total_budget_payable_future_year',
+        'dga_total_budget_payable_next_year',
+        'dga_total_budget_payable_for_year_after_next',
+        '_createdby_value',
+        'createdon',
+        'modifiedon',
+      ],
+    }),
+    getAssociatedTechnologyProductIds(ictBudgetId),
+  ])
+
+  const record = result.data
+  return mapRetrievedBudgetRecord(
+    record,
+    technologyCompanies,
+    fallbackTechnologyProducts,
+    associatedTechnologyProductIds
+  )
+}
+
+export async function updateIctBudgetDraft(
+  ictBudgetId: string,
+  formValues: IctBudgetFormValues
+) {
+  const payload = {
+    dga_initiative_project_requirement_name: formValues.initiativeName.trim(),
+    'dga_previous_strategic_priority@odata.bind': toBoundLookupValue(
+      'dga_strategic_prioritieses',
+      formValues.strategicPriorityId
+    ),
+    'dga_previous_strategic_priorityclassification@odata.bind': toBoundLookupValue(
+      'dga_strategic_prioritieses',
+      formValues.strategicPriorityClassificationId
+    ),
+    'dga_strategic_priority@odata.bind': toBoundLookupValue(
+      'dga_strategic_prioritieses',
+      formValues.strategicPriorityId
+    ),
+    'dga_strategic_priority_classification@odata.bind': toBoundLookupValue(
+      'dga_strategic_prioritieses',
+      formValues.strategicPriorityClassificationId
+    ),
+    'dga_work_stream@odata.bind': formValues.workStreamId
+      ? toBoundLookupValue('dga_work_streams', formValues.workStreamId)
+      : null,
+    'dga_technology_company@odata.bind': formValues.technologyCompanyId
+      ? toBoundLookupValue('dga_technologies', formValues.technologyCompanyId)
+      : null,
+    'dga_ict_budget_technology_product@odata.bind': formValues.technologyProductIds.map(
+      (id) => `/dga_technologies(${id})`
+    ),
+    dga_planned_start_date: formValues.plannedStartDate,
+    dga_planned_end_date: formValues.plannedEndDate,
+    dga_summary: formValues.summary.trim(),
+    dga_activity_type: formValues.activityType ?? undefined,
+    dga_budget_item_type: formValues.budgetItemType ?? undefined,
+    dga_category: formValues.category ?? undefined,
+    dga_total_budget_paid_previous_year: parseCurrencyValue(
+      formValues.totalBudgetPaidPreviousYear
+    ) ?? undefined,
+    dga_total_budget_payable_future_year: parseCurrencyValue(
+      formValues.totalBudgetPayableFutureYear
+    ) ?? undefined,
+    dga_total_budget_payable_next_year: parseCurrencyValue(
+      formValues.totalBudgetPayableNextYear
+    ) ?? undefined,
+    dga_total_budget_payable_for_year_after_next: parseCurrencyValue(
+      formValues.totalBudgetPayableForYearAfterNext
+    ) ?? undefined,
+  } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>>
+
+  await Dga_ict_budgetsService.update(ictBudgetId, payload)
+}
+
+export async function updateIctBudgetStatus(
+  ictBudgetId: string,
+  status: Dga_ict_budgetsdga_status_for_adge
+) {
+  await Dga_ict_budgetsService.update(ictBudgetId, {
+    dga_status_for_adge: status,
+  })
+}
+
+export async function deleteIctBudgetDraft(ictBudgetId: string) {
+  await Dga_ict_budgetsService.delete(ictBudgetId)
 }

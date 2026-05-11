@@ -97,7 +97,7 @@ function ClarificationCard({
   const style = ROLE_STYLE[clarification.raisedBy]
   const isOpen = clarification.status === 'Open'
   const isRaiser = currentRole === clarification.raisedBy
-  const canReply = isOpen && (isRaiser || (currentRole === 'Respondent' && isEditMode))
+  const canReply = isOpen
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length
 
@@ -184,10 +184,6 @@ function ClarificationCard({
               <Lock className="h-3 w-3" />Closed
             </span>
           )}
-          {/* Respondent edit hint only when collapsed and open */}
-          {!isExpanded && isOpen && currentRole === 'Respondent' && !isEditMode && replyCount === 0 && (
-            <span className="ml-auto text-[11px] text-[#94A3B8]">Edit to respond</span>
-          )}
         </div>
       </button>
 
@@ -260,14 +256,6 @@ function ClarificationCard({
             </div>
           )}
 
-          {/* Respondent view-mode hint */}
-          {isOpen && currentRole === 'Respondent' && !isEditMode && (
-            <div className="border-t border-[#F1F5F9] px-4 py-2.5 dark:border-white/5">
-              <p className="text-xs text-[#94A3B8]">
-                Click <span className="font-semibold text-[#286CFF]">Edit</span> at the top to respond to this clarification.
-              </p>
-            </div>
-          )}
         </div>
       )}
     </div>

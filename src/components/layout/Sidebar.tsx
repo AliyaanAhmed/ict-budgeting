@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -7,11 +8,22 @@ import {
   CheckCircle,
   ChevronsLeft,
   ChevronsRight,
+  RefreshCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
-import { projects } from '@/data/db'
+import { useQueueCounts } from '@/context/QueueCountsContext'
+import { getStoredUserContext } from '@/services/userContextService'
 import appLogo from '@/assets/app-logo-v3.png?inline'
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(w => w[0].toUpperCase())
+    .join('')
+}
 
 interface SidebarProps {
   collapsed: boolean
@@ -21,12 +33,33 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
   const { activeRole } = useRole()
+  const storedUser = getStoredUserContext()
+  const displayName = storedUser?.fullName || 'Mahmood Al Rashidi'
+  const initials = getInitials(displayName) || 'MR'
   const location = useLocation()
+  const { reviewCount, approvalCount, refreshReviewCount, refreshApprovalCount } = useQueueCounts()
 
-  const pendingReview = projects.filter((p) => p.status === 'Submitted to Reviewer').length
-  const pendingApproval = projects.filter((p) => p.status === 'Submitted to Approver').length
+  const pendingReview = reviewCount ?? 0
+  const pendingApproval = approvalCount ?? 0
 
-  const navItems = {
+  useEffect(() => {
+    if (activeRole === 'Reviewer' && reviewCount === null && !location.pathname.startsWith('/reviewer/review-queue')) {
+      void refreshReviewCount()
+    }
+
+    if (activeRole === 'Approver' && approvalCount === null && !location.pathname.startsWith('/approver/approval-queue')) {
+      void refreshApprovalCount()
+    }
+  }, [
+    activeRole,
+    approvalCount,
+    location.pathname,
+    refreshApprovalCount,
+    refreshReviewCount,
+    reviewCount,
+  ])
+
+  const navItems: Record<string, { label: string; icon: React.ElementType; href: string; badge?: number; matchPaths?: string[] }[]> = {
     Respondent: [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/respondent/dashboard' },
       { label: 'My Projects', icon: FolderOpen, href: '/respondent/projects' },
@@ -42,12 +75,19 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'Approval Queue', icon: CheckCircle, href: '/approver/approval-queue', badge: pendingApproval },
       { label: 'Projects', icon: FolderOpen, href: '/approver/projects' },
     ],
+    'ICT Admin': [
+      { label: 'Assessment Cycle', icon: RefreshCcw, href: '/admin/assessment-cycles', matchPaths: ['/admin'] },
+    ],
   }
 
   const items = navItems[activeRole] ?? []
   const activeHref = [...items]
     .sort((a, b) => b.href.length - a.href.length)
-    .find((item) => location.pathname === item.href || location.pathname.startsWith(item.href + '/'))?.href
+    .find((item) => {
+      if (location.pathname === item.href || location.pathname.startsWith(item.href + '/')) return true
+      if (item.matchPaths) return item.matchPaths.some((p) => location.pathname === p || location.pathname.startsWith(p + '/'))
+      return false
+    })?.href
   const ToggleIcon = collapsed
     ? isRTL
       ? ChevronsLeft
@@ -105,7 +145,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       </button>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2" style={{ marginTop: "2rem" }}>
+      <nav className="flex-1 overflow-y-auto py-4 px-2" style={{ marginTop: "1.5rem" }}>
         {items.map((item) => {
           const isActive = activeHref === item.href
           return (
@@ -138,16 +178,17 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
         <div className="border-t border-[var(--border)] p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-white text-xs font-semibold">
-              MR
+              {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-[var(--foreground)] truncate">Mahmood Al Rashidi</p>
+              <p className="text-sm font-semibold text-[var(--foreground)] truncate">{displayName}</p>
               <span
                 className={cn(
                   'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
                   activeRole === 'Respondent' && 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
                   activeRole === 'Reviewer' && 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
-                  activeRole === 'Approver' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                  activeRole === 'Approver' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+                  activeRole === 'ICT Admin' && 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
                 )}
               >
                 {activeRole}
@@ -160,7 +201,6 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     </aside>
   )
 }
-
 
 
 

@@ -11,6 +11,7 @@ import type {
 export interface ProjectsApi {
   getRespondentProjects(filters?: RoleProjectFilters): Promise<Project[]>
   getReviewerProjects(filters?: RoleProjectFilters): Promise<Project[]>
+  getApproverProjects(filters?: RoleProjectFilters): Promise<Project[]>
   getProjectById(projectId: string): Promise<Project | null>
 
   getReviewQueue(): Promise<ReviewQueueProject[]>

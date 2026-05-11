@@ -46,6 +46,10 @@ export const mockProjectsApi: ProjectsApi = {
     return applyFilters(projects, filters)
   },
 
+  async getApproverProjects(filters?: RoleProjectFilters) {
+    return applyFilters(projects, filters)
+  },
+
   async getProjectById(projectId: string) {
     return projects.find((p) => p.id === projectId) ?? null
   },

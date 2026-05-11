@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useParams, Link } from 'react-router-dom'
+import { useLocation, useParams, Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -8,7 +8,9 @@ import {
   Briefcase,
   Building2,
   CalendarDays,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -22,6 +24,7 @@ import {
   MessageSquare,
   Package,
   Pencil,
+  Plus,
   Save,
   Send,
   ShieldCheck,
@@ -43,12 +46,14 @@ import {
 } from 'date-fns'
 import { projects, currentUser } from '@/data/db'
 import type { Clarification, ClarificationReply } from '@/data/db'
+import type { Project } from '@/domain/types'
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { DirhamIcon } from '@/components/shared/DirhamIcon'
 import { ClarificationModal } from '@/components/shared/ClarificationModal'
@@ -60,6 +65,20 @@ import { cn } from '@/lib/utils'
 import { formatAEDFull } from '@/lib/utils'
 import type { BudgetItemDraft } from '@/domain/classification'
 import {
+  ACTIVITY_TYPE_OPTIONS,
+  BUDGET_ITEM_TYPE_OPTIONS,
+  CATEGORY_OPTIONS,
+  INITIAL_ICT_BUDGET_FORM_VALUES,
+  formatIntegerInput,
+  getVisibleBudgetFields,
+  toCurrencyFieldLabel,
+  type ActivityType,
+  type BudgetItemType,
+  type CategoryType,
+  type IctBudgetFieldErrorMap,
+  type IctBudgetFormValues,
+} from '@/features/ictBudgetForm'
+import {
   createBudgetLineItems,
   deleteBudgetLineItem,
   getBudgetLineItemsByBudgetId,
@@ -67,6 +86,28 @@ import {
   updateBudgetLineItemAmount,
   type BudgetLineItemRecord,
 } from '@/services/budgetLineItemService'
+import {
+  deleteIctBudgetDraft,
+  getIctBudgetDraftById,
+  ICT_BUDGET_STATUS,
+  updateIctBudgetStatus,
+  updateIctBudgetDraft,
+} from '@/services/ictBudgetDraftService'
+import {
+  getStrategicPriorityOptions,
+  type StrategicPriorityOption,
+} from '@/services/strategicPriorityService'
+import {
+  createTechnologyProductForCompany,
+  getTechnologyCompanies,
+  type TechnologyCompanyOption,
+} from '@/services/technologyService'
+import {
+  createWorkStream,
+  getWorkStreamOptions,
+  type WorkStreamOption,
+} from '@/services/workStreamService'
+import { projectService } from '@/services/projectService'
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
@@ -127,38 +168,6 @@ function EditField({ label, required, children }: { label: string; required?: bo
       </label>
       {children}
     </div>
-  )
-}
-
-function EditSelect({
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  icon: Icon,
-}: {
-  value: string
-  onValueChange: (v: string) => void
-  options: string[]
-  placeholder?: string
-  icon?: React.ElementType
-}) {
-  return (
-    <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger
-        className="h-10 rounded-xl border-[#D9E6F7] bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]"
-      >
-        <span className={cn('inline-flex w-full min-w-0 items-center gap-5 whitespace-nowrap', value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]')}>
-          {Icon && <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />}
-          <SelectValue placeholder={placeholder} />
-        </span>
-      </SelectTrigger>
-      <SelectContent className="rounded-xl">
-        {options.map((o) => (
-          <SelectItem key={o} value={o}>{o}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   )
 }
 
@@ -302,6 +311,317 @@ function AiSignal({ label, value, tone = 'blue' }: { label: string; value: strin
     <div className={cn('rounded-xl border px-3 py-3', toneClass)}>
       <p className="text-xs font-medium opacity-80">{label}</p>
       <p className="mt-1 text-lg font-bold">{value}</p>
+    </div>
+  )
+}
+
+function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null; fallbackStatus: string }) {
+  const resolvedStatus = status?.trim() || fallbackStatus
+  return <StatusBadge status={resolvedStatus as never} />
+}
+
+type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver'
+type WorkflowAction = 'delete-project' | 'submit-reviewer' | 'submit-approver' | 'approve-project'
+
+function getWorkflowOwner(status: string): WorkflowRole | null {
+  if (status === 'Draft' || status === 'Clarification Required') return 'Respondent'
+  if (status === 'Submitted to Reviewer') return 'Reviewer'
+  if (status === 'Submitted to Approver') return 'Approver'
+  return null
+}
+
+function canRoleEdit(status: string, role: WorkflowRole) {
+  return getWorkflowOwner(status) === role
+}
+
+function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
+  if (action === 'delete-project') {
+    return {
+      title: 'Delete this project?',
+      description:
+        'This will permanently delete the ICT budget record and remove it from the workflow.',
+      confirmLabel: 'Delete Project',
+      tone: 'danger' as const,
+    }
+  }
+
+  if (action === 'submit-reviewer') {
+    return {
+      title: 'Submit to Reviewer?',
+      description:
+        'This will lock respondent changes and move the project into reviewer assessment.',
+      confirmLabel: 'Submit to Reviewer',
+      tone: 'primary' as const,
+    }
+  }
+
+  if (action === 'submit-approver') {
+    return {
+      title: 'Submit to Approver?',
+      description:
+        'This will move the project forward to approver review for final decisioning.',
+      confirmLabel: 'Submit to Approver',
+      tone: 'primary' as const,
+    }
+  }
+
+  return {
+    title: role === 'Approver' ? 'Approve this project?' : 'Complete this action?',
+    description:
+      'This will mark the project as approved by the approver and close the approval stage.',
+    confirmLabel: 'Approve Project',
+    tone: 'primary' as const,
+  }
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-gradient-to-r from-[#E8EEF8] via-[#F4F7FB] to-[#E8EEF8] bg-[length:200%_100%] dark:from-white/10 dark:via-white/5 dark:to-white/10', className)} />
+}
+
+function DetailPageLoadingShell() {
+  return (
+    <div className="w-full space-y-5 lg:pr-24 xl:pr-28 2xl:pr-32">
+      <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
+        <SkeletonBlock className="mb-4 h-3 w-56" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3">
+            <SkeletonBlock className="h-10 w-[360px] max-w-full" />
+            <SkeletonBlock className="h-4 w-[280px] max-w-full" />
+            <SkeletonBlock className="h-4 w-[220px] max-w-full" />
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+            <SkeletonBlock className="h-20 w-full" />
+            <SkeletonBlock className="h-20 w-full" />
+            <SkeletonBlock className="h-20 w-full" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="space-y-5">
+          {[0, 1, 2, 3].map((index) => (
+            <div key={index} className="rounded-2xl border border-[#DDEBFF] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="mb-5 flex items-start gap-4">
+                <SkeletonBlock className="h-12 w-12 rounded-2xl" />
+                <div className="flex-1 space-y-2">
+                  <SkeletonBlock className="h-6 w-52" />
+                  <SkeletonBlock className="h-4 w-full max-w-[420px]" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <SkeletonBlock className="h-16 w-full" />
+                <SkeletonBlock className="h-16 w-full" />
+                <SkeletonBlock className="h-16 w-full" />
+                <SkeletonBlock className="h-16 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <aside className="space-y-5">
+          <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+            <SkeletonBlock className="mb-4 h-5 w-32" />
+            <div className="space-y-3">
+              <SkeletonBlock className="h-10 w-full" />
+              <SkeletonBlock className="h-10 w-full" />
+              <SkeletonBlock className="h-10 w-full" />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+            <SkeletonBlock className="mb-4 h-5 w-40" />
+            <div className="space-y-3">
+              <SkeletonBlock className="h-16 w-full" />
+              <SkeletonBlock className="h-16 w-full" />
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+function LookupSelect({
+  value,
+  onChange,
+  placeholder,
+  options,
+  icon: Icon,
+  disabled,
+  invalid,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  options: Array<{ value: string; label: string }>
+  icon: React.ElementType
+  disabled?: boolean
+  invalid?: boolean
+}) {
+  return (
+    <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger
+        className={cn(
+          'h-10 rounded-xl border bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]',
+          invalid ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+        )}
+      >
+        <span
+          className={cn(
+            'inline-flex w-full min-w-0 items-center gap-5 whitespace-nowrap',
+            value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]'
+          )}
+        >
+          <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <SelectValue placeholder={placeholder} />
+        </span>
+      </SelectTrigger>
+      <SelectContent className="rounded-xl">
+        {options.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-[#64748B]">No options available.</div>
+        ) : (
+          options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))
+        )}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function CurrencyField({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: string
+  onChange: (value: string) => void
+  invalid?: boolean
+}) {
+  return (
+    <div className="relative">
+      <DirhamIcon
+        width={16}
+        height={16}
+        color="#286CFF"
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+      />
+      <Input
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(formatIntegerInput(event.target.value))}
+        placeholder="0"
+        className={cn(
+          'h-10 rounded-xl bg-white pl-9 shadow-sm dark:bg-[#1E293B]',
+          invalid ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+        )}
+      />
+    </div>
+  )
+}
+
+function ProductMultiSelect({
+  products,
+  selectedIds,
+  disabled,
+  onToggle,
+  invalid,
+}: {
+  products: TechnologyCompanyOption['products']
+  selectedIds: string[]
+  disabled?: boolean
+  onToggle: (id: string) => void
+  invalid?: boolean
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!containerRef.current) return
+      const target = event.target
+      if (target instanceof Node && !containerRef.current.contains(target)) {
+        setOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+
+  const selectedProducts = products.filter((product) => selectedIds.includes(product.id))
+  const triggerLabel =
+    selectedProducts.length === 0
+      ? 'Select one or more products'
+      : selectedProducts.map((product) => product.name).join(', ')
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className={cn(
+          'flex h-10 w-full items-center justify-between rounded-xl border bg-white px-4 text-left shadow-sm transition-colors hover:border-[var(--primary-light)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] dark:border-white/10 dark:bg-[#1E293B]',
+          invalid ? 'border-[#F04438]' : 'border-[#D9E6F7]',
+          disabled && 'cursor-not-allowed bg-[#F8FAFC] text-[#94A3B8] opacity-80 dark:bg-white/5'
+        )}
+      >
+        <span className="inline-flex min-w-0 items-center gap-5">
+          <Package className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <span className={cn('truncate text-sm', selectedProducts.length === 0 && 'text-[#64748B]')}>
+            {disabled ? 'Select technology company first' : triggerLabel}
+          </span>
+        </span>
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-[#64748B] transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {!disabled && open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_18px_42px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
+          <div className="max-h-[250px] overflow-y-auto p-2">
+            {products.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#DDEBFF] bg-[#F8FBFF] px-4 py-6 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                No products are associated with this company yet.
+              </div>
+            ) : (
+              products.map((product) => {
+                const selected = selectedIds.includes(product.id)
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => onToggle(product.id)}
+                    className={cn(
+                      'flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors',
+                      selected
+                        ? 'bg-[#EEF4FF] text-[#286CFF]'
+                        : 'hover:bg-[#F8FBFF] text-[#0F172A] dark:text-white dark:hover:bg-white/5'
+                    )}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{product.name}</p>
+                      <p className="text-xs text-[#64748B] dark:text-slate-300">{product.typeLabel}</p>
+                    </div>
+                    <div
+                      className={cn(
+                        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                        selected
+                          ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                          : 'border-[#CBD5E1] text-transparent'
+                      )}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -584,22 +904,56 @@ function ChangeLogTable() {
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { runActionToast, showErrorToast, showSuccessToast } = useToast()
 
-  const project = projects.find((p) => p.id === id) ?? projects[0]
-  const ictBudgetId = project.ictBudgetId ?? null
+  const emptyProject: Project = useMemo(
+    () => ({
+      id: id ?? 'UNKNOWN-BUDGET',
+      ictBudgetId: undefined,
+      name: 'Loading project...',
+      strategicPriority: '-',
+      classification: '-',
+      category: '-',
+      requestedBudget: 0,
+      budgetItems: [],
+      status: 'Draft',
+      approvalStatus: 'Draft',
+      pendingWith: null,
+      submittedBy: '-',
+      submittedDate: '-',
+      lastModified: '-',
+      plannedStartDate: '',
+      plannedEndDate: '',
+      workStream: '-',
+      budgetType: '-',
+      technology: { company: '-', product: '' },
+      summary: '',
+      documents: [],
+      clarifications: [],
+      aiScore: 84,
+      riskLevel: 'Low',
+      capex: 0,
+      opex: 0,
+    }),
+    [id]
+  )
+  const [projectData, setProjectData] = useState<Project | null>(null)
+  const [projectLoading, setProjectLoading] = useState(true)
+  const [projectError, setProjectError] = useState<string | null>(null)
+  const project = projectData ?? projects.find((p) => p.id === id) ?? emptyProject
+  const ictBudgetId = project.ictBudgetId ?? (id && GUID_PATTERN.test(id) ? id : null)
   const hasDataverseBudgetProject = Boolean(ictBudgetId && GUID_PATTERN.test(ictBudgetId))
 
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
   const isGovernanceView = isReviewerView || isApproverView
-  const isDraftOrNeedsWork = project.status === 'Draft' || project.status === 'Needs Work'
 
   const currentRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
   const backHref = isReviewerView ? '/reviewer/review-queue' : isApproverView ? '/approver/approval-queue' : '/respondent/projects'
   const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
   const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
-  const pageTitle = isGovernanceView ? 'Review Budget Submission' : project.name
+  const pageTitle = project.name
   const confidence = project.aiScore || 84
   const documentStatus = project.documents.length > 0 ? 'Complete' : 'Missing'
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
@@ -608,25 +962,95 @@ export default function ProjectDetail() {
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
   const budgetFitTone = budgetFit === 'Aligned' ? 'green' : budgetFit === 'Review' ? 'amber' : 'red'
   const actionContextLabel = isApproverView ? 'Approver decision controls' : 'Reviewer decision controls'
-  const submitActionLabel = isApproverView ? 'Submit to DGE' : 'Submit to Approver'
+  const workflowOwner = getWorkflowOwner(project.status)
+  const canCurrentRoleEdit = canRoleEdit(project.status, currentRole)
+  const canDeleteProject = currentRole === 'Respondent' && project.status === 'Draft'
+  const canSubmitToReviewer =
+    currentRole === 'Respondent' &&
+    (project.status === 'Draft' || project.status === 'Clarification Required')
+  const canSubmitToApprover =
+    currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer'
+  const canApproveProject =
+    currentRole === 'Approver' && project.status === 'Submitted to Approver'
+  const canRaiseClarification =
+    (currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer') ||
+    (currentRole === 'Approver' && project.status === 'Submitted to Approver')
+  const showPendingNotice = workflowOwner !== null && workflowOwner !== currentRole
+  const pendingNoticeText = workflowOwner
+    ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}.`
+    : 'This project has completed the current workflow stage and is now read-only.'
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadProject = async () => {
+      if (!id) {
+        setProjectData(null)
+        setProjectLoading(false)
+        return
+      }
+
+      setProjectLoading(true)
+      setProjectError(null)
+
+      try {
+        const resolvedProject = await projectService.getProjectById(id)
+        if (cancelled) return
+
+        if (!resolvedProject) {
+          setProjectData(null)
+          setProjectError(`Unable to find a budget record for "${id}".`)
+          return
+        }
+
+        setProjectData(resolvedProject)
+      } catch (error) {
+        if (cancelled) return
+        setProjectData(null)
+        setProjectError(
+          error instanceof Error ? error.message : 'Unable to load the selected project.'
+        )
+      } finally {
+        if (!cancelled) {
+          setProjectLoading(false)
+        }
+      }
+    }
+
+    void loadProject()
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
-  const [editForm, setEditForm] = useState({
-    name: project.name,
-    strategicPriority: project.strategicPriority,
-    classification: project.classification,
-    workStream: project.workStream,
-    budgetType: project.budgetType,
-    technologyCompany: project.technology.company,
-    technologyProduct: project.technology.product,
-    category: project.category,
-    plannedStartDate: project.plannedStartDate,
-    plannedEndDate: project.plannedEndDate,
-    summary: project.summary,
-  })
-  const [savedForm, setSavedForm] = useState(editForm)
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupError, setLookupError] = useState<string | null>(null)
+  const [savingIctBudget, setSavingIctBudget] = useState(false)
+  const [ictBudgetLoading, setIctBudgetLoading] = useState(false)
+  const [ictBudgetError, setIctBudgetError] = useState<string | null>(null)
+  const [strategicPriorities, setStrategicPriorities] = useState<StrategicPriorityOption[]>([])
+  const [workStreams, setWorkStreams] = useState<WorkStreamOption[]>([])
+  const [technologyCompanies, setTechnologyCompanies] = useState<TechnologyCompanyOption[]>([])
+  const [formValues, setFormValues] = useState<IctBudgetFormValues>(INITIAL_ICT_BUDGET_FORM_VALUES)
+  const [savedFormValues, setSavedFormValues] = useState<IctBudgetFormValues>(INITIAL_ICT_BUDGET_FORM_VALUES)
+  const [savedTechnologyProductNames, setSavedTechnologyProductNames] = useState<string[]>(
+    project.technology.product
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )
+  const [ictBudgetCreatedByName, setIctBudgetCreatedByName] = useState<string | null>(null)
+  const [ictBudgetCreatedOn, setIctBudgetCreatedOn] = useState<string | null>(null)
+  const [ictBudgetModifiedOn, setIctBudgetModifiedOn] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<IctBudgetFieldErrorMap>({})
+  const [workStreamModalOpen, setWorkStreamModalOpen] = useState(false)
+  const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
+  const [newWorkStreamName, setNewWorkStreamName] = useState('')
+  const [newTechnologyProductName, setNewTechnologyProductName] = useState('')
   const [budgetModalOpen, setBudgetModalOpen] = useState(false)
   const [budgetItemsLoading, setBudgetItemsLoading] = useState(false)
   const [budgetItemsError, setBudgetItemsError] = useState<string | null>(null)
@@ -634,6 +1058,7 @@ export default function ProjectDetail() {
   const [savingBudgetLineItemId, setSavingBudgetLineItemId] = useState<string | null>(null)
   const [deletingBudgetLineItemId, setDeletingBudgetLineItemId] = useState<string | null>(null)
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null)
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
     () =>
@@ -644,6 +1069,9 @@ export default function ProjectDetail() {
         l1: item.l1,
         l2: item.l2,
         l3: item.l3,
+        accountGroup: null,
+        description: null,
+        expenseTypeValue: null,
         expenseTypeLabel: item.classification,
         ebsCode: item.ebsFusionCode,
         fusionCode: item.glCode,
@@ -652,23 +1080,469 @@ export default function ProjectDetail() {
     [project.budgetItems]
   )
 
-  const handleSaveEdit = () => {
-    setSavedForm(editForm)
-    setIsEditMode(false)
-    showSuccessToast('Changes saved', 'The project details have been updated successfully.')
+  const topLevelStrategicPriorities = useMemo(
+    () => strategicPriorities.filter((priority) => !priority.parentId),
+    [strategicPriorities]
+  )
+  const strategicPriorityClassifications = useMemo(
+    () =>
+      strategicPriorities.filter(
+        (priority) => priority.parentId === formValues.strategicPriorityId
+      ),
+    [formValues.strategicPriorityId, strategicPriorities]
+  )
+  const selectedTechnologyCompany = useMemo(
+    () =>
+      technologyCompanies.find((company) => company.id === formValues.technologyCompanyId) ?? null,
+    [formValues.technologyCompanyId, technologyCompanies]
+  )
+  const visibleBudgetFields = useMemo(
+    () => getVisibleBudgetFields(formValues.activityType),
+    [formValues.activityType]
+  )
+
+  const updateField = <K extends keyof IctBudgetFormValues>(
+    field: K,
+    value: IctBudgetFormValues[K]
+  ) => {
+    setFormValues((prev) => ({ ...prev, [field]: value }))
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const nextErrors = { ...prev }
+      delete nextErrors[field]
+      return nextErrors
+    })
+  }
+
+  const handleStrategicPriorityChange = (value: string) => {
+    setFormValues((prev) => ({
+      ...prev,
+      strategicPriorityId: value,
+      strategicPriorityClassificationId: '',
+    }))
+    setFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.strategicPriorityId
+      delete nextErrors.strategicPriorityClassificationId
+      return nextErrors
+    })
+  }
+
+  const handleTechnologyCompanyChange = (value: string) => {
+    setFormValues((prev) => ({
+      ...prev,
+      technologyCompanyId: value,
+      technologyProductIds: [],
+    }))
+    setFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.technologyCompanyId
+      delete nextErrors.technologyProductIds
+      return nextErrors
+    })
+  }
+
+  const handleActivityTypeChange = (value: ActivityType) => {
+    const nextVisibleFields = getVisibleBudgetFields(value)
+
+    setFormValues((prev) => ({
+      ...prev,
+      activityType: value,
+      totalBudgetPaidPreviousYear: nextVisibleFields.includes('totalBudgetPaidPreviousYear')
+        ? prev.totalBudgetPaidPreviousYear
+        : '',
+      totalBudgetPayableFutureYear: nextVisibleFields.includes('totalBudgetPayableFutureYear')
+        ? prev.totalBudgetPayableFutureYear
+        : '',
+      totalBudgetPayableNextYear: nextVisibleFields.includes('totalBudgetPayableNextYear')
+        ? prev.totalBudgetPayableNextYear
+        : '',
+      totalBudgetPayableForYearAfterNext: nextVisibleFields.includes(
+        'totalBudgetPayableForYearAfterNext'
+      )
+        ? prev.totalBudgetPayableForYearAfterNext
+        : '',
+    }))
+
+    setFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.activityType
+      delete nextErrors.totalBudgetPaidPreviousYear
+      delete nextErrors.totalBudgetPayableFutureYear
+      delete nextErrors.totalBudgetPayableNextYear
+      delete nextErrors.totalBudgetPayableForYearAfterNext
+      return nextErrors
+    })
+  }
+
+  const toggleTechnologyProduct = (productId: string) => {
+    setFormValues((prev) => ({
+      ...prev,
+      technologyProductIds: prev.technologyProductIds.includes(productId)
+        ? prev.technologyProductIds.filter((id) => id !== productId)
+        : [...prev.technologyProductIds, productId],
+    }))
   }
 
   const handleCancelEdit = () => {
-    setEditForm(savedForm)
+    setFormValues(savedFormValues)
+    setFieldErrors({})
     setIsEditMode(false)
   }
 
-  const setField = <K extends keyof typeof editForm>(key: K, value: typeof editForm[K]) =>
-    setEditForm((prev) => ({ ...prev, [key]: value }))
+  useEffect(() => {
+    let cancelled = false
+    let budgetStage = false
+
+    const loadLookupsAndBudget = async () => {
+      setLookupLoading(true)
+      setIctBudgetLoading(Boolean(hasDataverseBudgetProject))
+
+      try {
+        const [priorityOptions, workStreamOptions, technologyOptions] = await Promise.all([
+          getStrategicPriorityOptions(),
+          getWorkStreamOptions(),
+          getTechnologyCompanies(),
+        ])
+
+        if (cancelled) return
+
+        setStrategicPriorities(priorityOptions)
+        setWorkStreams(workStreamOptions)
+        setTechnologyCompanies(technologyOptions)
+        setLookupError(null)
+        budgetStage = true
+
+        if (hasDataverseBudgetProject && ictBudgetId) {
+          const retrievedBudget = await getIctBudgetDraftById(
+            ictBudgetId,
+            technologyOptions,
+            project.technology.product
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          )
+
+          if (cancelled) return
+
+          setFormValues(retrievedBudget.formValues)
+          setSavedFormValues(retrievedBudget.formValues)
+          setSavedTechnologyProductNames(retrievedBudget.displayTechnologyProducts)
+          setIctBudgetCreatedByName(retrievedBudget.createdByName)
+          setIctBudgetCreatedOn(retrievedBudget.createdOn)
+          setIctBudgetModifiedOn(retrievedBudget.modifiedOn)
+          setIctBudgetError(null)
+        } else {
+          const fallbackFormValues: IctBudgetFormValues = {
+            ...INITIAL_ICT_BUDGET_FORM_VALUES,
+            initiativeName: project.name,
+            plannedStartDate: project.plannedStartDate,
+            plannedEndDate: project.plannedEndDate,
+            summary: project.summary,
+          }
+
+          setFormValues(fallbackFormValues)
+          setSavedFormValues(fallbackFormValues)
+          setSavedTechnologyProductNames(
+            project.technology.product
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          )
+          setIctBudgetCreatedByName(project.submittedBy)
+          setIctBudgetCreatedOn(null)
+          setIctBudgetModifiedOn(null)
+        }
+      } catch (error) {
+        if (cancelled) return
+        const message =
+          error instanceof Error ? error.message : 'Unable to load ICT budget details.'
+        if (budgetStage) {
+          setIctBudgetError(message)
+        } else {
+          setLookupError(message)
+        }
+      } finally {
+        if (!cancelled) {
+          setLookupLoading(false)
+          setIctBudgetLoading(false)
+        }
+      }
+    }
+
+    void loadLookupsAndBudget()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasDataverseBudgetProject, ictBudgetId, project.name, project.plannedEndDate, project.plannedStartDate, project.summary, project.technology.product])
+
+  const validateForm = () => {
+    const nextErrors: IctBudgetFieldErrorMap = {}
+
+    if (!formValues.initiativeName.trim()) {
+      nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
+    }
+    if (!formValues.strategicPriorityId) {
+      nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+    }
+    if (!formValues.strategicPriorityClassificationId) {
+      nextErrors.strategicPriorityClassificationId =
+        'Strategic Priority Classifications is required.'
+    }
+    if (!formValues.budgetItemType) {
+      nextErrors.budgetItemType = 'ICT Budget Items Type is required.'
+    }
+    if (!formValues.plannedStartDate) {
+      nextErrors.plannedStartDate = 'Planned Start Date is required.'
+    }
+    if (!formValues.plannedEndDate) {
+      nextErrors.plannedEndDate = 'Planned End Date is required.'
+    }
+    if (!formValues.summary.trim()) {
+      nextErrors.summary = 'Summary / Description is required.'
+    }
+    if (!formValues.activityType) {
+      nextErrors.activityType = 'Budget Type is required.'
+    }
+
+    visibleBudgetFields.forEach((field) => {
+      if (!formValues[field]) {
+        nextErrors[field] = `${toCurrencyFieldLabel(field)} is required.`
+      }
+    })
+
+    setFieldErrors(nextErrors)
+
+    if (Object.keys(nextErrors).length > 0) {
+      showErrorToast(
+        'Complete required fields',
+        'Please fill the highlighted fields before saving your changes.'
+      )
+      return false
+    }
+
+    return true
+  }
+
+  const handleSaveEdit = async () => {
+    if (!hasDataverseBudgetProject || !ictBudgetId) {
+      showErrorToast(
+        'ICT budget unavailable',
+        'This project is not linked to a Dataverse ICT budget record.'
+      )
+      return
+    }
+
+    if (!validateForm()) {
+      return
+    }
+
+    setSavingIctBudget(true)
+    try {
+      await runActionToast(
+        async () => {
+          await updateIctBudgetDraft(ictBudgetId, formValues)
+          setSavedFormValues(formValues)
+          setSavedTechnologyProductNames(
+            selectedTechnologyCompany?.products
+              .filter((product) => formValues.technologyProductIds.includes(product.id))
+              .map((product) => product.name) ?? []
+          )
+          setIctBudgetError(null)
+        },
+        {
+          processingTitle: 'Saving changes',
+          processingDescription: 'Updating the ICT budget record in Dataverse...',
+          successTitle: 'Changes saved',
+          successDescription: 'The project details have been updated successfully.',
+          errorTitle: 'Unable to save changes',
+          minDurationMs: 1800,
+        }
+      )
+
+      setIsEditMode(false)
+    } finally {
+      setSavingIctBudget(false)
+    }
+  }
+
+  const syncLocalWorkflowState = (nextStatus: Project['status']) => {
+    setProjectData((current) =>
+      current
+        ? {
+            ...current,
+            status: nextStatus,
+            approvalStatus: nextStatus,
+            pendingWith: getWorkflowOwner(nextStatus),
+          }
+        : current
+    )
+  }
+
+  const handleConfirmWorkflowAction = async () => {
+    if (!pendingWorkflowAction || !ictBudgetId) return
+
+    if (pendingWorkflowAction === 'delete-project') {
+      await runActionToast(
+        async () => {
+          await deleteIctBudgetDraft(ictBudgetId)
+        },
+        {
+          processingTitle: 'Deleting project',
+          processingDescription: 'Removing the ICT budget record from Dataverse...',
+          successTitle: 'Project deleted',
+          successDescription: 'The project was deleted successfully.',
+          errorTitle: 'Unable to delete project',
+          minDurationMs: 1600,
+        }
+      )
+      setPendingWorkflowAction(null)
+      navigate(backHref)
+      return
+    }
+
+    if (pendingWorkflowAction === 'submit-reviewer') {
+      if (!validateForm()) return
+
+      await runActionToast(
+        async () => {
+          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underReviewerReview)
+          syncLocalWorkflowState('Submitted to Reviewer')
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Submitting to reviewer',
+          processingDescription: 'Validating fields and moving the project into reviewer review...',
+          successTitle: 'Submitted to reviewer',
+          successDescription: 'The project is now with the reviewer.',
+          errorTitle: 'Unable to submit to reviewer',
+          minDurationMs: 1800,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
+    if (pendingWorkflowAction === 'submit-approver') {
+      await runActionToast(
+        async () => {
+          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underApproverReview)
+          syncLocalWorkflowState('Submitted to Approver')
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Submitting to approver',
+          processingDescription: 'Moving the project into approver review...',
+          successTitle: 'Submitted to approver',
+          successDescription: 'The project is now with the approver.',
+          errorTitle: 'Unable to submit to approver',
+          minDurationMs: 1800,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
+    await runActionToast(
+      async () => {
+        await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.approvedByApprover)
+        syncLocalWorkflowState('Approved')
+        setIsEditMode(false)
+      },
+      {
+        processingTitle: 'Approving project',
+        processingDescription: 'Marking the ICT budget as approved by the approver...',
+        successTitle: 'Project approved',
+        successDescription: 'The project has been approved successfully.',
+        errorTitle: 'Unable to approve project',
+        minDurationMs: 1800,
+      }
+    )
+    setPendingWorkflowAction(null)
+  }
+
+  const handleCreateWorkStream = async () => {
+    const trimmedName = newWorkStreamName.trim()
+    if (!trimmedName) {
+      showErrorToast('Work stream name required', 'Enter a work stream name before creating it.')
+      return
+    }
+
+    const created = await runActionToast(() => createWorkStream(trimmedName), {
+      processingTitle: 'Creating work stream',
+      processingDescription: 'Saving the new work stream to Dataverse...',
+      successTitle: 'Work stream created',
+      successDescription: 'The new work stream is now available in the dropdown.',
+      errorTitle: 'Work stream creation failed',
+    })
+
+    setWorkStreams((prev) =>
+      [...prev, created].sort((left, right) => left.name.localeCompare(right.name))
+    )
+    setFormValues((prev) => ({ ...prev, workStreamId: created.id }))
+    setNewWorkStreamName('')
+    setWorkStreamModalOpen(false)
+  }
+
+  const handleCreateTechnologyProduct = async () => {
+    const trimmedName = newTechnologyProductName.trim()
+    if (!trimmedName) {
+      showErrorToast('Product name required', 'Enter a product name before creating it.')
+      return
+    }
+
+    if (!formValues.technologyCompanyId) {
+      showErrorToast(
+        'Select a technology company first',
+        'A technology company must be selected before creating a new product.'
+      )
+      return
+    }
+
+    const created = await runActionToast(
+      () => createTechnologyProductForCompany(formValues.technologyCompanyId, trimmedName),
+      {
+        processingTitle: 'Creating technology product',
+        processingDescription:
+          'Creating the product and associating it with the selected company...',
+        successTitle: 'Technology product created',
+        successDescription: 'The new product is ready to select for this budget item.',
+        errorTitle: 'Technology product creation failed',
+      }
+    )
+
+    setTechnologyCompanies((prev) =>
+      prev.map((company) =>
+        company.id !== formValues.technologyCompanyId
+          ? company
+          : {
+              ...company,
+              products: [...company.products, created].sort((left, right) =>
+                left.name.localeCompare(right.name)
+              ),
+            }
+      )
+    )
+
+    setFormValues((prev) => ({
+      ...prev,
+      technologyProductIds: prev.technologyProductIds.includes(created.id)
+        ? prev.technologyProductIds
+        : [...prev.technologyProductIds, created.id],
+    }))
+
+    setNewTechnologyProductName('')
+    setTechnologyProductModalOpen(false)
+  }
 
   // ── Clarification State ──────────────────────────────────────────────────────
   const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
+
+  useEffect(() => {
+    setLocalClarifications(project.clarifications)
+  }, [project.clarifications])
 
   const handleClarificationReply = (clarificationId: string, message: string) => {
     setLocalClarifications((prev) =>
@@ -710,7 +1584,24 @@ export default function ProjectDetail() {
       replies: [],
     }
     setLocalClarifications((prev) => [...prev, newClarification])
-    showSuccessToast('Clarification raised', 'The respondent has been notified and will see this in their review form.')
+    if (ictBudgetId) {
+      void runActionToast(
+        async () => {
+          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.clarificationPending)
+          syncLocalWorkflowState('Clarification Required')
+        },
+        {
+          processingTitle: 'Raising clarification',
+          processingDescription: 'Opening the clarification thread and returning the project to the respondent...',
+          successTitle: 'Clarification raised',
+          successDescription: 'The respondent has been notified and the project is now awaiting clarification.',
+          errorTitle: 'Unable to raise clarification',
+          minDurationMs: 1500,
+        }
+      )
+    } else {
+      showSuccessToast('Clarification raised', 'The respondent has been notified and will see this in their review form.')
+    }
   }
 
   const showClarificationSection = localClarifications.length > 0 || isGovernanceView
@@ -894,22 +1785,69 @@ export default function ProjectDetail() {
   }, [isEditMode, showClarificationSection, visibleSectionIds.join('|')])
 
   // ── Display values (from saved form after edit, or original project) ─────────
+  const savedStrategicPriority =
+    topLevelStrategicPriorities.find(
+      (priority) => priority.id === savedFormValues.strategicPriorityId
+    ) ?? null
+  const savedStrategicPriorityClassification =
+    strategicPriorities.find(
+      (priority) => priority.id === savedFormValues.strategicPriorityClassificationId
+    ) ?? null
+  const savedWorkStream =
+    workStreams.find((workStream) => workStream.id === savedFormValues.workStreamId) ?? null
+  const savedTechnologyCompany =
+    technologyCompanies.find(
+      (company) => company.id === savedFormValues.technologyCompanyId
+    ) ?? null
+  const savedTechnologyProductLabel =
+    savedTechnologyProductNames.length > 0
+      ? savedTechnologyProductNames.join(', ')
+      : project.technology.product || '-'
+  const savedBudgetItemTypeLabel =
+    BUDGET_ITEM_TYPE_OPTIONS.find((option) => option.value === savedFormValues.budgetItemType)?.label ??
+    '-'
+  const savedCategoryLabel =
+    CATEGORY_OPTIONS.find((option) => option.value === savedFormValues.category)?.label ?? '-'
+  const savedActivityTypeLabel =
+    ACTIVITY_TYPE_OPTIONS.find((option) => option.value === savedFormValues.activityType)?.title ?? '-'
+  const headerCreatedBy = ictBudgetCreatedByName || project.submittedBy
+  const creationCreatedOnLabel = ictBudgetCreatedOn
+    ? ictBudgetCreatedOn
+    : project.submittedDate
+  const creationModifiedOnLabel = ictBudgetModifiedOn
+    ? ictBudgetModifiedOn
+    : project.lastModified
+  const resolvedStatusLabel = project.status
+
   const display = {
-    name: savedForm.name,
-    strategicPriority: savedForm.strategicPriority,
-    classification: savedForm.classification,
-    workStream: savedForm.workStream,
-    budgetType: savedForm.budgetType,
-    technologyCompany: savedForm.technologyCompany,
-    technologyProduct: savedForm.technologyProduct,
-    category: savedForm.category,
-    plannedStartDate: savedForm.plannedStartDate,
-    plannedEndDate: savedForm.plannedEndDate,
-    summary: savedForm.summary,
+    name: savedFormValues.initiativeName || project.name,
+    strategicPriority: savedStrategicPriority?.name || project.strategicPriority,
+    classification: savedStrategicPriorityClassification?.name || project.classification,
+    workStream: savedWorkStream?.name || project.workStream,
+    budgetType: savedBudgetItemTypeLabel,
+    category: savedCategoryLabel,
+    budgetActivityType: savedActivityTypeLabel,
+    technologyCompany: savedTechnologyCompany?.name || project.technology.company,
+    technologyProduct: savedTechnologyProductLabel,
+    plannedStartDate: savedFormValues.plannedStartDate
+      ? format(new Date(`${savedFormValues.plannedStartDate}T00:00:00`), 'MMM d, yyyy')
+      : project.plannedStartDate,
+    plannedEndDate: savedFormValues.plannedEndDate
+      ? format(new Date(`${savedFormValues.plannedEndDate}T00:00:00`), 'MMM d, yyyy')
+      : project.plannedEndDate,
+    summary: savedFormValues.summary || project.summary,
+    status: resolvedStatusLabel,
+    createdBy: headerCreatedBy,
+    createdOn: creationCreatedOnLabel,
+    modifiedOn: creationModifiedOnLabel,
+  }
+
+  if (projectLoading && !projectData) {
+    return <DetailPageLoadingShell />
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] space-y-5">
+    <div className="w-full space-y-5 lg:pr-24 xl:pr-28 2xl:pr-32">
       {/* Page Header */}
       <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-[#64748B] dark:text-slate-200">
@@ -927,8 +1865,10 @@ export default function ProjectDetail() {
               Back
             </Link>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] dark:text-white sm:text-3xl">{pageTitle}</h1>
-              <StatusBadge status={project.status} />
+              <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] dark:text-white sm:text-3xl">
+                {display.name}
+              </h1>
+              <DynamicStatusBadge status={display.status} fallbackStatus={project.status} />
               <RiskBadge risk={project.riskLevel} />
               {/* Edit mode indicator chip */}
               {isEditMode && (
@@ -944,7 +1884,7 @@ export default function ProjectDetail() {
             <div className="mt-2 max-w-3xl space-y-1">
               <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">{display.name}</p>
               <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
-                Created By: <span className="font-semibold text-[#0F172A] dark:text-white">{project.submittedBy}</span>
+                Created By: <span className="font-semibold text-[#0F172A] dark:text-white">{display.createdBy}</span>
               </p>
             </div>
           </div>
@@ -983,7 +1923,7 @@ export default function ProjectDetail() {
                 </button>
               </div>
 
-              {!isEditMode && !showLogs && (
+              {!isEditMode && !showLogs && canCurrentRoleEdit && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1007,7 +1947,7 @@ export default function ProjectDetail() {
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-3 text-center dark:bg-white/5">
                 <p className="text-xs font-semibold text-[#64748B]">Budget</p>
-                <CurrencyAmount amount={project.requestedBudget} className="justify-center text-lg font-bold text-[#0F172A] dark:text-white" iconSize={15} />
+                <CurrencyAmount amount={budgetTotal} className="justify-center text-lg font-bold text-[#0F172A] dark:text-white" iconSize={15} />
               </div>
             </div>
           </div>
@@ -1033,10 +1973,46 @@ export default function ProjectDetail() {
             <Button variant="outline" size="sm" onClick={handleCancelEdit} className="h-9 rounded-xl border-[#286CFF]/30 text-[#475569] dark:border-white/10">
               Cancel
             </Button>
-            <Button size="sm" onClick={handleSaveEdit} className="h-9 gap-1.5 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
+            <Button size="sm" onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="h-9 gap-1.5 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
               <Save className="h-3.5 w-3.5" />
-              Save Changes
+              {savingIctBudget ? 'Saving...' : 'Save Changes'}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {!showLogs && !isEditMode && (
+        <div
+          className={cn(
+            'flex flex-wrap items-start gap-3 rounded-2xl border px-4 py-3 shadow-sm',
+            showPendingNotice
+              ? 'border-[#F5D0A9] bg-[#FFF7ED] dark:border-[#EA580C]/30 dark:bg-[#431407]/40'
+              : 'border-[#BFD8FF] bg-[#EFF6FF] dark:border-[#286CFF]/20 dark:bg-[#10213B]'
+          )}
+        >
+          <div
+            className={cn(
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white',
+              showPendingNotice ? 'bg-[#F97316]' : 'bg-[#286CFF]'
+            )}
+          >
+            {showPendingNotice ? <History className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className={cn('text-sm font-semibold', showPendingNotice ? 'text-[#C2410C] dark:text-orange-300' : 'text-[#286CFF]')}>
+              {showPendingNotice
+                ? `Pending with ${workflowOwner}`
+                : canCurrentRoleEdit
+                  ? `${currentRole} actions available`
+                  : 'Read-only workflow state'}
+            </p>
+            <p className="text-xs text-[#64748B] dark:text-slate-300">
+              {showPendingNotice
+                ? pendingNoticeText
+                : canCurrentRoleEdit
+                  ? `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
+                  : 'This project is currently read-only, but the clarification thread remains available for all roles.'}
+            </p>
           </div>
         </div>
       )}
@@ -1055,6 +2031,36 @@ export default function ProjectDetail() {
           </p>
         </div>
       </div>}
+
+      {!showLogs && (lookupLoading || ictBudgetLoading) && (
+        <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+          Loading Dataverse project details...
+        </div>
+      )}
+
+      {!showLogs && projectLoading && (
+        <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+          Resolving project record...
+        </div>
+      )}
+
+      {!showLogs && projectError && (
+        <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+          {projectError}
+        </div>
+      )}
+
+      {!showLogs && lookupError && (
+        <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+          {lookupError}
+        </div>
+      )}
+
+      {!showLogs && ictBudgetError && (
+        <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+          {ictBudgetError}
+        </div>
+      )}
 
       {!showLogs && <ScrollSpySectionRail
         sections={FORM_SECTIONS.filter((section) => visibleSectionIds.includes(section.id))}
@@ -1081,67 +2087,132 @@ export default function ProjectDetail() {
                   <div className="md:col-span-2">
                     <EditField label="Initiative / Budget Item Name" required>
                       <Input
-                        value={editForm.name}
-                        onChange={(e) => setField('name', e.target.value)}
-                        className="h-10 rounded-xl border-[#D9E6F7] bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
+                        value={formValues.initiativeName}
+                        onChange={(e) => updateField('initiativeName', e.target.value)}
+                        className={cn(
+                          'h-10 rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                          fieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+                        )}
                       />
                     </EditField>
                   </div>
-                  <EditField label="Strategic Priority">
-                    <EditSelect
-                      value={editForm.strategicPriority}
-                      onValueChange={(v) => setField('strategicPriority', v)}
-                      options={['Digital Infrastructure', 'Smart Government', 'Digital Security', 'Operational Excellence', 'Digital Transformation', 'Data & Analytics', 'Government Services Excellence', 'Economic Diversification', 'Smart City Initiatives', 'Sustainability & Environment']}
+                  <EditField label="Strategic Priorities" required>
+                    <LookupSelect
+                      value={formValues.strategicPriorityId}
+                      onChange={handleStrategicPriorityChange}
+                      placeholder="Select strategic priority"
+                      options={topLevelStrategicPriorities.map((priority) => ({
+                        value: priority.id,
+                        label: priority.name,
+                      }))}
                       icon={Layers}
+                      disabled={lookupLoading || ictBudgetLoading}
+                      invalid={Boolean(fieldErrors.strategicPriorityId)}
                     />
                   </EditField>
-                  <EditField label="Strategic Classification">
-                    <EditSelect
-                      value={editForm.classification}
-                      onValueChange={(v) => setField('classification', v)}
-                      options={['Cloud & Hosting', 'AI & Automation', 'Security & Compliance', 'Enterprise Systems', 'BI & Reporting', 'Mobile & Apps', 'Network & Connectivity', 'Analytics']}
+                  <EditField label="Strategic Priority Classifications" required>
+                    <LookupSelect
+                      value={formValues.strategicPriorityClassificationId}
+                      onChange={(value) => updateField('strategicPriorityClassificationId', value)}
+                      placeholder={
+                        formValues.strategicPriorityId
+                          ? 'Select strategic priority classification'
+                          : 'Select strategic priority first'
+                      }
+                      options={strategicPriorityClassifications.map((priority) => ({
+                        value: priority.id,
+                        label: priority.name,
+                      }))}
                       icon={FolderKanban}
+                      disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
+                      invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                     />
                   </EditField>
-                  <EditField label="Work Stream / Program">
-                    <EditSelect
-                      value={editForm.workStream}
-                      onValueChange={(v) => setField('workStream', v)}
-                      options={['Digital Transformation', 'Smart Government', 'Data Governance', 'Infrastructure Modernization', 'Digital Security', 'Operational Excellence']}
-                      icon={Briefcase}
-                    />
+                  <EditField label="Work Stream">
+                    <div className="space-y-2">
+                      <LookupSelect
+                        value={formValues.workStreamId}
+                        onChange={(value) => updateField('workStreamId', value)}
+                        placeholder="Select work stream"
+                        options={workStreams.map((workStream) => ({
+                          value: workStream.id,
+                          label: workStream.name,
+                        }))}
+                        icon={Briefcase}
+                        disabled={lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.workStreamId)}
+                      />
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => setWorkStreamModalOpen(true)}
+                        disabled={lookupLoading || ictBudgetLoading}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Create Work Stream
+                      </Button>
+                    </div>
                   </EditField>
-                  <EditField label="ICT Budget Item Type">
-                    <EditSelect
-                      value={editForm.budgetType}
-                      onValueChange={(v) => setField('budgetType', v as typeof editForm.budgetType)}
-                      options={['New', 'Enhancement', 'Continuation', 'Phase 2']}
+                  <EditField label="ICT Budget Items Type" required>
+                    <LookupSelect
+                      value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
+                      onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
+                      placeholder="Select ICT budget item type"
+                      options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({
+                        value: String(option.value),
+                        label: option.label,
+                      }))}
                       icon={Package}
-                    />
-                  </EditField>
-                  <EditField label="Technology (Company)">
-                    <EditSelect
-                      value={editForm.technologyCompany}
-                      onValueChange={(v) => setField('technologyCompany', v)}
-                      options={['Microsoft', 'Google', 'Amazon', 'Oracle', 'Cisco', 'Palo Alto Networks', 'SAP', 'IBM']}
-                      icon={Building2}
-                    />
-                  </EditField>
-                  <EditField label="Technology (Product)">
-                    <EditSelect
-                      value={editForm.technologyProduct}
-                      onValueChange={(v) => setField('technologyProduct', v)}
-                      options={['Azure', 'Google Cloud', 'AWS', 'Oracle Fusion', 'Prisma', 'Catalyst', 'Intune', 'Power BI', 'Vertex AI']}
-                      icon={Package}
+                      disabled={lookupLoading || ictBudgetLoading}
+                      invalid={Boolean(fieldErrors.budgetItemType)}
                     />
                   </EditField>
                   <EditField label="Category">
-                    <EditSelect
-                      value={editForm.category}
-                      onValueChange={(v) => setField('category', v)}
-                      options={['Data Management', 'Citizen Services', 'Cybersecurity', 'Enterprise Applications', 'Infrastructure', 'Analytics', 'Workforce Productivity']}
+                    <LookupSelect
+                      value={formValues.category ? String(formValues.category) : ''}
+                      onChange={(value) => updateField('category', Number(value) as CategoryType)}
+                      placeholder="Select category"
+                      options={CATEGORY_OPTIONS.map((option) => ({
+                        value: String(option.value),
+                        label: option.label,
+                      }))}
                       icon={FolderKanban}
+                      disabled={lookupLoading || ictBudgetLoading}
                     />
+                  </EditField>
+                  <EditField label="Technology (Company)">
+                    <LookupSelect
+                      value={formValues.technologyCompanyId}
+                      onChange={handleTechnologyCompanyChange}
+                      placeholder="Select technology company"
+                      options={technologyCompanies.map((company) => ({
+                        value: company.id,
+                        label: company.name,
+                      }))}
+                      icon={Building2}
+                      disabled={lookupLoading || ictBudgetLoading}
+                      invalid={Boolean(fieldErrors.technologyCompanyId)}
+                    />
+                  </EditField>
+                  <EditField label="Technology (Product)">
+                    <div className="space-y-2">
+                      <ProductMultiSelect
+                        products={selectedTechnologyCompany?.products ?? []}
+                        selectedIds={formValues.technologyProductIds}
+                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                        onToggle={toggleTechnologyProduct}
+                        invalid={Boolean(fieldErrors.technologyProductIds)}
+                      />
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => setTechnologyProductModalOpen(true)}
+                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Create Technology Product
+                      </Button>
+                    </div>
                   </EditField>
                 </div>
               </DetailSection>
@@ -1150,14 +2221,14 @@ export default function ProjectDetail() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <EditField label="Planned Start Date" required>
                     <EditDatePickerField
-                      value={editForm.plannedStartDate}
-                      onChange={(value) => setField('plannedStartDate', value)}
+                      value={formValues.plannedStartDate}
+                      onChange={(value) => updateField('plannedStartDate', value)}
                     />
                   </EditField>
                   <EditField label="Planned End Date" required>
                     <EditDatePickerField
-                      value={editForm.plannedEndDate}
-                      onChange={(value) => setField('plannedEndDate', value)}
+                      value={formValues.plannedEndDate}
+                      onChange={(value) => updateField('plannedEndDate', value)}
                     />
                   </EditField>
                 </div>
@@ -1167,8 +2238,8 @@ export default function ProjectDetail() {
                 <EditField label="Summary / Description" required>
                   <Textarea
                     rows={6}
-                    value={editForm.summary}
-                    onChange={(e) => setField('summary', e.target.value)}
+                    value={formValues.summary}
+                    onChange={(e) => updateField('summary', e.target.value)}
                     className="resize-none rounded-xl border-[#D9E6F7] bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
                   />
                 </EditField>
@@ -1187,6 +2258,61 @@ export default function ProjectDetail() {
                   </div>
                 }
               >
+                <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                  <EditField label="Budget Type" required>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {ACTIVITY_TYPE_OPTIONS.map((option) => {
+                        const selected = formValues.activityType === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleActivityTypeChange(option.value)}
+                            className={cn(
+                              'rounded-2xl border p-4 text-left transition-colors',
+                              selected
+                                ? 'border-[#286CFF] bg-[#EEF4FF]'
+                                : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
+                                <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                                  {option.description}
+                                </p>
+                              </div>
+                              <div
+                                className={cn(
+                                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                                  selected
+                                    ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                                    : 'border-[#CBD5E1] text-transparent'
+                                )}
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </EditField>
+
+                  {visibleBudgetFields.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {visibleBudgetFields.map((field) => (
+                        <EditField key={field} label={toCurrencyFieldLabel(field)} required>
+                          <CurrencyField
+                            value={formValues[field]}
+                            onChange={(value) => updateField(field, value)}
+                            invalid={Boolean(fieldErrors[field])}
+                          />
+                        </EditField>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {hasDataverseBudgetProject && (
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
@@ -1231,9 +2357,9 @@ export default function ProjectDetail() {
                   <p className="text-sm text-[#64748B] dark:text-slate-200">Review all changes before saving.</p>
                   <div className="flex gap-2">
                     <Button variant="outline" onClick={handleCancelEdit} className="rounded-xl">Discard</Button>
-                    <Button onClick={handleSaveEdit} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
+                    <Button onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Save className="h-4 w-4" />
-                      Save Changes
+                      {savingIctBudget ? 'Saving...' : 'Save Changes'}
                     </Button>
                   </div>
                 </div>
@@ -1245,13 +2371,13 @@ export default function ProjectDetail() {
               <DetailSection id="sec-details" title="Budget Item Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label="Initiative / Budget Item Name" value={display.name} />
-                  <Field label="Strategic Priority" value={display.strategicPriority} />
-                  <Field label="Strategic Classification" value={display.classification} />
-                  <Field label="Work Stream / Program" value={display.workStream} />
+                  <Field label="Strategic Priorities" value={display.strategicPriority} />
+                  <Field label="Strategic Priority Classifications" value={display.classification} />
+                  <Field label="Work Stream" value={display.workStream} />
                   <Field label="ICT Budget Item Type" value={display.budgetType} />
+                  <Field label="Category" value={display.category} />
                   <Field label="Technology (Company)" value={display.technologyCompany} />
                   <Field label="Technology (Product)" value={display.technologyProduct} />
-                  <Field label="Category" value={display.category} />
                 </div>
               </DetailSection>
 
@@ -1278,6 +2404,22 @@ export default function ProjectDetail() {
                   </div>
                 }
               >
+                <div className="mb-6 grid grid-cols-1 gap-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5 md:grid-cols-2">
+                  <Field label="Budget Type" value={display.budgetActivityType} />
+                  {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
+                    <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+                      <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
+                        {toCurrencyFieldLabel(field)}
+                      </p>
+                      <CurrencyAmount
+                        amount={Number(savedFormValues[field].replace(/,/g, '') || 0)}
+                        full
+                        className="text-sm font-semibold text-[#0F172A] dark:text-white"
+                        iconSize={14}
+                      />
+                    </div>
+                  ))}
+                </div>
                 <BudgetItemsTable
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
@@ -1350,18 +2492,49 @@ export default function ProjectDetail() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start gap-2"
-                      onClick={() => setClarificationModalOpen(true)}
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      Raise Clarification
-                    </Button>
-                    <Button className="w-full justify-start gap-2">
-                      <Send className="h-4 w-4" />
-                      {submitActionLabel}
-                    </Button>
+                    {canCurrentRoleEdit && (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2"
+                        onClick={() => setIsEditMode(true)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit Details
+                      </Button>
+                    )}
+                    {canRaiseClarification && (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2"
+                        onClick={() => setClarificationModalOpen(true)}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Raise Clarification
+                      </Button>
+                    )}
+                    {canSubmitToApprover && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPendingWorkflowAction('submit-approver')}
+                      >
+                        <Send className="h-4 w-4" />
+                        Submit to Approver
+                      </Button>
+                    )}
+                    {canApproveProject && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPendingWorkflowAction('approve-project')}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Approve Project
+                      </Button>
+                    )}
+                    {!canCurrentRoleEdit && !canRaiseClarification && !canSubmitToApprover && !canApproveProject && (
+                      <p className="text-xs text-[#475569] dark:text-slate-200">
+                        This record is currently pending with another role, so workflow actions are locked here.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1405,29 +2578,43 @@ export default function ProjectDetail() {
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-2 p-4">
                   <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
-                  {isDraftOrNeedsWork ? (
+                  {(canCurrentRoleEdit || canSubmitToReviewer || canDeleteProject) ? (
                     <>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setIsEditMode(true)}
-                      >
-                        <Edit className="h-4 w-4" />
-                        Edit Project
-                      </Button>
-                      <Button variant="destructive" className="w-full justify-start gap-2"><Trash2 className="h-4 w-4" />Delete Project</Button>
+                      {canCurrentRoleEdit && (
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setIsEditMode(true)}
+                        >
+                          <Edit className="h-4 w-4" />
+                          Edit Project
+                        </Button>
+                      )}
+                      {canSubmitToReviewer && (
+                        <Button
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPendingWorkflowAction('submit-reviewer')}
+                        >
+                          <Send className="h-4 w-4" />
+                          Submit to Reviewer
+                        </Button>
+                      )}
+                      {canDeleteProject && (
+                        <Button
+                          variant="destructive"
+                          className="w-full justify-start gap-2"
+                          onClick={() => setPendingWorkflowAction('delete-project')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete Project
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start gap-2"
-                        onClick={() => setIsEditMode(true)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                        Edit Details
-                      </Button>
-                      <p className="text-xs text-[#475569] dark:text-slate-200">Project is currently in the governance workflow.</p>
+                      <p className="text-xs text-[#475569] dark:text-slate-200">
+                        Project is currently in the governance workflow. It can still be discussed in the clarification thread, but respondent changes are locked until it returns.
+                      </p>
                     </>
                   )}
                 </CardContent>
@@ -1435,10 +2622,10 @@ export default function ProjectDetail() {
 
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-3 p-4">
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Submission Details</p>
-                  <Field label="Submitted By" value={project.submittedBy} />
-                  <Field label="Submitted Date" value={project.submittedDate} />
-                  <Field label="Last Modified" value={project.lastModified} />
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Project Creation Details</p>
+                  <Field label="Created By" value={display.createdBy} />
+                  <Field label="Created On" value={display.createdOn} />
+                  <Field label="Modified On" value={display.modifiedOn} />
                 </CardContent>
               </Card>
 
@@ -1453,7 +2640,7 @@ export default function ProjectDetail() {
                   <p className="font-semibold text-[#0F172A] dark:text-white">Project Signals</p>
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Status</p>
-                    <div className="mt-2"><StatusBadge status={project.status} /></div>
+                    <div className="mt-2"><DynamicStatusBadge status={display.status} fallbackStatus={project.status} /></div>
                   </div>
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Risk Level</p>
@@ -1498,12 +2685,112 @@ export default function ProjectDetail() {
           ) : null
         }
       />
+      <ConfirmationModal
+        open={pendingWorkflowAction !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingWorkflowAction(null)
+          }
+        }}
+        title={
+          pendingWorkflowAction
+            ? workflowActionDetails(pendingWorkflowAction, currentRole).title
+            : 'Confirm action'
+        }
+        description={
+          pendingWorkflowAction
+            ? workflowActionDetails(pendingWorkflowAction, currentRole).description
+            : 'Please confirm this workflow action.'
+        }
+        confirmLabel={
+          pendingWorkflowAction
+            ? workflowActionDetails(pendingWorkflowAction, currentRole).confirmLabel
+            : 'Confirm'
+        }
+        cancelLabel="Cancel"
+        onConfirm={() => void handleConfirmWorkflowAction()}
+        tone={
+          pendingWorkflowAction
+            ? workflowActionDetails(pendingWorkflowAction, currentRole).tone
+            : 'primary'
+        }
+        meta={
+          <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
+            {display.name}
+          </p>
+        }
+      />
       <ClarificationModal
         open={clarificationModalOpen}
         onOpenChange={setClarificationModalOpen}
         projectName={display.name}
         onSubmit={handleRaiseClarification}
       />
+      <Dialog open={workStreamModalOpen} onOpenChange={setWorkStreamModalOpen}>
+        <DialogContent className="max-w-[520px] p-0">
+          <div className="p-6">
+            <DialogHeader className="pr-10">
+              <DialogTitle>Create Work Stream</DialogTitle>
+              <DialogDescription>
+                Add a work stream record to Dataverse and select it for this budget item.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-6 space-y-3">
+              <EditField label="Work Stream Name" required>
+                <Input
+                  value={newWorkStreamName}
+                  onChange={(event) => setNewWorkStreamName(event.target.value)}
+                  className="h-12 rounded-xl border-[#D9E6F7]"
+                  placeholder="Enter work stream name"
+                />
+              </EditField>
+            </div>
+            <DialogFooter className="mt-6">
+              <Button variant="outline" className="rounded-xl" onClick={() => setWorkStreamModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="rounded-xl" onClick={() => void handleCreateWorkStream()}>
+                Create Work Stream
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={technologyProductModalOpen} onOpenChange={setTechnologyProductModalOpen}>
+        <DialogContent className="max-w-[520px] p-0">
+          <div className="p-6">
+            <DialogHeader className="pr-10">
+              <DialogTitle>Create Technology Product</DialogTitle>
+              <DialogDescription>
+                This creates a new product record, associates it with the selected technology company, and makes it available for selection.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-6 space-y-3">
+              <EditField label="Technology Product Name" required>
+                <Input
+                  value={newTechnologyProductName}
+                  onChange={(event) => setNewTechnologyProductName(event.target.value)}
+                  className="h-12 rounded-xl border-[#D9E6F7]"
+                  placeholder="Enter technology product name"
+                />
+              </EditField>
+              {selectedTechnologyCompany && (
+                <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 text-sm text-[#475569]">
+                  Company association: <span className="font-semibold text-[#0F172A]">{selectedTechnologyCompany.name}</span>
+                </div>
+              )}
+            </div>
+            <DialogFooter className="mt-6">
+              <Button variant="outline" className="rounded-xl" onClick={() => setTechnologyProductModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="rounded-xl" onClick={() => void handleCreateTechnologyProduct()}>
+                Create Product
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

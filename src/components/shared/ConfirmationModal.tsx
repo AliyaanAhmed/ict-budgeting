@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
 } from '@/components/ui/dialog'
 
 interface ConfirmationModalProps {
@@ -30,46 +29,74 @@ export function ConfirmationModal({
   tone = 'primary',
   meta,
 }: ConfirmationModalProps) {
-  const iconBg = tone === 'danger' ? 'bg-[#EA4F49]' : 'bg-[#286CFF]'
-  const ConfirmIcon = tone === 'danger' ? TriangleAlert : ShieldCheck
+  const isDanger = tone === 'danger'
+  const ConfirmIcon = isDanger ? TriangleAlert : ShieldCheck
+
+  const iconBg      = isDanger ? '#EA4F49' : '#286CFF'
+  const headerBg    = isDanger ? '#FFF5F5' : '#F0F7FF'
+  const headerBorder= isDanger ? '#FECACA' : '#BFDBFE'
+  const confirmBg   = isDanger ? '#EA4F49' : '#286CFF'
+  const confirmHover= isDanger ? '#D63F39' : '#1A5CE8'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0">
-        <div className="rounded-t-[28px] border-b border-[var(--border)] px-6 py-4 bg-[var(--muted)]">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg} text-white`}>
-              <ConfirmIcon className="h-5 w-5" />
+      <DialogContent className="p-0 overflow-hidden max-w-[440px] gap-0 border border-[#E2E8F0] shadow-[0_4px_20px_rgba(15,23,42,0.10)] dark:border-white/10">
+
+        {/* Header */}
+        <div
+          className="px-6 py-5 border-b dark:border-white/10"
+          style={{ background: headerBg, borderBottomColor: headerBorder }}
+        >
+          <div className="flex items-start gap-4">
+            {/* Icon chip */}
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
+              style={{ backgroundColor: iconBg }}
+            >
+              <ConfirmIcon className="h-5 w-5" strokeWidth={2} />
             </div>
-            <div className="flex-1">
-              <h2 className="text-lg font-bold text-[var(--foreground)]">{title}</h2>
-              {meta}
+
+            {/* Title + meta */}
+            <div className="min-w-0 flex-1 pt-0.5">
+              <h2 className="text-[15px] font-bold leading-snug text-[#0F172A] dark:text-white">
+                {title}
+              </h2>
+              {meta && (
+                <div className="mt-1 [&_p]:!m-0 [&_p]:!text-[13px] [&_p]:!font-medium [&_p]:!text-[#64748B] dark:[&_p]:!text-slate-300">
+                  {meta}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="px-6 pb-6 pt-4">
-          <div className="rounded-2xl bg-[#F8FBFF] px-4 pb-4 pt-4 text-sm leading-6 text-black dark:bg-white/5 dark:text-white">
+        {/* Body */}
+        <div className="bg-white px-6 py-5 dark:bg-[#1E293B]">
+          <p className="text-sm leading-relaxed text-[#475569] dark:text-slate-300">
             {description}
-          </div>
-
-          <DialogFooter className="mt-6">
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="h-10 rounded-xl border-[#E2E8F0] px-5 text-[#64748B] dark:border-white/10 dark:text-slate-200"
-            >
-              {cancelLabel}
-            </Button>
-            <Button
-              onClick={onConfirm}
-              className="h-10 rounded-xl px-5 text-white"
-              style={{ backgroundColor: tone === 'danger' ? '#EA4F49' : '#286CFF' }}
-            >
-              {confirmLabel}
-            </Button>
-          </DialogFooter>
+          </p>
         </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] bg-white px-6 py-4 dark:border-white/10 dark:bg-[#1E293B]">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="h-10 rounded-xl border-[#E2E8F0] px-5 text-sm font-medium text-[#64748B] hover:bg-[#F8FAFC] dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"
+          >
+            {cancelLabel}
+          </Button>
+          <Button
+            onClick={onConfirm}
+            className="h-10 rounded-xl px-5 text-sm font-semibold text-white transition-colors"
+            style={{ backgroundColor: confirmBg }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = confirmHover)}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = confirmBg)}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+
       </DialogContent>
     </Dialog>
   )

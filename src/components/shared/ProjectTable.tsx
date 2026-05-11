@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Minus, Search, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import type { Project } from '@/data/db'
+import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
 import { CurrencyAmount } from './CurrencyAmount'
@@ -374,7 +374,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <UserHoverCard name={project.pendingWith} role={project.pendingWith} subtitle="Current Workflow Owner" />
+            <UserHoverCard name={project.pendingWith} subtitle="Current Workflow Owner" />
           ) : (
             <span className="text-xs text-[#94A3B8]">-</span>
           ),
@@ -390,7 +390,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
         type: 'option',
         accessor: (project) => project.submittedBy,
         options: Array.from(new Set(projects.map((project) => project.submittedBy))).sort(),
-        render: (project) => <UserHoverCard name={project.submittedBy} role="Respondent" subtitle="Project Creator" />,
+        render: (project) => <UserHoverCard name={project.submittedBy} subtitle="Project Creator" />,
         className: 'hidden xl:table-cell',
         headerClassName: 'hidden xl:table-cell',
       })

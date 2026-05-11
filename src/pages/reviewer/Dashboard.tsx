@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   BadgeDollarSign,
@@ -33,9 +33,13 @@ import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { currentCycle, projects, reviewQueueProjects } from '@/data/db'
+import { projects as mockProjects } from '@/data/db'
+import { useCycle } from '@/context/CycleContext'
+import { useInstance } from '@/context/InstanceContext'
+import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
+import { useRoleProjects } from '@/hooks/useRoleProjects'
 
 const BREAKDOWN_COLORS = ['#8B5CF6', '#22C55E', '#286CFF', '#F59E0B', '#EC4899']
 
@@ -176,71 +180,169 @@ function ActionMetricCard({
         </div>
       </div>
       <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
-        Open the queue and take action on the items that need your review.
+        Open the reviewer projects view and continue the next workflow step.
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
-        <span>Open Queue</span>
+        <span>Open Projects</span>
         <ChevronRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
       </div>
     </Link>
   )
 }
 
+function parseProjectDate(project: { submittedDateRaw?: string; submittedDate: string }) {
+  const rawValue = project.submittedDateRaw || project.submittedDate
+  const parsed = Date.parse(rawValue)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function DashboardLoadingState() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-[220px] rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)]" />
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-[200px] rounded-[24px] border border-[#DCE8F6] bg-white dark:border-white/10 dark:bg-[#18263F]" />
+          ))}
+        </div>
+        <div className="h-[200px] rounded-[28px] border border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]" />
+      </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-[360px] rounded-[28px] border border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function computeDaysRemaining(endDate?: string | null): number {
+  if (!endDate) return 0
+  const end = new Date(endDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.ceil((end.getTime() - today.getTime()) / 86_400_000))
+}
+
 export default function ReviewerDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
+  const { selectedCycle } = useCycle()
+  const { instanceId, instanceDetail, instanceLoading } = useInstance()
+  const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
+  const showSkeleton = useDelayedLoading(instanceLoading || loading)
+  const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
+  const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
+  const mockTotalBudget = mockProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
+  const pendingReviewProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
+  const clarificationSentProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
+  const sentToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
+  const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
+  const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
 
-  const toReview = reviewQueueProjects.filter((p) => p.status === 'To Review').length
-  const reviewed = reviewQueueProjects.filter((p) => p.status === 'Reviewed').length
-  const clarificationPending = reviewQueueProjects.filter((p) => p.status === 'Clarification Pending').length
-  const highRisk = reviewQueueProjects.filter((p) => p.riskLevel === 'High').length
+  const toReview = pendingReviewProjects.length
+  const clarificationPending = clarificationSentProjects.length
+  const reviewed = sentToApproverProjects.length
+  const approved = approvedProjects.length
 
-  const totalQueueBudget = reviewQueueProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const reviewedBudget = reviewQueueProjects
-    .filter((p) => p.status === 'Reviewed')
-    .reduce((sum, p) => sum + p.requestedBudget, 0)
-  const avgConfidence = Math.round(
-    reviewQueueProjects.reduce((s, p) => s + p.aiConfidence, 0) / reviewQueueProjects.length
-  )
+  const totalQueueBudget = liveProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const reviewedBudget = sentToApproverProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const avgConfidence = liveProjects.length > 0
+    ? Math.round(liveProjects.reduce((sum, p) => sum + p.aiScore, 0) / liveProjects.length)
+    : 0
   const predictedApproval = Math.round(totalQueueBudget * (avgConfidence / 100))
 
   const attentionCount = toReview + clarificationPending
 
-  const newProjects = reviewQueueProjects.filter((_, i) => i % 2 === 0)
-  const recurringProjects = reviewQueueProjects.filter((_, i) => i % 2 !== 0)
-  const newProjectsBudget = newProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const recurringProjectsBudget = recurringProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const newProjectsShare = Math.round((newProjectsBudget / totalQueueBudget) * 100)
-  const recurringProjectsShare = 100 - newProjectsShare
+  const attentionProjects = useMemo(
+    () =>
+      [...pendingReviewProjects]
+        .sort((a, b) => parseProjectDate(b) - parseProjectDate(a))
+        .slice(0, 2),
+    [pendingReviewProjects]
+  )
+
+  const latestProjects = useMemo(
+    () =>
+      [...liveProjects]
+        .sort((a, b) => parseProjectDate(b) - parseProjectDate(a))
+        .slice(0, 2),
+    [liveProjects]
+  )
+
+  const showPendingReviewPanel = attentionProjects.length > 0
+  const focusProjects = showPendingReviewPanel ? attentionProjects : latestProjects
+
+  const budgetTypeGroups = [
+    {
+      key: 'Operational Non-Recurring',
+      label: 'Operational Non-Recurring',
+      accent: '#D97706',
+      bgClass: 'border-[#F6E4B4] dark:border-[#5E4C1E]',
+      badgeClass: 'bg-[#FFF3D9] text-[#D97706] dark:bg-[#D97706]/18 dark:text-[#FCD34D]',
+    },
+    {
+      key: 'Operational Recurring',
+      label: 'Operational Recurring',
+      accent: '#16A34A',
+      bgClass: 'border-[#CDEFD7] dark:border-[#29583C]',
+      badgeClass: 'bg-[#DCFCE7] text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-[#BBF7D0]',
+    },
+    {
+      key: 'New Project',
+      label: 'New Project',
+      accent: '#286CFF',
+      bgClass: 'border-[#D8E7FF] dark:border-[#315389]',
+      badgeClass: 'bg-[#DCEAFE] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white',
+    },
+    {
+      key: 'Project Continuation',
+      label: 'Project Continuation',
+      accent: '#7C3AED',
+      bgClass: 'border-[#E9D5FF] dark:border-[#52307A]',
+      badgeClass: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/18 dark:text-[#E9D5FF]',
+    },
+  ] as const
+
+  const budgetTypeBreakdown = budgetTypeGroups.map((group) => {
+    const items = liveProjects.filter((project) => project.budgetType === group.key)
+    const amount = items.reduce((sum, project) => sum + project.requestedBudget, 0)
+    return {
+      ...group,
+      count: items.length,
+      amount,
+      share: totalQueueBudget > 0 ? Math.round((amount / totalQueueBudget) * 100) : 0,
+    }
+  })
 
   const budgetByReviewStatus = [
     {
-      name: 'To Review',
-      value: reviewQueueProjects
-        .filter((p) => p.status === 'To Review')
-        .reduce((sum, p) => sum + p.requestedBudget, 0),
+      name: 'Drafts on Respondent',
+      value: draftProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      fill: dashboardStatusColors.needsWork,
+    },
+    {
+      name: 'Pending Review',
+      value: pendingReviewProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
       fill: dashboardStatusColors.toReview,
     },
     {
-      name: 'Clarification Pending',
-      value: reviewQueueProjects
-        .filter((p) => p.status === 'Clarification Pending')
-        .reduce((sum, p) => sum + p.requestedBudget, 0),
+      name: 'Clarification Sent',
+      value: clarificationSentProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
       fill: dashboardStatusColors.clarificationPending,
     },
     {
-      name: 'Reviewed',
+      name: 'Sent To Approver',
       value: reviewedBudget,
       fill: dashboardStatusColors.reviewed,
     },
-  ]
-    .filter((item) => item.value > 0)
-    .map((item) => ({
-      ...item,
-      percent: Math.round((item.value / totalQueueBudget) * 100),
-    }))
+  ].map((item) => ({
+    ...item,
+    percent: totalQueueBudget > 0 ? Math.round((item.value / totalQueueBudget) * 100) : 0,
+  }))
 
   const accountBreakdown = Array.from(
-    projects
+    mockProjects
       .flatMap((p) => p.budgetItems)
       .reduce((acc, item) => {
         const existing = acc.get(item.accountName)
@@ -260,7 +362,7 @@ export default function ReviewerDashboard() {
     .slice(0, 5)
     .map(([, item], index) => ({
       ...item,
-      pct: Math.round((item.amount / totalQueueBudget) * 100),
+      pct: mockTotalBudget > 0 ? Math.round((item.amount / mockTotalBudget) * 100) : 0,
       color: BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length],
     }))
 
@@ -302,6 +404,18 @@ export default function ReviewerDashboard() {
     },
   ]
 
+  if (showSkeleton) {
+    return <DashboardLoadingState />
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318]">
+        {error}
+      </div>
+    )
+  }
+
   return (
     <div className="w-full space-y-6 pb-4">
       {/* ─── Hero banner ─── */}
@@ -315,7 +429,7 @@ export default function ReviewerDashboard() {
               Reviewer Workspace
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
-              ICT Cycle - 2026
+              {cycleName}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
               Current cycle status: reviewer assessment is active, submitted projects are being validated, and clarifications are routed to respondents before items move to approver review.
@@ -323,11 +437,11 @@ export default function ReviewerDashboard() {
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-2 rounded-full bg-[#E7F5FF] px-3 py-1.5 font-medium text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
                 <Calendar className="h-4 w-4" />
-                {currentCycle.name}
+                {instanceDetail?.name ?? cycleName}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-[#F3FAF4] px-3 py-1.5 font-medium text-[#2C7A43] dark:bg-[#22C55E]/15 dark:text-[#C9F4D1]">
                 <Radar className="h-4 w-4" />
-                {currentCycle.daysRemaining} days remaining
+                {daysRemaining} days remaining
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-[#FFF4E5] px-3 py-1.5 font-medium text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
                 <MessageSquareMore className="h-4 w-4" />
@@ -347,7 +461,7 @@ export default function ReviewerDashboard() {
             accent={dashboardPalette.seaBlue}
             badge="Awaiting Review"
             icon={<Radar className="h-5 w-5" />}
-            href="/reviewer/review-queue"
+            href="/reviewer/projects?tab=pending-review"
           />
           <ActionMetricCard
             title="Clarification Sent"
@@ -355,15 +469,15 @@ export default function ReviewerDashboard() {
             accent={dashboardPalette.camelYellow}
             badge="Awaiting Respondent"
             icon={<MessageSquareMore className="h-5 w-5" />}
-            href="/reviewer/review-queue"
+            href="/reviewer/projects?tab=clarification"
           />
           <ActionMetricCard
-            title="High Risk Items"
-            value={highRisk}
-            accent={dashboardPalette.aeRed}
-            badge="Needs Attention"
-            icon={<ShieldAlert className="h-5 w-5" />}
-            href="/reviewer/review-queue"
+            title="Sent To Approver"
+            value={reviewed}
+            accent={dashboardPalette.aeGreen}
+            badge="Forwarded"
+            icon={<ClipboardCheck className="h-5 w-5" />}
+            href="/reviewer/projects?tab=submitted-approver"
           />
         </div>
 
@@ -455,13 +569,13 @@ export default function ReviewerDashboard() {
           <div className="flex shrink-0 items-center gap-4">
             <div className="hidden items-center gap-4 text-sm md:flex">
               <span className="text-[#0F172A] dark:text-white">
-                {reviewQueueProjects.length} <span className="text-[#64748B] dark:text-slate-100">in queue</span>
+                {liveProjects.length} <span className="text-[#64748B] dark:text-slate-100">in queue</span>
               </span>
               <span className="text-[#286CFF] dark:text-[#C6DBFF]">
                 {avgConfidence}% <span className="text-[#64748B] dark:text-slate-100">avg confidence</span>
               </span>
-              <span className="text-[#F59E0B] dark:text-[#FCD34D]">
-                {highRisk} <span className="text-[#64748B] dark:text-slate-100">high risk</span>
+              <span className="text-[#16A34A] dark:text-[#BBF7D0]">
+                {reviewed} <span className="text-[#64748B] dark:text-slate-100">sent onward</span>
               </span>
               <RefreshCcw className="h-4 w-4 text-[#64748B] dark:text-slate-100" />
             </div>
@@ -526,30 +640,37 @@ export default function ReviewerDashboard() {
       {/* ─── Projects Requiring Attention + Budget Mix ─── */}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
-          title="High-priority items in the review queue that need immediate reviewer action."
+          title="Reviewer-owned projects that are ready for assessment or need immediate attention."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Projects Requiring Attention</h3>
-                  <InfoHint text="Projects assigned to the reviewer that are high risk, have missing documentation, or are awaiting a clarification response from the respondent." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">
+                    {showPendingReviewPanel ? 'Projects Requiring Attention' : 'Latest ICT Budgets'}
+                  </h3>
+                  <InfoHint
+                    text={
+                      showPendingReviewPanel
+                        ? 'Shows the latest ICT budget submissions that are currently pending with the reviewer.'
+                        : 'No project is pending with the reviewer right now, so this section falls back to the latest ICT budgets in the workspace.'
+                    }
+                  />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  High-risk and incomplete submissions that need your decision
+                  {showPendingReviewPanel
+                    ? 'Latest submissions that are waiting for reviewer action'
+                    : 'Most recent ICT budgets visible in the reviewer workspace'}
                 </p>
               </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#EA4F49]/10 text-[#EA4F49] dark:bg-[#EA4F49]/18 dark:text-[#FCA5A5]">
-                <ShieldAlert className="h-5 w-5" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#9FC4FF]">
+                <FolderOpen className="h-5 w-5" />
               </div>
             </div>
 
             <div className="space-y-3">
-              {reviewQueueProjects
-                .filter((p) => p.riskLevel === 'High' || p.hasMissingDocs || p.status === 'Clarification Pending')
-                .slice(0, 2)
-                .map((project, index) => (
+              {focusProjects.map((project, index) => (
                   <Link
                     key={project.id}
                     to={`/reviewer/review-queue/${project.id}`}
@@ -563,24 +684,15 @@ export default function ReviewerDashboard() {
                           </span>
                           <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
                         </div>
-                        <p className="mt-1.5 text-sm text-[#64748B] dark:text-slate-100">{project.entity}</p>
+                        <p className="mt-1.5 text-sm text-[#64748B] dark:text-slate-100">{project.strategicPriority}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          {project.riskLevel === 'High' && (
-                            <span className="inline-flex items-center rounded-full bg-[#FEE2E2] px-2.5 py-1 font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
-                              High Risk
-                            </span>
-                          )}
-                          {project.hasMissingDocs && (
-                            <span className="inline-flex items-center rounded-full bg-[#FFF4E5] px-2.5 py-1 font-semibold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
-                              Missing Docs
-                            </span>
-                          )}
-                          {project.status === 'Clarification Pending' && (
-                            <span className="inline-flex items-center rounded-full bg-[#E7F5FF] px-2.5 py-1 font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
-                              Clarif. Pending
-                            </span>
-                          )}
-                          <span className="text-[#94A3B8]">AI: {project.aiConfidence}%</span>
+                          <span className="inline-flex items-center rounded-full bg-[#E7F5FF] px-2.5 py-1 font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
+                            {project.status}
+                          </span>
+                          <span className="inline-flex items-center rounded-full bg-[#F8FAFC] px-2.5 py-1 font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-100">
+                            {project.budgetType}
+                          </span>
+                          <span className="text-[#94A3B8]">AI: {project.aiScore}%</span>
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
@@ -594,8 +706,8 @@ export default function ReviewerDashboard() {
 
             <div className="mt-4">
               <Button variant="outline" asChild className="h-10 rounded-2xl">
-                <Link to="/reviewer/review-queue">
-                  View Review Queue
+                <Link to={showPendingReviewPanel ? '/reviewer/projects?tab=pending-review' : '/reviewer/projects'}>
+                  View All Projects
                   <MoveRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -762,7 +874,7 @@ export default function ReviewerDashboard() {
                   <InfoHint text="This workspace gives you a live view of the review queue status and points you toward the highest priority next actions in the review pipeline." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Open the review queue to assess submissions, raise clarifications to respondents, and forward approved projects to the Approver.
+                  Open the reviewer projects workspace to assess submissions, raise clarifications to respondents, and forward ready projects to the Approver.
                 </p>
               </div>
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#286CFF]/10 text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
@@ -772,10 +884,10 @@ export default function ReviewerDashboard() {
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Reviewed', value: reviewed, tone: dashboardStatusColors.reviewed },
-                { label: 'To Review', value: toReview, tone: dashboardStatusColors.toReview },
+                { label: 'Pending Review', value: toReview, tone: dashboardStatusColors.toReview },
                 { label: 'Clarif. Sent', value: clarificationPending, tone: dashboardStatusColors.clarificationPending },
-                { label: 'High Risk', value: highRisk, tone: dashboardPalette.aeRed },
+                { label: 'Sent To Approver', value: reviewed, tone: dashboardStatusColors.reviewed },
+                { label: 'Approved', value: approved, tone: dashboardStatusColors.approved },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
@@ -799,7 +911,7 @@ export default function ReviewerDashboard() {
                   <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
                     {toReview > 0
                       ? `Review ${toReview} pending submission${toReview === 1 ? '' : 's'} and raise clarifications where documentation or budget justification is incomplete.`
-                      : 'All submissions reviewed. Forward approved projects to the Approver before the cycle deadline.'}
+                      : 'There are no reviewer-owned submissions pending right now. Keep an eye on clarification returns and newly submitted budgets.'}
                   </p>
                 </div>
               </div>
@@ -828,8 +940,8 @@ export default function ReviewerDashboard() {
 
             <div className="mt-auto pt-5">
               <Button asChild className="h-12 w-full rounded-2xl shadow-none">
-                <Link to="/reviewer/review-queue">
-                  Open Review Queue
+                <Link to="/reviewer/projects">
+                  Open Reviewer Projects
                   <MoveRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -839,55 +951,47 @@ export default function ReviewerDashboard() {
 
         <div className="grid h-full gap-5">
           <Card
-            title="Shows the split between new and recurring project budget requests in the current review queue."
+            title="Shows how requested budget is distributed across the four ICT budget activity types in the reviewer workspace."
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">New vs Recurring in Queue</h3>
-                  <InfoHint text="Shows how much of the current review queue budget belongs to new initiatives versus recurring or continuation work — helps reviewers gauge where new investment is being requested." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
+                  <InfoHint text="Shows how much of the reviewer-visible requested budget sits in each ICT budget activity type." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Budget type distribution within the current review queue
+                  Requested budget split across all four budget types
                 </p>
               </div>
-              <div className="grid gap-3">
-                <div className="rounded-[22px] border border-[#D8E7FF] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#18263F]">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCEAFE] text-2xl font-bold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
-                      {newProjects.length}
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-[#0F172A] dark:text-white">New Requests</p>
-                      <CurrencyAmount amount={newProjectsBudget} className="mt-1 text-lg font-bold" iconSize={15} />
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{newProjectsShare}% of queue total</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-[22px] border border-[#D5F1E0] bg-white p-4 shadow-none dark:border-[#29583C] dark:bg-[#18263F]">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCFCE7] text-2xl font-bold text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-white">
-                      {recurringProjects.length}
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-[#0F172A] dark:text-white">Recurring</p>
-                      <CurrencyAmount amount={recurringProjectsBudget} className="mt-1 text-lg font-bold" iconColor="#16A34A" iconSize={15} />
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{recurringProjectsShare}% of queue total</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {budgetTypeBreakdown.map((item) => (
+                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-none dark:bg-[#18263F] ${item.bgClass}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
+                        {item.count}
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
+                        <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of queue total</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
                 <div className="flex h-full">
-                  <div
-                    className="h-full rounded-l-full bg-[linear-gradient(90deg,#286CFF_0%,#60A5FA_100%)]"
-                    style={{ width: `${newProjectsShare}%` }}
-                  />
-                  <div
-                    className="h-full rounded-r-full bg-[linear-gradient(90deg,#22C55E_0%,#86EFAC_100%)]"
-                    style={{ width: `${recurringProjectsShare}%` }}
-                  />
+                  {budgetTypeBreakdown.map((item, index) => (
+                    <div
+                      key={item.key}
+                      className={`${index === 0 ? 'rounded-l-full' : ''} ${index === budgetTypeBreakdown.length - 1 ? 'rounded-r-full' : ''} h-full`}
+                      style={{
+                        width: `${item.share}%`,
+                        backgroundColor: item.accent,
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             </CardContent>
@@ -926,10 +1030,10 @@ export default function ReviewerDashboard() {
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
-                    { label: 'In queue', value: reviewQueueProjects.length },
+                    { label: 'In queue', value: liveProjects.length },
                     { label: 'Avg confidence', value: `${avgConfidence}%` },
-                    { label: 'High risk', value: highRisk },
-                    { label: 'Reviewed', value: reviewed },
+                    { label: 'Clarifications', value: clarificationPending },
+                    { label: 'Sent onward', value: reviewed },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl bg-white/80 px-3 py-3 text-center dark:bg-white/5">
                       <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
@@ -943,12 +1047,12 @@ export default function ReviewerDashboard() {
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between text-xs font-medium text-[#7C3AED] dark:text-[#DAC0FF]">
                   <span>Approval likelihood</span>
-                  <span>{Math.round((predictedApproval / totalQueueBudget) * 100)}%</span>
+                  <span>{totalQueueBudget > 0 ? Math.round((predictedApproval / totalQueueBudget) * 100) : 0}%</span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
                   <div
                     className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#A855F7_45%,#C084FC_100%)] shadow-[0_8px_24px_rgba(124,58,237,0.28)]"
-                    style={{ width: `${Math.round((predictedApproval / totalQueueBudget) * 100)}%` }}
+                    style={{ width: `${totalQueueBudget > 0 ? Math.round((predictedApproval / totalQueueBudget) * 100) : 0}%` }}
                   />
                 </div>
               </div>

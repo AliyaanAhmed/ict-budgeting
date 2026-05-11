@@ -93,14 +93,21 @@ export function AppLayout() {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
   }, [location.pathname])
 
-  // When role changes, redirect to that role's dashboard
+  // When role changes, redirect to that role's landing page
   useEffect(() => {
     const rolePaths: Record<string, string> = {
       Respondent: '/respondent/dashboard',
       Reviewer: '/reviewer/dashboard',
       Approver: '/approver/dashboard',
+      'ICT Admin': '/admin/assessment-cycles',
     }
-    const targetBase = `/${activeRole.toLowerCase()}`
+    const roleBasePaths: Record<string, string> = {
+      Respondent: '/respondent',
+      Reviewer: '/reviewer',
+      Approver: '/approver',
+      'ICT Admin': '/admin',
+    }
+    const targetBase = roleBasePaths[activeRole]
     if (!location.pathname.startsWith(targetBase)) {
       navigate(rolePaths[activeRole])
     }

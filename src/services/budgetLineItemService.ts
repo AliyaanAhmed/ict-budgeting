@@ -27,6 +27,9 @@ export interface BudgetLineItemRecord {
   l1: string
   l2: string
   l3: string
+  accountGroup: string | null
+  description: string | null
+  expenseTypeValue: number | null
   expenseTypeLabel: string | null
   ebsCode: string
   fusionCode: string
@@ -51,9 +54,13 @@ function buildCreateRecord(projectId: string, item: BudgetItemDraft) {
     'dga_ict_budget@odata.bind': `/dga_ict_budgets(${projectId})`,
     'dga_classification@odata.bind': `/dga_classifications(${item.id})`,
     dga_name: item.accountName,
+    dga_account_group: item.accountGroup ?? undefined,
+    dga_description: item.description ?? undefined,
     dga_fusion_account_code: item.fusionCode === 'N/A' ? null : item.fusionCode,
     dga_ebs_account_code: item.ebsCode === 'N/A' ? null : item.ebsCode,
     dga_budget_requested: Number(item.budgetRequested.toFixed(4)),
+    dga_expense_type: item.expenseTypeValue ?? undefined,
+    dga_added_in_allocation: 1,
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>> as Omit<
     Dga_ict_budget_line_itemsBase,
     'dga_ict_budget_line_itemid'
@@ -83,6 +90,9 @@ function normalizeLineItem(
     l1: l1Node?.name ?? '-',
     l2: l2Node?.name ?? '-',
     l3: l3Node?.name ?? '-',
+    accountGroup: glNode?.accountGroup ?? null,
+    description: glNode?.description ?? null,
+    expenseTypeValue: glNode?.expenseTypeValue ?? null,
     expenseTypeLabel: glNode?.expenseTypeLabel ?? null,
     ebsCode: asString(record.dga_ebs_account_code) ?? glNode?.ebsCode ?? 'N/A',
     fusionCode: asString(record.dga_fusion_account_code) ?? glNode?.fusionCode ?? 'N/A',
@@ -129,9 +139,11 @@ export function toBudgetItemDraft(item: BudgetLineItemRecord): BudgetItemDraft {
     l2: item.l2,
     l3: item.l3,
     glCode: item.accountName,
+    accountGroup: item.accountGroup,
+    description: item.description,
     ebsCode: item.ebsCode,
     fusionCode: item.fusionCode,
-    expenseTypeValue: null,
+    expenseTypeValue: item.expenseTypeValue,
     expenseTypeLabel: item.expenseTypeLabel,
     budgetRequested: item.budgetRequested,
   }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Bot,
   Briefcase,
@@ -59,6 +59,7 @@ import type { BudgetItemDraft } from '@/domain/classification'
 import type {
   Dga_ict_budgetsdga_activity_type,
   Dga_ict_budgetsdga_budget_item_type,
+  Dga_ict_budgetsdga_category,
 } from '@/generated/models/Dga_ict_budgetsModel'
 import { DirhamIcon } from '@/components/shared/DirhamIcon'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
@@ -84,6 +85,7 @@ import {
 
 type ActivityType = Dga_ict_budgetsdga_activity_type
 type BudgetItemType = Dga_ict_budgetsdga_budget_item_type
+type CategoryType = Dga_ict_budgetsdga_category
 
 interface LookupSelectOption {
   value: string
@@ -98,6 +100,7 @@ interface FormValues {
   technologyCompanyId: string
   technologyProductIds: string[]
   budgetItemType: BudgetItemType | null
+  category: CategoryType | null
   plannedStartDate: string
   plannedEndDate: string
   summary: string
@@ -144,6 +147,11 @@ const BUDGET_ITEM_TYPE_OPTIONS: Array<{ value: BudgetItemType; label: string }> 
   { value: 4, label: 'Other' },
 ]
 
+const CATEGORY_OPTIONS: Array<{ value: CategoryType; label: string }> = [
+  { value: 1, label: 'ICT Only' },
+  { value: 2, label: 'Part of Any Other Project' },
+]
+
 const COPILOT_OPTIONS = [
   { icon: Sparkles, label: 'New Project', sub: 'Starting fresh, no prior submissions' },
   { icon: RefreshCw, label: 'Continuation of Existing Project', sub: 'Project already exists, requesting additional budget' },
@@ -158,6 +166,7 @@ const INITIAL_FORM_VALUES: FormValues = {
   technologyCompanyId: '',
   technologyProductIds: [],
   budgetItemType: null,
+  category: null,
   plannedStartDate: '',
   plannedEndDate: '',
   summary: '',
@@ -499,14 +508,12 @@ function ProductMultiSelect({
   selectedIds,
   disabled,
   onToggle,
-  onCreateRequest,
   invalid,
 }: {
   products: TechnologyCompanyOption['products']
   selectedIds: string[]
   disabled?: boolean
   onToggle: (id: string) => void
-  onCreateRequest: () => void
   invalid?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -596,12 +603,6 @@ function ProductMultiSelect({
               })
             )}
           </div>
-          <div className="border-t border-[#EAF0F6] p-2 dark:border-white/10">
-            <Button variant="outline" className="w-full rounded-xl" onClick={onCreateRequest}>
-              <Plus className="h-4 w-4" />
-              Create New Product
-            </Button>
-          </div>
         </div>
       )}
     </div>
@@ -635,8 +636,8 @@ export default function NewProject() {
   const [newWorkStreamName, setNewWorkStreamName] = useState('')
   const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
   const [newTechnologyProductName, setNewTechnologyProductName] = useState('')
-  const [savedBudgetId, setSavedBudgetId] = useState<string | null>(null)
-  const { runActionToast, showErrorToast, showSuccessToast } = useToast()
+  const navigate = useNavigate()
+  const { runActionToast, showErrorToast } = useToast()
 
   const strategicPriorityParentOptions = useMemo(
     () =>
@@ -961,6 +962,7 @@ export default function NewProject() {
       summary: formValues.summary,
       activityType: formValues.activityType as ActivityType,
       budgetItemType: formValues.budgetItemType as BudgetItemType,
+      category: formValues.category,
       totalBudgetPaidPreviousYear: parseCurrencyValue(formValues.totalBudgetPaidPreviousYear),
       totalBudgetPayableFutureYear: parseCurrencyValue(formValues.totalBudgetPayableFutureYear),
       totalBudgetPayableNextYear: parseCurrencyValue(formValues.totalBudgetPayableNextYear),
@@ -969,13 +971,13 @@ export default function NewProject() {
       ),
     }
 
-    const createdBudgetId = await runActionToast(
+    const createdBudget = await runActionToast(
       async () => {
-        const budgetId = await createIctBudgetDraft(payload)
+        const budget = await createIctBudgetDraft(payload)
 
-        await createBudgetLineItems(budgetId, budgetItems)
+        await createBudgetLineItems(budget.id, budgetItems)
 
-        return budgetId
+        return budget
       },
       {
         processingTitle: 'Saving draft',
@@ -988,15 +990,11 @@ export default function NewProject() {
       }
     )
 
-    setSavedBudgetId(createdBudgetId)
-    showSuccessToast(
-      'Dataverse draft ready',
-      `Created ICT budget id: ${createdBudgetId}`
-    )
+    navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
   }
 
   return (
-    <div className="mx-auto max-w-[1180px] space-y-6">
+    <div className="w-full space-y-6">
       <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-[#64748B]">
           <Link to="/respondent/dashboard" className="hover:text-[var(--primary)]">Home</Link>
@@ -1046,12 +1044,6 @@ export default function NewProject() {
           </div>
         </div>
       </div>
-
-      {savedBudgetId && (
-        <div className="rounded-2xl border border-[#B7E0C2] bg-[#F2FBF5] px-4 py-3 text-sm text-[#166534]">
-          Draft created in Dataverse. ICT Budget Id: <span className="font-semibold">{savedBudgetId}</span>
-        </div>
-      )}
 
       {mode === 'manual' ? (
         <>
@@ -1166,6 +1158,19 @@ export default function NewProject() {
                   />
                 </FormField>
 
+                <FormField label="Category">
+                  <LookupSelect
+                    value={formValues.category ? String(formValues.category) : ''}
+                    onChange={(value) => updateField('category', Number(value) as CategoryType)}
+                    placeholder="Select category"
+                    options={CATEGORY_OPTIONS.map((option) => ({
+                      value: String(option.value),
+                      label: option.label,
+                    }))}
+                    icon={FolderKanban}
+                  />
+                </FormField>
+
                 <FormField label="Technology (Company)" error={fieldErrors.technologyCompanyId}>
                   <LookupSelect
                     value={formValues.technologyCompanyId}
@@ -1179,14 +1184,24 @@ export default function NewProject() {
                 </FormField>
 
                 <FormField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
-                  <ProductMultiSelect
-                    products={selectedTechnologyCompany?.products ?? []}
-                    selectedIds={formValues.technologyProductIds}
-                    disabled={!selectedTechnologyCompany || lookupLoading}
-                    onToggle={toggleTechnologyProduct}
-                    onCreateRequest={() => setTechnologyProductModalOpen(true)}
-                    invalid={Boolean(fieldErrors.technologyProductIds)}
-                  />
+                  <div className="space-y-2">
+                    <ProductMultiSelect
+                      products={selectedTechnologyCompany?.products ?? []}
+                      selectedIds={formValues.technologyProductIds}
+                      disabled={!selectedTechnologyCompany || lookupLoading}
+                      onToggle={toggleTechnologyProduct}
+                      invalid={Boolean(fieldErrors.technologyProductIds)}
+                    />
+                    <Button
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={() => setTechnologyProductModalOpen(true)}
+                      disabled={!selectedTechnologyCompany || lookupLoading}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Create Technology Product
+                    </Button>
+                  </div>
                 </FormField>
               </div>
             </FormSection>

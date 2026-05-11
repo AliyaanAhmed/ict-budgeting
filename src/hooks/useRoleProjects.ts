@@ -2,24 +2,40 @@ import { useEffect, useState } from 'react'
 import type { Project } from '@/domain/types'
 import { projectService } from '@/services/projectService'
 
-export function useRoleProjects(role: 'respondent' | 'reviewer', search: string, tab: string) {
+export function useRoleProjects(
+  role: 'respondent' | 'reviewer' | 'approver',
+  instanceId: string | null = null
+) {
   const [items, setItems] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     const load = async () => {
       setLoading(true)
-      const status = projectService.buildRoleStatusFilter(role, tab)
-      const filters = { search, status }
-      const data = role === 'respondent'
-        ? await projectService.getRespondentProjects(filters)
-        : await projectService.getReviewerProjects(filters)
+      setError(null)
 
-      if (mounted) {
-        setItems(data)
-        setLoading(false)
+      try {
+        const data = role === 'respondent'
+          ? await projectService.getRespondentProjects()
+          : role === 'reviewer'
+            ? await projectService.getReviewerProjects()
+            : await projectService.getApproverProjects()
+
+        if (mounted) {
+          setItems(data)
+        }
+      } catch (loadError) {
+        if (mounted) {
+          setItems([])
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load projects.')
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
@@ -28,7 +44,7 @@ export function useRoleProjects(role: 'respondent' | 'reviewer', search: string,
     return () => {
       mounted = false
     }
-  }, [role, search, tab])
+  }, [role, instanceId])
 
-  return { items, loading }
+  return { items, loading, error }
 }

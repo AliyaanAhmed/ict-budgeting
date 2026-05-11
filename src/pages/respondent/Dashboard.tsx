@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -39,9 +39,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { currentCycle, projects } from '@/data/db'
+import { projects as mockProjects } from '@/data/db'
+import { useCycle } from '@/context/CycleContext'
+import { useInstance } from '@/context/InstanceContext'
+import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
+import { useRoleProjects } from '@/hooks/useRoleProjects'
 
 const YEAR_COMPARISON_FACTORS = [0.88, 0.94, 0.81, 0.9, 0.86, 0.78]
 const BREAKDOWN_COLORS = ['#8B5CF6', '#22C55E', '#286CFF', '#F59E0B', '#EC4899']
@@ -218,36 +222,134 @@ function ActionMetricCard({
   )
 }
 
+function parseProjectDate(project: { submittedDateRaw?: string; submittedDate: string }) {
+  const rawValue = project.submittedDateRaw || project.submittedDate
+  const parsed = Date.parse(rawValue)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function DashboardLoadingState() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="h-[220px] rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)]" />
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-[200px] rounded-[24px] border border-[#DCE8F6] bg-white dark:border-white/10 dark:bg-[#18263F]" />
+          ))}
+        </div>
+        <div className="h-[200px] rounded-[28px] border border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]" />
+      </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="h-[360px] rounded-[28px] border border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function computeDaysRemaining(endDate?: string | null): number {
+  if (!endDate) return 0
+  const end = new Date(endDate)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.ceil((end.getTime() - today.getTime()) / 86_400_000))
+}
+
 export default function RespondentDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
-
-  const totalBudget = projects.reduce((sum, project) => sum + project.requestedBudget, 0)
-  const lastYearBudget = Math.round(totalBudget * 0.86)
+  const { selectedCycle } = useCycle()
+  const { instanceId, instanceDetail, instanceLoading } = useInstance()
+  const { items: liveProjects, loading, error } = useRoleProjects('respondent', instanceId)
+  const showSkeleton = useDelayedLoading(instanceLoading || loading)
+  const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
+  const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
+  const mockTotalBudget = mockProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
+  const totalBudget = liveProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
+  const lastYearBudget = 0
   const predictedBudget = Math.round(totalBudget * 0.803)
-  const confidenceScore = Math.round(projects.reduce((sum, project) => sum + project.aiScore, 0) / projects.length)
+  const confidenceScore = liveProjects.length > 0
+    ? Math.round(liveProjects.reduce((sum, project) => sum + project.aiScore, 0) / liveProjects.length)
+    : 0
 
-  const submittedToReviewer = projects.filter((project) => project.status === 'Submitted to Reviewer').length
-  const clarificationRequired = projects.filter((project) => project.status === 'Clarification Required').length
-  const needsWork = projects.filter((project) => project.status === 'Needs Work' || project.status === 'Draft').length
-  const submittedToApprover = projects.filter((project) => project.status === 'Submitted to Approver').length
-  const approved = projects.filter((project) => project.status === 'Approved').length
-  const respondentActive = clarificationRequired + needsWork
-  const attentionCount = respondentActive
+  const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
+  const submittedToReviewerProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
+  const clarificationRequiredProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
+  const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
+  const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
 
-  const clarificationProjects = projects
-    .filter((project) => project.status === 'Clarification Required' || project.pendingWith === 'Respondent')
-    .sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime())
-    .slice(0, 2)
+  const submittedToReviewer = submittedToReviewerProjects.length
+  const clarificationRequired = clarificationRequiredProjects.length
+  const needsWork = draftProjects.length
+  const submittedToApprover = submittedToApproverProjects.length
+  const approved = approvedProjects.length
+  const respondentOwned = draftProjects.length + clarificationRequiredProjects.length
+  const attentionCount = draftProjects.length
 
-  const newProjects = projects.filter((project) => project.budgetType === 'New')
-  const recurringProjects = projects.filter((project) => project.budgetType !== 'New')
-  const newProjectsBudget = newProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
-  const recurringProjectsBudget = recurringProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
-  const newProjectsShare = Math.round((newProjectsBudget / totalBudget) * 100)
-  const recurringProjectsShare = 100 - newProjectsShare
+  const clarificationProjects = useMemo(
+    () =>
+      [...clarificationRequiredProjects]
+        .sort((a, b) => parseProjectDate(b) - parseProjectDate(a))
+        .slice(0, 2),
+    [clarificationRequiredProjects]
+  )
+
+  const latestBudgetProjects = useMemo(
+    () =>
+      [...liveProjects]
+        .sort((a, b) => parseProjectDate(b) - parseProjectDate(a))
+        .slice(0, 2),
+    [liveProjects]
+  )
+
+  const focusProjects = clarificationProjects.length > 0 ? clarificationProjects : latestBudgetProjects
+  const showClarificationPanel = clarificationProjects.length > 0
+
+  const budgetTypeGroups = [
+    {
+      key: 'Operational Non-Recurring',
+      label: 'Operational Non-Recurring',
+      accent: '#D97706',
+      bgClass: 'border-[#F6E4B4] dark:border-[#5E4C1E]',
+      badgeClass: 'bg-[#FFF3D9] text-[#D97706] dark:bg-[#D97706]/18 dark:text-[#FCD34D]',
+    },
+    {
+      key: 'Operational Recurring',
+      label: 'Operational Recurring',
+      accent: '#16A34A',
+      bgClass: 'border-[#CDEFD7] dark:border-[#29583C]',
+      badgeClass: 'bg-[#DCFCE7] text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-[#BBF7D0]',
+    },
+    {
+      key: 'New Project',
+      label: 'New Project',
+      accent: '#286CFF',
+      bgClass: 'border-[#D8E7FF] dark:border-[#315389]',
+      badgeClass: 'bg-[#DCEAFE] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white',
+    },
+    {
+      key: 'Project Continuation',
+      label: 'Project Continuation',
+      accent: '#7C3AED',
+      bgClass: 'border-[#E9D5FF] dark:border-[#52307A]',
+      badgeClass: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/18 dark:text-[#E9D5FF]',
+    },
+  ] as const
+
+  const budgetTypeBreakdown = budgetTypeGroups.map((group) => {
+    const items = liveProjects.filter((project) => project.budgetType === group.key)
+    const amount = items.reduce((sum, project) => sum + project.requestedBudget, 0)
+    return {
+      ...group,
+      count: items.length,
+      amount,
+      share: totalBudget > 0 ? Math.round((amount / totalBudget) * 100) : 0,
+    }
+  })
 
   const comparisonData = Array.from(
-    projects.reduce((acc, project) => {
+    mockProjects.reduce((acc, project) => {
       const existing = acc.get(project.strategicPriority)
       if (existing) {
         existing.current += project.requestedBudget / 1_000_000
@@ -269,7 +371,7 @@ export default function RespondentDashboard() {
   }))
 
   const accountBreakdown = Array.from(
-    projects
+    mockProjects
       .flatMap((project) => project.budgetItems)
       .reduce((acc, item) => {
         const existing = acc.get(item.accountName)
@@ -290,44 +392,40 @@ export default function RespondentDashboard() {
     .slice(0, 5)
     .map(([, item], index) => ({
       ...item,
-      pct: Math.round((item.amount / totalBudget) * 100),
+      pct: Math.round((item.amount / mockTotalBudget) * 100),
       color: BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length],
     }))
 
   const requestedBudgetByStatus = [
     {
       name: 'With Reviewer',
-      value: projects
-        .filter((project) => project.status === 'Submitted to Reviewer')
-        .reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: submittedToReviewerProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.withReviewer,
     },
     {
       name: 'Clarification',
-      value: projects
-        .filter((project) => project.status === 'Clarification Required')
-        .reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: clarificationRequiredProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.clarification,
     },
     {
       name: 'Needs Work',
-      value: projects
-        .filter((project) => project.status === 'Needs Work' || project.status === 'Draft')
-        .reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: draftProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.needsWork,
     },
     {
+      name: 'With Approver',
+      value: submittedToApproverProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      fill: dashboardStatusColors.withApprover,
+    },
+    {
       name: 'Approved',
-      value: projects
-        .filter((project) => project.status === 'Approved')
-        .reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: approvedProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.approved,
     },
   ]
-    .filter((item) => item.value > 0)
     .map((item) => ({
       ...item,
-      percent: Math.round((item.value / totalBudget) * 100),
+      percent: totalBudget > 0 ? Math.round((item.value / totalBudget) * 100) : 0,
     }))
 
   const portfolioIssues = [
@@ -368,6 +466,18 @@ export default function RespondentDashboard() {
     },
   ]
 
+  if (showSkeleton) {
+    return <DashboardLoadingState />
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318]">
+        {error}
+      </div>
+    )
+  }
+
   return (
     <div className="w-full space-y-6 pb-4">
       <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
@@ -380,7 +490,7 @@ export default function RespondentDashboard() {
               Respondent Workspace
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
-              ICT Cycle - 2026
+              {cycleName}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
               Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.
@@ -388,11 +498,11 @@ export default function RespondentDashboard() {
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-2 rounded-full bg-[#E7F5FF] px-3 py-1.5 font-medium text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
                 <Calendar className="h-4 w-4" />
-                {currentCycle.name}
+                {instanceDetail?.name ?? cycleName}
               </span>
               <span className="inline-flex items-center gap-2 rounded-full bg-[#F3FAF4] px-3 py-1.5 font-medium text-[#2C7A43] dark:bg-[#22C55E]/15 dark:text-[#C9F4D1]">
                 <Radar className="h-4 w-4" />
-                {currentCycle.daysRemaining} days remaining
+                {daysRemaining} days remaining
               </span>
             </div>
           </div>
@@ -415,7 +525,7 @@ export default function RespondentDashboard() {
             accent={dashboardPalette.seaBlue}
             badge="In Review"
             icon={<Radar className="h-5 w-5" />}
-            href="/respondent/projects"
+            href="/respondent/projects?tab=submitted-reviewer"
           />
           <ActionMetricCard
             title="Needs Work / Draft"
@@ -423,7 +533,7 @@ export default function RespondentDashboard() {
             accent={dashboardPalette.camelYellow}
             badge="Action Needed"
             icon={<TrendingDown className="h-5 w-5" />}
-            href="/respondent/projects"
+            href="/respondent/projects?tab=needs-work"
           />
           <ActionMetricCard
             title="Clarification Required"
@@ -431,7 +541,7 @@ export default function RespondentDashboard() {
             accent={dashboardPalette.aeRed}
             badge="Urgent"
             icon={<FolderOpen className="h-5 w-5" />}
-            href="/respondent/projects"
+            href="/respondent/projects?tab=clarification"
           />
         </div>
 
@@ -515,14 +625,14 @@ export default function RespondentDashboard() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
-                Portfolio status: High risk. {attentionCount} projects require attention before submission to DGE.
+                Portfolio status: High risk. {respondentOwned} projects are currently with the respondent, and {attentionCount} draft item{attentionCount === 1 ? '' : 's'} still need attention before submission to DGE.
               </p>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-4">
             <div className="hidden items-center gap-4 text-sm md:flex">
               <span className="text-[#0F172A] dark:text-white">
-                {projects.length} <span className="text-[#64748B] dark:text-slate-100">projects</span>
+                {liveProjects.length} <span className="text-[#64748B] dark:text-slate-100">projects</span>
               </span>
               <span className="text-[#286CFF] dark:text-[#C6DBFF]">
                 {confidenceScore}% <span className="text-[#64748B] dark:text-slate-100">avg confidence</span>
@@ -591,27 +701,29 @@ export default function RespondentDashboard() {
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
-          title="Projects that were returned to the respondent for clarification and need response."
+          title={showClarificationPanel ? 'Projects that were returned to the respondent for clarification and need response.' : 'Latest ICT budget records created by the respondent.'}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Clarification&apos;s Project</h3>
-                  <InfoHint text="Projects in this list are waiting for the respondent to answer clarification comments before they can move back to review." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">{showClarificationPanel ? 'Clarification Projects' : 'ICT Budgets'}</h3>
+                  <InfoHint text={showClarificationPanel ? 'Projects in this list are waiting for the respondent to answer clarification comments before they can move back to review.' : 'The latest ICT budget records created in the current respondent workspace.'} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Reply to reviewer comments and move these projects back into the pipeline
+                  {showClarificationPanel
+                    ? 'Reply to reviewer comments and move these projects back into the pipeline'
+                    : 'Open the latest ICT budgets and continue where you left off'}
                 </p>
               </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#F59E0B]/12 text-[#F59E0B] dark:bg-[#F59E0B]/18 dark:text-[#FCD34D]">
+              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${showClarificationPanel ? 'bg-[#F59E0B]/12 text-[#F59E0B] dark:bg-[#F59E0B]/18 dark:text-[#FCD34D]' : 'bg-[#286CFF]/12 text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#9FC4FF]'}`}>
                 <MessageSquareMore className="h-5 w-5" />
               </div>
             </div>
 
             <div className="space-y-3">
-              {clarificationProjects.map((project, index) => (
+              {focusProjects.map((project, index) => (
                 <Link
                   key={project.id}
                   to={`/respondent/projects/${project.id}`}
@@ -626,14 +738,16 @@ export default function RespondentDashboard() {
                         <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
                       </div>
                       <p className="mt-2 line-clamp-2 text-sm text-[#64748B] dark:text-slate-100">
-                        {project.clarifications.find((item) => item.status === 'Open')?.message || project.summary}
+                        {showClarificationPanel
+                          ? project.clarifications.find((item) => item.status === 'Open')?.message || project.summary
+                          : project.summary || `${project.strategicPriority} / ${project.classification}`}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
-                        <span className="inline-flex items-center rounded-full bg-[#FFF4E5] px-2.5 py-1 font-semibold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
-                          Clarification needed
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-semibold ${showClarificationPanel ? 'bg-[#FFF4E5] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]' : 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]'}`}>
+                          {showClarificationPanel ? 'Clarification needed' : project.status}
                         </span>
-                        <span>{project.lastModified}</span>
-                        <span>{project.workStream}</span>
+                        <span>{showClarificationPanel ? project.lastModified : project.submittedDate}</span>
+                        <span>{showClarificationPanel ? project.workStream : project.strategicPriority}</span>
                       </div>
                     </div>
                     <MoveRight className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#286CFF]" />
@@ -643,7 +757,7 @@ export default function RespondentDashboard() {
             </div>
             <div className="mt-4">
               <Button variant="outline" asChild className="h-10 rounded-2xl">
-                <Link to="/respondent/projects">
+                <Link to={showClarificationPanel ? '/respondent/projects?tab=clarification' : '/respondent/projects'}>
                   View All Projects
                   <MoveRight className="h-4 w-4" />
                 </Link>
@@ -700,7 +814,7 @@ export default function RespondentDashboard() {
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {requestedBudgetByStatus.map((item) => (
                   <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                     <div className="flex items-center justify-between gap-3">
@@ -835,11 +949,11 @@ export default function RespondentDashboard() {
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
-              {[
-                { label: 'Approved', value: approved, tone: dashboardStatusColors.approved },
-                { label: 'With Reviewer', value: submittedToReviewer, tone: dashboardStatusColors.withReviewer },
-                { label: 'With Approver', value: submittedToApprover, tone: dashboardStatusColors.withApprover },
-                { label: 'Needs Attention', value: attentionCount, tone: dashboardStatusColors.clarification },
+              {[ 
+                { label: 'On Respondent', value: respondentOwned, tone: dashboardStatusColors.clarification },
+                { label: 'On Reviewer', value: submittedToReviewer, tone: dashboardStatusColors.withReviewer },
+                { label: 'On Approver', value: submittedToApprover, tone: dashboardStatusColors.withApprover },
+                { label: 'Needs Attention', value: attentionCount, tone: dashboardStatusColors.needsWork },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
@@ -861,7 +975,7 @@ export default function RespondentDashboard() {
                 <div>
                   <p className="font-semibold text-[#0F172A] dark:text-white">Suggested Next Move</p>
                   <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                    Resolve {attentionCount} active blocker{attentionCount === 1 ? '' : 's'} before the next submission window to improve approval odds and reduce back-and-forth.
+                    Resolve {attentionCount} draft blocker{attentionCount === 1 ? '' : 's'} first, then close the remaining clarification items that are still sitting with the respondent.
                   </p>
                 </div>
               </div>
@@ -877,7 +991,7 @@ export default function RespondentDashboard() {
               <div className="mt-3 grid gap-2">
                 {[
                   'Review clarification replies before re-submission.',
-                  'Prioritize projects missing supporting evidence.',
+                  'Finalize draft records that are still sitting with the respondent.',
                   'Move reviewer-ready projects forward this cycle.',
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-2 text-sm text-[#475569] dark:text-slate-100">
@@ -907,49 +1021,41 @@ export default function RespondentDashboard() {
             <CardContent className="p-6">
               <div className="mb-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">New vs Recurring Projects</h3>
-                  <InfoHint text="Shows how much of the current requested budget belongs to new initiatives versus recurring or continuation work." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
+                  <InfoHint text="Shows how requested budget is distributed across the four ICT budget activity types in the respondent workspace." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Distribution of project types in the current cycle
+                  Distribution of requested budget by budget type
                 </p>
               </div>
-              <div className="grid gap-3">
-                <div className="rounded-[22px] border border-[#D8E7FF] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#18263F]">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCEAFE] text-2xl font-bold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
-                      {newProjects.length}
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-[#0F172A] dark:text-white">New Projects</p>
-                      <CurrencyAmount amount={newProjectsBudget} className="mt-1 text-lg font-bold" iconSize={15} />
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{newProjectsShare}% of requested total</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="rounded-[22px] border border-[#D5F1E0] bg-white p-4 shadow-none dark:border-[#29583C] dark:bg-[#18263F]">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-[#DCFCE7] text-2xl font-bold text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-white">
-                      {recurringProjects.length}
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-[#0F172A] dark:text-white">Recurring</p>
-                      <CurrencyAmount amount={recurringProjectsBudget} className="mt-1 text-lg font-bold" iconColor="#16A34A" iconSize={15} />
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{recurringProjectsShare}% of requested total</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {budgetTypeBreakdown.map((item) => (
+                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-none dark:bg-[#18263F] ${item.bgClass}`}>
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
+                        {item.count}
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
+                        <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of requested total</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
                 <div className="flex h-full">
-                  <div
-                    className="h-full rounded-l-full bg-[linear-gradient(90deg,#286CFF_0%,#60A5FA_100%)]"
-                    style={{ width: `${newProjectsShare}%` }}
-                  />
-                  <div
-                    className="h-full rounded-r-full bg-[linear-gradient(90deg,#22C55E_0%,#86EFAC_100%)]"
-                    style={{ width: `${recurringProjectsShare}%` }}
-                  />
+                  {budgetTypeBreakdown.map((item, index) => (
+                    <div
+                      key={item.key}
+                      className={`${index === 0 ? 'rounded-l-full' : ''} ${index === budgetTypeBreakdown.length - 1 ? 'rounded-r-full' : ''} h-full`}
+                      style={{
+                        width: `${item.share}%`,
+                        backgroundColor: item.accent,
+                      }}
+                    />
+                  ))}
                 </div>
               </div>
             </CardContent>
@@ -988,7 +1094,7 @@ export default function RespondentDashboard() {
 
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
-                    { label: 'Projects scanned', value: projects.length },
+                    { label: 'Projects scanned', value: liveProjects.length },
                     { label: 'Avg confidence', value: `${confidenceScore}%` },
                     { label: 'Need attention', value: attentionCount },
                     { label: 'Approved now', value: approved },
@@ -1005,12 +1111,12 @@ export default function RespondentDashboard() {
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between text-xs font-medium text-[#7C3AED] dark:text-[#DAC0FF]">
                   <span>Approval likelihood</span>
-                  <span>{Math.round((predictedBudget / totalBudget) * 100)}%</span>
+                  <span>{totalBudget > 0 ? Math.round((predictedBudget / totalBudget) * 100) : 0}%</span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
                   <div
                     className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#A855F7_45%,#C084FC_100%)] shadow-[0_8px_24px_rgba(124,58,237,0.28)]"
-                    style={{ width: `${Math.round((predictedBudget / totalBudget) * 100)}%` }}
+                    style={{ width: `${totalBudget > 0 ? Math.round((predictedBudget / totalBudget) * 100) : 0}%` }}
                   />
                 </div>
               </div>
