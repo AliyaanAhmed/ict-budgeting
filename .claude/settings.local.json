@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npx power-apps *)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@microsoft/power-apps/package.json'\\); console.log\\(JSON.stringify\\(pkg.exports || pkg.main || 'no exports', null, 2\\)\\)\")",
+      "Bash(xargs grep -l \"getClientUrl\\\\|IXrmContext\\\\|window.Xrm\\\\|xrmContext\\\\|xrm\\\\.\")",
+      "Bash(del \"c:\\\\ICT-Budgeting-2026\\\\src\\\\services\\\\xrmContextService.ts\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

@@ -1,4 +1,7 @@
-import { ICTBudget_Clarifications_UploadFilesinSharepointService } from '@/generated/services/ICTBudget_Clarifications_UploadFilesinSharepointService'
+import { PowerAppV2_CallUploadFileFlowService } from '@/generated/services/PowerAppV2_CallUploadFileFlowService'
+
+const UPLOAD_TARGET_URL =
+  'https://15ab284543e0e696a0c3fc6bd63330.55.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/0505788ca25042198ed8c5d0384b5a42/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=uNYDB3aKWPwTps6dh0H4OG90VKU7E8QHmsLFcWcfFIU'
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,9 +32,7 @@ export async function uploadFileToRecord(recordId: string, file: File): Promise<
 
   const fileContent = await fileToBase64(file)
 
-  console.log(`[FileUpload] Calling Power Automate connector via Power Apps runtime...`)
-
-  const result = await ICTBudget_Clarifications_UploadFilesinSharepointService.Run({
+  const payload = JSON.stringify({
     recordId,
     uploadedFile: {
       fileName: file.name,
@@ -39,6 +40,13 @@ export async function uploadFileToRecord(recordId: string, file: File): Promise<
       fileContent,
       folderPath: recordId,
     },
+  })
+
+  console.log(`[FileUpload] Calling PowerAppV2 upload flow via Power Apps runtime...`)
+
+  const result = await PowerAppV2_CallUploadFileFlowService.Run({
+    text: payload,
+    text_1: UPLOAD_TARGET_URL,
   })
 
   console.log(`[FileUpload] Connector result:`, result)

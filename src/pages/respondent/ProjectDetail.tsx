@@ -109,7 +109,6 @@ import {
   type WorkStreamOption,
 } from '@/services/workStreamService'
 import { projectService } from '@/services/projectService'
-import { getUploadedFiles, type SharePointFile } from '@/services/fileRetrievalService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
 
@@ -1028,19 +1027,6 @@ export default function ProjectDetail() {
     }
   }, [id])
 
-  // ── Load SharePoint files when budget ID is known ────────────────────────────
-  useEffect(() => {
-    if (!ictBudgetId) return
-    let cancelled = false
-    setFilesLoading(true)
-    setFilesError(null)
-    getUploadedFiles(ictBudgetId)
-      .then((files) => { if (!cancelled) setSharepointFiles(files) })
-      .catch((err) => { if (!cancelled) setFilesError(err instanceof Error ? err.message : 'Failed to load documents') })
-      .finally(() => { if (!cancelled) setFilesLoading(false) })
-    return () => { cancelled = true }
-  }, [ictBudgetId])
-
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
@@ -1077,10 +1063,7 @@ export default function ProjectDetail() {
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null)
 
-  // ── SharePoint Documents ─────────────────────────────────────────────────────
-  const [sharepointFiles, setSharepointFiles] = useState<SharePointFile[]>([])
-  const [filesLoading, setFilesLoading] = useState(false)
-  const [filesError, setFilesError] = useState<string | null>(null)
+  // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -1399,7 +1382,6 @@ export default function ProjectDetail() {
             }
           )
           setUploadedFiles([])
-          getUploadedFiles(ictBudgetId).then(setSharepointFiles).catch(() => {})
         } catch {
           showErrorToast('Documents not uploaded', 'The changes were saved but document upload failed. Please try again.')
         }
@@ -2380,36 +2362,10 @@ export default function ProjectDetail() {
               {/* Documents section in edit mode */}
               <DetailSection
                 title="Supporting Documents"
-                description="Upload additional files or review previously attached documents."
+                description="Upload additional supporting files for this budget record."
                 icon={FileCheck2}
               >
-                {sharepointFiles.length > 0 && (
-                  <div className="mb-4 space-y-2">
-                    {sharepointFiles.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-3 rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
-                        <FileText className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{doc.name}</p>
-                          <p className="text-xs text-[#475569] dark:text-slate-200">
-                            {doc.fileType.toUpperCase()} · {doc.author ? `Uploaded by ${doc.author}` : ''} {doc.sharepointCreatedOn ? `· ${new Date(doc.sharepointCreatedOn).toLocaleDateString()}` : ''}
-                          </p>
-                        </div>
-                        {doc.readUrl && (
-                          <a href={doc.readUrl} target="_blank" rel="noreferrer" className="text-[#475569] transition-colors hover:text-[#286CFF]" title="Download">
-                            <Download className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-1">
-                  <p className="mb-2 text-xs font-semibold text-[#64748B] dark:text-slate-300">
-                    <Upload className="mr-1 inline h-3.5 w-3.5" />
-                    Add new documents
-                  </p>
-                  <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
-                </div>
+                <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
               </DetailSection>
 
               {/* Clarifications section always visible in edit mode (respondent can reply) */}
@@ -2512,39 +2468,9 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
-                {filesLoading ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#286CFF] border-t-transparent" />
-                    Loading documents...
-                  </div>
-                ) : filesError ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
-                    {filesError}
-                  </div>
-                ) : sharepointFiles.length === 0 ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
-                    No documents uploaded. Supporting documents are required before submission.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {sharepointFiles.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-3 rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
-                        <FileText className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{doc.name}</p>
-                          <p className="text-xs text-[#475569] dark:text-slate-200">
-                            {doc.fileType.toUpperCase()} · {doc.author ? `Uploaded by ${doc.author}` : ''} {doc.sharepointCreatedOn ? `· ${new Date(doc.sharepointCreatedOn).toLocaleDateString()}` : ''}
-                          </p>
-                        </div>
-                        {doc.readUrl && (
-                          <a href={doc.readUrl} target="_blank" rel="noreferrer" className="text-[#475569] transition-colors hover:text-[#286CFF]" title="Download">
-                            <Download className="h-4 w-4" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
+                  Document retrieval coming soon.
+                </div>
               </DetailSection>
 
               {/* Clarification section — shown when any clarifications exist, or governance view */}

@@ -110,11 +110,6 @@
           "entitySetName": "teams",
           "logicalName": "team",
           "isHidden": false
-        },
-        "documents": {
-          "entitySetName": "sharepointdocuments",
-          "logicalName": "sharepointdocument",
-          "isHidden": false
         }
       },
       "environmentVariableName": ""
