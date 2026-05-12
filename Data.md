@@ -694,6 +694,227 @@ _dga_ict_budget_instance_value eq <instanceID>
 
 This scopes every project list, review queue, and approval queue to the current entity's instance for the selected cycle. If no instance ID is found in sessionStorage the filter is omitted (returns all records as fallback).
 
+---
+
+## Power Automate Flow Data Sources
+
+### Why Flows Instead Of Direct Fetch
+
+Power Apps Code Apps enforce a strict Content Security Policy: `connect-src 'none'`.  
+This blocks **all** direct `fetch()` / `XMLHttpRequest` calls from browser JavaScript to external URLs — including Power Automate HTTP trigger URLs.
+
+The correct pattern is to register a Power Automate flow as a **connection reference** inside the Code App. The generated connector routes calls through the Power Apps runtime, which is allowed by the CSP.
+
+### How To List Available Solution Flows
+
+Only flows that are **inside a solution** and **active (statecode: 1)** can be added to a Code App.
+
+```bash
+npx power-apps list-flows --json
+```
+
+From the output, only entries with a non-null `workflowId` and `statecode: 1` are addable. Example:
+
+```json
+{
+  "name": "PowerAppV2 - Call Upload File Flow",
+  "workflowId": "6175a29b-353e-7b35-6971-1a4102feb124",
+  "statecode": 1
+}
+```
+
+**Important:** The `workflowId` returned here is the solution flow GUID. This is **different** from the internal workflow ID embedded in an HTTP trigger URL. Always use `list-flows` to get the correct ID.
+
+### How To Add A Flow To The Code App
+
+```bash
+npx power-apps add-flow --flow-id <workflowId>
+```
+
+**Requirement:** The Code App must first be added to a solution in Power Apps. If the app is not in a solution, `add-flow` will return a 404.
+
+After running `add-flow`, the CLI:
+1. Registers the flow in `power.config.json` under `connectionReferences`
+2. Generates `.power/schemas/logicflows/<FlowName>.Schema.json`
+3. Generates `src/generated/models/<FlowName>Model.ts`
+4. Generates `src/generated/services/<FlowName>Service.ts`
+5. Updates `src/generated/index.ts`
+6. Updates `.power/schemas/appschemas/dataSourcesInfo.ts`
+
+### How To Remove A Flow From The Code App
+
+```bash
+npx power-apps remove-flow --flow-id <workflowId>
+```
+
+Or manually:
+1. Remove the `connectionReferences` entry from `power.config.json`
+2. Delete `.power/schemas/logicflows/<FlowName>.Schema.json`
+3. Delete `src/generated/models/<FlowName>Model.ts`
+4. Delete `src/generated/services/<FlowName>Service.ts`
+5. Remove the export lines from `src/generated/index.ts`
+
+### Generated Flow Service Pattern
+
+The generated service exposes a single `Run(input)` method:
+
+```ts
+export class PowerAppV2_CallUploadFileFlowService {
+  public static async Run(input: ManualTriggerInput): Promise<IOperationResult<void>>
+}
+```
+
+The input shape is inferred from the flow's trigger schema. Field names come from the flow's PowerApps V2 trigger parameter titles:
+
+| Schema field name | Flow parameter title | Meaning |
+|---|---|---|
+| `text` | Payload | JSON stringified file payload |
+| `text_1` | URL | Target HTTP trigger URL |
+
+Call pattern:
+
+```ts
+const result = await PowerAppV2_CallUploadFileFlowService.Run({ text: '...', text_1: '...' })
+if (result.error) throw new Error(result.error.message)
+```
+
+Result data is accessed via `result.data` (same as Dataverse services).
+
+---
+
+## Document Upload Functionality
+
+### Flows Added For File Upload
+
+Two flows are registered in this Code App for file upload:
+
+#### 1. ICT Budget / Clarifications - Upload Files in Sharepoint
+- **Flow ID:** `c0932d99-c5e8-e0e8-6f97-973f0dfb97b3`
+- **Connection reference key:** `97f6632d-014f-4ebd-b117-2b77336033c2`
+- **Data source name:** `ictbudget_clarifications_uploadfilesinsharepoint`
+- **Purpose:** Original SharePoint upload flow. Accepts `recordId` and `uploadedFile` object directly.
+- **Status:** Registered but superseded by the V2 proxy flow below (401 auth issue at runtime).
+
+#### 2. PowerAppV2 - Call Upload File Flow *(active)*
+- **Flow ID:** `6175a29b-353e-7b35-6971-1a4102feb124`
+- **Connection reference key:** `bf6ef0cf-67c8-455b-a965-ca34d041a264`
+- **Data source name:** `powerappv2_calluploadfileflow`
+- **Purpose:** PowerApps V2 trigger proxy flow. Accepts a JSON payload string and a target URL, then makes the HTTP call server-side.
+- **Generated service:** `src/generated/services/PowerAppV2_CallUploadFileFlowService.ts`
+- **Input schema:**
+  - `text` (title: Payload) — JSON stringified file data
+  - `text_1` (title: URL) — the HTTP trigger URL of the upload flow
+
+### File Upload Service
+
+**File:** `src/services/fileUploadService.ts`
+
+This service wraps the generated `PowerAppV2_CallUploadFileFlowService` and handles:
+1. Reading each file as a base64 string using `FileReader`
+2. Building the payload JSON:
+   ```ts
+   {
+     recordId: string,
+     uploadedFile: {
+       fileName: string,
+       fileType: string,       // file extension
+       fileContent: string,    // base64 encoded
+       folderPath: string      // same as recordId
+     }
+   }
+   ```
+3. Calling `PowerAppV2_CallUploadFileFlowService.Run({ text: payload, text_1: UPLOAD_TARGET_URL })`
+4. Files are uploaded sequentially (one at a time per record)
+
+Exported functions:
+- `uploadFileToRecord(recordId, file)` — upload a single file
+- `uploadFilesToRecord(recordId, files)` — upload multiple files sequentially
+
+### FileUploadDropzone Component
+
+**File:** `src/components/shared/FileUploadDropzone.tsx`
+
+Reusable drag-and-drop file selector. Props:
+
+```ts
+interface FileUploadDropzoneProps {
+  files: File[]
+  onChange: (files: File[]) => void
+  accept?: string
+  maxFiles?: number
+}
+```
+
+Features:
+- Drag and drop with child-hover flicker prevention (`dragCounter` ref)
+- Duplicate file detection (same name + size)
+- File type color badges: PDF=red, DOC/DOCX=blue, XLS/XLSX=green, IMG=purple, PPT=orange
+- Remove button fades in on row hover
+- Badge shows file count when files are present
+
+### How File Upload Is Wired In Create Form
+
+**File:** `src/pages/respondent/NewProject.tsx`
+
+State: `const [uploadedFiles, setUploadedFiles] = useState<File[]>([])`
+
+Component: `<FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />`
+
+On `Save Draft`:
+1. Main `runActionToast` creates the ICT budget and line items
+2. If `uploadedFiles.length > 0`, a **separate** `runActionToast` uploads files using `uploadFilesToRecord(createdBudget.id, uploadedFiles)`
+3. Upload failure does not block draft save — error toast is shown but navigation proceeds
+
+### How File Upload Is Wired In Edit Form
+
+**File:** `src/pages/respondent/ProjectDetail.tsx`
+
+State: `const [uploadedFiles, setUploadedFiles] = useState<File[]>([])`
+
+In edit mode, a `Supporting Documents` section appears with `<FileUploadDropzone>`.
+
+On `Save Changes`:
+1. Main record update runs first
+2. If `uploadedFiles.length > 0`, upload runs as a second `runActionToast`
+3. Files cleared from state after successful upload
+4. Cancel edit also clears staged files
+
+---
+
+## Document Retrieval — Pending Implementation
+
+### What Was Attempted And Why It Failed
+
+We attempted to use the `sharepointdocument` Dataverse virtual entity:
+
+```bash
+npx power-apps add-data-source --api-id dataverse --resource-name sharepointdocument --org-url https://dge.api.crm15.dynamics.com
+```
+
+This generated `SharepointdocumentsService` and `SharepointdocumentsModel`, but querying it returned:
+
+```
+error code 0x8006073b: SharePoint S2S and MSTeams integration is not enabled for this entity
+```
+
+**Root cause:** The `sharepointdocument` virtual entity only works when SharePoint Document Management is explicitly enabled for the specific Dataverse entity (`dga_ict_budget`) in Dataverse admin settings. It is not a general-purpose file query endpoint.
+
+This data source and generated files were **removed**. The `sharepointdocument` approach is not viable without admin-level Dataverse → SharePoint integration configuration per entity.
+
+### Correct Approach (To Be Implemented)
+
+Create a dedicated Power Automate flow that:
+1. Accepts a `recordId` input
+2. Queries the SharePoint folder at path `/<recordId>/`
+3. Returns a JSON list of files (name, type, url, size, modified date)
+
+Then:
+1. Add it to the Code App: `npx power-apps add-flow --flow-id <newFlowId>`
+2. Create `src/services/fileRetrievalService.ts` calling the generated service
+3. Wire into the View mode documents section in `ProjectDetail.tsx`
+
+The view mode documents section currently shows a "coming soon" placeholder at `sec-documents`.
+
 ### How instanceID Is Used In ICT Budget Create
 
 When creating a new ICT budget draft (`src/services/ictBudgetDraftService.ts`), the payload includes:
