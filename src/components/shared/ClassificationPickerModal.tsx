@@ -10,7 +10,7 @@ import {
 import type { BudgetItemDraft, ClassificationNode } from '@/domain/classification'
 import { useClassificationPicker } from '@/hooks/useClassificationPicker'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -172,10 +172,10 @@ export function ClassificationPickerModal({
                   <Layers3 className="h-6 w-6" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-2xl font-bold text-[#0F172A] dark:text-white">Classification</h2>
-                  <p className="text-sm text-[#64748B] dark:text-slate-300">
+                  <DialogTitle className="text-2xl font-bold text-[#0F172A] dark:text-white">Classification</DialogTitle>
+                  <DialogDescription className="text-sm text-[#64748B] dark:text-slate-300">
                     Navigate the hierarchy and queue one or more GL budget accounts for this project.
-                  </p>
+                  </DialogDescription>
                 </div>
               </div>
 

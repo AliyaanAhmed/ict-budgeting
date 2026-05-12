@@ -9,7 +9,20 @@
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3000",
   "logoPath": "public/powerapp-logo.png",
-  "connectionReferences": {},
+  "connectionReferences": {
+    "97f6632d-014f-4ebd-b117-2b77336033c2": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ictbudget_clarifications_uploadfilesinsharepoint"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "0f762287-0a4d-f111-bec6-70a8a51e931a",
+        "workflowDisplayName": "ICT Budget / Clarifications - Upload Files in Sharepoint",
+        "workflowName": "c0932d99-c5e8-e0e8-6f97-973f0dfb97b3"
+      }
+    }
+  },
   "databaseReferences": {
     "default.cds": {
       "dataSources": {

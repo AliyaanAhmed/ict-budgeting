@@ -54,6 +54,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { BudgetItemsBuilder } from '@/components/shared/BudgetItemsBuilder'
+import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
 import { useToast } from '@/context/ToastContext'
 import type { BudgetItemDraft } from '@/domain/classification'
 import type {
@@ -68,6 +69,7 @@ import {
   type CreateIctBudgetDraftInput,
 } from '@/services/ictBudgetDraftService'
 import { createBudgetLineItems } from '@/services/budgetLineItemService'
+import { uploadFilesToRecord } from '@/services/fileUploadService'
 import {
   getStrategicPriorityOptions,
   type StrategicPriorityOption,
@@ -626,6 +628,7 @@ export default function NewProject() {
   const [optionSelected, setOptionSelected] = useState(false)
   const [formValues, setFormValues] = useState<FormValues>(INITIAL_FORM_VALUES)
   const [fieldErrors, setFieldErrors] = useState<FieldErrorMap>({})
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [budgetItemsError, setBudgetItemsError] = useState<string | null>(null)
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
@@ -974,9 +977,7 @@ export default function NewProject() {
     const createdBudget = await runActionToast(
       async () => {
         const budget = await createIctBudgetDraft(payload)
-
         await createBudgetLineItems(budget.id, budgetItems)
-
         return budget
       },
       {
@@ -989,6 +990,28 @@ export default function NewProject() {
         minDurationMs: 3600,
       }
     )
+
+    if (uploadedFiles.length > 0) {
+      try {
+        await runActionToast(
+          () => uploadFilesToRecord(createdBudget.id, uploadedFiles),
+          {
+            processingTitle: 'Uploading documents',
+            processingDescription: `Uploading ${uploadedFiles.length} supporting document${uploadedFiles.length !== 1 ? 's' : ''}...`,
+            successTitle: 'Documents uploaded',
+            successDescription: `${uploadedFiles.length} document${uploadedFiles.length !== 1 ? 's' : ''} uploaded successfully.`,
+            errorTitle: 'Document upload failed',
+            minDurationMs: 2000,
+          }
+        )
+      } catch (uploadErr) {
+        console.error('[FileUpload] Upload failed — draft was saved successfully, documents were not uploaded.', uploadErr)
+        showErrorToast(
+          'Documents not uploaded',
+          'The budget draft was saved but document upload failed. Check the browser console for details.'
+        )
+      }
+    }
 
     navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
   }
@@ -1354,29 +1377,24 @@ export default function NewProject() {
             </FormSection>
           </div>
 
-          <Card className="overflow-hidden rounded-2xl border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
-            <CardContent className="p-4 sm:p-6">
-              <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
-                    <Upload className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-[var(--foreground)]">Documents</h3>
-                    <p className="text-sm text-[var(--muted-foreground)]">Attach business cases, cost sheets, quotations, or technical evidence.</p>
-                  </div>
+          <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+            <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5">
+                  <Upload className="h-6 w-6" />
                 </div>
-                <Button variant="outline" size="sm" className="h-10 rounded-xl border-[#DDEBFF] bg-white shadow-sm">
-                  <Upload className="h-4 w-4" />Upload Document
-                </Button>
+                <div>
+                  <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents</h3>
+                  <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
+                    Attach business cases, cost sheets, quotations, or technical evidence. Documents are uploaded when you save the draft.
+                  </p>
+                </div>
               </div>
-              <div className="group rounded-xl border-2 border-dashed border-[#BFD8FF] bg-[#F8FBFF] p-8 text-center transition-colors hover:border-[var(--primary)] dark:bg-white/5">
-                <Upload className="mx-auto mb-3 h-9 w-9 text-[var(--primary)] transition-transform group-hover:-translate-y-1" />
-                <p className="text-sm font-bold text-[#0F172A] dark:text-white">Drop files here or click to upload</p>
-                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">PDF, DOCX, XLSX supported</p>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="p-4 sm:p-6">
+              <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
+            </div>
+          </section>
 
           <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B] sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

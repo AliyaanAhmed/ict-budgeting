@@ -5,7 +5,9 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 interface ClarificationModalProps {
@@ -53,8 +55,8 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
               <HelpCircle className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-[var(--foreground)]">Raise Clarification</h2>
-              <p className="text-xs text-[var(--muted-foreground)] truncate">{projectName}</p>
+              <DialogTitle className="text-lg font-bold text-[var(--foreground)]">Raise Clarification</DialogTitle>
+              <DialogDescription className="text-xs text-[var(--muted-foreground)] truncate">{projectName}</DialogDescription>
             </div>
           </div>
         </div>

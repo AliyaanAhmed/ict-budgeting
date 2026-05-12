@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
 } from '@/components/ui/dialog'
 
 interface ConfirmationModalProps {
@@ -58,9 +60,9 @@ export function ConfirmationModal({
 
             {/* Title + meta */}
             <div className="min-w-0 flex-1 pt-0.5">
-              <h2 className="text-[15px] font-bold leading-snug text-[#0F172A] dark:text-white">
+              <DialogTitle className="text-[15px] font-bold leading-snug text-[#0F172A] dark:text-white">
                 {title}
-              </h2>
+              </DialogTitle>
               {meta && (
                 <div className="mt-1 [&_p]:!m-0 [&_p]:!text-[13px] [&_p]:!font-medium [&_p]:!text-[#64748B] dark:[&_p]:!text-slate-300">
                   {meta}
@@ -72,9 +74,9 @@ export function ConfirmationModal({
 
         {/* Body */}
         <div className="bg-white px-6 py-5 dark:bg-[#1E293B]">
-          <p className="text-sm leading-relaxed text-[#475569] dark:text-slate-300">
+          <DialogDescription className="text-sm leading-relaxed text-[#475569] dark:text-slate-300">
             {description}
-          </p>
+          </DialogDescription>
         </div>
 
         {/* Footer */}
