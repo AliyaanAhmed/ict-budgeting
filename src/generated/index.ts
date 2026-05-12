@@ -18,6 +18,8 @@ export * as Dga_strategic_prioritiesesModel from './models/Dga_strategic_priorit
 export * as Dga_technologiesModel from './models/Dga_technologiesModel';
 export * as Dga_work_streamsModel from './models/Dga_work_streamsModel';
 export * as ICTBudget_Clarifications_UploadFilesinSharepointModel from './models/ICTBudget_Clarifications_UploadFilesinSharepointModel';
+export * as PowerAppV2_CallUploadFileFlowModel from './models/PowerAppV2_CallUploadFileFlowModel';
+export * as SharepointdocumentsModel from './models/SharepointdocumentsModel';
 export * as SystemusersModel from './models/SystemusersModel';
 export * as TeammembershipsModel from './models/TeammembershipsModel';
 export * as TeamsModel from './models/TeamsModel';
@@ -36,6 +38,8 @@ export * from './services/Dga_strategic_prioritiesesService';
 export * from './services/Dga_technologiesService';
 export * from './services/Dga_work_streamsService';
 export * from './services/ICTBudget_Clarifications_UploadFilesinSharepointService';
+export * from './services/PowerAppV2_CallUploadFileFlowService';
+export * from './services/SharepointdocumentsService';
 export * from './services/SystemusersService';
 export * from './services/TeammembershipsService';
 export * from './services/TeamsService';

@@ -33,6 +33,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "sharepointdocuments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "sharepointdocumentid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_ict_budget_instances": {
     "tableId": "",
     "version": "",
@@ -104,6 +111,43 @@ export const dataSourcesInfo = {
     "apis": {}
   },
   "ictbudget_clarifications_uploadfilesinsharepoint": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_calluploadfileflow": {
     "tableId": "",
     "version": "",
     "primaryKey": "",

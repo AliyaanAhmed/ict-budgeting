@@ -21,6 +21,18 @@
         "workflowDisplayName": "ICT Budget / Clarifications - Upload Files in Sharepoint",
         "workflowName": "c0932d99-c5e8-e0e8-6f97-973f0dfb97b3"
       }
+    },
+    "bf6ef0cf-67c8-455b-a965-ca34d041a264": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_calluploadfileflow"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "fa71aa91-da4d-f111-bec6-6045bd6a9b9c",
+        "workflowDisplayName": "PowerAppV2 - Call Upload File Flow",
+        "workflowName": "6175a29b-353e-7b35-6971-1a4102feb124"
+      }
     }
   },
   "databaseReferences": {
@@ -97,6 +109,11 @@
         "teams": {
           "entitySetName": "teams",
           "logicalName": "team",
+          "isHidden": false
+        },
+        "documents": {
+          "entitySetName": "sharepointdocuments",
+          "logicalName": "sharepointdocument",
           "isHidden": false
         }
       },
