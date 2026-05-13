@@ -668,6 +668,9 @@ The account key mapping used in `instanceService.ts`:
 | Key | Type | Set by | Description |
 |-----|------|--------|-------------|
 | `ict_app_user` | JSON object | `initUserContext` | Full AAD + Dataverse user context |
+| `userID` | string | `initUserContext` | Dataverse `systemuserid` for the signed-in user |
+| `moduleTypeID` | string | `initUserContext` | `dga_module_typeid` for the ICT Budgeting module |
+| `moduleConfigTeamIDs` | JSON object | `initUserContext` | `{ respondentTeamId, reviewerTeamId, approverTeamId }` from `dga_module_configuration` for the resolved account + ICT Budgeting module type |
 | `userTeams` | JSON array | `initUserContext` | User's role teams with role labels |
 | `respondentAccount` | string | `initUserContext` | Account GUID for Respondent role |
 | `respondentAccountName` | string | `initUserContext` | Account display name for Respondent |
@@ -683,6 +686,36 @@ The account key mapping used in `instanceService.ts`:
 | `currentRole` | string | `RoleContext` | Display name of active role (e.g. `ICT - Respondent`) |
 | `instanceID` | string | `initInstanceContext` / `InstanceContext` | GUID of the budget instance for current role+cycle |
 | `instanceDetail` | JSON object | `initInstanceContext` / `InstanceContext` | Instance detail: id, name, abbr, dates |
+
+### Additional User Boot Lookup
+
+The user boot flow now also does an explicit ICT Budgeting module lookup and module-configuration lookup for clarification routing.
+
+1. Fetch `dga_module_types` using:
+   - `Dga_module_typesService.getAll({ select: ['dga_module_typeid', 'dga_module_name'] })`
+2. Match the row whose `dga_module_name` is `ICT Budgeting`
+3. Store the resulting `dga_module_typeid` in:
+   - `sessionStorage["moduleTypeID"]`
+4. Resolve the first available role account in this order:
+   - `Respondent`
+   - `Reviewer`
+   - `Approver`
+5. Query `dga_module_configuration` with:
+   - `_dga_account_value eq <accountId> and _dga_module_type_value eq <moduleTypeId>`
+6. Store the team ids from that record in:
+   - `sessionStorage["moduleConfigTeamIDs"]`
+
+Stored shape:
+
+```ts
+{
+  respondentTeamId: string | null
+  reviewerTeamId: string | null
+  approverTeamId: string | null
+}
+```
+
+If the module configuration has only one or two team ids populated, the missing values are stored as `null`. If no matching module configuration is found, the same object is still stored with all values as `null`, so later app code can fail predictably instead of reading an undefined key.
 
 ### How instanceID Is Used In Budget Retrieval
 
@@ -878,6 +911,87 @@ On `Save Changes`:
 2. If `uploadedFiles.length > 0`, upload runs as a second `runActionToast`
 3. Files cleared from state after successful upload
 4. Cancel edit also clears staged files
+
+---
+
+## Clarification Integration
+
+Clarifications are now backed by the Dataverse table:
+
+- `dga_ict_clarification`
+
+The Code App includes the generated datasource/service:
+
+- `src/generated/models/Dga_ict_clarificationsModel.ts`
+- `src/generated/services/Dga_ict_clarificationsService.ts`
+- `.power/schemas/dataverse/ictclarifications.Schema.json`
+
+Main app wrapper:
+
+- `src/services/clarificationService.ts`
+
+### Clarification Create Rules
+
+When Reviewer or Approver raises a clarification:
+
+- create a new `dga_ict_clarification` record
+- `dga_ict_budget@odata.bind` -> current ICT budget
+- `dga_description` -> modal text
+- `dga_clarification_stage` -> `1` (`Planning`)
+- `dga_record_type` -> `2` (`Clarification`)
+- `dga_scope` -> `2` (`Internal (Entity)`)
+- `statuscode` -> `1` (`Open`)
+- `dga_clarification_raised_date` -> current ISO datetime
+- `dga_raised_by_systemuser@odata.bind` -> `sessionStorage["userID"]`
+- `dga_raised_to_team@odata.bind` -> respondent team from `sessionStorage["moduleConfigTeamIDs"]`
+- `dga_raised_by_role`:
+  - Reviewer -> `ICT - Reviewer`
+  - Approver -> `Approver`
+
+Important:
+
+- raise clarification now requires `moduleConfigTeamIDs.respondentTeamId`
+- if respondent team id is missing, the create flow throws a clear error instead of silently creating a bad payload
+
+### Clarification Reply Rules
+
+When a reply/comment is added:
+
+- create another `dga_ict_clarification` record
+- `dga_parent_clarificaiton@odata.bind` -> parent clarification
+- `dga_record_type` -> `1` (`Comment`)
+- `dga_scope` -> `2` (`Internal (Entity)`)
+- `dga_response_date` -> current ISO datetime
+- `dga_raised_by_systemuser@odata.bind` -> `sessionStorage["userID"]`
+
+After reply create:
+
+- parent clarification is updated with `dga_response_date`
+- if the replier is Respondent, parent `statuscode` becomes `776140002` (`Responded`)
+
+### Clarification Close Rules
+
+Whoever raised the clarification can close it by updating the parent record:
+
+- `statuscode` -> `776140003` (`Closed`)
+- `dga_response_date` -> current ISO datetime
+
+### UI Wiring
+
+Dynamic clarification UI is wired in:
+
+- `src/pages/respondent/ProjectDetail.tsx`
+- `src/pages/reviewer/ReviewQueue.tsx`
+- `src/pages/approver/ApprovalQueue.tsx`
+- `src/components/shared/ClarificationModal.tsx`
+- `src/components/shared/ClarificationThread.tsx`
+
+Current behavior:
+
+- no Clarification Due Date field is used
+- role tags are shown from `Raised By (Role)`
+- threads and replies are loaded from `dga_ict_clarification`
+- reviewer and approver queue actions create live Dataverse clarification records instead of local-only mock data
 
 ---
 

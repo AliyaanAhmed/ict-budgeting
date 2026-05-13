@@ -1,223 +1,41 @@
 import { getContext } from '@microsoft/power-apps/app'
+import { AccountsService } from '@/generated/services/AccountsService'
+import { Dga_module_configurationsService } from '@/generated/services/Dga_module_configurationsService'
+import { Dga_module_typesService } from '@/generated/services/Dga_module_typesService'
 import { SystemusersService } from '@/generated/services/SystemusersService'
 import { TeammembershipsService } from '@/generated/services/TeammembershipsService'
 import { TeamsService } from '@/generated/services/TeamsService'
-import { AccountsService } from '@/generated/services/AccountsService'
-import { Dga_module_configurationsService } from '@/generated/services/Dga_module_configurationsService'
 
-export const SESSION_USER_KEY                         = 'ict_app_user'
-export const SESSION_USER_TEAMS_KEY                   = 'userTeams'
-export const SESSION_RESPONDENT_ACCOUNT_KEY           = 'respondentAccount'
-export const SESSION_RESPONDENT_ACCOUNT_NAME_KEY      = 'respondentAccountName'
-export const SESSION_RESPONDENT_MODULE_CONFIG_ID_KEY  = 'respondentModuleConfigId'
-export const SESSION_REVIEWER_ACCOUNT_KEY             = 'reviewerAccount'
-export const SESSION_REVIEWER_ACCOUNT_NAME_KEY        = 'reviewerAccountName'
-export const SESSION_REVIEWER_MODULE_CONFIG_ID_KEY    = 'reviewerModuleConfigId'
-export const SESSION_APPROVER_ACCOUNT_KEY             = 'approverAccount'
-export const SESSION_APPROVER_ACCOUNT_NAME_KEY        = 'approverAccountName'
-export const SESSION_APPROVER_MODULE_CONFIG_ID_KEY    = 'approverModuleConfigId'
+export const SESSION_USER_KEY = 'ict_app_user'
+export const SESSION_USER_ID_KEY = 'userID'
+export const SESSION_MODULE_TYPE_ID_KEY = 'moduleTypeID'
+export const SESSION_MODULE_CONFIG_TEAM_IDS_KEY = 'moduleConfigTeamIDs'
+export const SESSION_USER_TEAMS_KEY = 'userTeams'
+export const SESSION_RESPONDENT_ACCOUNT_KEY = 'respondentAccount'
+export const SESSION_RESPONDENT_ACCOUNT_NAME_KEY = 'respondentAccountName'
+export const SESSION_RESPONDENT_MODULE_CONFIG_ID_KEY = 'respondentModuleConfigId'
+export const SESSION_REVIEWER_ACCOUNT_KEY = 'reviewerAccount'
+export const SESSION_REVIEWER_ACCOUNT_NAME_KEY = 'reviewerAccountName'
+export const SESSION_REVIEWER_MODULE_CONFIG_ID_KEY = 'reviewerModuleConfigId'
+export const SESSION_APPROVER_ACCOUNT_KEY = 'approverAccount'
+export const SESSION_APPROVER_ACCOUNT_NAME_KEY = 'approverAccountName'
+export const SESSION_APPROVER_MODULE_CONFIG_ID_KEY = 'approverModuleConfigId'
 
 export type TeamRole = 'Respondent' | 'Reviewer' | 'Approver'
 
 export interface UserTeam {
   teamid: string
-  name:   string
-  role:   TeamRole
+  name: string
+  role: TeamRole
 }
 
-const ROLE_ACCOUNT_SESSION_KEY: Record<TeamRole, string> = {
-  Respondent: SESSION_RESPONDENT_ACCOUNT_KEY,
-  Reviewer:   SESSION_REVIEWER_ACCOUNT_KEY,
-  Approver:   SESSION_APPROVER_ACCOUNT_KEY,
-}
-
-const ROLE_ACCOUNT_NAME_SESSION_KEY: Record<TeamRole, string> = {
-  Respondent: SESSION_RESPONDENT_ACCOUNT_NAME_KEY,
-  Reviewer:   SESSION_REVIEWER_ACCOUNT_NAME_KEY,
-  Approver:   SESSION_APPROVER_ACCOUNT_NAME_KEY,
-}
-
-const ROLE_MODULE_CONFIG_SESSION_KEY: Record<TeamRole, string> = {
-  Respondent: SESSION_RESPONDENT_MODULE_CONFIG_ID_KEY,
-  Reviewer:   SESSION_REVIEWER_MODULE_CONFIG_ID_KEY,
-  Approver:   SESSION_APPROVER_MODULE_CONFIG_ID_KEY,
-}
-
-async function fetchUserTeamsAndAccounts(systemUserId: string): Promise<void> {
-  console.log('[UserContext][Teams] ── fetchUserTeamsAndAccounts ENTERED ──')
-  console.log('[UserContext][Teams] systemUserId:', systemUserId)
-
-  // ── Step 1: get all team IDs the user belongs to via the teammembership intersect table ──
-  console.log('[UserContext][Teams] Step 1: Fetching teammemberships...')
-  let teamIds: string[] = []
-
-  try {
-    const membResult = await TeammembershipsService.getAll({
-      select: ['teamid', 'systemuserid'],
-      filter: `systemuserid eq ${systemUserId}`,
-    })
-    console.log('[UserContext][Teams] TeammembershipsService.getAll() result:', membResult)
-
-    if (!membResult.success || !membResult.data?.length) {
-      console.warn('[UserContext][Teams] No team memberships found — user may not belong to any team')
-      return
-    }
-
-    teamIds = membResult.data.map(m => m.teamid).filter(Boolean)
-    console.log('[UserContext][Teams] Team IDs found:', teamIds)
-  } catch (err) {
-    console.error('[UserContext][Teams] TeammembershipsService.getAll() FAILED:', err)
-    return
-  }
-
-  if (!teamIds.length) {
-    console.warn('[UserContext][Teams] teamIds array is empty after mapping — nothing to process')
-    return
-  }
-
-  // ── Step 2: query dga_module_configuration filtering across all three role columns ──
-  // Each module config links a respondent/reviewer/approver team to an account.
-  // We build one OR filter covering all three role columns × all team IDs.
-  const respondentClauses = teamIds.map(id => `_dga_respondent_team_value eq ${id}`)
-  const reviewerClauses   = teamIds.map(id => `_dga_reviewer_team_value eq ${id}`)
-  const approverClauses   = teamIds.map(id => `_dga_approver_team_value eq ${id}`)
-  const moduleFilter = [...respondentClauses, ...reviewerClauses, ...approverClauses].join(' or ')
-
-  console.log('[UserContext][Teams] Step 2: Fetching module configurations...')
-  console.log('[UserContext][Teams] Module config filter:', moduleFilter)
-
-  try {
-    const modResult = await Dga_module_configurationsService.getAll({
-      select: [
-        'dga_module_configurationid',
-        'dga_name',
-        '_dga_account_value',
-        '_dga_respondent_team_value',
-        '_dga_reviewer_team_value',
-        '_dga_approver_team_value',
-      ],
-      filter: moduleFilter,
-    })
-    console.log('[UserContext][Teams] Dga_module_configurationsService.getAll() result:', modResult)
-
-    if (!modResult.success || !modResult.data?.length) {
-      console.warn('[UserContext][Teams] No module configurations matched the user\'s teams')
-      return
-    }
-
-    // ── Step 2a: collect role→teamId, role→accountId, role→moduleConfigId ──
-    const teamIdSet         = new Set(teamIds)
-    const roleTeamMap:         Partial<Record<TeamRole, string>> = {}
-    const roleAccountMap:      Partial<Record<TeamRole, string>> = {}
-    const roleModuleConfigMap: Partial<Record<TeamRole, string>> = {}
-
-    for (const config of modResult.data) {
-      console.log('[UserContext][Teams] Module config:', config.dga_module_configurationid, '|', config.dga_name)
-      console.log('[UserContext][Teams]   respondent:', config._dga_respondent_team_value)
-      console.log('[UserContext][Teams]   reviewer:  ', config._dga_reviewer_team_value)
-      console.log('[UserContext][Teams]   approver:  ', config._dga_approver_team_value)
-      console.log('[UserContext][Teams]   account:   ', config._dga_account_value)
-
-      const pickRole = (teamId: string | undefined, role: TeamRole) => {
-        if (!teamId || !teamIdSet.has(teamId)) return
-        if (!roleTeamMap[role])    roleTeamMap[role]    = teamId
-        if (!roleAccountMap[role] && config._dga_account_value)
-          roleAccountMap[role] = config._dga_account_value
-        if (!roleModuleConfigMap[role] && config.dga_module_configurationid)
-          roleModuleConfigMap[role] = config.dga_module_configurationid
-      }
-      pickRole(config._dga_respondent_team_value, 'Respondent')
-      pickRole(config._dga_reviewer_team_value,   'Reviewer')
-      pickRole(config._dga_approver_team_value,   'Approver')
-    }
-    console.log('[UserContext][Teams] roleTeamMap:         ', roleTeamMap)
-    console.log('[UserContext][Teams] roleAccountMap:      ', roleAccountMap)
-    console.log('[UserContext][Teams] roleModuleConfigMap: ', roleModuleConfigMap)
-
-    // ── Step 3: fetch actual team names from the team table ──
-    const roleTeamIds = Object.values(roleTeamMap).filter(Boolean) as string[]
-    const teamNameMap: Record<string, string> = {}
-
-    if (roleTeamIds.length) {
-      const teamFilter = roleTeamIds.map(id => `teamid eq ${id}`).join(' or ')
-      console.log('[UserContext][Teams] Step 3: Fetching team names, filter:', teamFilter)
-      try {
-        const teamsResult = await TeamsService.getAll({
-          select: ['teamid', 'name'],
-          filter: teamFilter,
-        })
-        console.log('[UserContext][Teams] TeamsService.getAll() result:', teamsResult)
-        if (teamsResult.success && teamsResult.data) {
-          for (const t of teamsResult.data) {
-            if (t.teamid && t.name) teamNameMap[t.teamid] = t.name
-          }
-        }
-      } catch (err) {
-        console.error('[UserContext][Teams] TeamsService.getAll() FAILED:', err)
-      }
-    }
-    console.log('[UserContext][Teams] teamNameMap:', teamNameMap)
-
-    // ── Step 4: fetch account names (unique account IDs only) ──
-    const uniqueAccountIds = [...new Set(Object.values(roleAccountMap).filter(Boolean) as string[])]
-    const accountNameMap: Record<string, string> = {}
-
-    for (const accountId of uniqueAccountIds) {
-      console.log('[UserContext][Teams] Step 4: Fetching account name for:', accountId)
-      try {
-        const accResult = await AccountsService.get(accountId, { select: ['accountid', 'name'] })
-        console.log('[UserContext][Teams] AccountsService.get() result:', accResult)
-        if (accResult.success && accResult.data?.name) {
-          accountNameMap[accountId] = accResult.data.name
-        }
-      } catch (err) {
-        console.error('[UserContext][Teams] AccountsService.get() FAILED for', accountId, ':', err)
-      }
-    }
-    console.log('[UserContext][Teams] accountNameMap:', accountNameMap)
-
-    // ── Step 5: build userTeams with resolved names ──
-    const userTeams: UserTeam[] = []
-    for (const role of (['Respondent', 'Reviewer', 'Approver'] as TeamRole[])) {
-      const teamId = roleTeamMap[role]
-      if (!teamId) continue
-      userTeams.push({ teamid: teamId, name: teamNameMap[teamId] ?? teamId, role })
-    }
-
-    console.log('[UserContext][Teams] Final userTeams:', JSON.stringify(userTeams, null, 2))
-    sessionStorage.setItem(SESSION_USER_TEAMS_KEY, JSON.stringify(userTeams))
-    console.log('[UserContext][Teams] ✓ sessionStorage["userTeams"] set with', userTeams.length, 'teams')
-
-    for (const role of (['Respondent', 'Reviewer', 'Approver'] as TeamRole[])) {
-      const accountId      = roleAccountMap[role]
-      const accountName    = accountId ? (accountNameMap[accountId] ?? '') : undefined
-      const moduleConfigId = roleModuleConfigMap[role]
-
-      if (accountId) {
-        sessionStorage.setItem(ROLE_ACCOUNT_SESSION_KEY[role],      accountId)
-        sessionStorage.setItem(ROLE_ACCOUNT_NAME_SESSION_KEY[role], accountName ?? '')
-        console.log(`[UserContext][Teams] ✓ sessionStorage["${ROLE_ACCOUNT_SESSION_KEY[role]}"] = "${accountId}"`)
-        console.log(`[UserContext][Teams] ✓ sessionStorage["${ROLE_ACCOUNT_NAME_SESSION_KEY[role]}"] = "${accountName}"`)
-      } else {
-        console.log(`[UserContext][Teams] No account for role "${role}" — account keys not set`)
-      }
-
-      if (moduleConfigId) {
-        sessionStorage.setItem(ROLE_MODULE_CONFIG_SESSION_KEY[role], moduleConfigId)
-        console.log(`[UserContext][Teams] ✓ sessionStorage["${ROLE_MODULE_CONFIG_SESSION_KEY[role]}"] = "${moduleConfigId}"`)
-      } else {
-        console.log(`[UserContext][Teams] No module config ID for role "${role}" — key not set`)
-      }
-    }
-  } catch (err) {
-    console.error('[UserContext][Teams] Dga_module_configurationsService.getAll() FAILED:', err)
-  }
-
-  console.log('[UserContext][Teams] ── fetchUserTeamsAndAccounts COMPLETE ──')
+export interface ModuleConfigTeamIds {
+  respondentTeamId: string | null
+  reviewerTeamId: string | null
+  approverTeamId: string | null
 }
 
 export interface AppUserContext {
-  // From Power Apps getContext()
   appId: string
   environmentId: string
   queryParams: Record<string, string>
@@ -226,7 +44,6 @@ export interface AppUserContext {
   tenantId: string
   userPrincipalName: string
   sessionId: string
-  // From Dataverse systemuser record
   systemUserId: string
   domainName: string
   internalEmail: string
@@ -237,40 +54,330 @@ export interface AppUserContext {
   organizationName: string
 }
 
+const EMPTY_MODULE_CONFIG_TEAM_IDS: ModuleConfigTeamIds = {
+  respondentTeamId: null,
+  reviewerTeamId: null,
+  approverTeamId: null,
+}
+
+const ROLE_ACCOUNT_SESSION_KEY: Record<TeamRole, string> = {
+  Respondent: SESSION_RESPONDENT_ACCOUNT_KEY,
+  Reviewer: SESSION_REVIEWER_ACCOUNT_KEY,
+  Approver: SESSION_APPROVER_ACCOUNT_KEY,
+}
+
+const ROLE_ACCOUNT_NAME_SESSION_KEY: Record<TeamRole, string> = {
+  Respondent: SESSION_RESPONDENT_ACCOUNT_NAME_KEY,
+  Reviewer: SESSION_REVIEWER_ACCOUNT_NAME_KEY,
+  Approver: SESSION_APPROVER_ACCOUNT_NAME_KEY,
+}
+
+const ROLE_MODULE_CONFIG_SESSION_KEY: Record<TeamRole, string> = {
+  Respondent: SESSION_RESPONDENT_MODULE_CONFIG_ID_KEY,
+  Reviewer: SESSION_REVIEWER_MODULE_CONFIG_ID_KEY,
+  Approver: SESSION_APPROVER_MODULE_CONFIG_ID_KEY,
+}
+
+function setSessionJson(key: string, value: unknown) {
+  sessionStorage.setItem(key, JSON.stringify(value))
+}
+
+function storeModuleTypeId(moduleTypeId: string | null) {
+  if (moduleTypeId) {
+    sessionStorage.setItem(SESSION_MODULE_TYPE_ID_KEY, moduleTypeId)
+    console.log(`[UserContext][ModuleType] sessionStorage["${SESSION_MODULE_TYPE_ID_KEY}"] = "${moduleTypeId}"`)
+  } else {
+    sessionStorage.removeItem(SESSION_MODULE_TYPE_ID_KEY)
+    console.warn(`[UserContext][ModuleType] No ICT Budgeting module type found, removed "${SESSION_MODULE_TYPE_ID_KEY}"`)
+  }
+}
+
+function storeModuleConfigTeamIds(payload: ModuleConfigTeamIds) {
+  setSessionJson(SESSION_MODULE_CONFIG_TEAM_IDS_KEY, payload)
+  console.log(`[UserContext][ModuleConfigTeams] sessionStorage["${SESSION_MODULE_CONFIG_TEAM_IDS_KEY}"] =`, payload)
+}
+
+async function fetchAndStoreIctBudgetingModuleTypeId(): Promise<string | null> {
+  console.log('[UserContext][ModuleType] Fetching module types using the same pattern as cycle creation...')
+
+  try {
+    const result = await Dga_module_typesService.getAll({
+      select: ['dga_module_typeid', 'dga_module_name'],
+      orderBy: ['dga_module_name asc'],
+    })
+
+    console.log('[UserContext][ModuleType] getAll result:', result)
+
+    const moduleTypes = result.data ?? []
+    const match =
+      moduleTypes.find((item) => item.dga_module_name?.trim().toLowerCase() === 'ict budgeting') ??
+      moduleTypes.find((item) => item.dga_module_name?.trim().toLowerCase().includes('ict'))
+
+    const moduleTypeId =
+      typeof match?.dga_module_typeid === 'string' && match.dga_module_typeid.trim()
+        ? match.dga_module_typeid.trim()
+        : null
+
+    storeModuleTypeId(moduleTypeId)
+    return moduleTypeId
+  } catch (error) {
+    console.error('[UserContext][ModuleType] Failed to fetch module type id:', error)
+    storeModuleTypeId(null)
+    return null
+  }
+}
+
+async function fetchAndStoreModuleConfigTeamIds(accountId: string | null, moduleTypeId: string | null): Promise<void> {
+  if (!accountId || !moduleTypeId) {
+    console.warn('[UserContext][ModuleConfigTeams] Missing accountId or moduleTypeId, storing empty team object.')
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    return
+  }
+
+  const filter = `(_dga_account_value eq ${accountId} and _dga_module_type_value eq ${moduleTypeId})`
+  console.log('[UserContext][ModuleConfigTeams] Fetching module config with filter:', filter)
+
+  try {
+    const result = await Dga_module_configurationsService.getAll({
+      select: [
+        'dga_module_configurationid',
+        '_dga_account_value',
+        '_dga_approver_team_value',
+        '_dga_respondent_team_value',
+        '_dga_reviewer_team_value',
+      ],
+      filter,
+      top: 1,
+    })
+
+    console.log('[UserContext][ModuleConfigTeams] getAll result:', result)
+
+    const record = result.data?.[0]
+    const payload: ModuleConfigTeamIds = {
+      respondentTeamId: record?._dga_respondent_team_value ?? null,
+      reviewerTeamId: record?._dga_reviewer_team_value ?? null,
+      approverTeamId: record?._dga_approver_team_value ?? null,
+    }
+
+    storeModuleConfigTeamIds(payload)
+  } catch (error) {
+    console.error('[UserContext][ModuleConfigTeams] Failed to fetch module configuration:', error)
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+  }
+}
+
+async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: string | null): Promise<void> {
+  console.log('[UserContext][Teams] Fetching team memberships for system user:', systemUserId)
+
+  let memberships
+  try {
+    memberships = await TeammembershipsService.getAll({
+      select: ['teamid', 'systemuserid'],
+      filter: `systemuserid eq ${systemUserId}`,
+    })
+  } catch (error) {
+    console.error('[UserContext][Teams] Failed to fetch team memberships:', error)
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    return
+  }
+
+  console.log('[UserContext][Teams] Team memberships result:', memberships)
+
+  const teamIds = (memberships.data ?? []).map((item) => item.teamid).filter(Boolean)
+  if (!teamIds.length) {
+    console.warn('[UserContext][Teams] No team ids found for current user.')
+    sessionStorage.setItem(SESSION_USER_TEAMS_KEY, JSON.stringify([]))
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    return
+  }
+
+  const roleFilter = [
+    ...teamIds.map((id) => `_dga_respondent_team_value eq ${id}`),
+    ...teamIds.map((id) => `_dga_reviewer_team_value eq ${id}`),
+    ...teamIds.map((id) => `_dga_approver_team_value eq ${id}`),
+  ].join(' or ')
+
+  const configFilter = moduleTypeId ? `(${roleFilter}) and _dga_module_type_value eq ${moduleTypeId}` : roleFilter
+  console.log('[UserContext][Teams] Fetching module configurations with filter:', configFilter)
+
+  let moduleConfigs
+  try {
+    moduleConfigs = await Dga_module_configurationsService.getAll({
+      select: [
+        'dga_module_configurationid',
+        'dga_name',
+        '_dga_account_value',
+        '_dga_module_type_value',
+        '_dga_respondent_team_value',
+        '_dga_reviewer_team_value',
+        '_dga_approver_team_value',
+      ],
+      filter: configFilter,
+    })
+  } catch (error) {
+    console.error('[UserContext][Teams] Failed to fetch module configurations:', error)
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    return
+  }
+
+  console.log('[UserContext][Teams] Module configuration result:', moduleConfigs)
+
+  const configs = moduleConfigs.data ?? []
+  if (!configs.length) {
+    console.warn('[UserContext][Teams] No module configurations matched the current user teams.')
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    return
+  }
+
+  if (!moduleTypeId) {
+    const fallbackModuleTypeId = configs.find((item) => item._dga_module_type_value)?._dga_module_type_value ?? null
+    if (fallbackModuleTypeId) {
+      storeModuleTypeId(fallbackModuleTypeId)
+      moduleTypeId = fallbackModuleTypeId
+    }
+  }
+
+  const teamIdSet = new Set(teamIds)
+  const roleTeamMap: Partial<Record<TeamRole, string>> = {}
+  const roleAccountMap: Partial<Record<TeamRole, string>> = {}
+  const roleModuleConfigMap: Partial<Record<TeamRole, string>> = {}
+
+  for (const config of configs) {
+    const pickRole = (teamId: string | undefined, role: TeamRole) => {
+      if (!teamId || !teamIdSet.has(teamId)) return
+
+      if (!roleTeamMap[role]) roleTeamMap[role] = teamId
+      if (!roleAccountMap[role] && config._dga_account_value) roleAccountMap[role] = config._dga_account_value
+      if (!roleModuleConfigMap[role] && config.dga_module_configurationid) {
+        roleModuleConfigMap[role] = config.dga_module_configurationid
+      }
+    }
+
+    pickRole(config._dga_respondent_team_value, 'Respondent')
+    pickRole(config._dga_reviewer_team_value, 'Reviewer')
+    pickRole(config._dga_approver_team_value, 'Approver')
+  }
+
+  console.log('[UserContext][Teams] roleTeamMap:', roleTeamMap)
+  console.log('[UserContext][Teams] roleAccountMap:', roleAccountMap)
+  console.log('[UserContext][Teams] roleModuleConfigMap:', roleModuleConfigMap)
+
+  const userTeamIds = Object.values(roleTeamMap).filter(Boolean) as string[]
+  const teamNameMap: Record<string, string> = {}
+
+  if (userTeamIds.length) {
+    const teamFilter = userTeamIds.map((id) => `teamid eq ${id}`).join(' or ')
+    try {
+      const teamsResult = await TeamsService.getAll({
+        select: ['teamid', 'name'],
+        filter: teamFilter,
+      })
+
+      console.log('[UserContext][Teams] Teams result:', teamsResult)
+
+      for (const team of teamsResult.data ?? []) {
+        if (team.teamid && team.name) {
+          teamNameMap[team.teamid] = team.name
+        }
+      }
+    } catch (error) {
+      console.error('[UserContext][Teams] Failed to fetch team names:', error)
+    }
+  }
+
+  const uniqueAccountIds = [...new Set(Object.values(roleAccountMap).filter(Boolean) as string[])]
+  const accountNameMap: Record<string, string> = {}
+
+  for (const accountId of uniqueAccountIds) {
+    try {
+      const accountResult = await AccountsService.get(accountId, { select: ['accountid', 'name'] })
+      if (accountResult.success && accountResult.data?.name) {
+        accountNameMap[accountId] = accountResult.data.name
+      }
+    } catch (error) {
+      console.error('[UserContext][Teams] Failed to fetch account name for account:', accountId, error)
+    }
+  }
+
+  const userTeams: UserTeam[] = (['Respondent', 'Reviewer', 'Approver'] as TeamRole[])
+    .map((role) => {
+      const teamId = roleTeamMap[role]
+      if (!teamId) return null
+
+      return {
+        teamid: teamId,
+        name: teamNameMap[teamId] ?? teamId,
+        role,
+      }
+    })
+    .filter((item): item is UserTeam => item !== null)
+
+  setSessionJson(SESSION_USER_TEAMS_KEY, userTeams)
+  console.log(`[UserContext][Teams] sessionStorage["${SESSION_USER_TEAMS_KEY}"] =`, userTeams)
+
+  for (const role of ['Respondent', 'Reviewer', 'Approver'] as TeamRole[]) {
+    const accountId = roleAccountMap[role]
+    const accountName = accountId ? accountNameMap[accountId] ?? '' : ''
+    const moduleConfigId = roleModuleConfigMap[role] ?? ''
+
+    if (accountId) {
+      sessionStorage.setItem(ROLE_ACCOUNT_SESSION_KEY[role], accountId)
+      sessionStorage.setItem(ROLE_ACCOUNT_NAME_SESSION_KEY[role], accountName)
+    } else {
+      sessionStorage.removeItem(ROLE_ACCOUNT_SESSION_KEY[role])
+      sessionStorage.removeItem(ROLE_ACCOUNT_NAME_SESSION_KEY[role])
+    }
+
+    if (moduleConfigId) {
+      sessionStorage.setItem(ROLE_MODULE_CONFIG_SESSION_KEY[role], moduleConfigId)
+    } else {
+      sessionStorage.removeItem(ROLE_MODULE_CONFIG_SESSION_KEY[role])
+    }
+  }
+
+  const availableAccountId =
+    roleAccountMap.Respondent ??
+    roleAccountMap.Reviewer ??
+    roleAccountMap.Approver ??
+    uniqueAccountIds[0] ??
+    null
+
+  console.log('[UserContext][ModuleConfigTeams] Available account id for exact module config lookup:', availableAccountId)
+  console.log('[UserContext][ModuleConfigTeams] Module type id for exact module config lookup:', moduleTypeId)
+
+  await fetchAndStoreModuleConfigTeamIds(availableAccountId, moduleTypeId)
+}
+
 export async function initUserContext(): Promise<void> {
   console.log('[UserContext] Initializing user context...')
+
   try {
     const ctx = await getContext()
     console.log('[UserContext] getContext() raw response:', ctx)
 
     const objectId = ctx.user.objectId ?? ''
-    console.log('[UserContext] userId (objectId from AAD):', objectId)
-
-    // Base context from Power Apps runtime
     const userContext: AppUserContext = {
-      appId:             ctx.app.appId             ?? '',
-      environmentId:     ctx.app.environmentId     ?? '',
-      queryParams:       ctx.app.queryParams        ?? {},
-      fullName:          ctx.user.fullName          ?? '',
+      appId: ctx.app.appId ?? '',
+      environmentId: ctx.app.environmentId ?? '',
+      queryParams: ctx.app.queryParams ?? {},
+      fullName: ctx.user.fullName ?? '',
       objectId,
-      tenantId:          ctx.user.tenantId          ?? '',
+      tenantId: ctx.user.tenantId ?? '',
       userPrincipalName: ctx.user.userPrincipalName ?? '',
-      sessionId:         ctx.host.sessionId         ?? '',
-      systemUserId:      '',
-      domainName:        '',
-      internalEmail:     '',
-      jobTitle:          '',
-      businessUnitId:    '',
-      businessUnitName:  '',
-      organizationId:    '',
-      organizationName:  '',
+      sessionId: ctx.host.sessionId ?? '',
+      systemUserId: '',
+      domainName: '',
+      internalEmail: '',
+      jobTitle: '',
+      businessUnitId: '',
+      businessUnitName: '',
+      organizationId: '',
+      organizationName: '',
     }
 
-    // Fetch the Dataverse systemuser record using the AAD objectId
     if (objectId) {
-      console.log('[UserContext] Fetching Dataverse systemuser record for objectId:', objectId)
       try {
-        const result = await SystemusersService.getAll({
+        const systemUsers = await SystemusersService.getAll({
           select: [
             'systemuserid',
             'fullname',
@@ -283,57 +390,54 @@ export async function initUserContext(): Promise<void> {
           filter: `azureactivedirectoryobjectid eq ${objectId}`,
         })
 
-        console.log('[UserContext] SystemusersService.getAll() raw result:', result)
+        console.log('[UserContext] Systemusers result:', systemUsers)
 
-        if (result.success && result.data && result.data.length > 0) {
-          const su = result.data[0]
-          console.log('[UserContext] systemuser record found:', su)
-          console.log('[UserContext] systemuserid:', su.systemuserid)
-          console.log('[UserContext] fullname:', su.fullname)
-          console.log('[UserContext] domainname:', su.domainname)
-          console.log('[UserContext] internalemailaddress:', su.internalemailaddress)
-          console.log('[UserContext] jobtitle:', su.jobtitle)
-          console.log('[UserContext] organizationid:', su.organizationid)
-          console.log('[UserContext] organizationidname:', su.organizationidname)
-          console.log('[UserContext] _businessunitid_value:', su._businessunitid_value)
-          console.log('[UserContext] businessunitidname:', su.businessunitidname)
-
-          userContext.systemUserId     = su.systemuserid          ?? ''
-          userContext.domainName       = su.domainname            ?? ''
-          userContext.internalEmail    = su.internalemailaddress  ?? ''
-          userContext.jobTitle         = su.jobtitle              ?? ''
-          userContext.businessUnitId   = su._businessunitid_value ?? ''
-          userContext.businessUnitName = su.businessunitidname    ?? ''
-          userContext.organizationId   = su.organizationid        ?? ''
-          userContext.organizationName = su.organizationidname    ?? ''
-        } else {
-          console.warn('[UserContext] No systemuser record found for objectId:', objectId, '| result:', result)
+        const systemUser = systemUsers.data?.[0]
+        if (systemUser) {
+          userContext.systemUserId = systemUser.systemuserid ?? ''
+          userContext.domainName = systemUser.domainname ?? ''
+          userContext.internalEmail = systemUser.internalemailaddress ?? ''
+          userContext.jobTitle = systemUser.jobtitle ?? ''
+          userContext.businessUnitId = systemUser._businessunitid_value ?? ''
+          userContext.businessUnitName = systemUser.businessunitidname ?? ''
+          userContext.organizationId = systemUser.organizationid ?? ''
+          userContext.organizationName = systemUser.organizationidname ?? ''
         }
-      } catch (suErr) {
-        console.error('[UserContext] Failed to fetch systemuser record:', suErr)
+      } catch (error) {
+        console.error('[UserContext] Failed to fetch system user:', error)
       }
     }
 
-    sessionStorage.setItem(SESSION_USER_KEY, JSON.stringify(userContext))
-    console.log('[UserContext] Stored in sessionStorage →', SESSION_USER_KEY, ':', userContext)
+    setSessionJson(SESSION_USER_KEY, userContext)
+    console.log(`[UserContext] sessionStorage["${SESSION_USER_KEY}"] =`, userContext)
 
-    // Fetch teams and role-based accounts before the app renders
-    console.log('[UserContext] systemUserId before team fetch:', JSON.stringify(userContext.systemUserId))
     if (userContext.systemUserId) {
-      console.log('[UserContext] systemUserId is populated — calling fetchUserTeamsAndAccounts')
-      await fetchUserTeamsAndAccounts(userContext.systemUserId)
+      sessionStorage.setItem(SESSION_USER_ID_KEY, userContext.systemUserId)
+      console.log(`[UserContext] sessionStorage["${SESSION_USER_ID_KEY}"] = "${userContext.systemUserId}"`)
     } else {
-      console.error('[UserContext] systemUserId is EMPTY — fetchUserTeamsAndAccounts will NOT run. Check the systemuser lookup above.')
+      sessionStorage.removeItem(SESSION_USER_ID_KEY)
     }
-  } catch (err) {
-    console.error('[UserContext] getContext() failed:', err)
-    console.warn('[UserContext] sessionStorage key "' + SESSION_USER_KEY + '" will not be set — expected in local dev outside Power Apps runtime.')
+
+    const moduleTypeId = await fetchAndStoreIctBudgetingModuleTypeId()
+
+    if (userContext.systemUserId) {
+      await fetchUserTeamsAndAccounts(userContext.systemUserId, moduleTypeId)
+    } else {
+      console.warn('[UserContext] systemUserId is empty, skipping team and module configuration boot.')
+      storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+    }
+  } catch (error) {
+    console.error('[UserContext] getContext() failed:', error)
+    console.warn(`[UserContext] sessionStorage key "${SESSION_USER_KEY}" was not set.`)
+    storeModuleTypeId(null)
+    storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
   }
 }
 
 export function getStoredUserContext(): AppUserContext | null {
   const raw = sessionStorage.getItem(SESSION_USER_KEY)
   if (!raw) return null
+
   try {
     return JSON.parse(raw) as AppUserContext
   } catch {

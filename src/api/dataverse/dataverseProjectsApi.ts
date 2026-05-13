@@ -1,5 +1,15 @@
 import type { ProjectsApi } from '@/api/projectsApi'
 import { SESSION_INSTANCE_ID_KEY } from '@/services/instanceService'
+import {
+  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
+  SESSION_USER_ID_KEY,
+  SESSION_USER_TEAMS_KEY,
+  type ModuleConfigTeamIds,
+  type UserTeam,
+} from '@/services/userContextService'
+import {
+  raiseBudgetClarification,
+} from '@/services/clarificationService'
 import type {
   Project,
   ReviewQueueProject,
@@ -10,6 +20,7 @@ import type {
   RoleProjectFilters,
   ProjectStatus,
 } from '@/domain/types'
+import type { Dga_ict_budgetsdga_status_for_adge } from '@/generated/models/Dga_ict_budgetsModel'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 
 const ICT_BUDGET_SELECT_FIELDS = [
@@ -41,6 +52,88 @@ const EMPTY_LOOKUPS: ProjectLookups = {
 function getFormattedAnnotation(record: unknown, key: string) {
   const value = (record as Record<string, unknown> | null)?.[key]
   return typeof value === 'string' && value.trim() ? value : null
+}
+
+function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
+  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as ModuleConfigTeamIds
+  } catch {
+    return null
+  }
+}
+
+function getStoredUserTeams(): UserTeam[] {
+  const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as UserTeam[]) : []
+  } catch {
+    return []
+  }
+}
+
+function getTargetOwnerBinding(target: 'Respondent' | 'Reviewer' | 'Approver') {
+  const moduleConfigTeamIds = getStoredModuleConfigTeamIds()
+  const configuredTeamId =
+    target === 'Respondent'
+      ? moduleConfigTeamIds?.respondentTeamId
+      : target === 'Reviewer'
+        ? moduleConfigTeamIds?.reviewerTeamId
+        : moduleConfigTeamIds?.approverTeamId
+
+  console.log('[DataverseProjectsApi] Resolving target owner binding:', {
+    target,
+    moduleConfigTeamIds,
+    configuredTeamId,
+  })
+
+  if (configuredTeamId?.trim()) {
+    const binding = { 'ownerid@odata.bind': `/teams(${configuredTeamId.trim()})` }
+    console.log('[DataverseProjectsApi] Using module configuration team binding:', binding)
+    return binding
+  }
+
+  const fallbackTeamId = getStoredUserTeams().find((team) => team.role === target)?.teamid?.trim()
+  if (fallbackTeamId) {
+    const binding = { 'ownerid@odata.bind': `/teams(${fallbackTeamId})` }
+    console.log('[DataverseProjectsApi] Using userTeams fallback binding:', binding)
+    return binding
+  }
+
+  const currentUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim()
+  if (target === 'Respondent' && currentUserId) {
+    const binding = { 'ownerid@odata.bind': `/systemusers(${currentUserId})` }
+    console.log('[DataverseProjectsApi] Using current user fallback binding:', binding)
+    return binding
+  }
+
+  console.warn('[DataverseProjectsApi] No owner binding resolved for target:', target)
+  return {}
+}
+
+async function updateBudgetWorkflow(
+  projectId: string,
+  status: Dga_ict_budgetsdga_status_for_adge,
+  targetOwner: 'Respondent' | 'Reviewer' | 'Approver'
+) {
+  const payload = {
+    dga_status_for_adge: status,
+    ...getTargetOwnerBinding(targetOwner),
+  } as Record<string, unknown>
+
+  console.log('[DataverseProjectsApi] Updating workflow with payload:', {
+    projectId,
+    status,
+    targetOwner,
+    payload,
+  })
+
+  await Dga_ict_budgetsService.update(projectId, payload)
 }
 
 function formatDate(record: unknown, formattedKey: string, rawValue: string | null | undefined) {
@@ -108,10 +201,19 @@ function mapBudgetRecordToProject(
     'dga_status_for_adge@OData.Community.Display.V1.FormattedValue'
   )
   const mappedStatus = mapStatus(record.dga_status_for_adge, statusLabel)
+  const ownerId =
+    (record as unknown as Record<string, string | undefined>)._ownerid_value ??
+    record.ownerid ??
+    null
 
   return {
     id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN-BUDGET',
     ictBudgetId: record.dga_ict_budgetid,
+    ownerId,
+    ownerType:
+      getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname') ||
+      getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.associatednavigationproperty') ||
+      null,
     name:
       record.dga_initiative_project_requirement_name?.trim() ||
       record.dga_budget_ref_id?.trim() ||
@@ -326,18 +428,28 @@ export const dataverseProjectsApi: ProjectsApi = {
   },
 
   async submitToReviewer(projectId: string) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 2 })
+    await updateBudgetWorkflow(projectId, 2, 'Reviewer')
   },
   async reviewerApprove(projectId: string) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 3 })
+    await updateBudgetWorkflow(projectId, 3, 'Approver')
   },
   async reviewerRaiseClarification(projectId: string, _payload: ClarificationPayload) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 5 })
+    await raiseBudgetClarification({
+      budgetId: projectId,
+      message: _payload.message,
+      raisedByRole: 'Reviewer',
+    })
+    await updateBudgetWorkflow(projectId, 5, 'Respondent')
   },
   async approverApprove(projectId: string) {
     await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 4 })
   },
   async approverRaiseClarification(projectId: string, _payload: ClarificationPayload) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 5 })
+    await raiseBudgetClarification({
+      budgetId: projectId,
+      message: _payload.message,
+      raisedByRole: 'Approver',
+    })
+    await updateBudgetWorkflow(projectId, 5, 'Respondent')
   },
 }

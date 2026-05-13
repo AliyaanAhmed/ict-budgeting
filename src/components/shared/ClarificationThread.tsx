@@ -5,8 +5,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { Clarification, ClarificationReply } from '@/data/db'
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-
 interface ClarificationThreadProps {
   clarifications: Clarification[]
   currentRole: 'Respondent' | 'Reviewer' | 'Approver'
@@ -14,8 +12,6 @@ interface ClarificationThreadProps {
   onReply: (clarificationId: string, message: string) => void
   onClose: (clarificationId: string) => void
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 3
 
@@ -40,13 +36,20 @@ const ROLE_STYLE = {
   },
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function initials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
 }
 
-// ─── Reply bubble ─────────────────────────────────────────────────────────────
+function formatDisplayDate(value: string | undefined) {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString('en-AE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
 
 function ReplyBubble({ reply }: { reply: ClarificationReply }) {
   const style = ROLE_STYLE[reply.fromRole]
@@ -59,8 +62,10 @@ function ReplyBubble({ reply }: { reply: ClarificationReply }) {
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-1.5 text-xs">
           <span className="font-semibold text-[#0F172A] dark:text-white">{reply.fromName}</span>
-          <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-medium', style.badge)}>{reply.fromRole}</span>
-          <span className="text-[#94A3B8]">{reply.date}</span>
+          <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-medium', style.badge)}>
+            {reply.fromRoleLabel ?? reply.fromRole}
+          </span>
+          <span className="text-[#94A3B8]">{formatDisplayDate(reply.date)}</span>
         </div>
         <div className={cn('rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-[1.6] shadow-sm', style.bubble)}>
           {reply.message}
@@ -69,8 +74,6 @@ function ReplyBubble({ reply }: { reply: ClarificationReply }) {
     </div>
   )
 }
-
-// ─── Single clarification card (accordion style) ──────────────────────────────
 
 function ClarificationCard({
   clarification,
@@ -110,35 +113,35 @@ function ClarificationCard({
   }
 
   return (
-    <div className={cn(
-      'overflow-hidden rounded-2xl border bg-white transition-all duration-200 dark:bg-[#1E293B]',
-      isOpen ? 'border-[#DDEBFF] dark:border-white/10' : 'border-[#E2E8F0] dark:border-white/5',
-    )}>
-
-      {/* ── Compact header (always visible) ── */}
+    <div
+      className={cn(
+        'overflow-hidden rounded-2xl border bg-white transition-all duration-200 dark:bg-[#1E293B]',
+        isOpen ? 'border-[#DDEBFF] dark:border-white/10' : 'border-[#E2E8F0] dark:border-white/5',
+      )}
+    >
       <div className={cn('px-4 py-3', style.headerBg)}>
         <div className="flex items-center gap-2">
-
-          {/* Number */}
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-white/60 text-[10px] font-bold text-[#475569] dark:bg-white/10 dark:text-slate-300">
             {index + 1}
           </span>
 
-          {/* Avatar */}
           <div className={cn('flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white', style.avatarBg)}>
             {initials(clarification.raisedByName)}
           </div>
 
-          {/* Name + role */}
-          <span className="hidden text-sm font-semibold text-[#0F172A] dark:text-white sm:inline truncate max-w-[120px]">
+          <span className="hidden max-w-[120px] truncate text-sm font-semibold text-[#0F172A] dark:text-white sm:inline">
             {clarification.raisedByName}
           </span>
           <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', style.badge)}>
-            {clarification.raisedBy}
+            {clarification.raisedByLabel ?? clarification.raisedBy}
           </span>
-          <span className="text-xs text-[#94A3B8]">{clarification.date}</span>
+          <span className="text-xs text-[#94A3B8]">{formatDisplayDate(clarification.date)}</span>
+          {clarification.dueDate && (
+            <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#475569] dark:bg-white/10 dark:text-slate-300">
+              Due {formatDisplayDate(clarification.dueDate)}
+            </span>
+          )}
 
-          {/* Right side: reply count + status + close */}
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {replyCount > 0 && (
               <span className="hidden items-center gap-1 text-[11px] font-medium text-[#64748B] dark:text-slate-400 sm:flex">
@@ -160,7 +163,6 @@ function ClarificationCard({
         </div>
       </div>
 
-      {/* ── Message row + toggle (always visible, message truncated when collapsed) ── */}
       <button
         onClick={onToggle}
         className="w-full px-4 py-3 text-left transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/[0.03]"
@@ -171,44 +173,45 @@ function ClarificationCard({
         <div className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 text-xs font-semibold text-[#286CFF] dark:text-[#4F98FF]">
             {isExpanded ? (
-              <><ChevronUp className="h-3.5 w-3.5" />Collapse</>
+              <>
+                <ChevronUp className="h-3.5 w-3.5" />
+                Collapse
+              </>
             ) : (
-              <><ChevronDown className="h-3.5 w-3.5" />
+              <>
+                <ChevronDown className="h-3.5 w-3.5" />
                 {replyCount > 0 ? `View thread · ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}` : 'View full message'}
               </>
             )}
           </span>
-          {/* Inline closed badge only when collapsed */}
           {!isExpanded && !isOpen && (
             <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-400">
-              <Lock className="h-3 w-3" />Closed
+              <Lock className="h-3 w-3" />
+              Closed
             </span>
           )}
         </div>
       </button>
 
-      {/* ── Expanded content ── */}
       {isExpanded && (
         <div style={{ animation: 'fadeInUp 0.18s ease-out' }}>
-
-          {/* Replies */}
           {replyCount > 0 && (
             <div className="space-y-3 border-t border-[#F1F5F9] px-4 py-3.5 dark:border-white/5">
-              {clarification.replies.map((r) => <ReplyBubble key={r.id} reply={r} />)}
+              {clarification.replies.map((reply) => (
+                <ReplyBubble key={reply.id} reply={reply} />
+              ))}
             </div>
           )}
 
-          {/* Closed note */}
           {!isOpen && (
             <div className="flex items-center gap-2 border-t border-[#F1F5F9] px-4 py-2.5 dark:border-white/5">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
               <p className="text-xs text-[#94A3B8]">
-                Closed {clarification.closedAt ? `on ${clarification.closedAt}` : ''} · no further replies accepted.
+                Closed {clarification.closedAt ? `on ${formatDisplayDate(clarification.closedAt)}` : ''} · no further replies accepted.
               </p>
             </div>
           )}
 
-          {/* Reply area */}
           {canReply && (
             <div className="border-t border-[#F1F5F9] px-4 pb-4 pt-3 dark:border-white/5">
               {!isReplying ? (
@@ -249,20 +252,17 @@ function ClarificationCard({
                     >
                       Cancel
                     </Button>
-                    <span className="ml-auto hidden text-[10px] text-[#94A3B8] sm:block">⌘ + Enter to send</span>
+                    <span className="ml-auto hidden text-[10px] text-[#94A3B8] sm:block">Ctrl/Cmd + Enter to send</span>
                   </div>
                 </div>
               )}
             </div>
           )}
-
         </div>
       )}
     </div>
   )
 }
-
-// ─── Main export ──────────────────────────────────────────────────────────────
 
 export function ClarificationThread({
   clarifications,
@@ -275,13 +275,12 @@ export function ClarificationThread({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
-  // Sort newest-first within each tab
   const openList = [...clarifications]
-    .filter((c) => c.status === 'Open')
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .filter((clarification) => clarification.status === 'Open')
+    .sort((left, right) => right.date.localeCompare(left.date))
   const closedList = [...clarifications]
-    .filter((c) => c.status === 'Closed')
-    .sort((a, b) => (b.closedAt ?? b.date).localeCompare(a.closedAt ?? a.date))
+    .filter((clarification) => clarification.status === 'Closed')
+    .sort((left, right) => (right.closedAt ?? right.date).localeCompare(left.closedAt ?? left.date))
 
   const items = activeTab === 'open' ? openList : closedList
   const visible = items.slice(0, visibleCount)
@@ -303,8 +302,6 @@ export function ClarificationThread({
 
   return (
     <div className="space-y-3">
-
-      {/* ── Tab bar ── */}
       <div className="flex items-center gap-1 rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] p-1 shadow-sm dark:border-white/10 dark:bg-white/5">
         {([
           { key: 'open' as const, label: 'Open', count: openList.length, dot: true },
@@ -332,16 +329,18 @@ export function ClarificationThread({
                 <Lock className={cn('h-3.5 w-3.5', active ? 'text-[#C2410C]' : 'text-[#F97316]')} />
               )}
               {label}
-              <span className={cn(
-                'min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-xs font-bold transition-colors',
+              <span
+                className={cn(
+                  'min-w-[20px] rounded-full px-1.5 py-0.5 text-center text-xs font-bold transition-colors',
                   active
                     ? key === 'open'
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                       : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300'
-                  : key === 'open'
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                    : 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
-              )}>
+                    : key === 'open'
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
+                )}
+              >
                 {count}
               </span>
             </button>
@@ -349,7 +348,6 @@ export function ClarificationThread({
         })}
       </div>
 
-      {/* ── Empty state ── */}
       {items.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#DDEBFF] bg-[#F8FBFF] py-8 text-center dark:border-white/10 dark:bg-white/5">
           {activeTab === 'open' ? (
@@ -374,7 +372,6 @@ export function ClarificationThread({
         </div>
       )}
 
-      {/* ── Collapse all ── */}
       {expandedIds.size > 0 && (
         <div className="flex justify-end">
           <button
@@ -387,29 +384,27 @@ export function ClarificationThread({
         </div>
       )}
 
-      {/* ── Cards ── */}
       {visible.length > 0 && (
         <div className="space-y-2.5">
-          {visible.map((c, i) => (
+          {visible.map((clarification, index) => (
             <ClarificationCard
-              key={c.id}
-              clarification={c}
-              index={i}
+              key={clarification.id}
+              clarification={clarification}
+              index={index}
               currentRole={currentRole}
               isEditMode={isEditMode}
-              isExpanded={expandedIds.has(c.id)}
-              onToggle={() => toggleExpand(c.id)}
-              onReply={(msg) => onReply(c.id, msg)}
-              onClose={() => onClose(c.id)}
+              isExpanded={expandedIds.has(clarification.id)}
+              onToggle={() => toggleExpand(clarification.id)}
+              onReply={(message) => onReply(clarification.id, message)}
+              onClose={() => onClose(clarification.id)}
             />
           ))}
         </div>
       )}
 
-      {/* ── Show more ── */}
       {remaining > 0 && (
         <button
-          onClick={() => setVisibleCount((v) => v + PAGE_SIZE)}
+          onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#DDEBFF] bg-transparent py-2.5 text-sm font-semibold text-[#475569] transition-colors hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:text-[#286CFF] dark:border-white/10 dark:text-slate-400 dark:hover:border-white/20 dark:hover:bg-white/5"
         >
           <ChevronDown className="h-4 w-4" />
@@ -417,7 +412,6 @@ export function ClarificationThread({
         </button>
       )}
 
-      {/* ── Footer count (only when paginating) ── */}
       {items.length > PAGE_SIZE && (
         <p className="text-center text-xs text-[#94A3B8]">
           Showing {Math.min(visibleCount, items.length)} of {items.length} · {activeTab === 'open' ? 'open' : 'closed'}

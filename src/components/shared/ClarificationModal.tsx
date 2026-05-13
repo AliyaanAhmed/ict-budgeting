@@ -26,7 +26,7 @@ const SUGGESTIONS = [
 export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }: ClarificationModalProps) {
   const [message, setMessage] = useState('')
 
-  const isValid = useMemo(() => message.trim().length >= 12, [message])
+  const isValid = useMemo(() => message.trim().length > 0, [message])
 
   const handleClose = (next: boolean) => {
     onOpenChange(next)

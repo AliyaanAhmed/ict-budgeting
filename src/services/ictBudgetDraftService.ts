@@ -6,6 +6,13 @@ import type {
   Dga_ict_budgetsdga_status_for_adge,
 } from '@/generated/models/Dga_ict_budgetsModel'
 import { SESSION_INSTANCE_ID_KEY, SESSION_INSTANCE_DETAIL_KEY } from '@/services/instanceService'
+import {
+  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
+  SESSION_USER_ID_KEY,
+  SESSION_USER_TEAMS_KEY,
+  type ModuleConfigTeamIds,
+  type UserTeam,
+} from '@/services/userContextService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { Dga_ict_budget_dga_technology_productsetService } from '@/generated/services/Dga_ict_budget_dga_technology_productsetService'
 import {
@@ -57,9 +64,73 @@ export const ICT_BUDGET_STATUS = {
   clarificationPending: 5,
 } as const satisfies Record<string, Dga_ict_budgetsdga_status_for_adge>
 
+type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver'
+
 function getFormattedAnnotation(record: unknown, key: string) {
   const value = (record as Record<string, unknown> | null)?.[key]
   return typeof value === 'string' && value.trim() ? value : null
+}
+
+function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
+  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as ModuleConfigTeamIds
+  } catch {
+    return null
+  }
+}
+
+function getStoredUserTeams(): UserTeam[] {
+  const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as UserTeam[]) : []
+  } catch {
+    return []
+  }
+}
+
+function getTargetOwnerBinding(target: WorkflowTargetOwner) {
+  const moduleConfigTeamIds = getStoredModuleConfigTeamIds()
+  const configuredTeamId =
+    target === 'Respondent'
+      ? moduleConfigTeamIds?.respondentTeamId
+      : target === 'Reviewer'
+        ? moduleConfigTeamIds?.reviewerTeamId
+        : moduleConfigTeamIds?.approverTeamId
+
+  console.log('[IctBudgetDraftService] moduleConfigTeamIDs for target owner lookup:', {
+    target,
+    moduleConfigTeamIds,
+    configuredTeamId,
+  })
+
+  if (configuredTeamId?.trim()) {
+    const binding = { 'ownerid@odata.bind': `/teams(${configuredTeamId.trim()})` }
+    console.log('[IctBudgetDraftService] Using module configuration team owner binding:', binding)
+    return binding
+  }
+
+  const fallbackTeamId = getStoredUserTeams().find((team) => team.role === target)?.teamid?.trim()
+  if (fallbackTeamId) {
+    const binding = { 'ownerid@odata.bind': `/teams(${fallbackTeamId})` }
+    console.log('[IctBudgetDraftService] Using fallback userTeams owner binding:', binding)
+    return binding
+  }
+
+  const currentUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim()
+  if (target === 'Respondent' && currentUserId) {
+    const binding = { 'ownerid@odata.bind': `/systemusers(${currentUserId})` }
+    console.log('[IctBudgetDraftService] Using fallback current user owner binding:', binding)
+    return binding
+  }
+
+  console.warn('[IctBudgetDraftService] No owner binding could be resolved for workflow target:', target)
+  return {}
 }
 
 function toLookupBinding(entitySet: string, id: string | null) {
@@ -274,10 +345,13 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
       : {}),
     // Store the entity abbreviation from the instance
     ...(entityAbbr ? { dga_abbr_of_entity: entityAbbr } : {}),
+    ...getTargetOwnerBinding('Respondent'),
   } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>> as Omit<
     Dga_ict_budgetsBase,
     'dga_ict_budgetid'
   >
+
+  console.log('[IctBudgetDraftService] Creating ICT budget draft with payload:', payload)
 
   const result = await Dga_ict_budgetsService.create(payload)
 
@@ -391,11 +465,22 @@ export async function updateIctBudgetDraft(
 
 export async function updateIctBudgetStatus(
   ictBudgetId: string,
-  status: Dga_ict_budgetsdga_status_for_adge
+  status: Dga_ict_budgetsdga_status_for_adge,
+  targetOwner?: WorkflowTargetOwner
 ) {
-  await Dga_ict_budgetsService.update(ictBudgetId, {
+  const payload = {
     dga_status_for_adge: status,
+    ...(targetOwner ? getTargetOwnerBinding(targetOwner) : {}),
+  } as Record<string, unknown>
+
+  console.log('[IctBudgetDraftService] Updating ICT budget workflow status:', {
+    ictBudgetId,
+    status,
+    targetOwner: targetOwner ?? null,
+    payload,
   })
+
+  await Dga_ict_budgetsService.update(ictBudgetId, payload)
 }
 
 export async function deleteIctBudgetDraft(ictBudgetId: string) {

@@ -111,6 +111,14 @@ import {
 import { projectService } from '@/services/projectService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
+import {
+  addClarificationReply,
+  closeClarification,
+  getClarificationsByBudgetId,
+  raiseBudgetClarification,
+} from '@/services/clarificationService'
+import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
+import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
@@ -333,8 +341,50 @@ function getWorkflowOwner(status: string): WorkflowRole | null {
   return null
 }
 
-function canRoleEdit(status: string, role: WorkflowRole) {
-  return getWorkflowOwner(status) === role
+function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
+  const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('review')) return 'Reviewer'
+  if (value.includes('approv')) return 'Approver'
+  if (value.includes('respond')) return 'Respondent'
+  return null
+}
+
+function getStoredUserTeams(): UserTeam[] {
+  const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? (parsed as UserTeam[]) : []
+  } catch {
+    return []
+  }
+}
+
+function getRoleTeamId(role: WorkflowRole): string | null {
+  return getStoredUserTeams().find((team) => team.role === role)?.teamid?.trim() || null
+}
+
+function isProjectOwnedByCurrentContext(project: Project, role: WorkflowRole) {
+  const ownerId = project.ownerId?.trim() || null
+  const ownerType = project.ownerType?.trim().toLowerCase() || null
+  if (!ownerId) return false
+
+  const roleTeamId = getRoleTeamId(role)
+  if ((ownerType === 'team' || ownerType === 'ownerid') && roleTeamId && ownerId === roleTeamId) {
+    return true
+  }
+
+  const userId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim()
+  if ((ownerType === 'systemuser' || ownerType === 'ownerid') && userId && ownerId === userId) {
+    return true
+  }
+
+  return false
+}
+
+function canRoleEdit(status: string, role: WorkflowRole, project: Project) {
+  return getWorkflowOwner(status) === role && isProjectOwnedByCurrentContext(project, role)
 }
 
 function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
@@ -952,7 +1002,8 @@ export default function ProjectDetail() {
   const isApproverView = pathname.includes('/approver/')
   const isGovernanceView = isReviewerView || isApproverView
 
-  const currentRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
+  const routeRole: WorkflowRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
+  const currentRole = normalizeStoredRole(sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)) ?? routeRole
   const backHref = isReviewerView ? '/reviewer/review-queue' : isApproverView ? '/approver/approval-queue' : '/respondent/projects'
   const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
   const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
@@ -961,26 +1012,28 @@ export default function ProjectDetail() {
   const documentStatus = project.documents.length > 0 ? 'Complete' : 'Missing'
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
   const riskTone = project.riskLevel === 'High' ? 'red' : project.riskLevel === 'Medium' ? 'amber' : 'green'
-  const documentTone = documentStatus === 'Complete' ? 'green' : 'red'
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
   const budgetFitTone = budgetFit === 'Aligned' ? 'green' : budgetFit === 'Review' ? 'amber' : 'red'
   const actionContextLabel = isApproverView ? 'Approver decision controls' : 'Reviewer decision controls'
   const workflowOwner = getWorkflowOwner(project.status)
-  const canCurrentRoleEdit = canRoleEdit(project.status, currentRole)
-  const canDeleteProject = currentRole === 'Respondent' && project.status === 'Draft'
+  const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
+  const canCurrentRoleEdit = canRoleEdit(project.status, currentRole, project)
+  const canDeleteProject = currentRole === 'Respondent' && isCurrentOwner && project.status === 'Draft'
   const canSubmitToReviewer =
     currentRole === 'Respondent' &&
+    isCurrentOwner &&
     (project.status === 'Draft' || project.status === 'Clarification Required')
   const canSubmitToApprover =
-    currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer'
+    currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Submitted to Reviewer'
   const canApproveProject =
-    currentRole === 'Approver' && project.status === 'Submitted to Approver'
+    currentRole === 'Approver' && isCurrentOwner && project.status === 'Submitted to Approver'
   const canRaiseClarification =
-    (currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer') ||
-    (currentRole === 'Approver' && project.status === 'Submitted to Approver')
-  const showPendingNotice = workflowOwner !== null && workflowOwner !== currentRole
+    ((currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer') ||
+      (currentRole === 'Approver' && project.status === 'Submitted to Approver')) &&
+    isCurrentOwner
+  const showPendingNotice = workflowOwner !== null && (workflowOwner !== currentRole || !isCurrentOwner)
   const pendingNoticeText = workflowOwner
-    ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}.`
+    ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
     : 'This project has completed the current workflow stage and is now read-only.'
 
   useEffect(() => {
@@ -1065,6 +1118,7 @@ export default function ProjectDetail() {
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
+  const documentTone = documentStatus === 'Complete' ? 'green' : 'red'
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
     () =>
@@ -1433,7 +1487,16 @@ export default function ProjectDetail() {
 
       await runActionToast(
         async () => {
-          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underReviewerReview)
+          console.log('[ProjectDetail] Submitting ICT budget to reviewer with owner assignment:', {
+            ictBudgetId,
+            status: ICT_BUDGET_STATUS.underReviewerReview,
+            targetOwner: 'Reviewer',
+          })
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.underReviewerReview,
+            'Reviewer'
+          )
           syncLocalWorkflowState('Submitted to Reviewer')
           setIsEditMode(false)
         },
@@ -1453,7 +1516,16 @@ export default function ProjectDetail() {
     if (pendingWorkflowAction === 'submit-approver') {
       await runActionToast(
         async () => {
-          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underApproverReview)
+          console.log('[ProjectDetail] Submitting ICT budget to approver with owner assignment:', {
+            ictBudgetId,
+            status: ICT_BUDGET_STATUS.underApproverReview,
+            targetOwner: 'Approver',
+          })
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.underApproverReview,
+            'Approver'
+          )
           syncLocalWorkflowState('Submitted to Approver')
           setIsEditMode(false)
         },
@@ -1472,6 +1544,10 @@ export default function ProjectDetail() {
 
     await runActionToast(
       async () => {
+        console.log('[ProjectDetail] Approving ICT budget without owner reassignment:', {
+          ictBudgetId,
+          status: ICT_BUDGET_STATUS.approvedByApprover,
+        })
         await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.approvedByApprover)
         syncLocalWorkflowState('Approved')
         setIsEditMode(false)
@@ -1564,73 +1640,174 @@ export default function ProjectDetail() {
 
   // ── Clarification State ──────────────────────────────────────────────────────
   const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
+  const [clarificationsLoading, setClarificationsLoading] = useState(false)
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
 
   useEffect(() => {
-    setLocalClarifications(project.clarifications)
-  }, [project.clarifications])
+    let cancelled = false
+
+    const loadClarifications = async () => {
+      if (!ictBudgetId) {
+        setLocalClarifications(project.clarifications)
+        return
+      }
+
+      setClarificationsLoading(true)
+
+      try {
+        const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+        if (!cancelled) {
+          setLocalClarifications(clarifications)
+        }
+      } catch (error) {
+        console.error('[ProjectDetail] Failed to load clarifications:', error)
+        if (!cancelled) {
+          setLocalClarifications([])
+        }
+      } finally {
+        if (!cancelled) {
+          setClarificationsLoading(false)
+        }
+      }
+    }
+
+    void loadClarifications()
+
+    return () => {
+      cancelled = true
+    }
+  }, [ictBudgetId, project.clarifications])
 
   const handleClarificationReply = (clarificationId: string, message: string) => {
-    setLocalClarifications((prev) =>
-      prev.map((c) => {
-        if (c.id !== clarificationId) return c
-        const newReply: ClarificationReply = {
-          id: `${clarificationId}-R${c.replies.length + 1}`,
-          fromRole: currentRole,
-          fromName: currentUser.name,
+    if (!ictBudgetId) {
+      setLocalClarifications((prev) =>
+        prev.map((clarification) => {
+          if (clarification.id !== clarificationId) return clarification
+          const newReply: ClarificationReply = {
+            id: `${clarificationId}-R${clarification.replies.length + 1}`,
+            fromRole: currentRole,
+            fromRoleLabel:
+              currentRole === 'Reviewer'
+                ? 'ICT - Reviewer'
+                : currentRole === 'Approver'
+                  ? 'Approver'
+                  : 'Respondent',
+            fromName: currentUser.name,
+            message,
+            date: new Date().toISOString().split('T')[0],
+          }
+          return { ...clarification, replies: [...clarification.replies, newReply] }
+        }),
+      )
+      showSuccessToast('Reply sent', 'Your response has been added to the clarification thread.')
+      return
+    }
+
+    void runActionToast(
+      async () => {
+        await addClarificationReply({
+          budgetId: ictBudgetId,
+          parentClarificationId: clarificationId,
           message,
-          date: new Date().toISOString().split('T')[0],
-        }
-        return { ...c, replies: [...c.replies, newReply] }
-      }),
+          currentRole,
+        })
+        const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+        setLocalClarifications(clarifications)
+      },
+      {
+        processingTitle: 'Sending reply',
+        processingDescription: 'Adding your response to the clarification thread...',
+        successTitle: 'Reply sent',
+        successDescription: 'Your response has been added to the clarification thread.',
+        errorTitle: 'Unable to send reply',
+        minDurationMs: 1200,
+      }
     )
-    showSuccessToast('Reply sent', 'Your response has been added to the clarification thread.')
   }
 
   const handleClarificationClose = (clarificationId: string) => {
-    setLocalClarifications((prev) =>
-      prev.map((c) =>
-        c.id !== clarificationId
-          ? c
-          : { ...c, status: 'Closed' as const, closedAt: new Date().toISOString().split('T')[0] },
-      ),
+    if (!ictBudgetId) {
+      setLocalClarifications((prev) =>
+        prev.map((clarification) =>
+          clarification.id !== clarificationId
+            ? clarification
+            : { ...clarification, status: 'Closed' as const, closedAt: new Date().toISOString().split('T')[0] },
+        ),
+      )
+      showSuccessToast('Clarification closed', 'This clarification has been closed and the respondent has been notified.')
+      return
+    }
+
+    void runActionToast(
+      async () => {
+        await closeClarification(clarificationId)
+        const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+        setLocalClarifications(clarifications)
+      },
+      {
+        processingTitle: 'Closing clarification',
+        processingDescription: 'Marking this clarification thread as closed...',
+        successTitle: 'Clarification closed',
+        successDescription: 'This clarification has been closed and the respondent has been notified.',
+        errorTitle: 'Unable to close clarification',
+        minDurationMs: 1200,
+      }
     )
-    showSuccessToast('Clarification closed', 'This clarification has been closed and the respondent has been notified.')
   }
 
   const handleRaiseClarification = ({ message }: { message: string }) => {
-    const newClarification: Clarification = {
-      id: `CLR-${Date.now()}`,
-      raisedBy: isApproverView ? 'Approver' : 'Reviewer',
-      raisedByName: currentUser.name,
-      raisedTo: 'Respondent',
-      message,
-      status: 'Open',
-      date: new Date().toISOString().split('T')[0],
-      replies: [],
-    }
-    setLocalClarifications((prev) => [...prev, newClarification])
-    if (ictBudgetId) {
-      void runActionToast(
-        async () => {
-          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.clarificationPending)
-          syncLocalWorkflowState('Clarification Required')
-        },
-        {
-          processingTitle: 'Raising clarification',
-          processingDescription: 'Opening the clarification thread and returning the project to the respondent...',
-          successTitle: 'Clarification raised',
-          successDescription: 'The respondent has been notified and the project is now awaiting clarification.',
-          errorTitle: 'Unable to raise clarification',
-          minDurationMs: 1500,
-        }
-      )
-    } else {
+    const raisedByRole = isApproverView ? 'Approver' : 'Reviewer'
+
+    if (!ictBudgetId) {
+      const newClarification: Clarification = {
+        id: `CLR-${Date.now()}`,
+        raisedBy: raisedByRole,
+        raisedByLabel: raisedByRole === 'Reviewer' ? 'ICT - Reviewer' : 'Approver',
+        raisedByName: currentUser.name,
+        raisedTo: 'Respondent',
+        message,
+        status: 'Open',
+        date: new Date().toISOString().split('T')[0],
+        replies: [],
+      }
+      setLocalClarifications((prev) => [newClarification, ...prev])
       showSuccessToast('Clarification raised', 'The respondent has been notified and will see this in their review form.')
+      return
     }
+
+    void runActionToast(
+      async () => {
+        await raiseBudgetClarification({
+          budgetId: ictBudgetId,
+          message,
+          raisedByRole,
+        })
+        console.log('[ProjectDetail] Raising clarification and assigning ICT budget back to respondent:', {
+          ictBudgetId,
+          status: ICT_BUDGET_STATUS.clarificationPending,
+          targetOwner: 'Respondent',
+        })
+        await updateIctBudgetStatus(
+          ictBudgetId,
+          ICT_BUDGET_STATUS.clarificationPending,
+          'Respondent'
+        )
+        const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+        setLocalClarifications(clarifications)
+        syncLocalWorkflowState('Clarification Required')
+      },
+      {
+        processingTitle: 'Raising clarification',
+        processingDescription: 'Opening the clarification thread and returning the project to the respondent...',
+        successTitle: 'Clarification raised',
+        successDescription: 'The respondent has been notified and the project is now awaiting clarification.',
+        errorTitle: 'Unable to raise clarification',
+        minDurationMs: 1500,
+      }
+    )
   }
 
-  const showClarificationSection = localClarifications.length > 0 || isGovernanceView
+  const showClarificationSection = clarificationsLoading || localClarifications.length > 0 || isGovernanceView
 
   // ── Section navigation ───────────────────────────────────────────────────────
   const displayedBudgetItems = hasDataverseBudgetProject ? budgetLineItems : fallbackBudgetItems
@@ -2365,6 +2542,9 @@ export default function ProjectDetail() {
                 description="Upload additional supporting files for this budget record."
                 icon={FileCheck2}
               >
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
+                  Document retrieval will be added later.
+                </div>
                 <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
               </DetailSection>
 
@@ -2469,7 +2649,7 @@ export default function ProjectDetail() {
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
-                  Document retrieval coming soon.
+                  Document retrieval will be added later.
                 </div>
               </DetailSection>
 

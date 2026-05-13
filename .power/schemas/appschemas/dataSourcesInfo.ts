@@ -61,6 +61,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_ict_clarifications": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_clarificationid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_module_configurations": {
     "tableId": "",
     "version": "",

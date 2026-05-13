@@ -1,0 +1,350 @@
+import type { Clarification, ClarificationReply } from '@/data/db'
+import { dataSourcesInfo } from '../../.power/schemas/appschemas/dataSourcesInfo'
+import { getPowerSdkInstance } from '../../node_modules/@microsoft/power-apps/dist/internal/data/core/runtime/getRuntimeContext.js'
+import {
+  Dga_ict_clarificationsService,
+} from '@/generated/services/Dga_ict_clarificationsService'
+import type {
+  Dga_ict_clarifications,
+  Dga_ict_clarificationsBase,
+  Dga_ict_clarificationsdga_clarification_stage,
+  Dga_ict_clarificationsdga_record_type,
+  Dga_ict_clarificationsdga_scope,
+  Dga_ict_clarificationsstatuscode,
+} from '@/generated/models/Dga_ict_clarificationsModel'
+import {
+  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
+  SESSION_USER_ID_KEY,
+  type ModuleConfigTeamIds,
+} from '@/services/userContextService'
+
+export interface RaiseClarificationInput {
+  budgetId: string
+  message: string
+  raisedByRole: 'Reviewer' | 'Approver'
+}
+
+export interface AddClarificationReplyInput {
+  budgetId: string
+  parentClarificationId: string
+  message: string
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+}
+
+const CLARIFICATION_SERVICE_VERSION = 'clarification-service-2026-05-12-c'
+
+const CLARIFICATION_STAGE_PLANNING = 1 as Dga_ict_clarificationsdga_clarification_stage
+const RECORD_TYPE_COMMENT = 1 as Dga_ict_clarificationsdga_record_type
+const RECORD_TYPE_CLARIFICATION = 2 as Dga_ict_clarificationsdga_record_type
+const SCOPE_INTERNAL_ENTITY = 2 as Dga_ict_clarificationsdga_scope
+const STATUS_OPEN = 1 as Dga_ict_clarificationsstatuscode
+const STATUS_RESPONDED = 776140002 as Dga_ict_clarificationsstatuscode
+const STATUS_CLOSED = 776140003 as Dga_ict_clarificationsstatuscode
+
+function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' {
+  const normalized = roleLabel?.trim().toLowerCase() ?? ''
+  if (normalized.includes('review')) return 'Reviewer'
+  if (normalized.includes('approv')) return 'Approver'
+  return 'Respondent'
+}
+
+function toRoleLabel(role: 'Respondent' | 'Reviewer' | 'Approver') {
+  if (role === 'Reviewer') return 'ICT - Reviewer'
+  if (role === 'Approver') return 'Approver'
+  return 'Respondent'
+}
+
+function toIsoDate(value: Date = new Date()) {
+  return value.toISOString()
+}
+
+function toIsoDateOnly(value: Date = new Date()) {
+  return value.toISOString().slice(0, 10)
+}
+
+function getStoredUserId() {
+  return sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || null
+}
+
+function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
+  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw) as ModuleConfigTeamIds
+  } catch {
+    return null
+  }
+}
+
+function toLookupBinding(entitySetName: string, id: string | null | undefined) {
+  return id ? `/${entitySetName}(${id})` : undefined
+}
+
+function getFormattedAnnotation(record: unknown, key: string) {
+  const value = (record as Record<string, unknown> | null)?.[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver') {
+  return `${recordType} - ${toRoleLabel(role)} - ${toIsoDateOnly()}`
+}
+
+function mapReply(record: Dga_ict_clarifications): ClarificationReply {
+  const role = normalizeRole(record.dga_raised_by_role)
+
+  return {
+    id: record.dga_ict_clarificationid,
+    fromRole: role,
+    fromRoleLabel: record.dga_raised_by_role?.trim() || toRoleLabel(role),
+    fromName:
+      record.dga_raised_byname?.trim() ||
+      getFormattedAnnotation(record, '_dga_raised_by_value@OData.Community.Display.V1.FormattedValue') ||
+      'Unknown User',
+    message: record.dga_description?.trim() || '',
+    date: record.createdon?.slice(0, 10) || record.dga_response_date?.slice(0, 10) || toIsoDateOnly(),
+  }
+}
+
+function mapClarification(record: Dga_ict_clarifications, replies: ClarificationReply[]): Clarification {
+  const role = normalizeRole(record.dga_raised_by_role)
+  const status = record.statuscode === STATUS_CLOSED || record.statuscodename === 'Closed' ? 'Closed' : 'Open'
+
+  return {
+    id: record.dga_ict_clarificationid,
+    raisedBy: role,
+    raisedByLabel: record.dga_raised_by_role?.trim() || toRoleLabel(role),
+    raisedByName:
+      record.dga_raised_byname?.trim() ||
+      getFormattedAnnotation(record, '_dga_raised_by_value@OData.Community.Display.V1.FormattedValue') ||
+      'Unknown User',
+    raisedTo:
+      record.dga_raised_toname?.trim() ||
+      getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
+      'Respondent',
+    message: record.dga_description?.trim() || '',
+    status,
+    date: record.dga_clarification_raised_date?.slice(0, 10) || record.createdon?.slice(0, 10) || toIsoDateOnly(),
+    dueDate: record.dga_clarification_due_date?.slice(0, 10),
+    closedAt: status === 'Closed' ? record.modifiedon?.slice(0, 10) || record.dga_response_date?.slice(0, 10) : undefined,
+    replies,
+  }
+}
+
+async function createClarificationRecord(
+  payload: Record<string, unknown>
+) {
+  console.log(`[ClarificationService ${CLARIFICATION_SERVICE_VERSION}] Create payload:`, payload)
+
+  const runtime = await getPowerSdkInstance(dataSourcesInfo)
+  const runtimeAny = runtime as unknown as {
+    _clientProvider: {
+      getDataClientAsync(): Promise<{
+        createDataAsync<TRequest, TResponse>(
+          url: string,
+          apiId: string,
+          tableName: string,
+          body: TRequest,
+          context?: Record<string, unknown>
+        ): Promise<{
+          success: boolean
+          data?: TResponse
+          error?: { message?: string }
+        }>
+      }>
+      getMetadataClientAsync(): Promise<{
+        getAppDataSourceConfigsAsync(): Promise<{
+          success: boolean
+          data?: Record<string, {
+            runtimeUrl?: string
+            logicalName?: string
+            entitySetName?: string
+          }>
+          error?: { message?: string }
+        }>
+      }>
+    }
+  }
+
+  const metadataClient = await runtimeAny._clientProvider.getMetadataClientAsync()
+  const configResult = await metadataClient.getAppDataSourceConfigsAsync()
+
+  if (!configResult.success || !configResult.data) {
+    throw new Error(configResult.error?.message || 'Unable to resolve Dataverse configuration for clarifications.')
+  }
+
+  const clarificationConfig = Object.values(configResult.data).find(
+    (config) =>
+      config.logicalName === 'dga_ict_clarifications' ||
+      config.entitySetName === 'dga_ict_clarifications'
+  )
+
+  const runtimeUrl = clarificationConfig?.runtimeUrl?.trim()
+  if (!runtimeUrl) {
+    throw new Error('Unable to resolve Dataverse runtime URL for dga_ict_clarifications.')
+  }
+
+  const instanceUrlMatch = runtimeUrl.match(/^(https?:\/\/[^/]+)/i)
+  const instanceUrl = instanceUrlMatch?.[1] ?? runtimeUrl.replace(/\/api\/data\/v[0-9.]+\/?$/i, '')
+  const requestUrl = `${instanceUrl.replace(/\/$/, '')}/api/data/v9.0/dga_ict_clarifications`
+
+  const dataClient = await runtimeAny._clientProvider.getDataClientAsync()
+  const result = await dataClient.createDataAsync<Record<string, unknown>, Dga_ict_clarifications>(
+    requestUrl,
+    'Dataverse',
+    'dga_ict_clarifications',
+    payload,
+    {
+      operationName: 'clarificationService.createClarificationRecord',
+      datasetName: 'default.cds',
+      isDataVerseOperation: true,
+    }
+  )
+
+  console.log('[ClarificationService] Create result:', result)
+
+  if (!result.success || !result.data?.dga_ict_clarificationid) {
+    throw new Error(result.error?.message || 'Unable to create clarification record.')
+  }
+
+  return result.data
+}
+
+export async function getClarificationsByBudgetId(budgetId: string): Promise<Clarification[]> {
+  if (!budgetId) return []
+
+  try {
+    const result = await Dga_ict_clarificationsService.getAll({
+      select: [
+        'dga_ict_clarificationid',
+        'dga_clarification_due_date',
+        'dga_clarification_raised_date',
+        'createdon',
+        'modifiedon',
+        'dga_description',
+        'dga_file_url',
+        '_dga_ict_budget_value',
+        '_dga_parent_clarificaiton_value',
+        '_dga_raised_by_value',
+        'dga_raised_by_role',
+        '_dga_raised_to_value',
+        'dga_record_type',
+        'dga_response_date',
+        'statuscode',
+      ],
+      filter: `_dga_ict_budget_value eq ${budgetId}`,
+      orderBy: ['createdon asc'],
+    })
+
+    if (!result.success || !result.data?.length) {
+      return []
+    }
+
+    const allRecords = result.data.filter((record): record is Dga_ict_clarifications =>
+      Boolean(record.dga_ict_clarificationid)
+    )
+
+    const replyGroups = new Map<string, ClarificationReply[]>()
+    for (const record of allRecords) {
+      if (record.dga_record_type !== RECORD_TYPE_COMMENT || !record._dga_parent_clarificaiton_value) continue
+      const parentId = record._dga_parent_clarificaiton_value
+      const existing = replyGroups.get(parentId) ?? []
+      existing.push(mapReply(record))
+      replyGroups.set(parentId, existing)
+    }
+
+    return allRecords
+      .filter(
+        (record) =>
+          record.dga_record_type === RECORD_TYPE_CLARIFICATION ||
+          (record.dga_record_type !== RECORD_TYPE_COMMENT && !record._dga_parent_clarificaiton_value)
+      )
+      .sort((left, right) => (right.createdon || '').localeCompare(left.createdon || ''))
+      .map((record) =>
+        mapClarification(
+          record,
+          (replyGroups.get(record.dga_ict_clarificationid) ?? []).sort((left, right) =>
+            left.date.localeCompare(right.date)
+          )
+        )
+      )
+  } catch (error) {
+    console.error('[ClarificationService] Failed to retrieve clarifications:', error)
+    return []
+  }
+}
+
+export async function raiseBudgetClarification({
+  budgetId,
+  message,
+  raisedByRole,
+}: RaiseClarificationInput): Promise<void> {
+  const userId = getStoredUserId()
+  const teamIds = getStoredModuleConfigTeamIds()
+  const respondentTeamId = teamIds?.respondentTeamId?.trim() || null
+
+  console.log(`[ClarificationService ${CLARIFICATION_SERVICE_VERSION}] Stored moduleConfigTeamIDs for raise:`, teamIds)
+
+  if (!respondentTeamId) {
+    throw new Error(
+      'Respondent team id is missing from sessionStorage["moduleConfigTeamIDs"], so dga_raised_to_team cannot be set.'
+    )
+  }
+
+  const payload = {
+    dga_name: buildClarificationName('Clarification', raisedByRole),
+    dga_description: message.trim(),
+    dga_clarification_stage: CLARIFICATION_STAGE_PLANNING,
+    dga_record_type: RECORD_TYPE_CLARIFICATION,
+    dga_scope: SCOPE_INTERNAL_ENTITY,
+    dga_clarification_raised_date: toIsoDate(),
+    dga_raised_by_role: toRoleLabel(raisedByRole),
+    statuscode: STATUS_OPEN,
+    'dga_ict_budget@odata.bind': toLookupBinding('dga_ict_budgets', budgetId),
+    'dga_raised_by_systemuser@odata.bind': toLookupBinding('systemusers', userId),
+    'dga_raised_to_team@odata.bind': toLookupBinding('teams', respondentTeamId),
+  } as Record<string, unknown>
+
+  await createClarificationRecord(payload)
+}
+
+export async function addClarificationReply({
+  budgetId,
+  parentClarificationId,
+  message,
+  currentRole,
+}: AddClarificationReplyInput): Promise<void> {
+  const userId = getStoredUserId()
+  const today = toIsoDate()
+
+  await createClarificationRecord({
+    dga_name: buildClarificationName('Comment', currentRole),
+    dga_description: message.trim(),
+    dga_clarification_stage: CLARIFICATION_STAGE_PLANNING,
+    dga_record_type: RECORD_TYPE_COMMENT,
+    dga_scope: SCOPE_INTERNAL_ENTITY,
+    dga_response_date: today,
+    dga_raised_by_role: toRoleLabel(currentRole),
+    statuscode: STATUS_OPEN,
+    'dga_ict_budget@odata.bind': toLookupBinding('dga_ict_budgets', budgetId),
+    'dga_parent_clarificaiton@odata.bind': toLookupBinding('dga_ict_clarifications', parentClarificationId),
+    'dga_raised_by_systemuser@odata.bind': toLookupBinding('systemusers', userId),
+  })
+
+  const parentUpdate: Partial<Omit<Dga_ict_clarificationsBase, 'dga_ict_clarificationid'>> = {
+    dga_response_date: today,
+  }
+
+  if (currentRole === 'Respondent') {
+    parentUpdate.statuscode = STATUS_RESPONDED
+  }
+
+  await Dga_ict_clarificationsService.update(parentClarificationId, parentUpdate)
+}
+
+export async function closeClarification(clarificationId: string): Promise<void> {
+  await Dga_ict_clarificationsService.update(clarificationId, {
+    statuscode: STATUS_CLOSED,
+    dga_response_date: toIsoDate(),
+  })
+}

@@ -277,11 +277,11 @@ export default function ReviewQueue() {
     setPendingSubmit(null)
   }
 
-  const handleRaiseClarification = async (projectIds: string[]) => {
+  const handleRaiseClarification = async (projectIds: string[], payload: { message: string }) => {
     await runActionToast(
       async () => {
         for (const id of projectIds) {
-          await projectService.reviewerRaiseClarification(getIctId(id), { message: '' })
+          await projectService.reviewerRaiseClarification(getIctId(id), payload)
         }
         setProjects(prev => {
           const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Clarification Pending' as const } : p)
@@ -642,7 +642,7 @@ export default function ReviewQueue() {
         open={Boolean(clarificationProject)}
         onOpenChange={open => { if (!open) setClarificationProject(null) }}
         projectName={clarificationProject?.name ?? ''}
-        onSubmit={() => { if (clarificationProject) void handleRaiseClarification([clarificationProject.id]) }}
+        onSubmit={(payload) => { if (clarificationProject) void handleRaiseClarification([clarificationProject.id], payload) }}
       />
 
       {/* ── Clarification: bulk ── */}
@@ -650,7 +650,7 @@ export default function ReviewQueue() {
         open={bulkClarificationOpen}
         onOpenChange={setBulkClarificationOpen}
         projectName={`${actionableSelected.length} selected project${actionableSelected.length === 1 ? '' : 's'}`}
-        onSubmit={() => void handleRaiseClarification(actionableSelected)}
+        onSubmit={(payload) => void handleRaiseClarification(actionableSelected, payload)}
       />
     </div>
   )

@@ -44,6 +44,7 @@ export interface BudgetItem {
 export interface ClarificationReply {
   id: string
   fromRole: 'Respondent' | 'Reviewer' | 'Approver'
+  fromRoleLabel?: string
   fromName: string
   message: string
   date: string
@@ -51,12 +52,14 @@ export interface ClarificationReply {
 
 export interface Clarification {
   id: string
-  raisedBy: 'Reviewer' | 'Approver'
+  raisedBy: 'Respondent' | 'Reviewer' | 'Approver'
+  raisedByLabel?: string
   raisedByName: string
   raisedTo: string
   message: string
   status: 'Open' | 'Closed'
   date: string
+  dueDate?: string
   closedAt?: string
   replies: ClarificationReply[]
 }
@@ -70,6 +73,8 @@ export interface ProjectDocument {
 export interface Project {
   id: string
   ictBudgetId?: string
+  ownerId?: string | null
+  ownerType?: string | null
   name: string
   strategicPriority: string
   classification: string

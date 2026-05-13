@@ -110,6 +110,16 @@
           "entitySetName": "teams",
           "logicalName": "team",
           "isHidden": false
+        },
+        "documents": {
+          "entitySetName": "sharepointdocuments",
+          "logicalName": "sharepointdocument",
+          "isHidden": false
+        },
+        "ictclarifications": {
+          "entitySetName": "dga_ict_clarifications",
+          "logicalName": "dga_ict_clarification",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

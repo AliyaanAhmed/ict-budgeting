@@ -43,8 +43,6 @@ import { useInstance } from '@/context/InstanceContext'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
-import { ClarificationModal } from '@/components/shared/ClarificationModal'
-import { useToast } from '@/context/ToastContext'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 
 function PieTooltip({ active, payload }: any) {
@@ -220,8 +218,6 @@ function computeDaysRemaining(endDate?: string | null): number {
 
 export default function ApproverDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
-  const [clarificationProject, setClarificationProject] = useState<string | null>(null)
-  const { showSuccessToast } = useToast()
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
@@ -975,6 +971,15 @@ export default function ApproverDashboard() {
                 </span>
               </div>
 
+              <div className="mb-5 flex justify-end">
+                <Button variant="outline" asChild className="h-10 rounded-2xl">
+                  <Link to="/approver/projects?tab=clarification">
+                    View All
+                    <MoveRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+
               <div className="space-y-3">
                 {clarificationMonitorItems.map((item) => (
                   <div
@@ -992,13 +997,12 @@ export default function ApproverDashboard() {
                       <span className="inline-flex items-center rounded-full bg-[#FFF2CC] px-3 py-1 text-xs font-semibold text-[#D97706] dark:bg-[#D97706]/18 dark:text-[#FCD34D]">
                         {item.status}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setClarificationProject(item.name)}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D9E6F5] bg-white text-[#286CFF] transition-colors hover:border-[#286CFF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:bg-white/10"
-                      >
-                        <Bell className="h-4.5 w-4.5" />
-                      </button>
+                      <Button variant="outline" asChild className="h-10 rounded-2xl">
+                        <Link to={`/approver/approval-queue/${item.id}`}>
+                          Visit Project
+                          <MoveRight className="h-4 w-4" />
+                        </Link>
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -1174,17 +1178,6 @@ export default function ApproverDashboard() {
         </section>
       )}
 
-      <ClarificationModal
-        open={Boolean(clarificationProject)}
-        onOpenChange={(open) => {
-          if (!open) setClarificationProject(null)
-        }}
-        projectName={clarificationProject || ''}
-        onSubmit={() => {
-          showSuccessToast('Clarification raised', 'The respondent has been notified and the request is now awaiting response.')
-          setClarificationProject(null)
-        }}
-      />
     </div>
   )
 }
