@@ -1,6 +1,6 @@
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { budgetByCategory } from '@/data/db'
 import { dashboardPalette } from '@/lib/dashboardPalette'
+import type { BudgetByCategoryChartItem } from '@/hooks/useDashboardBudgetCharts'
 
 const BAR_COLORS = [
   dashboardPalette.chartBlue,
@@ -11,17 +11,29 @@ const BAR_COLORS = [
   dashboardPalette.chartSlate,
 ]
 
-export function BudgetByCategory() {
-  const total = budgetByCategory.reduce((sum, item) => sum + item.value, 0)
-  const data = budgetByCategory.map((item, index) => ({
+interface BudgetByCategoryProps {
+  data: BudgetByCategoryChartItem[]
+}
+
+export function BudgetByCategory({ data }: BudgetByCategoryProps) {
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+  const chartData = data.map((item, index) => ({
     ...item,
-    pct: Math.round((item.value / total) * 100),
+    pct: total > 0 ? Math.round((item.value / total) * 100) : 0,
     color: BAR_COLORS[index % BAR_COLORS.length],
   }))
 
+  if (!chartData.length) {
+    return (
+      <div className="rounded-[20px] border border-dashed border-[#DCE8F6] bg-[#F8FAFC] px-4 py-8 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+        No strategic priority budget data is available for the current cycle.
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      {data.map((item) => (
+      {chartData.map((item) => (
         <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
           <div className="flex items-center gap-3">
             <span
@@ -49,4 +61,3 @@ export function BudgetByCategory() {
     </div>
   )
 }
-

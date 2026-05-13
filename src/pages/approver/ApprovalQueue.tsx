@@ -26,7 +26,7 @@ import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { useToast } from '@/context/ToastContext'
 import { useQueueCounts } from '@/context/QueueCountsContext'
 import { projectService } from '@/services/projectService'
-import type { ApprovalQueueProject } from '@/domain/types'
+import type { ApprovalQueueProject, ClarificationPayload } from '@/domain/types'
 
 type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
@@ -277,7 +277,7 @@ export default function ApprovalQueue() {
     setPendingApprove(null)
   }
 
-  const handleRaiseClarification = async (projectIds: string[], payload: { message: string }) => {
+  const handleRaiseClarification = async (projectIds: string[], payload: ClarificationPayload) => {
     await runActionToast(
       async () => {
         for (const id of projectIds) {

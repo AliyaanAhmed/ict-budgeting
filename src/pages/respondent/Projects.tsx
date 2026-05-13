@@ -203,14 +203,6 @@ export default function RespondentProjects() {
     return matchesSearch && matchesTab && matchesStatus && matchesBudgetType
   })
 
-  const approved = projects.filter((project) => project.status === 'Approved').length
-  const pending = projects.filter((project) =>
-    ['Submitted to Reviewer', 'Submitted to Approver'].includes(project.status)
-  ).length
-  const attention = projects.filter((project) =>
-    ['Draft', 'Clarification Required'].includes(project.status)
-  ).length
-
   return (
     <div className="w-full space-y-5">
       <div className="flex items-start justify-between gap-4">
@@ -375,10 +367,8 @@ export default function RespondentProjects() {
             ))}
           </div>
         )}
-        <div className="flex items-center gap-4 border-t border-[#F1F5F9] px-5 py-3 text-sm text-[#475569] dark:border-white/5 dark:text-slate-200">
-          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-green-500" />{approved} Approved</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-amber-500" />{pending} Pending</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full bg-red-500" />{attention} Needs Attention</span>
+        <div className="border-t border-[#F1F5F9] px-5 py-3 text-sm text-[#475569] dark:border-white/5 dark:text-slate-200">
+          Showing {filtered.length} project{filtered.length === 1 ? '' : 's'}
         </div>
       </div>
     </div>

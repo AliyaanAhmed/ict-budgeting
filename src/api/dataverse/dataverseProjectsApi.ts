@@ -116,19 +116,29 @@ function getTargetOwnerBinding(target: 'Respondent' | 'Reviewer' | 'Approver') {
   return {}
 }
 
+const STATUS_CODE_MAP: Partial<Record<Dga_ict_budgetsdga_status_for_adge, number>> = {
+  2: 776140001, // Submitted to Reviewer
+  3: 776140002, // Submitted to Approver
+  4: 776140003, // Approved
+  5: 776140010, // Clarification Required
+}
+
 async function updateBudgetWorkflow(
   projectId: string,
   status: Dga_ict_budgetsdga_status_for_adge,
   targetOwner: 'Respondent' | 'Reviewer' | 'Approver'
 ) {
+  const statuscode = STATUS_CODE_MAP[status]
   const payload = {
     dga_status_for_adge: status,
+    ...(statuscode !== undefined ? { statuscode } : {}),
     ...getTargetOwnerBinding(targetOwner),
   } as Record<string, unknown>
 
   console.log('[DataverseProjectsApi] Updating workflow with payload:', {
     projectId,
     status,
+    statuscode: statuscode ?? null,
     targetOwner,
     payload,
   })
@@ -210,6 +220,10 @@ function mapBudgetRecordToProject(
     id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN-BUDGET',
     ictBudgetId: record.dga_ict_budgetid,
     ownerId,
+    submittedById:
+      (record as unknown as Record<string, string | undefined>)._createdby_value ??
+      (typeof record.createdby === 'string' ? record.createdby : null) ??
+      null,
     ownerType:
       getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname') ||
       getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.associatednavigationproperty') ||
@@ -438,17 +452,19 @@ export const dataverseProjectsApi: ProjectsApi = {
       budgetId: projectId,
       message: _payload.message,
       raisedByRole: 'Reviewer',
+      files: _payload.files,
     })
     await updateBudgetWorkflow(projectId, 5, 'Respondent')
   },
   async approverApprove(projectId: string) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 4 })
+    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 4, statuscode: 776140003 } as Record<string, unknown>)
   },
   async approverRaiseClarification(projectId: string, _payload: ClarificationPayload) {
     await raiseBudgetClarification({
       budgetId: projectId,
       message: _payload.message,
       raisedByRole: 'Approver',
+      files: _payload.files,
     })
     await updateBudgetWorkflow(projectId, 5, 'Respondent')
   },

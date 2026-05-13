@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { HelpCircle, MessageSquareText, Send, WandSparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { AttachmentIconPicker } from '@/components/shared/AttachmentIconPicker'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ interface ClarificationModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectName: string
-  onSubmit: (payload: { message: string }) => void
+  onSubmit: (payload: { message: string; files?: File[] }) => void
 }
 
 const SUGGESTIONS = [
@@ -25,6 +26,7 @@ const SUGGESTIONS = [
 
 export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }: ClarificationModalProps) {
   const [message, setMessage] = useState('')
+  const [files, setFiles] = useState<File[]>([])
 
   const isValid = useMemo(() => message.trim().length > 0, [message])
 
@@ -32,12 +34,13 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
     onOpenChange(next)
     if (!next) {
       setMessage('')
+      setFiles([])
     }
   }
 
   const handleSubmit = () => {
     if (!isValid) return
-    onSubmit({ message: message.trim() })
+    onSubmit({ message: message.trim(), files })
     handleClose(false)
   }
 
@@ -89,6 +92,15 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
                 placeholder="Describe exactly what needs to be clarified..."
                 className="rounded-xl border-[var(--border)] text-[14px] leading-6"
               />
+            </div>
+
+            <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-xs font-semibold text-[#64748B] dark:text-slate-300">
+                  Supporting files
+                </span>
+                <AttachmentIconPicker files={files} onChange={setFiles} maxSizeMB={20} />
+              </div>
             </div>
           </div>
 

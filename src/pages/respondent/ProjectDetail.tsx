@@ -119,6 +119,9 @@ import {
 } from '@/services/clarificationService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import { retrieveSharePointDocumentsByBudget, type WebApiPortalDocument } from '@/services/webApiForPortalService'
+import { deleteSharePointDocument } from '@/services/fileDeleteService'
+import { SupportingDocuments } from '@/components/shared/SupportingDocuments'
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
@@ -333,6 +336,12 @@ function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null
 
 type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver'
 type WorkflowAction = 'delete-project' | 'submit-reviewer' | 'submit-approver' | 'approve-project'
+type PendingClarificationReply = {
+  clarificationId: string
+  message: string
+  files?: File[]
+  returnToRole: 'Reviewer' | 'Approver'
+}
 
 function getWorkflowOwner(status: string): WorkflowRole | null {
   if (status === 'Draft' || status === 'Clarification Required') return 'Respondent'
@@ -1120,6 +1129,11 @@ export default function ProjectDetail() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const documentTone = documentStatus === 'Complete' ? 'green' : 'red'
 
+  // ── SharePoint documents ─────────────────────────────────────────────────────
+  const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
+  const [sharepointDocsLoading, setSharepointDocsLoading] = useState(false)
+
+
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
     () =>
       project.budgetItems.map((item) => ({
@@ -1436,6 +1450,7 @@ export default function ProjectDetail() {
             }
           )
           setUploadedFiles([])
+          void refreshSharepointDocs()
         } catch {
           showErrorToast('Documents not uploaded', 'The changes were saved but document upload failed. Please try again.')
         }
@@ -1487,16 +1502,12 @@ export default function ProjectDetail() {
 
       await runActionToast(
         async () => {
-          console.log('[ProjectDetail] Submitting ICT budget to reviewer with owner assignment:', {
+          console.log('[ProjectDetail] Submitting ICT budget to reviewer — assigning to Reviewer team, sharing ReadAccess with Respondent team:', {
             ictBudgetId,
             status: ICT_BUDGET_STATUS.underReviewerReview,
             targetOwner: 'Reviewer',
           })
-          await updateIctBudgetStatus(
-            ictBudgetId,
-            ICT_BUDGET_STATUS.underReviewerReview,
-            'Reviewer'
-          )
+          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underReviewerReview, 'Reviewer')
           syncLocalWorkflowState('Submitted to Reviewer')
           setIsEditMode(false)
         },
@@ -1516,16 +1527,12 @@ export default function ProjectDetail() {
     if (pendingWorkflowAction === 'submit-approver') {
       await runActionToast(
         async () => {
-          console.log('[ProjectDetail] Submitting ICT budget to approver with owner assignment:', {
+          console.log('[ProjectDetail] Submitting ICT budget to approver — assigning to Approver team, sharing ReadAccess with Reviewer team:', {
             ictBudgetId,
             status: ICT_BUDGET_STATUS.underApproverReview,
             targetOwner: 'Approver',
           })
-          await updateIctBudgetStatus(
-            ictBudgetId,
-            ICT_BUDGET_STATUS.underApproverReview,
-            'Approver'
-          )
+          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underApproverReview, 'Approver')
           syncLocalWorkflowState('Submitted to Approver')
           setIsEditMode(false)
         },
@@ -1642,6 +1649,7 @@ export default function ProjectDetail() {
   const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
   const [clarificationsLoading, setClarificationsLoading] = useState(false)
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
+  const [pendingClarificationReply, setPendingClarificationReply] = useState<PendingClarificationReply | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -1678,7 +1686,43 @@ export default function ProjectDetail() {
     }
   }, [ictBudgetId, project.clarifications])
 
-  const handleClarificationReply = (clarificationId: string, message: string) => {
+  // Build a set of all SharePoint URLs referenced in clarification fileUrl fields
+  const clarificationFileUrls = useMemo(() => {
+    const urls = new Set<string>()
+    for (const c of localClarifications) {
+      for (const url of (c.fileUrl ?? '').split(/[,\n]/).map((u) => u.trim()).filter(Boolean)) {
+        urls.add(url)
+      }
+      for (const r of c.replies) {
+        for (const url of (r.fileUrl ?? '').split(/[,\n]/).map((u) => u.trim()).filter(Boolean)) {
+          urls.add(url)
+        }
+      }
+    }
+    return urls
+  }, [localClarifications])
+
+  const handleDeleteDocument = async (doc: WebApiPortalDocument) => {
+    await deleteSharePointDocument(doc)
+    setSharepointDocs((prev) => prev.filter((d) => d.sharepointdocumentid !== doc.sharepointdocumentid))
+  }
+
+  const refreshSharepointDocs = async () => {
+    if (!ictBudgetId) return
+    try {
+      const docs = await retrieveSharePointDocumentsByBudget(ictBudgetId)
+      setSharepointDocs(docs)
+    } catch (err) {
+      console.error('[ProjectDetail] Failed to refresh SharePoint docs:', err)
+    }
+  }
+
+  const submitClarificationReply = (
+    clarificationId: string,
+    message: string,
+    files?: File[],
+    returnToRole?: 'Reviewer' | 'Approver'
+  ) => {
     if (!ictBudgetId) {
       setLocalClarifications((prev) =>
         prev.map((clarification) => {
@@ -1710,9 +1754,34 @@ export default function ProjectDetail() {
           parentClarificationId: clarificationId,
           message,
           currentRole,
+          files,
         })
+
+        if (currentRole === 'Respondent' && returnToRole) {
+          const nextStatus =
+            returnToRole === 'Reviewer'
+              ? ICT_BUDGET_STATUS.underReviewerReview
+              : ICT_BUDGET_STATUS.underApproverReview
+          const nextProjectStatus =
+            returnToRole === 'Reviewer'
+              ? 'Submitted to Reviewer'
+              : 'Submitted to Approver'
+
+          console.log('[ProjectDetail] Respondent first clarification reply submitted — returning ICT budget to governance owner:', {
+            ictBudgetId,
+            clarificationId,
+            returnToRole,
+            status: nextStatus,
+            targetOwner: returnToRole,
+          })
+
+          await updateIctBudgetStatus(ictBudgetId, nextStatus, returnToRole)
+          syncLocalWorkflowState(nextProjectStatus)
+        }
+
         const clarifications = await getClarificationsByBudgetId(ictBudgetId)
         setLocalClarifications(clarifications)
+        if (files?.length) void refreshSharepointDocs()
       },
       {
         processingTitle: 'Sending reply',
@@ -1723,6 +1792,39 @@ export default function ProjectDetail() {
         minDurationMs: 1200,
       }
     )
+  }
+
+  const handleClarificationReply = (clarificationId: string, message: string, files?: File[]) => {
+    const clarification = localClarifications.find((item) => item.id === clarificationId)
+    const firstReplyReturnToRole =
+      clarification?.raisedBy === 'Reviewer' || clarification?.raisedBy === 'Approver'
+        ? clarification.raisedBy
+        : null
+    const isRespondentFirstReply =
+      currentRole === 'Respondent' &&
+      clarification &&
+      firstReplyReturnToRole &&
+      clarification.replies.length === 0
+
+    if (isRespondentFirstReply) {
+      setPendingClarificationReply({
+        clarificationId,
+        message,
+        files,
+        returnToRole: firstReplyReturnToRole,
+      })
+      return
+    }
+
+    submitClarificationReply(clarificationId, message, files)
+  }
+
+  const handleConfirmClarificationReplyHandoff = () => {
+    if (!pendingClarificationReply) return
+
+    const { clarificationId, message, files, returnToRole } = pendingClarificationReply
+    setPendingClarificationReply(null)
+    submitClarificationReply(clarificationId, message, files, returnToRole)
   }
 
   const handleClarificationClose = (clarificationId: string) => {
@@ -1755,7 +1857,7 @@ export default function ProjectDetail() {
     )
   }
 
-  const handleRaiseClarification = ({ message }: { message: string }) => {
+  const handleRaiseClarification = ({ message, files }: { message: string; files?: File[] }) => {
     const raisedByRole = isApproverView ? 'Approver' : 'Reviewer'
 
     if (!ictBudgetId) {
@@ -1781,19 +1883,18 @@ export default function ProjectDetail() {
           budgetId: ictBudgetId,
           message,
           raisedByRole,
+          files,
         })
-        console.log('[ProjectDetail] Raising clarification and assigning ICT budget back to respondent:', {
+        console.log('[ProjectDetail] Raising clarification — assigning ICT budget back to Respondent team' + (raisedByRole === 'Approver' ? ', sharing ReadAccess with Approver team' : '') + ':', {
           ictBudgetId,
+          raisedByRole,
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        await updateIctBudgetStatus(
-          ictBudgetId,
-          ICT_BUDGET_STATUS.clarificationPending,
-          'Respondent'
-        )
+        await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.clarificationPending, 'Respondent')
         const clarifications = await getClarificationsByBudgetId(ictBudgetId)
         setLocalClarifications(clarifications)
+        if (files?.length) void refreshSharepointDocs()
         syncLocalWorkflowState('Clarification Required')
       },
       {
@@ -1856,6 +1957,21 @@ export default function ProjectDetail() {
       cancelled = true
     }
   }, [hasDataverseBudgetProject, ictBudgetId])
+
+  // ── Load SharePoint documents ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ictBudgetId) return
+    let cancelled = false
+    setSharepointDocsLoading(true)
+    retrieveSharePointDocumentsByBudget(ictBudgetId)
+      .then((docs) => { if (!cancelled) setSharepointDocs(docs) })
+      .catch((err: unknown) => {
+        console.error('[ProjectDetail] Failed to load SharePoint docs:', err)
+        if (!cancelled) setSharepointDocs([])
+      })
+      .finally(() => { if (!cancelled) setSharepointDocsLoading(false) })
+    return () => { cancelled = true }
+  }, [ictBudgetId])
 
   const handleCreateBudgetItems = async (items: BudgetItemDraft[]) => {
     if (!hasDataverseBudgetProject) {
@@ -2542,8 +2658,13 @@ export default function ProjectDetail() {
                 description="Upload additional supporting files for this budget record."
                 icon={FileCheck2}
               >
-                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
-                  Document retrieval will be added later.
+                <div className="mb-4">
+                  <SupportingDocuments
+                    docs={sharepointDocs}
+                    loading={sharepointDocsLoading}
+                    clarificationFileUrls={clarificationFileUrls}
+                    onDelete={handleDeleteDocument}
+                  />
                 </div>
                 <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
               </DetailSection>
@@ -2562,6 +2683,7 @@ export default function ProjectDetail() {
                     isEditMode={isEditMode}
                     onReply={handleClarificationReply}
                     onClose={handleClarificationClose}
+                    sharepointDocs={sharepointDocs}
                   />
                 </DetailSection>
               )}
@@ -2648,9 +2770,12 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/10 dark:text-amber-300">
-                  Document retrieval will be added later.
-                </div>
+                <SupportingDocuments
+                  docs={sharepointDocs}
+                  loading={sharepointDocsLoading}
+                  clarificationFileUrls={clarificationFileUrls}
+                  onDelete={handleDeleteDocument}
+                />
               </DetailSection>
 
               {/* Clarification section — shown when any clarifications exist, or governance view */}
@@ -2667,6 +2792,7 @@ export default function ProjectDetail() {
                     isEditMode={isEditMode}
                     onReply={handleClarificationReply}
                     onClose={handleClarificationClose}
+                    sharepointDocs={sharepointDocs}
                   />
                 </DetailSection>
               )}
@@ -2912,6 +3038,29 @@ export default function ProjectDetail() {
             ? workflowActionDetails(pendingWorkflowAction, currentRole).tone
             : 'primary'
         }
+        meta={
+          <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
+            {display.name}
+          </p>
+        }
+      />
+      <ConfirmationModal
+        open={pendingClarificationReply !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingClarificationReply(null)
+          }
+        }}
+        title={`Send Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}?`}
+        description={
+          pendingClarificationReply
+            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${pendingClarificationReply.returnToRole === 'Reviewer' ? 'reviewer review' : 'approver review'}.`
+            : 'After this reply is submitted, the ICT budget will be reassigned in the workflow.'
+        }
+        confirmLabel={`Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}`}
+        cancelLabel="Keep Editing"
+        onConfirm={handleConfirmClarificationReplyHandoff}
+        tone="primary"
         meta={
           <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
             {display.name}

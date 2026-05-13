@@ -48,6 +48,7 @@ export interface ClarificationReply {
   fromName: string
   message: string
   date: string
+  fileUrl?: string
 }
 
 export interface Clarification {
@@ -57,6 +58,7 @@ export interface Clarification {
   raisedByName: string
   raisedTo: string
   message: string
+  fileUrl?: string
   status: 'Open' | 'Closed'
   date: string
   dueDate?: string
@@ -75,6 +77,7 @@ export interface Project {
   ictBudgetId?: string
   ownerId?: string | null
   ownerType?: string | null
+  submittedById?: string | null
   name: string
   strategicPriority: string
   classification: string

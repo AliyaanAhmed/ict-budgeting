@@ -29,19 +29,21 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts'
+import { AccountCodesBreakdown } from '@/components/charts/AccountCodesBreakdown'
 import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { projects as mockProjects } from '@/data/db'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
+import {
+  useAccountCodesBreakdown,
+  useBudgetByCategoryChart,
+} from '@/hooks/useDashboardBudgetCharts'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
-
-const BREAKDOWN_COLORS = ['#8B5CF6', '#22C55E', '#286CFF', '#F59E0B', '#EC4899']
 
 function PieTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
@@ -230,10 +232,15 @@ export default function ReviewerDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
+  const budgetByCategory = useBudgetByCategoryChart(liveProjects)
+  const {
+    items: accountBreakdown,
+    loading: accountBreakdownLoading,
+    error: accountBreakdownError,
+  } = useAccountCodesBreakdown(liveProjects)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
-  const mockTotalBudget = mockProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
   const pendingReviewProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
   const clarificationSentProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
   const sentToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
@@ -340,31 +347,6 @@ export default function ReviewerDashboard() {
     ...item,
     percent: totalQueueBudget > 0 ? Math.round((item.value / totalQueueBudget) * 100) : 0,
   }))
-
-  const accountBreakdown = Array.from(
-    mockProjects
-      .flatMap((p) => p.budgetItems)
-      .reduce((acc, item) => {
-        const existing = acc.get(item.accountName)
-        if (existing) {
-          existing.amount += item.budgetRequested
-          return acc
-        }
-        acc.set(item.accountName, {
-          name: item.accountName,
-          type: item.classification,
-          amount: item.budgetRequested,
-        })
-        return acc
-      }, new Map<string, { name: string; type: 'CapEx' | 'OpEx'; amount: number }>())
-  )
-    .sort((a, b) => b[1].amount - a[1].amount)
-    .slice(0, 5)
-    .map(([, item], index) => ({
-      ...item,
-      pct: mockTotalBudget > 0 ? Math.round((item.amount / mockTotalBudget) * 100) : 0,
-      color: BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length],
-    }))
 
   const portfolioIssues = [
     {
@@ -806,7 +788,7 @@ export default function ReviewerDashboard() {
                 Current cycle
               </span>
             </div>
-            <BudgetByCategory />
+            <BudgetByCategory data={budgetByCategory} />
           </CardContent>
         </Card>
 
@@ -829,33 +811,11 @@ export default function ReviewerDashboard() {
                 Top 5 accounts
               </span>
             </div>
-            <div className="space-y-4">
-              {accountBreakdown.map((item) => (
-                <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                      style={{ backgroundColor: `${item.color}16`, color: item.color }}
-                    >
-                      {item.type}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
-                    </div>
-                    <CurrencyAmount amount={item.amount} className="text-sm font-medium text-[#0F172A] dark:text-white" iconSize={13} />
-                  </div>
-                  <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white dark:bg-white/10">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${item.pct}%`,
-                        background: `linear-gradient(90deg, ${item.color}, ${item.color}BB)`,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <AccountCodesBreakdown
+              items={accountBreakdown}
+              loading={accountBreakdownLoading}
+              error={accountBreakdownError}
+            />
           </CardContent>
         </Card>
       </section>

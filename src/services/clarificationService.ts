@@ -17,11 +17,13 @@ import {
   SESSION_USER_ID_KEY,
   type ModuleConfigTeamIds,
 } from '@/services/userContextService'
+import { uploadFilesToRecord } from '@/services/fileUploadService'
 
 export interface RaiseClarificationInput {
   budgetId: string
   message: string
   raisedByRole: 'Reviewer' | 'Approver'
+  files?: File[]
 }
 
 export interface AddClarificationReplyInput {
@@ -29,6 +31,7 @@ export interface AddClarificationReplyInput {
   parentClarificationId: string
   message: string
   currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  files?: File[]
 }
 
 const CLARIFICATION_SERVICE_VERSION = 'clarification-service-2026-05-12-c'
@@ -102,6 +105,7 @@ function mapReply(record: Dga_ict_clarifications): ClarificationReply {
       getFormattedAnnotation(record, '_dga_raised_by_value@OData.Community.Display.V1.FormattedValue') ||
       'Unknown User',
     message: record.dga_description?.trim() || '',
+    fileUrl: record.dga_file_url?.trim() || undefined,
     date: record.createdon?.slice(0, 10) || record.dga_response_date?.slice(0, 10) || toIsoDateOnly(),
   }
 }
@@ -123,6 +127,7 @@ function mapClarification(record: Dga_ict_clarifications, replies: Clarification
       getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
       'Respondent',
     message: record.dga_description?.trim() || '',
+    fileUrl: record.dga_file_url?.trim() || undefined,
     status,
     date: record.dga_clarification_raised_date?.slice(0, 10) || record.createdon?.slice(0, 10) || toIsoDateOnly(),
     dueDate: record.dga_clarification_due_date?.slice(0, 10),
@@ -210,6 +215,21 @@ async function createClarificationRecord(
   return result.data
 }
 
+async function uploadClarificationFiles(budgetId: string, files: File[] | undefined) {
+  if (!files?.length) return null
+
+  console.log('[ClarificationService] Uploading clarification attachment(s) to ICT budget folder:', {
+    budgetId,
+    fileCount: files.length,
+  })
+
+  const uploadedUrls = await uploadFilesToRecord(budgetId, files)
+  const fileUrl = uploadedUrls.join(', ').trim() || null
+
+  console.log('[ClarificationService] Clarification uploaded file URL(s):', fileUrl)
+  return fileUrl
+}
+
 export async function getClarificationsByBudgetId(budgetId: string): Promise<Clarification[]> {
   if (!budgetId) return []
 
@@ -278,6 +298,7 @@ export async function raiseBudgetClarification({
   budgetId,
   message,
   raisedByRole,
+  files,
 }: RaiseClarificationInput): Promise<void> {
   const userId = getStoredUserId()
   const teamIds = getStoredModuleConfigTeamIds()
@@ -291,9 +312,12 @@ export async function raiseBudgetClarification({
     )
   }
 
+  const uploadedFileUrl = await uploadClarificationFiles(budgetId, files)
+
   const payload = {
     dga_name: buildClarificationName('Clarification', raisedByRole),
     dga_description: message.trim(),
+    ...(uploadedFileUrl ? { dga_file_url: uploadedFileUrl } : {}),
     dga_clarification_stage: CLARIFICATION_STAGE_PLANNING,
     dga_record_type: RECORD_TYPE_CLARIFICATION,
     dga_scope: SCOPE_INTERNAL_ENTITY,
@@ -313,13 +337,16 @@ export async function addClarificationReply({
   parentClarificationId,
   message,
   currentRole,
+  files,
 }: AddClarificationReplyInput): Promise<void> {
   const userId = getStoredUserId()
   const today = toIsoDate()
+  const uploadedFileUrl = await uploadClarificationFiles(budgetId, files)
 
   await createClarificationRecord({
     dga_name: buildClarificationName('Comment', currentRole),
     dga_description: message.trim(),
+    ...(uploadedFileUrl ? { dga_file_url: uploadedFileUrl } : {}),
     dga_clarification_stage: CLARIFICATION_STAGE_PLANNING,
     dga_record_type: RECORD_TYPE_COMMENT,
     dga_scope: SCOPE_INTERNAL_ENTITY,

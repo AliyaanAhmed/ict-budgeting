@@ -953,6 +953,76 @@ Important:
 - raise clarification now requires `moduleConfigTeamIDs.respondentTeamId`
 - if respondent team id is missing, the create flow throws a clear error instead of silently creating a bad payload
 
+### ICT Budget Assignment Rules
+
+ICT budget workflow transitions now update both:
+
+- `dga_status_for_adge`
+- `ownerid@odata.bind`
+
+The owner assignment is resolved in this order:
+
+1. `sessionStorage["moduleConfigTeamIDs"]`
+2. `sessionStorage["userTeams"]`
+3. `sessionStorage["userID"]` as a final fallback for respondent ownership only
+
+Main implementation points:
+
+- `src/services/ictBudgetDraftService.ts`
+- `src/api/dataverse/dataverseProjectsApi.ts`
+- `src/pages/respondent/ProjectDetail.tsx`
+
+#### On ICT Budget Creation
+
+When Respondent creates a new ICT budget draft:
+
+- initial owner is assigned to the respondent side
+- payload includes `ownerid@odata.bind`
+- target owner is resolved from:
+  - `moduleConfigTeamIDs.respondentTeamId`
+  - fallback `userTeams` respondent team
+  - fallback `userID` as system user
+
+#### On Submission / Workflow Handoff
+
+When Respondent submits to Reviewer:
+
+- `dga_status_for_adge` -> `2`
+- `ownerid@odata.bind` -> reviewer team
+
+When Reviewer submits to Approver:
+
+- `dga_status_for_adge` -> `3`
+- `ownerid@odata.bind` -> approver team
+
+When Reviewer raises clarification:
+
+- clarification record is created in `dga_ict_clarification`
+- ICT budget status then updates to:
+  - `dga_status_for_adge` -> `5`
+  - `ownerid@odata.bind` -> respondent team
+
+When Approver raises clarification:
+
+- clarification record is created in `dga_ict_clarification`
+- ICT budget status then updates to:
+  - `dga_status_for_adge` -> `5`
+  - `ownerid@odata.bind` -> respondent team
+
+Approver final approval currently updates status only:
+
+- `dga_status_for_adge` -> `4`
+- no owner reassignment is applied in the current implementation
+
+#### Debug Logging
+
+Workflow assignment logs are emitted from both detail-form and queue flows, including:
+
+- resolved `moduleConfigTeamIDs`
+- chosen target owner
+- final `ownerid@odata.bind`
+- final Dataverse update payload
+
 ### Clarification Reply Rules
 
 When a reply/comment is added:

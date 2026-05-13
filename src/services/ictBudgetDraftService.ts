@@ -21,6 +21,7 @@ import {
   type IctBudgetFormValues,
 } from '@/features/ictBudgetForm'
 import type { TechnologyCompanyOption } from '@/services/technologyService'
+import type { IOperationResult } from '@microsoft/power-apps/data'
 
 export interface CreateIctBudgetDraftInput {
   initiativeName: string
@@ -69,6 +70,17 @@ type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver'
 function getFormattedAnnotation(record: unknown, key: string) {
   const value = (record as Record<string, unknown> | null)?.[key]
   return typeof value === 'string' && value.trim() ? value : null
+}
+
+function getOperationErrorMessage(result: unknown, fallback: string) {
+  const message = (result as { error?: { message?: string } } | null)?.error?.message
+  return typeof message === 'string' && message.trim() ? message : fallback
+}
+
+function assertOperationSucceeded<T>(result: IOperationResult<T>, fallbackMessage: string) {
+  if (!result.success) {
+    throw new Error(getOperationErrorMessage(result, fallbackMessage))
+  }
 }
 
 function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
@@ -203,6 +215,7 @@ async function getAssociatedTechnologyProductIds(ictBudgetId: string) {
     .filter((id): id is string => Boolean(id))
 }
 
+
 function mapRetrievedBudgetRecord(
   record: Awaited<ReturnType<typeof Dga_ict_budgetsService.get>>['data'],
   technologyCompanies: TechnologyCompanyOption[],
@@ -302,14 +315,6 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
 
   const payload = {
     dga_initiative_project_requirement_name: input.initiativeName.trim(),
-    'dga_previous_strategic_priority@odata.bind': toLookupBinding(
-      'dga_strategic_prioritieses',
-      input.strategicPriorityId
-    ),
-    'dga_previous_strategic_priorityclassification@odata.bind': toLookupBinding(
-      'dga_strategic_prioritieses',
-      input.strategicPriorityClassificationId
-    ),
     'dga_strategic_priority@odata.bind': toLookupBinding(
       'dga_strategic_prioritieses',
       input.strategicPriorityId
@@ -354,6 +359,7 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
   console.log('[IctBudgetDraftService] Creating ICT budget draft with payload:', payload)
 
   const result = await Dga_ict_budgetsService.create(payload)
+  assertOperationSucceeded(result, 'Failed to create ICT budget draft.')
 
   if (!result.data?.dga_ict_budgetid) {
     throw new Error('ICT budget record was created, but the response did not include an id.')
@@ -415,14 +421,6 @@ export async function updateIctBudgetDraft(
 ) {
   const payload = {
     dga_initiative_project_requirement_name: formValues.initiativeName.trim(),
-    'dga_previous_strategic_priority@odata.bind': toBoundLookupValue(
-      'dga_strategic_prioritieses',
-      formValues.strategicPriorityId
-    ),
-    'dga_previous_strategic_priorityclassification@odata.bind': toBoundLookupValue(
-      'dga_strategic_prioritieses',
-      formValues.strategicPriorityClassificationId
-    ),
     'dga_strategic_priority@odata.bind': toBoundLookupValue(
       'dga_strategic_prioritieses',
       formValues.strategicPriorityId
@@ -437,9 +435,6 @@ export async function updateIctBudgetDraft(
     'dga_technology_company@odata.bind': formValues.technologyCompanyId
       ? toBoundLookupValue('dga_technologies', formValues.technologyCompanyId)
       : null,
-    'dga_ict_budget_technology_product@odata.bind': formValues.technologyProductIds.map(
-      (id) => `/dga_technologies(${id})`
-    ),
     dga_planned_start_date: formValues.plannedStartDate,
     dga_planned_end_date: formValues.plannedEndDate,
     dga_summary: formValues.summary.trim(),
@@ -460,7 +455,21 @@ export async function updateIctBudgetDraft(
     ) ?? undefined,
   } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>>
 
-  await Dga_ict_budgetsService.update(ictBudgetId, payload)
+  console.log('[IctBudgetDraftService] Updating ICT budget draft payload:', {
+    ictBudgetId,
+    payload,
+    technologyProductIds: formValues.technologyProductIds,
+  })
+
+  const result = await Dga_ict_budgetsService.update(ictBudgetId, payload)
+  assertOperationSucceeded(result, 'Failed to update ICT budget draft.')
+}
+
+const STATUS_CODE_MAP: Partial<Record<Dga_ict_budgetsdga_status_for_adge, number>> = {
+  2: 776140001, // Submitted to Reviewer
+  3: 776140002, // Submitted to Approver
+  4: 776140003, // Approved
+  5: 776140010, // Clarification Required
 }
 
 export async function updateIctBudgetStatus(
@@ -468,19 +477,23 @@ export async function updateIctBudgetStatus(
   status: Dga_ict_budgetsdga_status_for_adge,
   targetOwner?: WorkflowTargetOwner
 ) {
+  const statuscode = STATUS_CODE_MAP[status]
   const payload = {
     dga_status_for_adge: status,
+    ...(statuscode !== undefined ? { statuscode } : {}),
     ...(targetOwner ? getTargetOwnerBinding(targetOwner) : {}),
   } as Record<string, unknown>
 
   console.log('[IctBudgetDraftService] Updating ICT budget workflow status:', {
     ictBudgetId,
     status,
+    statuscode: statuscode ?? null,
     targetOwner: targetOwner ?? null,
     payload,
   })
 
-  await Dga_ict_budgetsService.update(ictBudgetId, payload)
+  const result = await Dga_ict_budgetsService.update(ictBudgetId, payload)
+  assertOperationSucceeded(result, 'Failed to update ICT budget workflow status.')
 }
 
 export async function deleteIctBudgetDraft(ictBudgetId: string) {

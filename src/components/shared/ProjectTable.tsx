@@ -374,7 +374,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <UserHoverCard name={project.pendingWith} subtitle="Current Workflow Owner" />
+            <span className="text-xs font-medium text-[#475569] dark:text-slate-200">{project.pendingWith}</span>
           ) : (
             <span className="text-xs text-[#94A3B8]">-</span>
           ),
@@ -390,7 +390,13 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
         type: 'option',
         accessor: (project) => project.submittedBy,
         options: Array.from(new Set(projects.map((project) => project.submittedBy))).sort(),
-        render: (project) => <UserHoverCard name={project.submittedBy} subtitle="Project Creator" />,
+        render: (project) => (
+          <UserHoverCard
+            name={project.submittedBy}
+            userId={project.submittedById}
+            subtitle="Project Creator"
+          />
+        ),
         className: 'hidden xl:table-cell',
         headerClassName: 'hidden xl:table-cell',
       })

@@ -67,6 +67,7 @@ export interface CreateProjectPayload {
 
 export interface ClarificationPayload {
   message: string
+  files?: File[]
 }
 
 export interface RoleProjectFilters {

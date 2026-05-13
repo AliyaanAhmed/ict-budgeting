@@ -1,16 +1,19 @@
 import { useState } from 'react'
-import { CheckCircle2, ChevronDown, ChevronUp, ChevronsUp, Lock, LockKeyhole, MessageCircle, Send } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, ChevronUp, ChevronsUp, File, FileSpreadsheet, FileText, Image, Lock, LockKeyhole, MessageCircle, Paperclip, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { AttachmentIconPicker } from '@/components/shared/AttachmentIconPicker'
 import { cn } from '@/lib/utils'
 import type { Clarification, ClarificationReply } from '@/data/db'
+import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
 
 interface ClarificationThreadProps {
   clarifications: Clarification[]
   currentRole: 'Respondent' | 'Reviewer' | 'Approver'
   isEditMode: boolean
-  onReply: (clarificationId: string, message: string) => void
+  onReply: (clarificationId: string, message: string, files?: File[]) => void
   onClose: (clarificationId: string) => void
+  sharepointDocs?: WebApiPortalDocument[]
 }
 
 const PAGE_SIZE = 3
@@ -51,8 +54,63 @@ function formatDisplayDate(value: string | undefined) {
   })
 }
 
-function ReplyBubble({ reply }: { reply: ClarificationReply }) {
+function getFileUrls(value: string | undefined) {
+  return (value ?? '')
+    .split(/[,\n]/)
+    .map((url) => url.trim())
+    .filter(Boolean)
+}
+
+function getFileIconForType(filetype: string | null): { Icon: React.ElementType; color: string; bg: string } {
+  const ft = (filetype ?? '').toLowerCase()
+  if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'heic'].includes(ft)) return { Icon: Image, color: '#0EA5E9', bg: '#E0F2FE' }
+  if (ft === 'pdf') return { Icon: FileText, color: '#EF4444', bg: '#FEE2E2' }
+  if (['doc', 'docx'].includes(ft)) return { Icon: FileText, color: '#2563EB', bg: '#DBEAFE' }
+  if (['xls', 'xlsx', 'csv'].includes(ft)) return { Icon: FileSpreadsheet, color: '#16A34A', bg: '#DCFCE7' }
+  if (['ppt', 'pptx'].includes(ft)) return { Icon: FileText, color: '#D97706', bg: '#FEF3C7' }
+  if (['zip', 'rar', '7z'].includes(ft)) return { Icon: Archive, color: '#7C3AED', bg: '#EDE9FE' }
+  return { Icon: File, color: '#64748B', bg: '#F1F5F9' }
+}
+
+function getFilenameFromUrl(url: string): string {
+  try {
+    const parts = url.split('/')
+    return decodeURIComponent(parts[parts.length - 1] || url)
+  } catch {
+    return url
+  }
+}
+
+function FileChip({ url, docs }: { url: string; docs: WebApiPortalDocument[] }) {
+  const matchedDoc = docs.find((d) => d.absoluteurl === url)
+  const filetype = matchedDoc?.filetype ?? url.split('.').pop() ?? null
+  const name = matchedDoc?.fullname ?? getFilenameFromUrl(url)
+  const { Icon, color, bg } = getFileIconForType(filetype)
+  const ext = (filetype ?? 'file').toUpperCase().slice(0, 4)
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex max-w-[140px] items-center gap-1.5 rounded-xl border border-[#DDEBFF] bg-white px-2 py-1.5 shadow-sm transition-all hover:border-[#286CFF]/50 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]"
+      title={name}
+    >
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded" style={{ backgroundColor: bg }}>
+        <Icon className="h-3 w-3" style={{ color }} />
+      </div>
+      <span className="rounded px-1 py-0.5 text-[8px] font-bold" style={{ backgroundColor: bg, color }}>
+        {ext}
+      </span>
+      <span className="truncate text-[10px] font-medium text-[#0F172A] dark:text-white">{name}</span>
+    </a>
+  )
+}
+
+function ReplyBubble({ reply, sharepointDocs }: { reply: ClarificationReply; sharepointDocs: WebApiPortalDocument[] }) {
   const style = ROLE_STYLE[reply.fromRole]
+  const fileUrls = getFileUrls(reply.fileUrl)
 
   return (
     <div className="flex gap-2.5">
@@ -70,6 +128,13 @@ function ReplyBubble({ reply }: { reply: ClarificationReply }) {
         <div className={cn('rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-[1.6] shadow-sm', style.bubble)}>
           {reply.message}
         </div>
+        {fileUrls.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {fileUrls.map((url, index) => (
+              <FileChip key={`${url}-${index}`} url={url} docs={sharepointDocs} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -84,6 +149,7 @@ function ClarificationCard({
   onToggle,
   onReply,
   onClose,
+  sharepointDocs,
 }: {
   clarification: Clarification
   index: number
@@ -91,10 +157,12 @@ function ClarificationCard({
   isEditMode: boolean
   isExpanded: boolean
   onToggle: () => void
-  onReply: (msg: string) => void
+  onReply: (msg: string, files?: File[]) => void
   onClose: () => void
+  sharepointDocs: WebApiPortalDocument[]
 }) {
   const [replyText, setReplyText] = useState('')
+  const [replyFiles, setReplyFiles] = useState<File[]>([])
   const [isReplying, setIsReplying] = useState(false)
 
   const style = ROLE_STYLE[clarification.raisedBy]
@@ -103,12 +171,14 @@ function ClarificationCard({
   const canReply = isOpen
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length
+  const clarificationFileUrls = getFileUrls(clarification.fileUrl)
 
   const handleSend = () => {
     const msg = replyText.trim()
     if (!msg) return
-    onReply(msg)
+    onReply(msg, replyFiles)
     setReplyText('')
+    setReplyFiles([])
     setIsReplying(false)
   }
 
@@ -170,6 +240,13 @@ function ClarificationCard({
         <p className={cn('text-sm leading-[1.65] text-[#0F172A] dark:text-white', !isExpanded && 'line-clamp-2')}>
           {clarification.message}
         </p>
+        {clarificationFileUrls.length > 0 && (
+          <span className="mt-2 flex flex-wrap gap-1.5">
+            {clarificationFileUrls.map((url, fileIndex) => (
+              <FileChip key={`${url}-${fileIndex}`} url={url} docs={sharepointDocs} />
+            ))}
+          </span>
+        )}
         <div className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 text-xs font-semibold text-[#286CFF] dark:text-[#4F98FF]">
             {isExpanded ? (
@@ -198,7 +275,7 @@ function ClarificationCard({
           {replyCount > 0 && (
             <div className="space-y-3 border-t border-[#F1F5F9] px-4 py-3.5 dark:border-white/5">
               {clarification.replies.map((reply) => (
-                <ReplyBubble key={reply.id} reply={reply} />
+                <ReplyBubble key={reply.id} reply={reply} sharepointDocs={sharepointDocs} />
               ))}
             </div>
           )}
@@ -233,7 +310,10 @@ function ClarificationCard({
                     className="resize-none rounded-xl border-[#D9E6F7] bg-white text-sm focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#0F172A]/30"
                     autoFocus
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <AttachmentIconPicker files={replyFiles} onChange={setReplyFiles} maxSizeMB={20} />
+                    </div>
                     <Button
                       size="sm"
                       onClick={handleSend}
@@ -247,12 +327,12 @@ function ClarificationCard({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => { setIsReplying(false); setReplyText('') }}
+                      onClick={() => { setIsReplying(false); setReplyText(''); setReplyFiles([]) }}
                       className="h-9 rounded-xl text-[#64748B]"
                     >
                       Cancel
                     </Button>
-                    <span className="ml-auto hidden text-[10px] text-[#94A3B8] sm:block">Ctrl/Cmd + Enter to send</span>
+                    <span className="hidden text-[10px] text-[#94A3B8] sm:block">Ctrl/Cmd + Enter to send</span>
                   </div>
                 </div>
               )}
@@ -270,6 +350,7 @@ export function ClarificationThread({
   isEditMode,
   onReply,
   onClose,
+  sharepointDocs = [],
 }: ClarificationThreadProps) {
   const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open')
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -395,8 +476,9 @@ export function ClarificationThread({
               isEditMode={isEditMode}
               isExpanded={expandedIds.has(clarification.id)}
               onToggle={() => toggleExpand(clarification.id)}
-              onReply={(message) => onReply(clarification.id, message)}
+              onReply={(message, files) => onReply(clarification.id, message, files)}
               onClose={() => onClose(clarification.id)}
+              sharepointDocs={sharepointDocs}
             />
           ))}
         </div>

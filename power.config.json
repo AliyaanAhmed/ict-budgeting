@@ -33,6 +33,18 @@
         "workflowDisplayName": "PowerAppV2 - Call Upload File Flow",
         "workflowName": "6175a29b-353e-7b35-6971-1a4102feb124"
       }
+    },
+    "7ca959af-be1d-4892-9e3f-588ac36a2c95": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ictbudget_clarificaitons_deletefilefromsharepoint"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "0651294b-0f4d-f111-bec6-7ced8d57ea77",
+        "workflowDisplayName": "ICT Budget / Clarificaitons - Delete File From SharePoint",
+        "workflowName": "cc9f4499-56a6-270a-7b9d-a9114b71a1a9"
+      }
     }
   },
   "databaseReferences": {

@@ -131,6 +131,36 @@ export async function getBudgetLineItemsByBudgetId(projectId: string) {
     .filter((record): record is BudgetLineItemRecord => record !== null)
 }
 
+export async function getBudgetLineItemsByBudgetIds(projectIds: string[]) {
+  const normalizedIds = Array.from(new Set(projectIds.map((id) => id.trim()).filter(Boolean)))
+  if (!normalizedIds.length) {
+    return [] as BudgetLineItemRecord[]
+  }
+
+  const serverFilter =
+    normalizedIds.length === 1 ? `_dga_ict_budget_value eq ${normalizedIds[0]}` : undefined
+
+  const [lineItemResult, classificationRecords] = await Promise.all([
+    Dga_ict_budget_line_itemsService.getAll({
+      select: SELECT_FIELDS,
+      ...(serverFilter ? { filter: serverFilter } : {}),
+      orderBy: ['dga_name asc'],
+    }),
+    getClassificationRecords(),
+  ])
+
+  const allowedProjectIds = new Set(normalizedIds)
+  const { nodeMap } = buildClassificationTree(classificationRecords)
+
+  return (lineItemResult.data ?? [])
+    .filter((record) => {
+      const budgetId = asString(record._dga_ict_budget_value)
+      return budgetId ? allowedProjectIds.has(budgetId) : false
+    })
+    .map((record) => normalizeLineItem(record, nodeMap))
+    .filter((record): record is BudgetLineItemRecord => record !== null)
+}
+
 export function toBudgetItemDraft(item: BudgetLineItemRecord): BudgetItemDraft {
   return {
     id: item.classificationId ?? item.id,

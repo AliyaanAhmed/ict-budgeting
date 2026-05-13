@@ -10,7 +10,7 @@ function fileToBase64(file: File): Promise<string> {
     reader.onload = () => {
       const result = reader.result as string
       const base64 = result.split(',')[1] ?? ''
-      console.log(`[FileUpload] Base64 conversion done for: ${file.name} — encoded length: ${base64.length} chars`)
+      console.log(`[FileUpload] Base64 conversion done for: ${file.name}; encoded length: ${base64.length} chars`)
       resolve(base64)
     }
     reader.onerror = (event) => {
@@ -21,10 +21,46 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
-export async function uploadFileToRecord(recordId: string, file: File): Promise<void> {
+// Extract the fileurl value from Power Automate's response JSON string.
+// The response format is: "File Uploaded Successfully - {\"fileurl\":\"https://...url with spaces...\", ...}"
+// A standard URL regex breaks on spaces, so we match by key name instead.
+function extractFileurlFromString(str: string): string | null {
+  const match = str.match(/"fileurl"\s*:\s*"([^"]+)"/i)
+  return match?.[1]?.trim() || null
+}
+
+function extractUploadedFileUrl(result: unknown, excludedUrls: string[]): string | null {
+  if (!result || typeof result !== 'object') return null
+  const data = (result as Record<string, unknown>).data
+
+  // Primary path: look for fileurl in result.data.response (the nested JSON string)
+  if (data && typeof data === 'object') {
+    const response = (data as Record<string, unknown>).response
+    if (typeof response === 'string') {
+      const url = extractFileurlFromString(response)
+      if (url && !excludedUrls.includes(url)) {
+        console.log('[FileUpload] Extracted fileurl from response JSON:', url)
+        return url
+      }
+    }
+  }
+
+  // Secondary path: look for fileurl anywhere in result (handles varied response shapes)
+  const resultStr = JSON.stringify(result)
+  const url = extractFileurlFromString(resultStr)
+  if (url && !excludedUrls.includes(url)) {
+    console.log('[FileUpload] Extracted fileurl via JSON.stringify fallback:', url)
+    return url
+  }
+
+  console.warn('[FileUpload] Could not extract fileurl from result:', result)
+  return null
+}
+
+export async function uploadFileToRecord(recordId: string, file: File): Promise<string | null> {
   const ext = (file.name.split('.').pop() ?? '').toLowerCase()
 
-  console.log(`[FileUpload] ── Starting upload ──────────────────────────`)
+  console.log('[FileUpload] Starting upload')
   console.log(`[FileUpload]   Record ID : ${recordId}`)
   console.log(`[FileUpload]   File name : ${file.name}`)
   console.log(`[FileUpload]   File type : ${ext}`)
@@ -42,28 +78,36 @@ export async function uploadFileToRecord(recordId: string, file: File): Promise<
     },
   })
 
-  console.log(`[FileUpload] Calling PowerAppV2 upload flow via Power Apps runtime...`)
+  console.log('[FileUpload] Calling PowerAppV2 upload flow via Power Apps runtime...')
 
   const result = await PowerAppV2_CallUploadFileFlowService.Run({
     text: payload,
     text_1: UPLOAD_TARGET_URL,
   })
 
-  console.log(`[FileUpload] Connector result:`, result)
+  console.log('[FileUpload] Connector result:', result)
 
   if (result.error) {
     console.error(`[FileUpload] Upload failed for "${file.name}":`, result.error)
     throw new Error(`Upload failed for "${file.name}": ${result.error.message ?? JSON.stringify(result.error)}`)
   }
 
-  console.log(`[FileUpload] ✓ Upload successful for: ${file.name}`)
+  const uploadedUrl = extractUploadedFileUrl(result, [UPLOAD_TARGET_URL])
+  console.log(`[FileUpload] Uploaded URL for "${file.name}":`, uploadedUrl)
+  console.log(`[FileUpload] Upload successful for: ${file.name}`)
+  return uploadedUrl
 }
 
-export async function uploadFilesToRecord(recordId: string, files: File[]): Promise<void> {
+export async function uploadFilesToRecord(recordId: string, files: File[]): Promise<string[]> {
   console.log(`[FileUpload] Uploading ${files.length} file(s) to record: ${recordId}`)
+  const uploadedUrls: string[] = []
+
   for (let i = 0; i < files.length; i++) {
     console.log(`[FileUpload] File ${i + 1}/${files.length}: ${files[i].name}`)
-    await uploadFileToRecord(recordId, files[i])
+    const uploadedUrl = await uploadFileToRecord(recordId, files[i])
+    if (uploadedUrl) uploadedUrls.push(uploadedUrl)
   }
+
   console.log(`[FileUpload] All ${files.length} file(s) uploaded successfully.`)
+  return uploadedUrls
 }

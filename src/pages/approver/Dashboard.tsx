@@ -40,6 +40,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
+import { useBudgetByCategoryChart } from '@/hooks/useDashboardBudgetCharts'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
@@ -221,6 +222,7 @@ export default function ApproverDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
+  const budgetByCategory = useBudgetByCategoryChart(liveProjects)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
@@ -879,7 +881,7 @@ export default function ApproverDashboard() {
                 Current cycle
               </span>
             </div>
-            <BudgetByCategory />
+            <BudgetByCategory data={budgetByCategory} />
           </CardContent>
         </Card>
 
@@ -971,15 +973,6 @@ export default function ApproverDashboard() {
                 </span>
               </div>
 
-              <div className="mb-5 flex justify-end">
-                <Button variant="outline" asChild className="h-10 rounded-2xl">
-                  <Link to="/approver/projects?tab=clarification">
-                    View All
-                    <MoveRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-
               <div className="space-y-3">
                 {clarificationMonitorItems.map((item) => (
                   <div
@@ -1006,6 +999,15 @@ export default function ApproverDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <Button variant="outline" asChild className="h-10 rounded-2xl">
+                  <Link to="/approver/projects?tab=clarification">
+                    View All
+                    <MoveRight className="h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
             </CardContent>
           </Card>
