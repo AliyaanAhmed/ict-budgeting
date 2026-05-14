@@ -1122,7 +1122,7 @@ export default function ProjectDetail() {
   const canSubmitToReviewer =
     currentRole === 'Respondent' &&
     isCurrentOwner &&
-    (project.status === 'Draft' || project.status === 'Clarification Required')
+    project.status === 'Draft'
   const canSubmitToApprover =
     currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Reviewer Review Completed'
   const canCompleteReview =
@@ -1229,6 +1229,17 @@ export default function ProjectDetail() {
   // ── SharePoint documents ─────────────────────────────────────────────────────
   const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
   const [sharepointDocsLoading, setSharepointDocsLoading] = useState(false)
+  const latestOpenClarification = [...localClarifications]
+    .filter((clarification) => clarification.status === 'Open')
+    .sort((left, right) => (right.date || '').localeCompare(left.date || ''))[0] ?? null
+  const clarificationReturnRole =
+    currentRole === 'Respondent' &&
+    project.status === 'Clarification Required' &&
+    latestOpenClarification &&
+    (latestOpenClarification.raisedBy === 'Reviewer' || latestOpenClarification.raisedBy === 'Approver')
+      ? latestOpenClarification.raisedBy
+      : null
+  const showClarificationReturnNotice = Boolean(clarificationReturnRole)
   const clarificationFileUrls = useMemo(() => {
     const urls = new Set<string>()
     for (const clarification of localClarifications) {
@@ -2572,36 +2583,61 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {!showLogs && !isEditMode && (
-        <div
-          className={cn(
-            'flex flex-wrap items-start gap-3 rounded-2xl border px-4 py-3 shadow-sm',
-            showPendingNotice
-              ? 'border-[#F5D0A9] bg-[#FFF7ED] dark:border-[#EA580C]/30 dark:bg-[#431407]/40'
-              : 'border-[#BFD8FF] bg-[#EFF6FF] dark:border-[#286CFF]/20 dark:bg-[#10213B]'
-          )}
-        >
+        {!showLogs && !isEditMode && (
           <div
             className={cn(
-              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white',
-              showPendingNotice ? 'bg-[#F97316]' : 'bg-[#286CFF]'
+              'flex flex-wrap items-start gap-3 rounded-2xl border px-4 py-3 shadow-sm',
+              showClarificationReturnNotice
+                ? 'border-[#C7D2FE] bg-[#EEF2FF] dark:border-[#6366F1]/30 dark:bg-[#1E1B4B]/35'
+                : showPendingNotice
+                ? 'border-[#F5D0A9] bg-[#FFF7ED] dark:border-[#EA580C]/30 dark:bg-[#431407]/40'
+                : 'border-[#BFD8FF] bg-[#EFF6FF] dark:border-[#286CFF]/20 dark:bg-[#10213B]'
             )}
           >
-            {showPendingNotice ? <History className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className={cn('text-sm font-semibold', showPendingNotice ? 'text-[#C2410C] dark:text-orange-300' : 'text-[#286CFF]')}>
-              {showPendingNotice
-                ? `Pending with ${workflowOwner}`
-                : canCurrentRoleEdit
-                  ? `${currentRole} actions available`
-                  : 'Read-only workflow state'}
-            </p>
-            <p className="text-xs text-[#64748B] dark:text-slate-300">
-              {showPendingNotice
-                ? pendingNoticeText
-                : canCurrentRoleEdit
-                  ? `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
+            <div
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white',
+                showClarificationReturnNotice
+                  ? 'bg-[#6366F1]'
+                  : showPendingNotice
+                    ? 'bg-[#F97316]'
+                    : 'bg-[#286CFF]'
+              )}
+            >
+              {showClarificationReturnNotice ? (
+                <MessageSquare className="h-4 w-4" />
+              ) : showPendingNotice ? (
+                <History className="h-4 w-4" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p
+                className={cn(
+                  'text-sm font-semibold',
+                  showClarificationReturnNotice
+                    ? 'text-[#4338CA] dark:text-indigo-300'
+                    : showPendingNotice
+                      ? 'text-[#C2410C] dark:text-orange-300'
+                      : 'text-[#286CFF]'
+                )}
+              >
+                {showClarificationReturnNotice
+                  ? `Reply Returns To ${clarificationReturnRole}`
+                  : showPendingNotice
+                  ? `Pending with ${workflowOwner}`
+                  : canCurrentRoleEdit
+                    ? `${currentRole} actions available`
+                    : 'Read-only workflow state'}
+              </p>
+              <p className="text-xs text-[#64748B] dark:text-slate-300">
+                {showClarificationReturnNotice
+                  ? `Reply to the latest clarification below and this ICT budget will automatically be assigned back to ${clarificationReturnRole}. You do not need to submit it manually from Quick Actions.`
+                  : showPendingNotice
+                  ? pendingNoticeText
+                  : canCurrentRoleEdit
+                    ? `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
                   : 'This project is currently read-only, but the clarification thread remains available for all roles.'}
             </p>
           </div>
