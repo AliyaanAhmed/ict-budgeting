@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Bell,
   Sun,
@@ -93,12 +93,14 @@ export function Header({
 }: HeaderProps) {
   const { activeRole, setActiveRole, availableRoles } = useRole()
   const [notifOpen, setNotifOpen] = useState(false)
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppNotificationItem[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationError, setNotificationError] = useState<string | null>(null)
   const [closingNotificationIds, setClosingNotificationIds] = useState<string[]>([])
   const [markingAllRead, setMarkingAllRead] = useState(false)
   const unreadCount = notifications.filter((n) => !closingNotificationIds.includes(n.id)).length
+  const notificationContainerRef = useRef<HTMLDivElement>(null)
 
   // Resolve display name from stored user context (falls back to placeholder)
   const storedUser = getStoredUserContext()
@@ -136,6 +138,23 @@ export function Header({
       cancelled = true
     }
   }, [activeRole])
+
+  useEffect(() => {
+    if (!notifOpen) return
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (notificationContainerRef.current?.contains(target)) return
+      setNotifOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+    }
+  }, [notifOpen])
 
   const handleMarkAsRead = async (notificationId: string) => {
     setClosingNotificationIds((current) =>
@@ -229,9 +248,12 @@ export function Header({
         </button>
 
         {/* Notifications */}
-        <div className="relative">
+        <div ref={notificationContainerRef} className="relative">
           <button
-            onClick={() => setNotifOpen(!notifOpen)}
+            onClick={() => {
+              setNotifOpen((current) => !current)
+              setRoleMenuOpen(false)
+            }}
             className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--primary)] hover:bg-[var(--muted)] transition-colors"
           >
             <Bell className="h-4 w-4" />
@@ -242,31 +264,43 @@ export function Header({
             )}
           </button>
           {notifOpen && (
-            <div className="absolute right-0 top-10 w-80 rounded-[12px] border border-[var(--border)] bg-[var(--surface)] shadow-lg z-50">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-                <p className="font-semibold text-sm text-[var(--foreground)]">Notifications</p>
-                <button
-                  type="button"
-                  onClick={handleMarkAllAsRead}
-                  disabled={markingAllRead || notifications.length === 0}
-                  className="text-xs font-medium text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Mark all as read
-                </button>
+            <div className="absolute right-0 top-10 z-50 w-[360px] overflow-hidden rounded-[22px] border border-[#DDEBFF] bg-white shadow-[0_20px_45px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="border-b border-[#DDEBFF] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-[#0F172A]/70">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-sm">
+                      <Bell className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-[var(--foreground)]">Notifications</p>
+                      <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-300">
+                        {unreadCount > 0 ? `${unreadCount} open item${unreadCount > 1 ? 's' : ''}` : 'All caught up'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleMarkAllAsRead}
+                    disabled={markingAllRead || notifications.length === 0}
+                    className="inline-flex items-center rounded-full border border-[#B0DBFF] bg-white px-3 py-1.5 text-xs font-semibold text-[#286CFF] shadow-sm transition-colors hover:bg-[#E7F5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/15"
+                  >
+                    {markingAllRead ? 'Marking...' : 'Mark All as Read'}
+                  </button>
+                </div>
               </div>
-              <div className="max-h-[248px] overflow-y-auto">
+              <div className="max-h-[282px] overflow-y-auto bg-[#F8FBFF] p-3 dark:bg-[#0F172A]/20">
                 {notificationsLoading && (
-                  <div className="px-4 py-6 text-sm text-[var(--muted-foreground)]">
+                  <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)] shadow-sm dark:border-white/10 dark:bg-white/5">
                     Loading notifications...
                   </div>
                 )}
                 {!notificationsLoading && notificationError && (
-                  <div className="px-4 py-6 text-sm text-[var(--destructive)]">
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-6 text-sm text-[var(--destructive)] dark:border-red-700/30 dark:bg-red-900/20">
                     {notificationError}
                   </div>
                 )}
                 {!notificationsLoading && !notificationError && notifications.length === 0 && (
-                  <div className="px-4 py-6 text-sm text-[var(--muted-foreground)]">
+                  <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-6 text-sm text-[var(--muted-foreground)] shadow-sm dark:border-white/10 dark:bg-white/5">
                     No open notifications.
                   </div>
                 )}
@@ -279,30 +313,32 @@ export function Header({
                       <div
                         key={notification.id}
                         className={cn(
-                          'px-4 py-3 border-b border-[var(--muted)] bg-[#EAF2FF] dark:bg-[#286CFF]/15 transition-all duration-200',
+                          'mb-3 rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#B0DBFF] hover:shadow-[0_14px_30px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-white/5',
                           isClosing && 'opacity-0 scale-[0.98]'
                         )}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-[var(--foreground)]">
-                              {notification.notificationId}
-                            </p>
-                            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                              {notification.text}
-                            </p>
-                            <p className="mt-1 text-xs text-[#94A3B8]">
-                              {formatNotificationTime(notification.createdOn)}
-                            </p>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="inline-flex rounded-full border border-[#B0DBFF] bg-[#E7F5FF] px-2.5 py-1 text-[11px] font-semibold text-[#286CFF] dark:border-[#4F98FF]/30 dark:bg-[#286CFF]/15 dark:text-slate-100">
+                                {notification.notificationId}
+                              </span>
+                              <span className="truncate text-[11px] font-medium text-[#94A3B8]">
+                                {formatNotificationTime(notification.createdOn)}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleMarkAsRead(notification.id)}
+                              disabled={isClosing}
+                              className="shrink-0 rounded-full border border-[#B0DBFF] bg-white px-3 py-1.5 text-xs font-semibold text-[#286CFF] shadow-sm transition-colors hover:bg-[#E7F5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/10 dark:text-slate-100 dark:hover:bg-white/15"
+                            >
+                              Mark as Read
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleMarkAsRead(notification.id)}
-                            disabled={isClosing}
-                            className="shrink-0 text-xs font-medium text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Mark as read
-                          </button>
+                          <p className="text-sm font-medium leading-6 text-[var(--foreground)]">
+                            {notification.text}
+                          </p>
                         </div>
                       </div>
                     )
@@ -313,7 +349,15 @@ export function Header({
         </div>
 
         {/* Profile + role switcher */}
-        <DropdownMenu>
+        <DropdownMenu
+          open={roleMenuOpen}
+          onOpenChange={(open) => {
+            setRoleMenuOpen(open)
+            if (open) {
+              setNotifOpen(false)
+            }
+          }}
+        >
           <DropdownMenuTrigger className="flex items-center gap-2 h-9 px-2 sm:px-3 rounded-xl border border-[var(--border)] hover:bg-[var(--muted)] transition-colors">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)] text-white text-xs font-semibold">
               {initials}
@@ -355,7 +399,10 @@ export function Header({
               return (
                 <DropdownMenuItem
                   key={role}
-                  onClick={() => setActiveRole(role)}
+                  onClick={() => {
+                    setActiveRole(role)
+                    setRoleMenuOpen(false)
+                  }}
                   className={cn(
                     'rounded-xl p-3 mb-1 items-start',
                     activeRole === role &&

@@ -51,13 +51,25 @@ function formatDocName(fullname: string | null, maxBase = 16): string {
   return `${base}${ext}`
 }
 
+function normalizeDocumentUrl(value: string | null | undefined) {
+  if (!value?.trim()) return null
+
+  try {
+    const parsed = new URL(value)
+    const pathname = decodeURIComponent(parsed.pathname).replace(/\/+$/, '')
+    return `${parsed.origin}${pathname}`.toLowerCase()
+  } catch {
+    return value.trim().replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase()
+  }
+}
+
 // ─── Document card ─────────────────────────────────────────────────────────────
 
 interface DocumentCardProps {
   doc: WebApiPortalDocument
   isClarificationFile: boolean
   isDeleting: boolean
-  onDelete: () => void
+  onDelete?: (() => void) | undefined
 }
 
 function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: DocumentCardProps) {
@@ -73,6 +85,7 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (!onDelete) return
     onDelete()
   }
 
@@ -121,6 +134,7 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
       </div>
 
       {/* Delete button — appears on hover */}
+      {onDelete && (
       <button
         type="button"
         onClick={handleDelete}
@@ -139,6 +153,7 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
           <Trash2 className="h-3 w-3" />
         )}
       </button>
+      )}
     </div>
   )
 }
@@ -163,7 +178,7 @@ export interface SupportingDocumentsProps {
   docs: WebApiPortalDocument[]
   loading: boolean
   clarificationFileUrls: Set<string>
-  onDelete: (doc: WebApiPortalDocument) => Promise<void>
+  onDelete?: ((doc: WebApiPortalDocument) => Promise<void>) | undefined
 }
 
 export function SupportingDocuments({
@@ -175,7 +190,7 @@ export function SupportingDocuments({
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const handleDelete = async (doc: WebApiPortalDocument) => {
-    if (deletingId) return
+    if (!onDelete || deletingId) return
     setDeletingId(doc.sharepointdocumentid)
     try {
       await onDelete(doc)
@@ -210,9 +225,11 @@ export function SupportingDocuments({
         <DocumentCard
           key={doc.sharepointdocumentid}
           doc={doc}
-          isClarificationFile={Boolean(doc.absoluteurl && clarificationFileUrls.has(doc.absoluteurl))}
+          isClarificationFile={Boolean(
+            doc.absoluteurl && clarificationFileUrls.has(normalizeDocumentUrl(doc.absoluteurl) ?? '')
+          )}
           isDeleting={deletingId === doc.sharepointdocumentid}
-          onDelete={() => void handleDelete(doc)}
+          onDelete={onDelete ? () => void handleDelete(doc) : undefined}
         />
       ))}
     </div>

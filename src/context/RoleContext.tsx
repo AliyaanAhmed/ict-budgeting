@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import type { Role } from '@/data/db'
 import type { UserTeam } from '@/services/userContextService'
 import { SESSION_USER_TEAMS_KEY } from '@/services/userContextService'
+import { currentUserHasSystemAdministratorRole } from '@/services/systemAdminRoleService'
 
 export const SESSION_CURRENT_ROLE_KEY = 'currentRole'
 
@@ -12,7 +13,7 @@ const ROLE_DISPLAY_NAME: Record<Role, string> = {
   'ICT Admin': 'ICT Admin',
 }
 
-const ALL_ROLES: Role[] = ['Respondent', 'Reviewer', 'Approver', 'ICT Admin']
+const NON_ADMIN_ROLES: Role[] = ['Respondent', 'Reviewer', 'Approver']
 
 interface RoleContextType {
   activeRole: Role
@@ -23,40 +24,63 @@ interface RoleContextType {
 const RoleContext = createContext<RoleContextType>({
   activeRole: 'Respondent',
   setActiveRole: () => {},
-  availableRoles: ALL_ROLES,
+  availableRoles: NON_ADMIN_ROLES,
 })
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [activeRole, setActiveRoleState] = useState<Role>('Respondent')
-  const [availableRoles, setAvailableRoles] = useState<Role[]>(ALL_ROLES)
+  const [availableRoles, setAvailableRoles] = useState<Role[]>(NON_ADMIN_ROLES)
 
   useEffect(() => {
-    const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
-    if (raw) {
-      try {
-        const teams: UserTeam[] = JSON.parse(raw)
-        // Extract roles that exist in the ALL_ROLES list
-        const teamRoles = teams
-          .map(t => t.role as Role)
-          .filter(r => (ALL_ROLES as string[]).includes(r))
+    let cancelled = false
 
-        if (teamRoles.length > 0) {
-          // Always include ICT Admin alongside team-based roles
-          const roles: Role[] = [...new Set([...teamRoles, 'ICT Admin' as Role])]
-          setAvailableRoles(roles)
-          // Set first team role (not ICT Admin) as the active default
-          setActiveRoleState(teamRoles[0])
-          sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME[teamRoles[0]])
-        } else {
-          // No team memberships found — show all roles as fallback
-          sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME['Respondent'])
+    const syncAvailableRoles = async () => {
+      const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
+      let resolvedRoles: Role[] = NON_ADMIN_ROLES
+
+      if (raw) {
+        try {
+          const teams: UserTeam[] = JSON.parse(raw)
+          const teamRoles = teams
+            .map((t) => t.role as Role)
+            .filter((r) => (NON_ADMIN_ROLES as string[]).includes(r))
+
+          if (teamRoles.length > 0) {
+            resolvedRoles = [...new Set(teamRoles)]
+            if (!cancelled) {
+              setActiveRoleState(teamRoles[0])
+              sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME[teamRoles[0]])
+            }
+          } else if (!cancelled) {
+            sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME['Respondent'])
+          }
+        } catch {
+          if (!cancelled) {
+            sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME['Respondent'])
+          }
         }
-      } catch {
+      } else if (!cancelled) {
         sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME['Respondent'])
       }
-    } else {
-      // No teams in storage (local dev or before init) — keep all roles
-      sessionStorage.setItem(SESSION_CURRENT_ROLE_KEY, ROLE_DISPLAY_NAME['Respondent'])
+
+      try {
+        const isSystemAdmin = await currentUserHasSystemAdministratorRole()
+        if (isSystemAdmin) {
+          resolvedRoles = [...new Set([...resolvedRoles, 'ICT Admin' as Role])]
+        }
+      } catch (error) {
+        console.error('[RoleContext] Failed to determine System Administrator access:', error)
+      }
+
+      if (!cancelled) {
+        setAvailableRoles(resolvedRoles)
+      }
+    }
+
+    void syncAvailableRoles()
+
+    return () => {
+      cancelled = true
     }
   }, [])
 

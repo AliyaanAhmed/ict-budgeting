@@ -12,6 +12,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "audits": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "auditid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_app_notificationses": {
     "tableId": "",
     "version": "",
@@ -89,10 +96,24 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "roles": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "roleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_strategic_prioritieses": {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_strategic_prioritiesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "systemuserrolescollection": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserroleid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

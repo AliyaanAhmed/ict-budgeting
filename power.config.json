@@ -142,6 +142,16 @@
           "entitySetName": "dga_app_notificationses",
           "logicalName": "dga_app_notifications",
           "isHidden": false
+        },
+        "systemuserroles": {
+          "entitySetName": "systemuserrolescollection",
+          "logicalName": "systemuserroles",
+          "isHidden": false
+        },
+        "securityroles": {
+          "entitySetName": "roles",
+          "logicalName": "role",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

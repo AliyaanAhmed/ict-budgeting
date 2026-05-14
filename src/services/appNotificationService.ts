@@ -62,8 +62,28 @@ function getFormattedAnnotation(record: unknown, key: string) {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function generateNotificationId() {
-  return `N-${Date.now()}`
+async function generateNotificationId() {
+  const result = await Dga_app_notificationsesService.getAll({
+    select: ['dga_notification_id', 'createdon'],
+    orderBy: ['createdon desc'],
+    top: 1,
+  })
+
+  if (!result.success) {
+    console.warn('[AppNotificationService] Failed to fetch latest notification id, defaulting to N-001')
+    return 'N-001'
+  }
+
+  const latestId = result.data?.[0]?.dga_notification_id?.trim() || ''
+  const latestNumber = Number.parseInt(latestId.replace(/[^0-9]/g, ''), 10)
+  const nextNumber =
+    Number.isFinite(latestNumber) && latestNumber > 0
+      ? latestNumber >= 999
+        ? 1
+        : latestNumber + 1
+      : 1
+
+  return `N-${String(nextNumber).padStart(3, '0')}`
 }
 
 function mapNotificationRecord(
@@ -100,8 +120,9 @@ export async function createNotificationForRole(role: NotificationRole, text: st
     return null
   }
 
+  const notificationId = await generateNotificationId()
   const payload = {
-    dga_notification_id: generateNotificationId(),
+    dga_notification_id: notificationId,
     'dga_notification_recipient_team@odata.bind': `/teams(${teamId})`,
     dga_notification_text: text,
     statuscode: NOTIFICATION_STATUS_OPEN,

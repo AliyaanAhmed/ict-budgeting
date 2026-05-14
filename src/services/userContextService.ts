@@ -85,29 +85,21 @@ function setSessionJson(key: string, value: unknown) {
 function storeModuleTypeId(moduleTypeId: string | null) {
   if (moduleTypeId) {
     sessionStorage.setItem(SESSION_MODULE_TYPE_ID_KEY, moduleTypeId)
-    console.log(`[UserContext][ModuleType] sessionStorage["${SESSION_MODULE_TYPE_ID_KEY}"] = "${moduleTypeId}"`)
   } else {
     sessionStorage.removeItem(SESSION_MODULE_TYPE_ID_KEY)
-    console.warn(`[UserContext][ModuleType] No ICT Budgeting module type found, removed "${SESSION_MODULE_TYPE_ID_KEY}"`)
   }
 }
 
 function storeModuleConfigTeamIds(payload: ModuleConfigTeamIds) {
   setSessionJson(SESSION_MODULE_CONFIG_TEAM_IDS_KEY, payload)
-  console.log(`[UserContext][ModuleConfigTeams] sessionStorage["${SESSION_MODULE_CONFIG_TEAM_IDS_KEY}"] =`, payload)
 }
 
 async function fetchAndStoreIctBudgetingModuleTypeId(): Promise<string | null> {
-  console.log('[UserContext][ModuleType] Fetching module types using the same pattern as cycle creation...')
-
   try {
     const result = await Dga_module_typesService.getAll({
       select: ['dga_module_typeid', 'dga_module_name'],
       orderBy: ['dga_module_name asc'],
     })
-
-    console.log('[UserContext][ModuleType] getAll result:', result)
-
     const moduleTypes = result.data ?? []
     const match =
       moduleTypes.find((item) => item.dga_module_name?.trim().toLowerCase() === 'ict budgeting') ??
@@ -121,7 +113,6 @@ async function fetchAndStoreIctBudgetingModuleTypeId(): Promise<string | null> {
     storeModuleTypeId(moduleTypeId)
     return moduleTypeId
   } catch (error) {
-    console.error('[UserContext][ModuleType] Failed to fetch module type id:', error)
     storeModuleTypeId(null)
     return null
   }
@@ -129,13 +120,11 @@ async function fetchAndStoreIctBudgetingModuleTypeId(): Promise<string | null> {
 
 async function fetchAndStoreModuleConfigTeamIds(accountId: string | null, moduleTypeId: string | null): Promise<void> {
   if (!accountId || !moduleTypeId) {
-    console.warn('[UserContext][ModuleConfigTeams] Missing accountId or moduleTypeId, storing empty team object.')
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     return
   }
 
   const filter = `(_dga_account_value eq ${accountId} and _dga_module_type_value eq ${moduleTypeId})`
-  console.log('[UserContext][ModuleConfigTeams] Fetching module config with filter:', filter)
 
   try {
     const result = await Dga_module_configurationsService.getAll({
@@ -149,9 +138,6 @@ async function fetchAndStoreModuleConfigTeamIds(accountId: string | null, module
       filter,
       top: 1,
     })
-
-    console.log('[UserContext][ModuleConfigTeams] getAll result:', result)
-
     const record = result.data?.[0]
     const payload: ModuleConfigTeamIds = {
       respondentTeamId: record?._dga_respondent_team_value ?? null,
@@ -161,14 +147,11 @@ async function fetchAndStoreModuleConfigTeamIds(accountId: string | null, module
 
     storeModuleConfigTeamIds(payload)
   } catch (error) {
-    console.error('[UserContext][ModuleConfigTeams] Failed to fetch module configuration:', error)
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
   }
 }
 
 async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: string | null): Promise<void> {
-  console.log('[UserContext][Teams] Fetching team memberships for system user:', systemUserId)
-
   let memberships
   try {
     memberships = await TeammembershipsService.getAll({
@@ -176,16 +159,12 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
       filter: `systemuserid eq ${systemUserId}`,
     })
   } catch (error) {
-    console.error('[UserContext][Teams] Failed to fetch team memberships:', error)
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     return
   }
 
-  console.log('[UserContext][Teams] Team memberships result:', memberships)
-
   const teamIds = (memberships.data ?? []).map((item) => item.teamid).filter(Boolean)
   if (!teamIds.length) {
-    console.warn('[UserContext][Teams] No team ids found for current user.')
     sessionStorage.setItem(SESSION_USER_TEAMS_KEY, JSON.stringify([]))
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     return
@@ -198,7 +177,6 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
   ].join(' or ')
 
   const configFilter = moduleTypeId ? `(${roleFilter}) and _dga_module_type_value eq ${moduleTypeId}` : roleFilter
-  console.log('[UserContext][Teams] Fetching module configurations with filter:', configFilter)
 
   let moduleConfigs
   try {
@@ -215,16 +193,12 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
       filter: configFilter,
     })
   } catch (error) {
-    console.error('[UserContext][Teams] Failed to fetch module configurations:', error)
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     return
   }
 
-  console.log('[UserContext][Teams] Module configuration result:', moduleConfigs)
-
   const configs = moduleConfigs.data ?? []
   if (!configs.length) {
-    console.warn('[UserContext][Teams] No module configurations matched the current user teams.')
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     return
   }
@@ -258,10 +232,6 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
     pickRole(config._dga_approver_team_value, 'Approver')
   }
 
-  console.log('[UserContext][Teams] roleTeamMap:', roleTeamMap)
-  console.log('[UserContext][Teams] roleAccountMap:', roleAccountMap)
-  console.log('[UserContext][Teams] roleModuleConfigMap:', roleModuleConfigMap)
-
   const userTeamIds = Object.values(roleTeamMap).filter(Boolean) as string[]
   const teamNameMap: Record<string, string> = {}
 
@@ -272,16 +242,12 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
         select: ['teamid', 'name'],
         filter: teamFilter,
       })
-
-      console.log('[UserContext][Teams] Teams result:', teamsResult)
-
       for (const team of teamsResult.data ?? []) {
         if (team.teamid && team.name) {
           teamNameMap[team.teamid] = team.name
         }
       }
-    } catch (error) {
-      console.error('[UserContext][Teams] Failed to fetch team names:', error)
+    } catch {
     }
   }
 
@@ -294,8 +260,7 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
       if (accountResult.success && accountResult.data?.name) {
         accountNameMap[accountId] = accountResult.data.name
       }
-    } catch (error) {
-      console.error('[UserContext][Teams] Failed to fetch account name for account:', accountId, error)
+    } catch {
     }
   }
 
@@ -313,7 +278,6 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
     .filter((item): item is UserTeam => item !== null)
 
   setSessionJson(SESSION_USER_TEAMS_KEY, userTeams)
-  console.log(`[UserContext][Teams] sessionStorage["${SESSION_USER_TEAMS_KEY}"] =`, userTeams)
 
   for (const role of ['Respondent', 'Reviewer', 'Approver'] as TeamRole[]) {
     const accountId = roleAccountMap[role]
@@ -341,19 +305,12 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
     roleAccountMap.Approver ??
     uniqueAccountIds[0] ??
     null
-
-  console.log('[UserContext][ModuleConfigTeams] Available account id for exact module config lookup:', availableAccountId)
-  console.log('[UserContext][ModuleConfigTeams] Module type id for exact module config lookup:', moduleTypeId)
-
   await fetchAndStoreModuleConfigTeamIds(availableAccountId, moduleTypeId)
 }
 
 export async function initUserContext(): Promise<void> {
-  console.log('[UserContext] Initializing user context...')
-
   try {
     const ctx = await getContext()
-    console.log('[UserContext] getContext() raw response:', ctx)
 
     const objectId = ctx.user.objectId ?? ''
     const userContext: AppUserContext = {
@@ -389,9 +346,6 @@ export async function initUserContext(): Promise<void> {
           ],
           filter: `azureactivedirectoryobjectid eq ${objectId}`,
         })
-
-        console.log('[UserContext] Systemusers result:', systemUsers)
-
         const systemUser = systemUsers.data?.[0]
         if (systemUser) {
           userContext.systemUserId = systemUser.systemuserid ?? ''
@@ -403,17 +357,14 @@ export async function initUserContext(): Promise<void> {
           userContext.organizationId = systemUser.organizationid ?? ''
           userContext.organizationName = systemUser.organizationidname ?? ''
         }
-      } catch (error) {
-        console.error('[UserContext] Failed to fetch system user:', error)
+      } catch {
       }
     }
 
     setSessionJson(SESSION_USER_KEY, userContext)
-    console.log(`[UserContext] sessionStorage["${SESSION_USER_KEY}"] =`, userContext)
 
     if (userContext.systemUserId) {
       sessionStorage.setItem(SESSION_USER_ID_KEY, userContext.systemUserId)
-      console.log(`[UserContext] sessionStorage["${SESSION_USER_ID_KEY}"] = "${userContext.systemUserId}"`)
     } else {
       sessionStorage.removeItem(SESSION_USER_ID_KEY)
     }
@@ -423,12 +374,9 @@ export async function initUserContext(): Promise<void> {
     if (userContext.systemUserId) {
       await fetchUserTeamsAndAccounts(userContext.systemUserId, moduleTypeId)
     } else {
-      console.warn('[UserContext] systemUserId is empty, skipping team and module configuration boot.')
       storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     }
-  } catch (error) {
-    console.error('[UserContext] getContext() failed:', error)
-    console.warn(`[UserContext] sessionStorage key "${SESSION_USER_KEY}" was not set.`)
+  } catch {
     storeModuleTypeId(null)
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
   }

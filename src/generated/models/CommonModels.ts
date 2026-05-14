@@ -5,11 +5,13 @@
 
 export interface IGetOptions {
   select?: string[];
+  expand?: string[];
 };
 
 export interface IGetAllOptions {
   maxPageSize?: number;
   select?: string[];
+  expand?: string[];
   filter?: string;
   orderBy?: string[];
   top?: number;

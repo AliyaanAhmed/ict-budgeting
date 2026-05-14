@@ -476,6 +476,38 @@ function toPlainTextSummary(value: string | null | undefined) {
     .trim()
 }
 
+function splitStoredFileUrls(value: string | undefined) {
+  return (value ?? '')
+    .split(/[,\n]/)
+    .map((url) => url.trim())
+    .filter(Boolean)
+}
+
+function normalizeDocumentUrl(value: string | null | undefined) {
+  if (!value?.trim()) return null
+
+  try {
+    const parsed = new URL(value)
+    const pathname = decodeURIComponent(parsed.pathname).replace(/\/+$/, '')
+    return `${parsed.origin}${pathname}`.toLowerCase()
+  } catch {
+    return value.trim().replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase()
+  }
+}
+
+function getFileNameFromUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    const pathname = decodeURIComponent(parsed.pathname)
+    const segments = pathname.split('/').filter(Boolean)
+    return segments[segments.length - 1] || value
+  } catch {
+    const sanitized = value.split(/[?#]/)[0]
+    const segments = sanitized.split('/').filter(Boolean)
+    return decodeURIComponent(segments[segments.length - 1] || value)
+  }
+}
+
 function DetailPageLoadingShell() {
   return (
     <div className="w-full space-y-5 lg:pr-24 xl:pr-28 2xl:pr-32">
@@ -1189,15 +1221,75 @@ export default function ProjectDetail() {
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
+  const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
+  const [clarificationsLoading, setClarificationsLoading] = useState(false)
+  const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
+  const [pendingClarificationReply, setPendingClarificationReply] = useState<PendingClarificationReply | null>(null)
 
   // ── SharePoint documents ─────────────────────────────────────────────────────
   const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
   const [sharepointDocsLoading, setSharepointDocsLoading] = useState(false)
+  const clarificationFileUrls = useMemo(() => {
+    const urls = new Set<string>()
+    for (const clarification of localClarifications) {
+      for (const url of splitStoredFileUrls(clarification.fileUrl)) {
+        const normalized = normalizeDocumentUrl(url)
+        if (normalized) urls.add(normalized)
+      }
+      for (const reply of clarification.replies) {
+        for (const url of splitStoredFileUrls(reply.fileUrl)) {
+          const normalized = normalizeDocumentUrl(url)
+          if (normalized) urls.add(normalized)
+        }
+      }
+    }
+    return urls
+  }, [localClarifications])
+  const supportingDocuments = useMemo<WebApiPortalDocument[]>(() => {
+    const normalizedExisting = new Set<string>()
+    const merged = [...sharepointDocs]
+
+    for (const doc of sharepointDocs) {
+      const normalized = normalizeDocumentUrl(doc.absoluteurl)
+      if (normalized) {
+        normalizedExisting.add(normalized)
+      }
+    }
+
+    for (const normalizedUrl of clarificationFileUrls) {
+      if (normalizedExisting.has(normalizedUrl)) continue
+
+      const fileName = getFileNameFromUrl(normalizedUrl)
+      const extension = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() ?? null : null
+
+      merged.push({
+        sharepointdocumentid: `clarification-url:${normalizedUrl}`,
+        documentid: null,
+        fullname: fileName,
+        relativelocation: fileName,
+        sharepointcreatedon: null,
+        filetype: extension,
+        absoluteurl: normalizedUrl,
+        modified: null,
+        sharepointmodifiedby: null,
+        title: fileName,
+        readurl: normalizedUrl,
+        editurl: null,
+        author: null,
+        ischeckedout: false,
+        locationid: null,
+        iconclassname: null,
+      })
+    }
+
+    return merged
+  }, [clarificationFileUrls, sharepointDocs])
   const hasSupportingDocuments =
-    sharepointDocs.length > 0 || (!hasDataverseBudgetProject && project.documents.length > 0)
+      supportingDocuments.length > 0 || (!hasDataverseBudgetProject && project.documents.length > 0)
   const documentStatus = sharepointDocsLoading ? 'Loading' : hasSupportingDocuments ? 'Complete' : 'Missing'
   const documentTone =
     documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
+  const canDeleteDocuments = currentRole === 'Respondent' && isEditMode
 
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -1777,11 +1869,6 @@ export default function ProjectDetail() {
   }
 
   // ── Clarification State ──────────────────────────────────────────────────────
-  const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
-  const [clarificationsLoading, setClarificationsLoading] = useState(false)
-  const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
-  const [pendingClarificationReply, setPendingClarificationReply] = useState<PendingClarificationReply | null>(null)
-
   useEffect(() => {
     let cancelled = false
 
@@ -1817,23 +1904,10 @@ export default function ProjectDetail() {
     }
   }, [ictBudgetId, project.clarifications])
 
-  // Build a set of all SharePoint URLs referenced in clarification fileUrl fields
-  const clarificationFileUrls = useMemo(() => {
-    const urls = new Set<string>()
-    for (const c of localClarifications) {
-      for (const url of (c.fileUrl ?? '').split(/[,\n]/).map((u) => u.trim()).filter(Boolean)) {
-        urls.add(url)
-      }
-      for (const r of c.replies) {
-        for (const url of (r.fileUrl ?? '').split(/[,\n]/).map((u) => u.trim()).filter(Boolean)) {
-          urls.add(url)
-        }
-      }
-    }
-    return urls
-  }, [localClarifications])
-
   const handleDeleteDocument = async (doc: WebApiPortalDocument) => {
+    if (doc.sharepointdocumentid.startsWith('clarification-url:')) {
+      return
+    }
     await deleteSharePointDocument(doc)
     setSharepointDocs((prev) => prev.filter((d) => d.sharepointdocumentid !== doc.sharepointdocumentid))
   }
@@ -2864,10 +2938,10 @@ export default function ProjectDetail() {
               >
                 <div className="mb-4">
                   <SupportingDocuments
-                    docs={sharepointDocs}
+                    docs={supportingDocuments}
                     loading={sharepointDocsLoading}
                     clarificationFileUrls={clarificationFileUrls}
-                    onDelete={handleDeleteDocument}
+                    onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
                   />
                 </div>
                 {currentRole === 'Respondent' && (
@@ -2889,7 +2963,7 @@ export default function ProjectDetail() {
                     isEditMode={isEditMode}
                     onReply={handleClarificationReply}
                     onClose={handleClarificationClose}
-                    sharepointDocs={sharepointDocs}
+                    sharepointDocs={supportingDocuments}
                   />
                 </DetailSection>
               )}
@@ -2977,10 +3051,10 @@ export default function ProjectDetail() {
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
                 <SupportingDocuments
-                  docs={sharepointDocs}
+                  docs={supportingDocuments}
                   loading={sharepointDocsLoading}
                   clarificationFileUrls={clarificationFileUrls}
-                  onDelete={handleDeleteDocument}
+                  onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
                 />
               </DetailSection>
 
@@ -2998,7 +3072,7 @@ export default function ProjectDetail() {
                     isEditMode={isEditMode}
                     onReply={handleClarificationReply}
                     onClose={handleClarificationClose}
-                    sharepointDocs={sharepointDocs}
+                    sharepointDocs={supportingDocuments}
                   />
                 </DetailSection>
               )}

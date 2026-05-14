@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import {
   ArrowLeft,
   RefreshCcw,
@@ -122,12 +123,32 @@ function AddAdgeModal({ cycleId, onClose, onInstancesAdded }: AddAdgeModalProps)
       c.accountName.toLowerCase().includes(search.toLowerCase()) ||
       c.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const selectableFiltered = filtered.filter((config) => !existingEntityIds.has(config.accountId))
+  const allSelectableFilteredSelected =
+    selectableFiltered.length > 0 &&
+    selectableFiltered.every((config) => selected.has(config.id))
 
   function toggle(configId: string, accountId: string) {
     if (existingEntityIds.has(accountId)) return
     setSelected((prev) => {
       const next = new Set(prev)
       next.has(configId) ? next.delete(configId) : next.add(configId)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectableFiltered.length === 0) return
+
+    setSelected((prev) => {
+      const next = new Set(prev)
+
+      if (allSelectableFilteredSelected) {
+        selectableFiltered.forEach((config) => next.delete(config.id))
+      } else {
+        selectableFiltered.forEach((config) => next.add(config.id))
+      }
+
       return next
     })
   }
@@ -156,51 +177,61 @@ function AddAdgeModal({ cycleId, onClose, onInstancesAdded }: AddAdgeModalProps)
     }
   }
 
-  return (
+  return createPortal(
     <div
       ref={backdropRef}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === backdropRef.current) onClose() }}
     >
-      <div className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-2xl dark:border-white/10 dark:bg-[#1E293B]" style={{ maxHeight: '82vh' }}>
+      <div className="flex w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-[#DDEBFF] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#1E293B]" style={{ maxHeight: '88vh' }}>
 
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-[#DDEBFF] px-6 py-4 dark:border-white/10">
+        <div className="flex shrink-0 items-center justify-between border-b border-[#DDEBFF] bg-[#F8FBFF] px-7 py-5 dark:border-white/10 dark:bg-[#0F172A]/70">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#286CFF] dark:bg-[#286CFF]/15">
-              <Users className="h-4 w-4" />
-            </div>
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-sm">
+                <Users className="h-5 w-5" />
+              </div>
             <div>
-              <h2 className="text-base font-bold text-[#0F172A] dark:text-white">Add ADGE</h2>
-              <p className="text-xs text-[#64748B] dark:text-slate-400">Select entities to create request instances</p>
+              <h2 className="text-lg font-bold text-[#0F172A] dark:text-white">Add ADGE</h2>
+              <p className="text-sm text-[#64748B] dark:text-slate-300">Select entities to create request instances for this cycle.</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A] transition-colors dark:hover:bg-white/10 dark:hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-[#94A3B8] hover:bg-white hover:text-[#0F172A] transition-colors dark:hover:bg-white/10 dark:hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Search */}
-        <div className="shrink-0 border-b border-[#F1F5F9] px-6 py-3 dark:border-white/5">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-            <input
-              type="text"
-              placeholder="Search entities..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-full rounded-xl border border-[#DDEBFF] bg-[#F8FBFF] pl-9 pr-3 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none focus:border-[#286CFF] focus:ring-2 focus:ring-[#286CFF]/20 transition-colors dark:border-white/10 dark:bg-white/5 dark:text-white"
-            />
+        <div className="shrink-0 border-b border-[#F1F5F9] bg-[#F8FBFF] px-7 py-4 dark:border-white/5 dark:bg-white/5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative md:max-w-[420px] md:flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+              <input
+                type="text"
+                placeholder="Search entities..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-11 w-full rounded-2xl border border-[#DDEBFF] bg-white pl-10 pr-4 text-sm text-[#0F172A] placeholder:text-[#94A3B8] outline-none focus:border-[#286CFF] focus:ring-2 focus:ring-[#286CFF]/20 transition-colors dark:border-white/10 dark:bg-[#1E293B] dark:text-white"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              disabled={selectableFiltered.length === 0}
+              className="inline-flex h-11 items-center justify-center rounded-2xl border border-[#B0DBFF] bg-white px-4 text-sm font-semibold text-[#286CFF] shadow-sm transition-colors hover:bg-[#E7F5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-100 dark:hover:bg-white/10"
+            >
+              {allSelectableFilteredSelected ? 'Clear Selection' : 'Select All'}
+            </button>
           </div>
         </div>
 
         {/* Scrollable entity list */}
         <div
-          className="overflow-y-auto [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent dark:[&::-webkit-scrollbar-thumb]:bg-slate-600"
-          style={{ maxHeight: '200px', scrollbarWidth: 'thin', scrollbarColor: '#CBD5E1 transparent' }}
+          className="overflow-y-auto bg-white px-3 py-3 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD5E1] [&::-webkit-scrollbar-track]:bg-transparent dark:bg-[#1E293B] dark:[&::-webkit-scrollbar-thumb]:bg-slate-600"
+          style={{ maxHeight: '420px', scrollbarWidth: 'thin', scrollbarColor: '#CBD5E1 transparent' }}
         >
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-[#64748B]">
@@ -220,7 +251,7 @@ function AddAdgeModal({ cycleId, onClose, onInstancesAdded }: AddAdgeModalProps)
               </span>
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full overflow-hidden rounded-2xl border border-[#DDEBFF] text-sm shadow-sm dark:border-white/10">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b border-[#DDEBFF] bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/80">
                   <th className="w-12 px-5 py-3" />
@@ -277,21 +308,21 @@ function AddAdgeModal({ cycleId, onClose, onInstancesAdded }: AddAdgeModalProps)
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 items-center justify-between border-t border-[#DDEBFF] px-6 py-4 dark:border-white/10">
-          <span className="text-sm text-[#475569] dark:text-slate-300">
+        <div className="flex shrink-0 items-center justify-between border-t border-[#DDEBFF] bg-[#F8FBFF] px-7 py-5 dark:border-white/10 dark:bg-white/5">
+          <span className="rounded-full border border-[#DDEBFF] bg-white px-3 py-1 text-sm font-medium text-[#475569] shadow-sm dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-300">
             {selected.size > 0 ? `${selected.size} selected` : 'No entities selected'}
           </span>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="rounded-xl border border-[#DDEBFF] px-4 py-2 text-sm font-medium text-[#475569] hover:bg-[#F8FBFF] transition-colors dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+              className="rounded-xl border border-[#DDEBFF] bg-white px-5 py-2.5 text-sm font-medium text-[#475569] hover:bg-[#F8FBFF] transition-colors dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-300 dark:hover:bg-white/5"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
               disabled={selected.size === 0 || submitting}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#286CFF] px-4 py-2 text-sm font-semibold text-white hover:bg-[#043DFF] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#286CFF] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#043DFF] disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_12px_24px_rgba(40,108,255,0.22)]"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusCircle className="h-4 w-4" />}
               Add Selected ({selected.size})
@@ -299,7 +330,8 @@ function AddAdgeModal({ cycleId, onClose, onInstancesAdded }: AddAdgeModalProps)
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

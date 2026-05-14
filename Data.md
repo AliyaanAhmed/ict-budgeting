@@ -48,7 +48,53 @@ This keeps Dataverse calls typed and consistent with Power Apps runtime policies
 
 Right now, explicit associate/disassociate helper methods are **not implemented** in current generated services.
 
-If needed, we can do association operations using `client.executeAsync({ dataverseRequest: ... })` with the proper Dataverse action payload, or add generated Dataverse action/function wrappers and call those.
+We are following two practical Code App-safe patterns:
+
+### Pattern 1 - Create Relationship Rows Through The Relationship Table Service
+
+For many-to-many style joins where a relationship/intersect table is registered as a datasource, we create rows directly through that generated service.
+
+Real example:
+
+- ICT Budget <-> Technology Product
+- table: `dga_ict_budget_dga_technology_product`
+- service: `Dga_ict_budget_dga_technology_productsetService`
+
+Used during ICT budget create/update to associate selected technology products with the budget.
+
+Typical payload shape:
+
+```ts
+await Dga_ict_budget_dga_technology_productsetService.create({
+  'dga_ict_budgetid@odata.bind': `/dga_ict_budgets(${ictBudgetId})`,
+  'dga_technologyid@odata.bind': `/dga_technologies(${technologyId})`,
+})
+```
+
+This is the preferred association pattern when the relationship table is available as a datasource.
+
+### Pattern 2 - Query The Relationship Table Explicitly
+
+For retrieval of associated rows, we also query the relationship table directly instead of relying on raw Web API associate APIs.
+
+Real example:
+
+```ts
+await Dga_ict_budget_dga_technology_productsetService.getAll({
+  select: ['dga_ict_budgetid', 'dga_technologyid'],
+  filter: `dga_ict_budgetid eq ${ictBudgetId}`,
+})
+```
+
+This is how the app restores selected Technology Product values in the View / Edit form.
+
+### Pattern 3 - Use `client.executeAsync(...)` Only When Needed
+
+If a relationship cannot be handled through a registered relationship table datasource, we can still fall back to:
+
+- `client.executeAsync({ dataverseRequest: ... })`
+
+with the proper Dataverse associate/disassociate request payload.
 
 ## How Dataverse Was Connected To This Code App
 
@@ -368,18 +414,72 @@ When user clicks `Save Changes`:
 5. create additional line items using:
    - `Dga_ict_budget_line_itemsService.create(...)`
 
+### Expand Query / Relationship Retrieval Pattern In Code App
+
+Code App retrieval should prefer generated service methods first:
+
+- `GeneratedService.get(id, { select: [...] })`
+- `GeneratedService.getAll({ select: [...], filter: '...', orderBy: [...] })`
+
+For single-record retrieval, we can also pass `expand` when the generated options type supports it.
+
+Example shape:
+
+```ts
+await SystemusersService.get(userId, {
+  select: ['systemuserid', 'fullname'],
+  expand: ['systemuserroles_association($select=roleid,name)'],
+})
+```
+
+However, in practice we found that not every relationship behaves reliably in the Code App runtime with `expand`.
+
+### Preferred Safe Pattern When Expand Is Not Reliable
+
+If `expand` does not return the related rows as expected, use the same explicit relationship-table pattern we use elsewhere in the app.
+
+Real example used for System Administrator role detection:
+
+1. Query the bridge table:
+   - datasource: `systemuserroles`
+   - generated service: `SystemuserrolescollectionService`
+2. Filter by current user:
+   - `systemuserid eq <userId>`
+3. Collect `roleid` values
+4. Query the `role` table using:
+   - generated service: `RolesService`
+5. Resolve role names from the returned role rows
+
+Example flow:
+
+```ts
+const userRoleLinks = await SystemuserrolescollectionService.getAll({
+  select: ['systemuserroleid', 'systemuserid', 'roleid'],
+  filter: `systemuserid eq ${userId}`,
+})
+
+const roles = await RolesService.getAll({
+  select: ['roleid', 'name'],
+  filter: `roleid eq ${roleId1} or roleid eq ${roleId2}`,
+})
+```
+
+This is the preferred Code App-safe pattern when relationship-table retrieval is predictable and `expand` is not.
+
 ### Important Code App Limitation We Hit
 
-Generated Code App `get(...)` / `getAll(...)` helpers do not expose `$expand`.
+We do **not** assume every Dataverse `$expand` scenario will work consistently in the Code App runtime.
 
 Because of that:
 
-- we do not rely on `$expand` for Technology Product auto-selection in the Code App
-- instead, we added the relationship table datasource:
+- we do not rely on `$expand` for Technology Product auto-selection
+- instead, we use the registered relationship table datasource:
   - `dga_ict_budget_dga_technology_product`
-- then retrieve related `dga_technologyid` rows directly using its generated service
+- and for system-user role resolution we use:
+  - `systemuserroles`
+  - `role`
 
-This is the preferred Code App-safe pattern for this scenario.
+In this app, direct relationship-table retrieval is the safest default pattern.
 
 ## Role-Based Project Visibility Logic
 
@@ -863,6 +963,15 @@ Exported functions:
 - `uploadFileToRecord(recordId, file)` — upload a single file
 - `uploadFilesToRecord(recordId, files)` — upload multiple files sequentially
 
+Important behavior:
+
+- clarification attachments are uploaded into the same ICT budget SharePoint folder as supporting documents
+- the clarification entity stores the resulting SharePoint URL(s) in:
+  - `dga_file_url`
+- this is true for:
+  - clarification raised files
+  - clarification reply files
+
 ### FileUploadDropzone Component
 
 **File:** `src/components/shared/FileUploadDropzone.tsx`
@@ -912,6 +1021,15 @@ On `Save Changes`:
 3. Files cleared from state after successful upload
 4. Cancel edit also clears staged files
 
+Current edit/view behavior:
+
+- file upload control is shown only for `Respondent`
+- file delete is allowed only for:
+  - `Respondent`
+  - `edit mode`
+- reviewers and approvers can view/download files but cannot upload or delete them from the shared detail form
+- respondent cannot delete files in view mode
+
 ---
 
 ## Clarification Integration
@@ -959,6 +1077,17 @@ ICT budget workflow transitions now update both:
 
 - `dga_status_for_adge`
 - `ownerid@odata.bind`
+- `statuscode`
+
+They also stamp the acting user lookup on the ICT budget record:
+
+- respondent actions -> `dga_respondent_systemuser@odata.bind`
+- reviewer actions -> `dga_reviewer_systemuser@odata.bind`
+- approver actions -> `dga_approver_systemuser@odata.bind`
+
+The user id comes from:
+
+- `sessionStorage["userID"]`
 
 The owner assignment is resolved in this order:
 
@@ -978,6 +1107,8 @@ When Respondent creates a new ICT budget draft:
 
 - initial owner is assigned to the respondent side
 - payload includes `ownerid@odata.bind`
+- payload also stamps:
+  - `dga_respondent_systemuser@odata.bind`
 - target owner is resolved from:
   - `moduleConfigTeamIDs.respondentTeamId`
   - fallback `userTeams` respondent team
@@ -988,31 +1119,112 @@ When Respondent creates a new ICT budget draft:
 When Respondent submits to Reviewer:
 
 - `dga_status_for_adge` -> `2`
+- `statuscode` -> reviewer-submission status
 - `ownerid@odata.bind` -> reviewer team
+- `dga_respondent_systemuser@odata.bind` -> current user
+
+When Reviewer completes review:
+
+- `dga_status_for_adge` -> `12`
+- `statuscode` -> `576610001`
+- no owner reassignment
+- `dga_reviewer_systemuser@odata.bind` -> current user
 
 When Reviewer submits to Approver:
 
 - `dga_status_for_adge` -> `3`
+- `statuscode` -> approver-submission status
 - `ownerid@odata.bind` -> approver team
+- `dga_reviewer_systemuser@odata.bind` -> current user
 
 When Reviewer raises clarification:
 
 - clarification record is created in `dga_ict_clarification`
 - ICT budget status then updates to:
   - `dga_status_for_adge` -> `5`
+  - `statuscode` -> clarification-required status
   - `ownerid@odata.bind` -> respondent team
+- `dga_reviewer_systemuser@odata.bind` -> current user
 
 When Approver raises clarification:
 
 - clarification record is created in `dga_ict_clarification`
 - ICT budget status then updates to:
   - `dga_status_for_adge` -> `5`
+  - `statuscode` -> clarification-required status
   - `ownerid@odata.bind` -> respondent team
+- `dga_approver_systemuser@odata.bind` -> current user
 
-Approver final approval currently updates status only:
+Approver final approval updates:
 
 - `dga_status_for_adge` -> `4`
+- `statuscode` -> approved status
+- `dga_approver_systemuser@odata.bind` -> current user
 - no owner reassignment is applied in the current implementation
+
+### Clarification First-Reply Reassignment Rule
+
+Clarification now has a first-respondent-reply handoff rule.
+
+If a clarification was originally raised by Reviewer:
+
+- Respondent's first reply shows a confirm dialog
+- after confirmation and successful reply create:
+  - ICT budget is reassigned back to Reviewer
+  - `dga_status_for_adge` returns to reviewer review
+  - `statuscode` returns to reviewer review state
+  - respondent actor lookup is stamped
+
+If a clarification was originally raised by Approver:
+
+- Respondent's first reply shows a confirm dialog
+- after confirmation and successful reply create:
+  - ICT budget is reassigned back to Approver
+  - `dga_status_for_adge` returns to approver review
+  - `statuscode` returns to approver review state
+  - respondent actor lookup is stamped
+
+Later clarification replies do not repeat this reassignment logic.
+
+### Record Sharing Rule On Assignment / Workflow Actions
+
+Whenever workflow assignment/status changes happen, the ICT budget record is also shared with the role that just acted on it.
+
+This sharing is done through the custom API:
+
+- datasource/service: `dga_WebApiForPortal`
+- action: `grandaccess`
+
+Payload pattern:
+
+```ts
+{
+  actionName: 'grandaccess',
+  tableName: 'dga_ict_budget',
+  relatedId: ictBudgetId,
+  targetId: teamId,
+  fetchXml: 'read',
+}
+```
+
+Team ids come from:
+
+- `sessionStorage["moduleConfigTeamIDs"]`
+
+Sharing rules:
+
+- Respondent submits to Reviewer -> share with Respondent team
+- Reviewer submits to Approver -> share with Reviewer team
+- Reviewer raises clarification -> share with Reviewer team
+- Approver approves -> share with Approver team
+- Approver raises clarification -> share with Approver team
+- Respondent first clarification reply handoff -> share with Respondent team
+
+Important:
+
+- `dga_webapiforportal` is a manual datasource entry in `.power/schemas/appschemas/dataSourcesInfo.ts`
+- adding new datasources can remove it if that file is regenerated
+- always verify this manual datasource still exists after `add-data-source` / `add-flow`
 
 #### Debug Logging
 
@@ -1033,6 +1245,9 @@ When a reply/comment is added:
 - `dga_scope` -> `2` (`Internal (Entity)`)
 - `dga_response_date` -> current ISO datetime
 - `dga_raised_by_systemuser@odata.bind` -> `sessionStorage["userID"]`
+- if files are attached:
+  - upload them into the ICT budget SharePoint folder
+  - store uploaded SharePoint URL(s) in `dga_file_url`
 
 After reply create:
 
@@ -1062,12 +1277,131 @@ Current behavior:
 - role tags are shown from `Raised By (Role)`
 - threads and replies are loaded from `dga_ict_clarification`
 - reviewer and approver queue actions create live Dataverse clarification records instead of local-only mock data
+- clarification raised-file attachments and clarification reply attachments are both shown in the clarification thread
+- Supporting Documents uses normalized clarification URLs so clarification tags can appear on both raised files and reply files
+- the shared detail form keeps Supporting Documents and Clarification Thread aligned during the same session
+
+---
+
+## App Notifications
+
+Notifications are now backed by the Dataverse table:
+
+- `dga_app_notifications`
+
+Generated datasource/service:
+
+- `src/generated/models/Dga_app_notificationsesModel.ts`
+- `src/generated/services/Dga_app_notificationsesService.ts`
+
+Main wrapper:
+
+- `src/services/appNotificationService.ts`
+
+### Notification Create Rules
+
+Whenever workflow hands work off to another role, the app creates a notification for the destination role team.
+
+Notification payload shape:
+
+```ts
+{
+  dga_notification_id: 'N-001',
+  'dga_notification_recipient_team@odata.bind': `/teams(${teamId})`,
+  dga_notification_text: notificationText,
+  statuscode: 1,
+}
+```
+
+Rules:
+
+- `statuscode = 1` means `Open`
+- notification id is generated in `N-001` to `N-999` format
+- recipient team id comes from `sessionStorage["moduleConfigTeamIDs"]`
+- text depends on the workflow action performed
+
+Typical workflow cases:
+
+- Respondent submits to Reviewer -> notify Reviewer team
+- Reviewer submits to Approver -> notify Approver team
+- Reviewer raises clarification -> notify Respondent team
+- Approver raises clarification -> notify Respondent team
+- Respondent first clarification reply -> notify Reviewer or Approver team depending on original raiser
+
+### Notification Retrieval Rules
+
+Header notifications are no longer dummy data.
+
+Retrieval pattern:
+
+- resolve current role
+- map role to the matching team id from `sessionStorage["moduleConfigTeamIDs"]`
+- retrieve only open notifications for that team
+- sort by `createdon desc`
+
+Only open notifications are shown in the dropdown.
+
+### Notification Read / Close Rules
+
+Single notification mark-as-read:
+
+- update notification record:
+  - `statuscode = 576610001`
+
+Mark all as read:
+
+- update all open notification ids to:
+  - `statuscode = 576610001`
+
+Only `Open` notifications remain visible in the header dropdown.
 
 ---
 
 ## Document Retrieval — Pending Implementation
 
-### What Was Attempted And Why It Failed
+### Current Runtime Pattern
+
+Supporting Documents are retrieved through the custom API wrapper:
+
+- service: `src/services/webApiForPortalService.ts`
+- datasource key: `dga_webapiforportal`
+- operation: `dga_WebApiForPortal`
+- action name: `retrievemultiple`
+
+Current retrieval pattern:
+
+- target table in FetchXML: `sharepointdocument`
+- filtered by the opened ICT budget through `regardingobjectid -> dga_ict_budgetid`
+
+Returned rows are mapped into:
+
+- `WebApiPortalDocument`
+
+and rendered by:
+
+- `src/components/shared/SupportingDocuments.tsx`
+
+Clarification Thread renders files from:
+
+- `dga_ict_clarification.dga_file_url`
+
+To keep both views aligned in the shared detail form:
+
+1. the app builds a normalized set of clarification URLs from:
+   - clarification raised files
+   - clarification reply files
+2. the app normalizes SharePoint document URLs from custom API retrieval
+3. the app merges clarification-only URLs into Supporting Documents as fallback entries when SharePoint retrieval does not return them
+
+Result:
+
+- clarification tag can show on both:
+  - clarification raised file
+  - clarification reply file
+- Supporting Documents and Clarification Thread stay aligned during the same session
+- clarification-linked files can still appear in Supporting Documents even if SharePoint retrieval is temporarily empty
+
+### Historical Attempt And Why It Failed
 
 We attempted to use the `sharepointdocument` Dataverse virtual entity:
 

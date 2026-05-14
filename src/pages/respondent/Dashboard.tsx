@@ -346,7 +346,7 @@ export default function RespondentDashboard() {
     loading: accountBreakdownLoading,
     error: accountBreakdownError,
   } = useAccountCodesBreakdown(liveProjects)
-  const hasPreviousCycle = Boolean(previousCycle)
+  const hasPreviousCycle = Boolean(cyclesData?.previousCycle?.id && previousCycle?.id)
 
   const budgetTypeGroups = [
     {
@@ -831,36 +831,24 @@ export default function RespondentDashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
-        <Card
-          title={
-            hasPreviousCycle
-              ? 'Compare the selected cycle against the immediately previous cycle across strategic priorities.'
-              : 'Shows requested budget distribution by strategic priority for the selected cycle.'
-          }
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
-        >
-          <CardContent className="p-6">
-            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">
-                    {hasPreviousCycle ? 'Selected vs Previous Year' : 'Budget by Category'}
-                  </h3>
-                  <InfoHint
-                    text={
-                      hasPreviousCycle
-                        ? 'Compares the selected cycle strategic-priority budgets against the immediately previous cycle for the same respondent entity.'
-                        : 'Shows the selected cycle requested budget grouped by strategic priority.'
-                    }
-                  />
+        {hasPreviousCycle ? (
+          <Card
+            title="Compare the selected cycle against the immediately previous cycle across strategic priorities."
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          >
+            <CardContent className="p-6">
+              <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">
+                      Selected vs Previous Year
+                    </h3>
+                    <InfoHint text="Compares the selected cycle strategic-priority budgets against the immediately previous cycle for the same respondent entity." />
+                  </div>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                    Budget request comparison by strategic priority
+                  </p>
                 </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  {hasPreviousCycle
-                    ? 'Budget request comparison by strategic priority'
-                    : 'Requested budget grouped by strategic priority'}
-                </p>
-              </div>
-              {hasPreviousCycle && (
                 <div className="flex items-center gap-4 text-xs text-[#64748B] dark:text-slate-100">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-[#286CFF]" />
@@ -871,49 +859,66 @@ export default function RespondentDashboard() {
                     {previousCycle?.name ?? 'Previous Cycle'}
                   </span>
                 </div>
-              )}
-            </div>
-            {!hasPreviousCycle ? (
-              <BudgetByCategory data={budgetByCategory} />
-            ) : comparisonLoading ? (
-              <div className="h-[320px] animate-pulse rounded-[20px] border border-[#DCE8F6] bg-[#F8FAFC] dark:border-white/10 dark:bg-white/5" />
-            ) : comparisonError ? (
-              <div className="rounded-[20px] border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#7F1D1D] dark:bg-[#3B0D0D] dark:text-[#FECACA]">
-                {comparisonError}
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart data={comparisonData} margin={{ top: 8, right: 10, left: 12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
-                  <XAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#94A3B8' }}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={formatCompactTick}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Legend />
-                  <Bar
-                    dataKey="current"
-                    name={selectedCycle?.name ?? 'Selected Cycle'}
-                    radius={[8, 8, 0, 0]}
-                    fill="#286CFF"
-                    maxBarSize={28}
-                  />
-                  <Bar
-                    dataKey="previous"
-                    name={previousCycle?.name ?? 'Previous Cycle'}
-                    radius={[8, 8, 0, 0]}
-                    fill="#AEBBCC"
-                    maxBarSize={28}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
+              {comparisonLoading ? (
+                <div className="h-[320px] animate-pulse rounded-[20px] border border-[#DCE8F6] bg-[#F8FAFC] dark:border-white/10 dark:bg-white/5" />
+              ) : comparisonError ? (
+                <div className="rounded-[20px] border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#7F1D1D] dark:bg-[#3B0D0D] dark:text-[#FECACA]">
+                  {comparisonError}
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={comparisonData} margin={{ top: 8, right: 10, left: 12, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                    <XAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: '#94A3B8' }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={formatCompactTick}
+                    />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend />
+                    <Bar
+                      dataKey="current"
+                      name={selectedCycle?.name ?? 'Selected Cycle'}
+                      radius={[8, 8, 0, 0]}
+                      fill="#286CFF"
+                      maxBarSize={28}
+                    />
+                    <Bar
+                      dataKey="previous"
+                      name={previousCycle?.name ?? 'Previous Cycle'}
+                      radius={[8, 8, 0, 0]}
+                      fill="#AEBBCC"
+                      maxBarSize={28}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card
+            title="Shows requested budget distribution by strategic priority for the selected cycle."
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          >
+            <CardContent className="p-6">
+              <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Category</h3>
+                    <InfoHint text="Shows the selected cycle requested budget grouped by strategic priority." />
+                  </div>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                    Requested budget grouped by strategic priority
+                  </p>
+                </div>
+              </div>
+              <BudgetByCategory data={budgetByCategory} />
+            </CardContent>
+          </Card>
+        )}
         <Card
           title="Shows which account codes are driving the largest share of your requested budget."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
