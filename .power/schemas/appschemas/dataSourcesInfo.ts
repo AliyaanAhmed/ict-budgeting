@@ -12,6 +12,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_app_notificationses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_app_notificationsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_classifications": {
     "tableId": "",
     "version": "",
@@ -75,6 +82,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_module_types": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_module_typeid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_strategic_prioritieses": {
     "tableId": "",
     "version": "",
@@ -116,24 +130,6 @@ export const dataSourcesInfo = {
     "primaryKey": "dga_work_streamid",
     "dataSourceType": "Dataverse",
     "apis": {}
-  },
-  "dga_webapiforportal": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_WebApiForPortal": {
-        "path": "/api/data/v9.2/dga_WebApiForPortal",
-        "method": "POST",
-        "parameters": [
-          { "name": "actionName", "in": "body", "required": true, "type": "string" },
-          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
-          { "name": "userId", "in": "body", "required": false, "type": "string" },
-          { "name": "fetchXml", "in": "body", "required": true, "type": "string" }
-        ]
-      }
-    }
   },
   "ictbudget_clarificaitons_deletefilefromsharepoint": {
     "tableId": "",
@@ -246,6 +242,27 @@ export const dataSourcesInfo = {
             "type": "void"
           }
         }
+      }
+    }
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          { "name": "actionName", "in": "body", "required": true, "type": "string" },
+          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
+          { "name": "userId", "in": "body", "required": false, "type": "string" },
+          { "name": "tableName", "in": "body", "required": false, "type": "string" },
+          { "name": "relatedId", "in": "body", "required": false, "type": "string" },
+          { "name": "targetId", "in": "body", "required": false, "type": "string" },
+          { "name": "fetchXml", "in": "body", "required": true, "type": "string" }
+        ]
       }
     }
   }

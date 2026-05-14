@@ -21,6 +21,7 @@ export interface ProjectsApi {
   createProject(payload: CreateProjectPayload): Promise<Project>
 
   submitToReviewer(projectId: string): Promise<void>
+  reviewerCompleteReview(projectId: string): Promise<void>
   reviewerApprove(projectId: string): Promise<void>
   reviewerRaiseClarification(projectId: string, payload: ClarificationPayload): Promise<void>
   approverApprove(projectId: string): Promise<void>

@@ -126,7 +126,15 @@ function MetricCard({
 }
 
 function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; iconColor?: string }) {
-  return <CurrencyAmount amount={amount} className="text-2xl font-bold leading-none sm:text-[30px] xl:text-[32px]" iconColor={iconColor} iconSize={18} />
+  return (
+    <CurrencyAmount
+      amount={amount}
+      className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
+      valueClassName="break-all"
+      iconColor={iconColor}
+      iconSize={16}
+    />
+  )
 }
 
 function ActionMetricCard({

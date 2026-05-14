@@ -15,6 +15,8 @@ import {
 } from '@/services/userContextService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { Dga_ict_budget_dga_technology_productsetService } from '@/generated/services/Dga_ict_budget_dga_technology_productsetService'
+import { shareIctBudgetWithRoleTeam } from '@/services/recordShareService'
+import { createNotificationForRole } from '@/services/appNotificationService'
 import {
   INITIAL_ICT_BUDGET_FORM_VALUES,
   parseCurrencyValue,
@@ -63,7 +65,10 @@ export const ICT_BUDGET_STATUS = {
   underApproverReview: 3,
   approvedByApprover: 4,
   clarificationPending: 5,
-} as const satisfies Record<string, Dga_ict_budgetsdga_status_for_adge>
+  reviewerReviewCompleted: 12,
+} as const
+
+type WorkflowStatusForAdge = Dga_ict_budgetsdga_status_for_adge | 12
 
 type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver'
 
@@ -145,6 +150,25 @@ function getTargetOwnerBinding(target: WorkflowTargetOwner) {
   return {}
 }
 
+function getActorRoleBinding(role: WorkflowTargetOwner) {
+  const currentUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim()
+  if (!currentUserId) {
+    console.warn('[IctBudgetDraftService] No current user id found for workflow actor binding:', role)
+    return {}
+  }
+
+  const key =
+    role === 'Respondent'
+      ? 'dga_respondent_systemuser@odata.bind'
+      : role === 'Reviewer'
+        ? 'dga_reviewer_systemuser@odata.bind'
+        : 'dga_approver_systemuser@odata.bind'
+
+  const binding = { [key]: `/systemusers(${currentUserId})` }
+  console.log('[IctBudgetDraftService] Using workflow actor binding:', { role, currentUserId, binding })
+  return binding
+}
+
 function toLookupBinding(entitySet: string, id: string | null) {
   return id ? `/${entitySet}(${id})` : undefined
 }
@@ -204,6 +228,26 @@ function toDisplayTechnologyProducts(
   return matchedNames.length > 0 ? matchedNames : fallbackDisplayNames
 }
 
+function stripRichTextHtml(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return ''
+  }
+
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    const container = window.document.createElement('div')
+    container.innerHTML = value
+    return (container.textContent || container.innerText || '').trim()
+  }
+
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 async function getAssociatedTechnologyProductIds(ictBudgetId: string) {
   const result = await Dga_ict_budget_dga_technology_productsetService.getAll({
     select: ['dga_ict_budgetid', 'dga_technologyid'],
@@ -255,7 +299,7 @@ function mapRetrievedBudgetRecord(
     category: record.dga_category ?? null,
     plannedStartDate: record.dga_planned_start_date?.slice(0, 10) ?? '',
     plannedEndDate: record.dga_planned_end_date?.slice(0, 10) ?? '',
-    summary: record.dga_summary ?? '',
+    summary: stripRichTextHtml(record.dga_summary),
     activityType: record.dga_activity_type ?? null,
     totalBudgetPaidPreviousYear: toCurrencyInputValue(record.dga_total_budget_paid_previous_year),
     totalBudgetPayableFutureYear: toCurrencyInputValue(record.dga_total_budget_payable_future_year),
@@ -350,6 +394,7 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
       : {}),
     // Store the entity abbreviation from the instance
     ...(entityAbbr ? { dga_abbr_of_entity: entityAbbr } : {}),
+    ...getActorRoleBinding('Respondent'),
     ...getTargetOwnerBinding('Respondent'),
   } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>> as Omit<
     Dga_ict_budgetsBase,
@@ -465,23 +510,28 @@ export async function updateIctBudgetDraft(
   assertOperationSucceeded(result, 'Failed to update ICT budget draft.')
 }
 
-const STATUS_CODE_MAP: Partial<Record<Dga_ict_budgetsdga_status_for_adge, number>> = {
+const STATUS_CODE_MAP: Partial<Record<WorkflowStatusForAdge, number>> = {
   2: 776140001, // Submitted to Reviewer
   3: 776140002, // Submitted to Approver
   4: 776140003, // Approved
   5: 776140010, // Clarification Required
+  12: 576610001, // Reviewer Review Completed
 }
 
 export async function updateIctBudgetStatus(
   ictBudgetId: string,
-  status: Dga_ict_budgetsdga_status_for_adge,
-  targetOwner?: WorkflowTargetOwner
+  status: WorkflowStatusForAdge,
+  targetOwner?: WorkflowTargetOwner,
+  shareWithRole?: WorkflowTargetOwner,
+  actorRole?: WorkflowTargetOwner,
+  notificationText?: string
 ) {
   const statuscode = STATUS_CODE_MAP[status]
   const payload = {
     dga_status_for_adge: status,
     ...(statuscode !== undefined ? { statuscode } : {}),
     ...(targetOwner ? getTargetOwnerBinding(targetOwner) : {}),
+    ...(actorRole ? getActorRoleBinding(actorRole) : {}),
   } as Record<string, unknown>
 
   console.log('[IctBudgetDraftService] Updating ICT budget workflow status:', {
@@ -489,11 +539,26 @@ export async function updateIctBudgetStatus(
     status,
     statuscode: statuscode ?? null,
     targetOwner: targetOwner ?? null,
+    actorRole: actorRole ?? null,
     payload,
   })
 
   const result = await Dga_ict_budgetsService.update(ictBudgetId, payload)
   assertOperationSucceeded(result, 'Failed to update ICT budget workflow status.')
+
+  if (shareWithRole) {
+    console.log('[IctBudgetDraftService] Sharing ICT budget after workflow update:', {
+      ictBudgetId,
+      shareWithRole,
+      status,
+      targetOwner: targetOwner ?? null,
+    })
+    await shareIctBudgetWithRoleTeam(ictBudgetId, shareWithRole)
+  }
+
+  if (targetOwner && notificationText?.trim()) {
+    await createNotificationForRole(targetOwner, notificationText.trim())
+  }
 }
 
 export async function deleteIctBudgetDraft(ictBudgetId: string) {

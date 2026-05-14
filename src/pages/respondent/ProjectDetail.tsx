@@ -122,6 +122,7 @@ import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/se
 import { retrieveSharePointDocumentsByBudget, type WebApiPortalDocument } from '@/services/webApiForPortalService'
 import { deleteSharePointDocument } from '@/services/fileDeleteService'
 import { SupportingDocuments } from '@/components/shared/SupportingDocuments'
+import { getAuditLogsByBudgetId, type AuditLogEntry } from '@/services/auditLogService'
 
 // ─── Static helpers ───────────────────────────────────────────────────────────
 
@@ -335,7 +336,12 @@ function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null
 }
 
 type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver'
-type WorkflowAction = 'delete-project' | 'submit-reviewer' | 'submit-approver' | 'approve-project'
+type WorkflowAction =
+  | 'delete-project'
+  | 'submit-reviewer'
+  | 'complete-review'
+  | 'submit-approver'
+  | 'approve-project'
 type PendingClarificationReply = {
   clarificationId: string
   message: string
@@ -345,7 +351,7 @@ type PendingClarificationReply = {
 
 function getWorkflowOwner(status: string): WorkflowRole | null {
   if (status === 'Draft' || status === 'Clarification Required') return 'Respondent'
-  if (status === 'Submitted to Reviewer') return 'Reviewer'
+  if (status === 'Submitted to Reviewer' || status === 'Reviewer Review Completed') return 'Reviewer'
   if (status === 'Submitted to Approver') return 'Approver'
   return null
 }
@@ -427,6 +433,16 @@ function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
     }
   }
 
+  if (action === 'complete-review') {
+    return {
+      title: 'Complete Review?',
+      description:
+        'This will mark the reviewer assessment as completed and keep the project with the reviewer until it is submitted to the approver.',
+      confirmLabel: 'Complete Review',
+      tone: 'primary' as const,
+    }
+  }
+
   return {
     title: role === 'Approver' ? 'Approve this project?' : 'Complete this action?',
     description:
@@ -438,6 +454,26 @@ function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-gradient-to-r from-[#E8EEF8] via-[#F4F7FB] to-[#E8EEF8] bg-[length:200%_100%] dark:from-white/10 dark:via-white/5 dark:to-white/10', className)} />
+}
+
+function toPlainTextSummary(value: string | null | undefined) {
+  if (!value?.trim()) {
+    return ''
+  }
+
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    const container = window.document.createElement('div')
+    container.innerHTML = value
+    return (container.textContent || container.innerText || '').trim()
+  }
+
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function DetailPageLoadingShell() {
@@ -912,15 +948,15 @@ function ScrollSpySectionRail({
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
-const CHANGE_LOGS = [
-  { fieldName: 'Project Summary', oldValue: 'Initial cloud migration scope', newValue: 'Expanded cloud migration scope with analytics readiness', updatedBy: 'Mahmood Al Rashidi', updatedOn: '2026-04-24 10:32' },
-  { fieldName: 'Requested Budget', oldValue: 'AED 2,250,000', newValue: 'AED 2,400,000', updatedBy: 'Ahmed Al Mazrouei', updatedOn: '2026-04-23 15:18' },
-  { fieldName: 'Planned End Date', oldValue: '2027-02-28', newValue: '2027-03-31', updatedBy: 'Fatima Al Nuaimi', updatedOn: '2026-04-22 09:45' },
-  { fieldName: 'Strategic Priority', oldValue: 'Digital Transformation', newValue: 'Digital Infrastructure', updatedBy: 'Hassan Al Blooshi', updatedOn: '2026-04-21 13:05' },
-  { fieldName: 'Technology Product', oldValue: 'Azure SQL', newValue: 'Azure', updatedBy: 'Maryam Al Suwaidi', updatedOn: '2026-04-20 11:20' },
-]
-
-function ChangeLogTable() {
+function ChangeLogTable({
+  logs,
+  loading,
+  error,
+}: {
+  logs: AuditLogEntry[]
+  loading: boolean
+  error: string | null
+}) {
   return (
     <div className="overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
       <div className="border-b border-[#EAF0F6] bg-[#F8FBFF] px-5 py-4 dark:border-white/10 dark:bg-white/5">
@@ -947,8 +983,29 @@ function ChangeLogTable() {
             </tr>
           </thead>
           <tbody>
-            {CHANGE_LOGS.map((log, index) => (
-              <tr key={`${log.fieldName}-${index}`} className="border-b border-[#F1F5F9] transition-colors hover:bg-[#F8FAFC] dark:border-white/5 dark:hover:bg-white/5">
+            {loading && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-[#64748B] dark:text-slate-200">
+                  Loading audit logs...
+                </td>
+              </tr>
+            )}
+            {!loading && error && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-red-600 dark:text-red-300">
+                  {error}
+                </td>
+              </tr>
+            )}
+            {!loading && !error && logs.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-[#64748B] dark:text-slate-200">
+                  No audit logs found for this ICT budget.
+                </td>
+              </tr>
+            )}
+            {!loading && !error && logs.map((log) => (
+              <tr key={log.id} className="border-b border-[#F1F5F9] transition-colors hover:bg-[#F8FAFC] dark:border-white/5 dark:hover:bg-white/5">
                 <td className="px-4 py-3 font-semibold text-[#0F172A] dark:text-white">{log.fieldName}</td>
                 <td className="px-4 py-3 text-[#0F172A] dark:text-white">{log.newValue}</td>
                 <td className="px-4 py-3 text-[#64748B] dark:text-slate-200">{log.oldValue}</td>
@@ -1003,6 +1060,9 @@ export default function ProjectDetail() {
   const [projectData, setProjectData] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false)
+  const [auditLogsError, setAuditLogsError] = useState<string | null>(null)
   const project = projectData ?? projects.find((p) => p.id === id) ?? emptyProject
   const ictBudgetId = project.ictBudgetId ?? (id && GUID_PATTERN.test(id) ? id : null)
   const hasDataverseBudgetProject = Boolean(ictBudgetId && GUID_PATTERN.test(ictBudgetId))
@@ -1018,7 +1078,6 @@ export default function ProjectDetail() {
   const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
   const pageTitle = project.name
   const confidence = project.aiScore || 84
-  const documentStatus = project.documents.length > 0 ? 'Complete' : 'Missing'
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
   const riskTone = project.riskLevel === 'High' ? 'red' : project.riskLevel === 'Medium' ? 'amber' : 'green'
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
@@ -1033,11 +1092,14 @@ export default function ProjectDetail() {
     isCurrentOwner &&
     (project.status === 'Draft' || project.status === 'Clarification Required')
   const canSubmitToApprover =
+    currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Reviewer Review Completed'
+  const canCompleteReview =
     currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Submitted to Reviewer'
   const canApproveProject =
     currentRole === 'Approver' && isCurrentOwner && project.status === 'Submitted to Approver'
   const canRaiseClarification =
-    ((currentRole === 'Reviewer' && project.status === 'Submitted to Reviewer') ||
+    ((currentRole === 'Reviewer' &&
+      project.status === 'Submitted to Reviewer') ||
       (currentRole === 'Approver' && project.status === 'Submitted to Approver')) &&
     isCurrentOwner
   const showPendingNotice = workflowOwner !== null && (workflowOwner !== currentRole || !isCurrentOwner)
@@ -1127,11 +1189,15 @@ export default function ProjectDetail() {
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
-  const documentTone = documentStatus === 'Complete' ? 'green' : 'red'
 
   // ── SharePoint documents ─────────────────────────────────────────────────────
   const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
   const [sharepointDocsLoading, setSharepointDocsLoading] = useState(false)
+  const hasSupportingDocuments =
+    sharepointDocs.length > 0 || (!hasDataverseBudgetProject && project.documents.length > 0)
+  const documentStatus = sharepointDocsLoading ? 'Loading' : hasSupportingDocuments ? 'Complete' : 'Missing'
+  const documentTone =
+    documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
 
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -1313,7 +1379,7 @@ export default function ProjectDetail() {
             initiativeName: project.name,
             plannedStartDate: project.plannedStartDate,
             plannedEndDate: project.plannedEndDate,
-            summary: project.summary,
+            summary: toPlainTextSummary(project.summary),
           }
 
           setFormValues(fallbackFormValues)
@@ -1499,6 +1565,20 @@ export default function ProjectDetail() {
 
     if (pendingWorkflowAction === 'submit-reviewer') {
       if (!validateForm()) return
+      if (sharepointDocsLoading) {
+        showErrorToast(
+          'Documents still loading',
+          'Please wait for supporting documents to finish loading before submitting to reviewer.'
+        )
+        return
+      }
+      if (!hasSupportingDocuments) {
+        showErrorToast(
+          'Supporting document required',
+          'Upload at least one supporting document before submitting to reviewer.'
+        )
+        return
+      }
 
       await runActionToast(
         async () => {
@@ -1507,7 +1587,14 @@ export default function ProjectDetail() {
             status: ICT_BUDGET_STATUS.underReviewerReview,
             targetOwner: 'Reviewer',
           })
-          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underReviewerReview, 'Reviewer')
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.underReviewerReview,
+            'Reviewer',
+            'Respondent',
+            'Respondent',
+            'A budget item has been submitted to Reviewer for review.'
+          )
           syncLocalWorkflowState('Submitted to Reviewer')
           setIsEditMode(false)
         },
@@ -1524,6 +1611,37 @@ export default function ProjectDetail() {
       return
     }
 
+    if (pendingWorkflowAction === 'complete-review') {
+      await runActionToast(
+        async () => {
+          console.log('[ProjectDetail] Completing reviewer assessment without reassignment:', {
+            ictBudgetId,
+            status: ICT_BUDGET_STATUS.reviewerReviewCompleted,
+            actorRole: 'Reviewer',
+          })
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.reviewerReviewCompleted,
+            undefined,
+            undefined,
+            'Reviewer'
+          )
+          syncLocalWorkflowState('Reviewer Review Completed')
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Completing review',
+          processingDescription: 'Marking the reviewer assessment as completed...',
+          successTitle: 'Review completed',
+          successDescription: 'The project is ready for reviewer submission to the approver.',
+          errorTitle: 'Unable to complete review',
+          minDurationMs: 1800,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
     if (pendingWorkflowAction === 'submit-approver') {
       await runActionToast(
         async () => {
@@ -1532,7 +1650,14 @@ export default function ProjectDetail() {
             status: ICT_BUDGET_STATUS.underApproverReview,
             targetOwner: 'Approver',
           })
-          await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.underApproverReview, 'Approver')
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.underApproverReview,
+            'Approver',
+            'Reviewer',
+            'Reviewer',
+            'A budget item has been submitted to Approver for final review.'
+          )
           syncLocalWorkflowState('Submitted to Approver')
           setIsEditMode(false)
         },
@@ -1555,7 +1680,13 @@ export default function ProjectDetail() {
           ictBudgetId,
           status: ICT_BUDGET_STATUS.approvedByApprover,
         })
-        await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.approvedByApprover)
+        await updateIctBudgetStatus(
+          ictBudgetId,
+          ICT_BUDGET_STATUS.approvedByApprover,
+          undefined,
+          'Approver',
+          'Approver'
+        )
         syncLocalWorkflowState('Approved')
         setIsEditMode(false)
       },
@@ -1775,7 +1906,16 @@ export default function ProjectDetail() {
             targetOwner: returnToRole,
           })
 
-          await updateIctBudgetStatus(ictBudgetId, nextStatus, returnToRole)
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            nextStatus,
+            returnToRole,
+            'Respondent',
+            'Respondent',
+            returnToRole === 'Reviewer'
+              ? 'A clarification response has been submitted back to Reviewer.'
+              : 'A clarification response has been submitted back to Approver.'
+          )
           syncLocalWorkflowState(nextProjectStatus)
         }
 
@@ -1891,7 +2031,16 @@ export default function ProjectDetail() {
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        await updateIctBudgetStatus(ictBudgetId, ICT_BUDGET_STATUS.clarificationPending, 'Respondent')
+        await updateIctBudgetStatus(
+          ictBudgetId,
+          ICT_BUDGET_STATUS.clarificationPending,
+          'Respondent',
+          raisedByRole,
+          raisedByRole,
+          raisedByRole === 'Reviewer'
+            ? 'A budget item has been returned to Respondent for clarification.'
+            : 'A budget item has been returned to Respondent for approver clarification.'
+        )
         const clarifications = await getClarificationsByBudgetId(ictBudgetId)
         setLocalClarifications(clarifications)
         if (files?.length) void refreshSharepointDocs()
@@ -1972,6 +2121,44 @@ export default function ProjectDetail() {
       .finally(() => { if (!cancelled) setSharepointDocsLoading(false) })
     return () => { cancelled = true }
   }, [ictBudgetId])
+
+  useEffect(() => {
+    if (!showLogs) return
+
+    if (!ictBudgetId) {
+      setAuditLogs([])
+      setAuditLogsError(null)
+      setAuditLogsLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    const loadAuditLogs = async () => {
+      setAuditLogsLoading(true)
+      setAuditLogsError(null)
+
+      try {
+        const logs = await getAuditLogsByBudgetId(ictBudgetId)
+        if (cancelled) return
+        setAuditLogs(logs)
+      } catch (error) {
+        if (cancelled) return
+        setAuditLogs([])
+        setAuditLogsError(error instanceof Error ? error.message : 'Unable to load audit logs.')
+      } finally {
+        if (!cancelled) {
+          setAuditLogsLoading(false)
+        }
+      }
+    }
+
+    void loadAuditLogs()
+
+    return () => {
+      cancelled = true
+    }
+  }, [showLogs, ictBudgetId])
 
   const handleCreateBudgetItems = async (items: BudgetItemDraft[]) => {
     if (!hasDataverseBudgetProject) {
@@ -2154,7 +2341,7 @@ export default function ProjectDetail() {
     plannedEndDate: savedFormValues.plannedEndDate
       ? format(new Date(`${savedFormValues.plannedEndDate}T00:00:00`), 'MMM d, yyyy')
       : project.plannedEndDate,
-    summary: savedFormValues.summary || project.summary,
+    summary: savedFormValues.summary || toPlainTextSummary(project.summary),
     status: resolvedStatusLabel,
     createdBy: headerCreatedBy,
     createdOn: creationCreatedOnLabel,
@@ -2262,7 +2449,18 @@ export default function ProjectDetail() {
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-3 text-center dark:bg-white/5">
                 <p className="text-xs font-semibold text-[#64748B]">Documents</p>
-                <p className={cn('text-lg font-bold', documentStatus === 'Complete' ? 'text-green-600' : 'text-amber-600')}>{documentStatus}</p>
+                <p
+                  className={cn(
+                    'text-lg font-bold',
+                    documentStatus === 'Complete'
+                      ? 'text-green-600'
+                      : documentStatus === 'Loading'
+                        ? 'text-[#286CFF]'
+                        : 'text-amber-600'
+                  )}
+                >
+                  {documentStatus}
+                </p>
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-3 text-center dark:bg-white/5">
                 <p className="text-xs font-semibold text-[#64748B]">Budget</p>
@@ -2387,7 +2585,13 @@ export default function ProjectDetail() {
         onNavigate={scrollToSection}
       />}
 
-      {showLogs && <ChangeLogTable />}
+      {showLogs && (
+        <ChangeLogTable
+          logs={auditLogs}
+          loading={auditLogsLoading}
+          error={auditLogsError}
+        />
+      )}
 
       {/* Main grid */}
       <div className={cn('grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_390px]', showLogs && 'hidden')}>
@@ -2666,7 +2870,9 @@ export default function ProjectDetail() {
                     onDelete={handleDeleteDocument}
                   />
                 </div>
-                <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
+                {currentRole === 'Respondent' && (
+                  <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
+                )}
               </DetailSection>
 
               {/* Clarifications section always visible in edit mode (respondent can reply) */}
@@ -2836,6 +3042,15 @@ export default function ProjectDetail() {
                         Raise Clarification
                       </Button>
                     )}
+                    {canCompleteReview && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setPendingWorkflowAction('complete-review')}
+                      >
+                        <Check className="h-4 w-4" />
+                        Complete Review
+                      </Button>
+                    )}
                     {canSubmitToApprover && (
                       <Button
                         className="w-full justify-start gap-2"
@@ -2854,7 +3069,7 @@ export default function ProjectDetail() {
                         Approve Project
                       </Button>
                     )}
-                    {!canCurrentRoleEdit && !canRaiseClarification && !canSubmitToApprover && !canApproveProject && (
+                    {!canCurrentRoleEdit && !canRaiseClarification && !canCompleteReview && !canSubmitToApprover && !canApproveProject && (
                       <p className="text-xs text-[#475569] dark:text-slate-200">
                         This record is currently pending with another role, so workflow actions are locked here.
                       </p>

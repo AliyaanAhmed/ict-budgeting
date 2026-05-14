@@ -6,21 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatAED(amount: number): string {
-  const absoluteAmount = Math.abs(amount)
-
-  if (absoluteAmount >= 1_000_000_000) {
-    return `${(amount / 1_000_000_000).toFixed(1)}B`
-  }
-
-  if (absoluteAmount >= 1_000_000) {
-    return `${(amount / 1_000_000).toFixed(1)}M`
-  }
-
-  if (absoluteAmount >= 1_000) {
-    return `${(amount / 1_000).toFixed(1)}K`
-  }
-
-  return `${amount}`
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
 
 export function formatAEDFull(amount: number): string {

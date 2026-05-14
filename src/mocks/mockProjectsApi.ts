@@ -85,6 +85,7 @@ export const mockProjectsApi: ProjectsApi = {
   },
 
   submitToReviewer: noop,
+  reviewerCompleteReview: noop,
   reviewerApprove: noop,
   reviewerRaiseClarification: async (_projectId: string, _payload: ClarificationPayload) => noop(),
   approverApprove: noop,

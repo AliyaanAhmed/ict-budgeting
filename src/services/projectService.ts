@@ -47,6 +47,10 @@ export const projectService = {
     return projectsApi.submitToReviewer(projectId)
   },
 
+  reviewerCompleteReview(projectId: string): Promise<void> {
+    return projectsApi.reviewerCompleteReview(projectId)
+  },
+
   reviewerApprove(projectId: string): Promise<void> {
     return projectsApi.reviewerApprove(projectId)
   },
@@ -74,6 +78,7 @@ export const projectService = {
 
     if (role === 'reviewer') {
       if (tab === 'pending-review') return ['Submitted to Reviewer']
+      if (tab === 'review-completed') return ['Reviewer Review Completed']
       if (tab === 'clarification') return ['Clarification Required']
       if (tab === 'submitted-approver') return ['Submitted to Approver']
       return undefined

@@ -22,6 +22,7 @@ export type Role = 'Respondent' | 'Reviewer' | 'Approver' | 'ICT Admin'
 export type ProjectStatus =
   | 'Draft'
   | 'Submitted to Reviewer'
+  | 'Reviewer Review Completed'
   | 'Clarification Required'
   | 'Submitted to Approver'
   | 'Approved'

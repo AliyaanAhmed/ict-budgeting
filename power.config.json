@@ -128,9 +128,19 @@
           "logicalName": "sharepointdocument",
           "isHidden": false
         },
+        "audits": {
+          "entitySetName": "audits",
+          "logicalName": "audit",
+          "isHidden": false
+        },
         "ictclarifications": {
           "entitySetName": "dga_ict_clarifications",
           "logicalName": "dga_ict_clarification",
+          "isHidden": false
+        },
+        "appnotifications": {
+          "entitySetName": "dga_app_notificationses",
+          "logicalName": "dga_app_notifications",
           "isHidden": false
         }
       },

@@ -137,7 +137,15 @@ function MetricCard({
 }
 
 function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; iconColor?: string }) {
-  return <CurrencyAmount amount={amount} className="text-2xl font-bold leading-none sm:text-[30px] xl:text-[32px]" iconColor={iconColor} iconSize={18} />
+  return (
+    <CurrencyAmount
+      amount={amount}
+      className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
+      valueClassName="break-all"
+      iconColor={iconColor}
+      iconSize={16}
+    />
+  )
 }
 
 function ActionMetricCard({
@@ -242,24 +250,26 @@ export default function ReviewerDashboard() {
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
   const pendingReviewProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
+  const reviewCompletedProjects = liveProjects.filter((project) => project.status === 'Reviewer Review Completed')
   const clarificationSentProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
   const sentToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
 
   const toReview = pendingReviewProjects.length
+  const reviewCompleted = reviewCompletedProjects.length
   const clarificationPending = clarificationSentProjects.length
   const reviewed = sentToApproverProjects.length
-  const approved = approvedProjects.length
 
   const totalQueueBudget = liveProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
   const reviewedBudget = sentToApproverProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const approvedBudget = approvedProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
   const avgConfidence = liveProjects.length > 0
     ? Math.round(liveProjects.reduce((sum, p) => sum + p.aiScore, 0) / liveProjects.length)
     : 0
   const predictedApproval = Math.round(totalQueueBudget * (avgConfidence / 100))
 
-  const attentionCount = toReview + clarificationPending
+  const attentionCount = toReview + reviewCompleted + clarificationPending
 
   const attentionProjects = useMemo(
     () =>
@@ -339,9 +349,19 @@ export default function ReviewerDashboard() {
       fill: dashboardStatusColors.clarificationPending,
     },
     {
+      name: 'Review Completed',
+      value: reviewCompletedProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      fill: '#16A34A',
+    },
+    {
       name: 'Sent To Approver',
       value: reviewedBudget,
       fill: dashboardStatusColors.reviewed,
+    },
+    {
+      name: 'Approved by Approver',
+      value: approvedBudget,
+      fill: dashboardStatusColors.approved,
     },
   ].map((item) => ({
     ...item,
@@ -436,20 +456,28 @@ export default function ReviewerDashboard() {
 
       {/* ─── Metric cards ─── */}
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
           <ActionMetricCard
             title="Pending Review"
             value={toReview}
             accent={dashboardPalette.seaBlue}
-            badge="Awaiting Review"
+            badge="Pending"
             icon={<Radar className="h-5 w-5" />}
             href="/reviewer/projects?tab=pending-review"
+          />
+          <ActionMetricCard
+            title="Review Completed"
+            value={reviewCompleted}
+            accent={dashboardPalette.aeGreen}
+            badge="Ready"
+            icon={<ClipboardCheck className="h-5 w-5" />}
+            href="/reviewer/projects?tab=review-completed"
           />
           <ActionMetricCard
             title="Clarification Sent"
             value={clarificationPending}
             accent={dashboardPalette.camelYellow}
-            badge="Awaiting Respondent"
+            badge="Open"
             icon={<MessageSquareMore className="h-5 w-5" />}
             href="/reviewer/projects?tab=clarification"
           />
@@ -845,9 +873,9 @@ export default function ReviewerDashboard() {
             <div className="mt-5 grid grid-cols-2 gap-3">
               {[
                 { label: 'Pending Review', value: toReview, tone: dashboardStatusColors.toReview },
+                { label: 'Review Completed', value: reviewCompleted, tone: '#16A34A' },
                 { label: 'Clarif. Sent', value: clarificationPending, tone: dashboardStatusColors.clarificationPending },
                 { label: 'Sent To Approver', value: reviewed, tone: dashboardStatusColors.reviewed },
-                { label: 'Approved', value: approved, tone: dashboardStatusColors.approved },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">

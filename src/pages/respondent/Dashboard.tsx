@@ -36,26 +36,34 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { Button } from '@/components/ui/button'
 import { AccountCodesBreakdown } from '@/components/charts/AccountCodesBreakdown'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { projects as mockProjects } from '@/data/db'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
-import { useAccountCodesBreakdown } from '@/hooks/useDashboardBudgetCharts'
+import {
+  useAccountCodesBreakdown,
+  useBudgetByCategoryChart,
+  useStrategicPriorityCycleComparison,
+} from '@/hooks/useDashboardBudgetCharts'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
-
-const YEAR_COMPARISON_FACTORS = [0.88, 0.94, 0.81, 0.9, 0.86, 0.78]
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
 
+  const strategicPriorityName =
+    payload.find((entry: any) => typeof entry?.payload?.name === 'string')?.payload?.name ?? label
+
   return (
     <div className="min-w-[180px] rounded-2xl border border-[#DCE6F1] bg-white/95 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.16)] backdrop-blur dark:border-white/10 dark:bg-[#10203A]/95">
-      <p className="text-xs font-semibold text-[#0F172A] dark:text-white">{label}</p>
+      <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-100">
+        Strategic Priority
+      </p>
+      <p className="mt-1 text-xs font-semibold text-[#0F172A] dark:text-white">{strategicPriorityName}</p>
       <div className="mt-2 space-y-1.5">
         {payload.map((entry: any) => (
           <div key={entry.dataKey} className="flex items-center justify-between gap-4 text-xs">
@@ -64,7 +72,7 @@ function ChartTooltip({ active, payload, label }: any) {
               {entry.name}
             </span>
             <CurrencyAmount
-              amount={(entry.value as number) * 1_000_000}
+              amount={entry.value as number}
               className="text-xs font-semibold text-[#0F172A] dark:text-white"
               iconSize={12}
             />
@@ -73,6 +81,20 @@ function ChartTooltip({ active, payload, label }: any) {
       </div>
     </div>
   )
+}
+
+function formatCompactTick(value: number) {
+  if (!Number.isFinite(value)) return ''
+
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`
+  }
+
+  if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toFixed(0)}K`
+  }
+
+  return `${Math.round(value)}`
 }
 
 function PieTooltip({ active, payload }: any) {
@@ -167,7 +189,15 @@ function MetricCard({
 }
 
 function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; iconColor?: string }) {
-  return <CurrencyAmount amount={amount} className="text-2xl font-bold leading-none sm:text-[30px] xl:text-[32px]" iconColor={iconColor} iconSize={18} />
+  return (
+    <CurrencyAmount
+      amount={amount}
+      className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
+      valueClassName="break-all"
+      iconColor={iconColor}
+      iconSize={16}
+    />
+  )
 }
 
 function ActionMetricCard({
@@ -259,15 +289,21 @@ function computeDaysRemaining(endDate?: string | null): number {
 
 export default function RespondentDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
-  const { selectedCycle } = useCycle()
+  const { selectedCycle, cyclesData } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('respondent', instanceId)
+  const budgetByCategory = useBudgetByCategoryChart(liveProjects)
+  const {
+    comparisonData,
+    previousCycle,
+    loading: comparisonLoading,
+    error: comparisonError,
+  } = useStrategicPriorityCycleComparison(liveProjects, selectedCycle, cyclesData)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
-  const mockTotalBudget = mockProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
   const totalBudget = liveProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
-  const lastYearBudget = 0
+  const lastYearBudget = comparisonData.reduce((sum, item) => sum + item.previous, 0)
   const predictedBudget = Math.round(totalBudget * 0.803)
   const confidenceScore = liveProjects.length > 0
     ? Math.round(liveProjects.reduce((sum, project) => sum + project.aiScore, 0) / liveProjects.length)
@@ -310,6 +346,7 @@ export default function RespondentDashboard() {
     loading: accountBreakdownLoading,
     error: accountBreakdownError,
   } = useAccountCodesBreakdown(liveProjects)
+  const hasPreviousCycle = Boolean(previousCycle)
 
   const budgetTypeGroups = [
     {
@@ -352,28 +389,6 @@ export default function RespondentDashboard() {
       share: totalBudget > 0 ? Math.round((amount / totalBudget) * 100) : 0,
     }
   })
-
-  const comparisonData = Array.from(
-    mockProjects.reduce((acc, project) => {
-      const existing = acc.get(project.strategicPriority)
-      if (existing) {
-        existing.current += project.requestedBudget / 1_000_000
-        return acc
-      }
-
-      const index = acc.size
-      acc.set(project.strategicPriority, {
-        name: project.strategicPriority,
-        current: project.requestedBudget / 1_000_000,
-        previous: (project.requestedBudget / 1_000_000) * YEAR_COMPARISON_FACTORS[index % YEAR_COMPARISON_FACTORS.length],
-      })
-      return acc
-    }, new Map<string, { name: string; current: number; previous: number }>())
-  ).map(([, value]) => ({
-    ...value,
-    previous: Number(value.previous.toFixed(1)),
-    current: Number(value.current.toFixed(1)),
-  }))
 
   const requestedBudgetByStatus = [
     {
@@ -817,42 +832,85 @@ export default function RespondentDashboard() {
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
         <Card
-          title="Compare current requested budgets against a reconstructed previous-year baseline across priorities."
+          title={
+            hasPreviousCycle
+              ? 'Compare the selected cycle against the immediately previous cycle across strategic priorities.'
+              : 'Shows requested budget distribution by strategic priority for the selected cycle.'
+          }
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Current vs Previous Year</h3>
-                  <InfoHint text="Compare current requested budgets against a previous-cycle baseline to understand where this year is trending higher or lower." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">
+                    {hasPreviousCycle ? 'Selected vs Previous Year' : 'Budget by Category'}
+                  </h3>
+                  <InfoHint
+                    text={
+                      hasPreviousCycle
+                        ? 'Compares the selected cycle strategic-priority budgets against the immediately previous cycle for the same respondent entity.'
+                        : 'Shows the selected cycle requested budget grouped by strategic priority.'
+                    }
+                  />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Budget request comparison by strategic priority
+                  {hasPreviousCycle
+                    ? 'Budget request comparison by strategic priority'
+                    : 'Requested budget grouped by strategic priority'}
                 </p>
               </div>
-              <div className="flex items-center gap-4 text-xs text-[#64748B] dark:text-slate-100">
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#286CFF]" />
-                  Current
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#AEBBCC]" />
-                  Previous
-                </span>
-              </div>
+              {hasPreviousCycle && (
+                <div className="flex items-center gap-4 text-xs text-[#64748B] dark:text-slate-100">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#286CFF]" />
+                    {selectedCycle?.name ?? 'Selected Cycle'}
+                  </span>
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#AEBBCC]" />
+                    {previousCycle?.name ?? 'Previous Cycle'}
+                  </span>
+                </div>
+              )}
             </div>
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart data={comparisonData} margin={{ top: 8, right: 10, left: 12, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
-                <XAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar dataKey="current" name="Current" radius={[8, 8, 0, 0]} fill="#286CFF" maxBarSize={28} />
-                <Bar dataKey="previous" name="Previous" radius={[8, 8, 0, 0]} fill="#AEBBCC" maxBarSize={28} />
-              </BarChart>
-            </ResponsiveContainer>
+            {!hasPreviousCycle ? (
+              <BudgetByCategory data={budgetByCategory} />
+            ) : comparisonLoading ? (
+              <div className="h-[320px] animate-pulse rounded-[20px] border border-[#DCE8F6] bg-[#F8FAFC] dark:border-white/10 dark:bg-white/5" />
+            ) : comparisonError ? (
+              <div className="rounded-[20px] border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#7F1D1D] dark:bg-[#3B0D0D] dark:text-[#FECACA]">
+                {comparisonError}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart data={comparisonData} margin={{ top: 8, right: 10, left: 12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.18)" vertical={false} />
+                  <XAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#94A3B8' }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={formatCompactTick}
+                  />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend />
+                  <Bar
+                    dataKey="current"
+                    name={selectedCycle?.name ?? 'Selected Cycle'}
+                    radius={[8, 8, 0, 0]}
+                    fill="#286CFF"
+                    maxBarSize={28}
+                  />
+                  <Bar
+                    dataKey="previous"
+                    name={previousCycle?.name ?? 'Previous Cycle'}
+                    radius={[8, 8, 0, 0]}
+                    fill="#AEBBCC"
+                    maxBarSize={28}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 

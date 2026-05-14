@@ -5,6 +5,7 @@ const statusConfig: Record<ProjectStatus, { label: string; className: string }> 
   Draft: { label: 'Draft', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-100' },
   'Needs Work': { label: 'Needs Work', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-100' },
   'Submitted to Reviewer': { label: 'Submitted to Reviewer', className: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
+  'Reviewer Review Completed': { label: 'Reviewer Review Completed', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' },
   'Clarification Required': { label: 'Clarification Required', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
   'Submitted to Approver': { label: 'Submitted to Approver', className: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' },
   Approved: { label: 'Approved', className: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' },

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Bell,
   Sun,
@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import { useRole } from '@/context/RoleContext'
 import type { Role } from '@/data/db'
-import { notifications } from '@/data/db'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -26,6 +25,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { CycleSwitcher } from './CycleSwitcher'
 import { getStoredUserContext } from '@/services/userContextService'
+import {
+  getOpenNotificationsForCurrentRole,
+  markNotificationAsRead,
+  markNotificationsAsRead,
+  type AppNotificationItem,
+} from '@/services/appNotificationService'
 
 interface HeaderProps {
   sidebarWidth: number
@@ -52,6 +57,32 @@ function getInitials(name: string): string {
     .join('')
 }
 
+function formatNotificationTime(createdOn: string | null) {
+  if (!createdOn) return ''
+
+  const created = new Date(createdOn)
+  if (Number.isNaN(created.getTime())) return createdOn
+
+  const diffMs = Date.now() - created.getTime()
+  const minutes = Math.floor(diffMs / 60000)
+  if (minutes < 1) return 'Just now'
+  if (minutes < 60) return `${minutes}m ago`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+
+  return created.toLocaleString('en-AE', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 export function Header({
   sidebarWidth,
   isDark,
@@ -62,13 +93,91 @@ export function Header({
 }: HeaderProps) {
   const { activeRole, setActiveRole, availableRoles } = useRole()
   const [notifOpen, setNotifOpen] = useState(false)
-  const unreadCount = notifications.filter(n => !n.read).length
+  const [notifications, setNotifications] = useState<AppNotificationItem[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationError, setNotificationError] = useState<string | null>(null)
+  const [closingNotificationIds, setClosingNotificationIds] = useState<string[]>([])
+  const [markingAllRead, setMarkingAllRead] = useState(false)
+  const unreadCount = notifications.filter((n) => !closingNotificationIds.includes(n.id)).length
 
   // Resolve display name from stored user context (falls back to placeholder)
   const storedUser = getStoredUserContext()
   const displayName = storedUser?.fullName || 'Mahmood Al Rashidi'
   const displayShort = displayName.split(' ')[0] || 'Mahmood'
   const initials = getInitials(displayName) || 'MH'
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadNotifications = async () => {
+      setNotificationsLoading(true)
+      setNotificationError(null)
+
+      try {
+        const nextNotifications = await getOpenNotificationsForCurrentRole()
+        if (cancelled) return
+        setNotifications(nextNotifications)
+      } catch (error) {
+        if (cancelled) return
+        setNotifications([])
+        setNotificationError(
+          error instanceof Error ? error.message : 'Unable to load notifications.'
+        )
+      } finally {
+        if (!cancelled) {
+          setNotificationsLoading(false)
+        }
+      }
+    }
+
+    void loadNotifications()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeRole])
+
+  const handleMarkAsRead = async (notificationId: string) => {
+    setClosingNotificationIds((current) =>
+      current.includes(notificationId) ? current : [...current, notificationId]
+    )
+
+    try {
+      await markNotificationAsRead(notificationId)
+      window.setTimeout(() => {
+        setNotifications((current) => current.filter((item) => item.id !== notificationId))
+        setClosingNotificationIds((current) => current.filter((id) => id !== notificationId))
+      }, 180)
+    } catch (error) {
+      setClosingNotificationIds((current) => current.filter((id) => id !== notificationId))
+      setNotificationError(
+        error instanceof Error ? error.message : 'Unable to mark notification as read.'
+      )
+    }
+  }
+
+  const handleMarkAllAsRead = async () => {
+    const openNotificationIds = notifications.map((item) => item.id)
+    if (openNotificationIds.length === 0) return
+
+    setMarkingAllRead(true)
+    setClosingNotificationIds(openNotificationIds)
+
+    try {
+      await markNotificationsAsRead(openNotificationIds)
+      window.setTimeout(() => {
+        setNotifications([])
+        setClosingNotificationIds([])
+        setMarkingAllRead(false)
+      }, 180)
+    } catch (error) {
+      setClosingNotificationIds([])
+      setMarkingAllRead(false)
+      setNotificationError(
+        error instanceof Error ? error.message : 'Unable to mark all notifications as read.'
+      )
+    }
+  }
 
   return (
     <header
@@ -134,22 +243,71 @@ export function Header({
           </button>
           {notifOpen && (
             <div className="absolute right-0 top-10 w-80 rounded-[12px] border border-[var(--border)] bg-[var(--surface)] shadow-lg z-50">
-              <div className="px-4 py-3 border-b border-[var(--border)]">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
                 <p className="font-semibold text-sm text-[var(--foreground)]">Notifications</p>
-              </div>
-              {notifications.map(n => (
-                <div
-                  key={n.id}
-                  className={cn(
-                    'px-4 py-3 border-b border-[var(--muted)] hover:bg-[var(--muted)] cursor-pointer transition-colors',
-                    !n.read && 'bg-[#EAF2FF] dark:bg-[#286CFF]/15'
-                  )}
+                <button
+                  type="button"
+                  onClick={handleMarkAllAsRead}
+                  disabled={markingAllRead || notifications.length === 0}
+                  className="text-xs font-medium text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <p className="text-sm font-medium text-[var(--foreground)]">{n.title}</p>
-                  <p className="text-xs text-[var(--muted-foreground)] mt-0.5">{n.message}</p>
-                  <p className="text-xs text-[#94A3B8] mt-1">{n.time}</p>
-                </div>
-              ))}
+                  Mark all as read
+                </button>
+              </div>
+              <div className="max-h-[248px] overflow-y-auto">
+                {notificationsLoading && (
+                  <div className="px-4 py-6 text-sm text-[var(--muted-foreground)]">
+                    Loading notifications...
+                  </div>
+                )}
+                {!notificationsLoading && notificationError && (
+                  <div className="px-4 py-6 text-sm text-[var(--destructive)]">
+                    {notificationError}
+                  </div>
+                )}
+                {!notificationsLoading && !notificationError && notifications.length === 0 && (
+                  <div className="px-4 py-6 text-sm text-[var(--muted-foreground)]">
+                    No open notifications.
+                  </div>
+                )}
+                {!notificationsLoading &&
+                  !notificationError &&
+                  notifications.map((notification) => {
+                    const isClosing = closingNotificationIds.includes(notification.id)
+
+                    return (
+                      <div
+                        key={notification.id}
+                        className={cn(
+                          'px-4 py-3 border-b border-[var(--muted)] bg-[#EAF2FF] dark:bg-[#286CFF]/15 transition-all duration-200',
+                          isClosing && 'opacity-0 scale-[0.98]'
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-[var(--foreground)]">
+                              {notification.notificationId}
+                            </p>
+                            <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                              {notification.text}
+                            </p>
+                            <p className="mt-1 text-xs text-[#94A3B8]">
+                              {formatNotificationTime(notification.createdOn)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleMarkAsRead(notification.id)}
+                            disabled={isClosing}
+                            className="shrink-0 text-xs font-medium text-[var(--primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Mark as read
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
             </div>
           )}
         </div>

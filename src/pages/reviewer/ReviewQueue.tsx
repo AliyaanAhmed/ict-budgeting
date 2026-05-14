@@ -237,7 +237,12 @@ export default function ReviewQueue() {
 
   const visibleIds = filtered.map(p => p.id)
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id))
-  const actionableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'To Review')
+  const completableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'To Review')
+  const submittableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'Reviewed')
+  const clarificationSelected = selectedIds.filter(id => {
+    const status = projects.find(p => p.id === id)?.status
+    return status === 'To Review'
+  })
 
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -252,6 +257,30 @@ export default function ReviewQueue() {
   const getIctId = (projectId: string) =>
     projects.find(p => p.id === projectId)?.ictBudgetId ?? ''
 
+  const handleCompleteReview = async (projectIds: string[]) => {
+    await runActionToast(
+      async () => {
+        for (const id of projectIds) {
+          await projectService.reviewerCompleteReview(getIctId(id))
+        }
+        setProjects(prev => {
+          const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Reviewed' as const } : p)
+          setReviewCount(updated.filter(p => p.status === 'To Review').length)
+          return updated
+        })
+        setSelectedIds(prev => prev.filter(id => !projectIds.includes(id)))
+      },
+      {
+        processingTitle: 'Completing review',
+        processingDescription: `Completing reviewer assessment for ${projectIds.length} project${projectIds.length === 1 ? '' : 's'}...`,
+        successTitle: 'Review completed',
+        successDescription: `${projectIds.length} project${projectIds.length === 1 ? '' : 's'} marked ready for approver submission.`,
+        errorTitle: 'Unable to complete review',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
   const handleSubmitToApprover = async (projectIds: string[]) => {
     await runActionToast(
       async () => {
@@ -259,7 +288,7 @@ export default function ReviewQueue() {
           await projectService.reviewerApprove(getIctId(id))
         }
         setProjects(prev => {
-          const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Reviewed' as const } : p)
+          const updated = prev.filter(p => !projectIds.includes(p.id))
           setReviewCount(updated.filter(p => p.status === 'To Review').length)
           return updated
         })
@@ -313,7 +342,7 @@ export default function ReviewQueue() {
             <nav className="mb-2 text-xs text-[#64748B] dark:text-slate-200">Home / Reviewer / Review Queue</nav>
             <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] dark:text-white sm:text-3xl">Review Queue</h1>
             <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              Review respondent submissions, validate evidence, raise clarifications, and forward ready items to the approver.
+              Review respondent submissions, complete reviewer assessment, raise clarifications, and then submit ready items to the approver.
             </p>
           </div>
           <div className="rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
@@ -335,7 +364,7 @@ export default function ReviewQueue() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <QueueStat label="To Review" value={loading ? '—' : toReviewCount} icon={Clock} tone="amber" sub="Waiting for reviewer action" />
-        <QueueStat label="Reviewed" value={loading ? '—' : reviewedCount} icon={CheckCircle2} tone="green" sub="Forwarded onward successfully" />
+        <QueueStat label="Reviewed" value={loading ? '—' : reviewedCount} icon={CheckCircle2} tone="green" sub="Ready for approver submission" />
         <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={MessageSquare} tone="red" sub="Returned for respondent input" />
         <QueueStat
           label="Total Budget"
@@ -441,8 +470,8 @@ export default function ReviewQueue() {
               <span className="font-semibold text-[#0F172A] dark:text-white">Bulk Selection</span>
               <span className="block text-xs text-[#64748B] dark:text-slate-200">
                 {selectedIds.length} selected / {filtered.length} visible
-                {actionableSelected.length > 0 && actionableSelected.length < selectedIds.length && (
-                  <span className="ml-1 text-amber-600">({actionableSelected.length} actionable)</span>
+                {clarificationSelected.length > 0 && clarificationSelected.length < selectedIds.length && (
+                  <span className="ml-1 text-amber-600">({clarificationSelected.length} actionable)</span>
                 )}
               </span>
             </span>
@@ -451,15 +480,23 @@ export default function ReviewQueue() {
             <Button
               variant="outline"
               size="sm"
-              disabled={actionableSelected.length === 0}
+              disabled={clarificationSelected.length === 0}
               onClick={() => setBulkClarificationOpen(true)}
             >
               <MessageSquare className="h-4 w-4" />Raise Clarification
             </Button>
             <Button
+              variant="outline"
               size="sm"
-              disabled={actionableSelected.length === 0}
-              onClick={() => setPendingSubmit(actionableSelected)}
+              disabled={completableSelected.length === 0}
+              onClick={() => void handleCompleteReview(completableSelected)}
+            >
+              <Check className="h-4 w-4" />Complete Review
+            </Button>
+            <Button
+              size="sm"
+              disabled={submittableSelected.length === 0}
+              onClick={() => setPendingSubmit(submittableSelected)}
             >
               <Send className="h-4 w-4" />Submit to Approver
             </Button>
@@ -484,7 +521,9 @@ export default function ReviewQueue() {
           filtered.map(proj => {
             const accent = statusAccent(proj.status)
             const isSelected = selectedIds.includes(proj.id)
-            const isActionable = proj.status === 'To Review'
+            const isCompletable = proj.status === 'To Review'
+            const isSubmittable = proj.status === 'Reviewed'
+            const canClarify = proj.status === 'To Review'
             const aiExpanded = expandedAiId === proj.id
 
             return (
@@ -592,8 +631,8 @@ export default function ReviewQueue() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={!isActionable}
-                      onClick={() => { if (isActionable) setClarificationProject(proj) }}
+                      disabled={!canClarify}
+                      onClick={() => { if (canClarify) setClarificationProject(proj) }}
                     >
                       <MessageSquare className="h-4 w-4" />Raise Clarification
                     </Button>
@@ -603,10 +642,19 @@ export default function ReviewQueue() {
                       </Link>
                     </Button>
                     <Button
+                      variant="outline"
                       size="sm"
-                      disabled={!isActionable}
+                      disabled={!isCompletable}
+                      className="disabled:opacity-50"
+                      onClick={() => { if (isCompletable) void handleCompleteReview([proj.id]) }}
+                    >
+                      <Check className="h-4 w-4" />Complete Review
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!isSubmittable}
                       className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                      onClick={() => { if (isActionable) setPendingSubmit([proj.id]) }}
+                      onClick={() => { if (isSubmittable) setPendingSubmit([proj.id]) }}
                     >
                       <Send className="h-4 w-4" />Submit to Approver
                     </Button>
@@ -649,8 +697,8 @@ export default function ReviewQueue() {
       <ClarificationModal
         open={bulkClarificationOpen}
         onOpenChange={setBulkClarificationOpen}
-        projectName={`${actionableSelected.length} selected project${actionableSelected.length === 1 ? '' : 's'}`}
-        onSubmit={(payload) => void handleRaiseClarification(actionableSelected, payload)}
+        projectName={`${clarificationSelected.length} selected project${clarificationSelected.length === 1 ? '' : 's'}`}
+        onSubmit={(payload) => void handleRaiseClarification(clarificationSelected, payload)}
       />
     </div>
   )

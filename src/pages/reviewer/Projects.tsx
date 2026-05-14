@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 
-type FilterTab = 'all' | 'pending-review' | 'clarification' | 'submitted-approver'
+type FilterTab = 'all' | 'pending-review' | 'review-completed' | 'clarification' | 'submitted-approver'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -131,7 +131,7 @@ export default function ReviewerProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'pending-review' || tab === 'clarification' || tab === 'submitted-approver' || tab === 'all') {
+    if (tab === 'pending-review' || tab === 'review-completed' || tab === 'clarification' || tab === 'submitted-approver' || tab === 'all') {
       setActiveTab(tab)
       return
     }
@@ -142,6 +142,7 @@ export default function ReviewerProjects() {
   const tabs = [
     { id: 'all' as const, label: 'All Projects', count: projects.length },
     { id: 'pending-review' as const, label: 'Pending Review', count: projects.filter((project) => project.status === 'Submitted to Reviewer').length },
+    { id: 'review-completed' as const, label: 'Review Completed', count: projects.filter((project) => project.status === 'Reviewer Review Completed').length },
     { id: 'clarification' as const, label: 'Clarification Required', count: projects.filter((project) => project.status === 'Clarification Required').length },
     { id: 'submitted-approver' as const, label: 'Submitted to Approver', count: projects.filter((project) => project.status === 'Submitted to Approver').length },
   ]
@@ -155,6 +156,7 @@ export default function ReviewerProjects() {
     const matchesTab =
       activeTab === 'all' ||
       (activeTab === 'pending-review' && project.status === 'Submitted to Reviewer') ||
+      (activeTab === 'review-completed' && project.status === 'Reviewer Review Completed') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
       (activeTab === 'submitted-approver' && project.status === 'Submitted to Approver')
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
@@ -238,6 +240,7 @@ export default function ReviewerProjects() {
               <SelectItem value="Draft">Draft</SelectItem>
               <SelectItem value="Clarification Required">Clarification Required</SelectItem>
               <SelectItem value="Submitted to Reviewer">Submitted to Reviewer</SelectItem>
+              <SelectItem value="Reviewer Review Completed">Reviewer Review Completed</SelectItem>
               <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
               <SelectItem value="Approved">Approved</SelectItem>
             </SelectContent>

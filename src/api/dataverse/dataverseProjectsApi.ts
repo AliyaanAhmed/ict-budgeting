@@ -10,6 +10,8 @@ import {
 import {
   raiseBudgetClarification,
 } from '@/services/clarificationService'
+import { shareIctBudgetWithRoleTeam } from '@/services/recordShareService'
+import { createNotificationForRole } from '@/services/appNotificationService'
 import type {
   Project,
   ReviewQueueProject,
@@ -23,10 +25,13 @@ import type {
 import type { Dga_ict_budgetsdga_status_for_adge } from '@/generated/models/Dga_ict_budgetsModel'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 
+type WorkflowStatusForAdge = Dga_ict_budgetsdga_status_for_adge | 12
+
 const ICT_BUDGET_SELECT_FIELDS = [
   'dga_ict_budgetid',
   'dga_budget_ref_id',
   'dga_activity_type',
+  'dga_summary',
   '_createdby_value',
   'dga_initiative_project_requirement_name',
   '_ownerid_value',
@@ -116,34 +121,73 @@ function getTargetOwnerBinding(target: 'Respondent' | 'Reviewer' | 'Approver') {
   return {}
 }
 
-const STATUS_CODE_MAP: Partial<Record<Dga_ict_budgetsdga_status_for_adge, number>> = {
+const STATUS_CODE_MAP: Partial<Record<WorkflowStatusForAdge, number>> = {
   2: 776140001, // Submitted to Reviewer
   3: 776140002, // Submitted to Approver
   4: 776140003, // Approved
   5: 776140010, // Clarification Required
+  12: 576610001, // Reviewer Review Completed
+}
+
+function getActorRoleBinding(role: 'Respondent' | 'Reviewer' | 'Approver') {
+  const currentUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim()
+  if (!currentUserId) {
+    console.warn('[DataverseProjectsApi] No current user id found for workflow actor binding:', role)
+    return {}
+  }
+
+  const key =
+    role === 'Respondent'
+      ? 'dga_respondent_systemuser@odata.bind'
+      : role === 'Reviewer'
+        ? 'dga_reviewer_systemuser@odata.bind'
+        : 'dga_approver_systemuser@odata.bind'
+
+  const binding = { [key]: `/systemusers(${currentUserId})` }
+  console.log('[DataverseProjectsApi] Using workflow actor binding:', { role, currentUserId, binding })
+  return binding
 }
 
 async function updateBudgetWorkflow(
   projectId: string,
-  status: Dga_ict_budgetsdga_status_for_adge,
-  targetOwner: 'Respondent' | 'Reviewer' | 'Approver'
+  status: WorkflowStatusForAdge,
+  targetOwner?: 'Respondent' | 'Reviewer' | 'Approver',
+  shareWithRole?: 'Respondent' | 'Reviewer' | 'Approver',
+  actorRole?: 'Respondent' | 'Reviewer' | 'Approver',
+  notificationText?: string
 ) {
   const statuscode = STATUS_CODE_MAP[status]
   const payload = {
     dga_status_for_adge: status,
     ...(statuscode !== undefined ? { statuscode } : {}),
-    ...getTargetOwnerBinding(targetOwner),
+    ...(targetOwner ? getTargetOwnerBinding(targetOwner) : {}),
+    ...(actorRole ? getActorRoleBinding(actorRole) : {}),
   } as Record<string, unknown>
 
   console.log('[DataverseProjectsApi] Updating workflow with payload:', {
     projectId,
     status,
     statuscode: statuscode ?? null,
-    targetOwner,
+    targetOwner: targetOwner ?? null,
+    actorRole: actorRole ?? null,
     payload,
   })
 
   await Dga_ict_budgetsService.update(projectId, payload)
+
+  if (shareWithRole) {
+    console.log('[DataverseProjectsApi] Sharing ICT budget after workflow update:', {
+      projectId,
+      status,
+      targetOwner,
+      shareWithRole,
+    })
+    await shareIctBudgetWithRoleTeam(projectId, shareWithRole)
+  }
+
+  if (targetOwner && notificationText?.trim()) {
+    await createNotificationForRole(targetOwner, notificationText.trim())
+  }
 }
 
 function formatDate(record: unknown, formattedKey: string, rawValue: string | null | undefined) {
@@ -172,9 +216,12 @@ function mapStatus(value: number | null | undefined, formatted: string | null): 
       return 'Approved'
     case 5:
       return 'Clarification Required'
+    case 12:
+      return 'Reviewer Review Completed'
     default:
       if (formatted === 'Clarification Pending') return 'Clarification Required'
       if (formatted === 'Under Reviewer Review') return 'Submitted to Reviewer'
+      if (formatted === 'Reviewer Review Completed') return 'Reviewer Review Completed'
       if (formatted === 'Under Approver Review') return 'Submitted to Approver'
       if (formatted === 'Approved by Approver') return 'Approved'
       return 'Draft'
@@ -201,6 +248,24 @@ function mapActivityTypeLabel(record: unknown, fallbackValue: number | null | un
     default:
       return '-'
   }
+}
+
+function toPlainTextSummary(value: string | null | undefined) {
+  if (!value?.trim()) return ''
+
+  if (typeof window !== 'undefined' && typeof window.document !== 'undefined') {
+    const container = window.document.createElement('div')
+    container.innerHTML = value
+    return (container.textContent || container.innerText || '').trim()
+  }
+
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function mapBudgetRecordToProject(
@@ -274,7 +339,7 @@ function mapBudgetRecordToProject(
     workStream: '-',
     budgetType: mapActivityTypeLabel(record, record.dga_activity_type),
     technology: { company: '-', product: '-' },
-    summary: '',
+    summary: toPlainTextSummary(record.dga_summary),
     documents: [],
     clarifications: [],
     aiScore: 84,
@@ -364,16 +429,16 @@ export const dataverseProjectsApi: ProjectsApi = {
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: combineFilters(
-        'dga_status_for_adge eq 2 or dga_status_for_adge eq 3 or dga_status_for_adge eq 5',
+        'dga_status_for_adge eq 2 or dga_status_for_adge eq 5 or dga_status_for_adge eq 12',
         getInstanceFilter()
       ),
       orderBy: ['modifiedon desc'],
     })
 
     return (result.data ?? []).map((record): ReviewQueueProject => {
-      const sv = record.dga_status_for_adge
+      const sv = Number(record.dga_status_for_adge ?? 0)
       const queueStatus: ReviewQueueProject['status'] =
-        sv === 2 ? 'To Review' : sv === 3 ? 'Reviewed' : 'Clarification Pending'
+        sv === 2 ? 'To Review' : sv === 12 ? 'Reviewed' : 'Clarification Pending'
 
       return {
         id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN',
@@ -442,10 +507,27 @@ export const dataverseProjectsApi: ProjectsApi = {
   },
 
   async submitToReviewer(projectId: string) {
-    await updateBudgetWorkflow(projectId, 2, 'Reviewer')
+    await updateBudgetWorkflow(
+      projectId,
+      2,
+      'Reviewer',
+      'Respondent',
+      'Respondent',
+      'A budget item has been submitted to Reviewer for review.'
+    )
+  },
+  async reviewerCompleteReview(projectId: string) {
+    await updateBudgetWorkflow(projectId, 12, undefined, undefined, 'Reviewer')
   },
   async reviewerApprove(projectId: string) {
-    await updateBudgetWorkflow(projectId, 3, 'Approver')
+    await updateBudgetWorkflow(
+      projectId,
+      3,
+      'Approver',
+      'Reviewer',
+      'Reviewer',
+      'A budget item has been submitted to Approver for final review.'
+    )
   },
   async reviewerRaiseClarification(projectId: string, _payload: ClarificationPayload) {
     await raiseBudgetClarification({
@@ -454,10 +536,25 @@ export const dataverseProjectsApi: ProjectsApi = {
       raisedByRole: 'Reviewer',
       files: _payload.files,
     })
-    await updateBudgetWorkflow(projectId, 5, 'Respondent')
+    await updateBudgetWorkflow(
+      projectId,
+      5,
+      'Respondent',
+      'Reviewer',
+      'Reviewer',
+      'A budget item has been returned to Respondent for clarification.'
+    )
   },
   async approverApprove(projectId: string) {
-    await Dga_ict_budgetsService.update(projectId, { dga_status_for_adge: 4, statuscode: 776140003 } as Record<string, unknown>)
+    await Dga_ict_budgetsService.update(
+      projectId,
+      {
+        dga_status_for_adge: 4,
+        statuscode: 776140003,
+        ...getActorRoleBinding('Approver'),
+      } as Record<string, unknown>
+    )
+    await shareIctBudgetWithRoleTeam(projectId, 'Approver')
   },
   async approverRaiseClarification(projectId: string, _payload: ClarificationPayload) {
     await raiseBudgetClarification({
@@ -466,6 +563,13 @@ export const dataverseProjectsApi: ProjectsApi = {
       raisedByRole: 'Approver',
       files: _payload.files,
     })
-    await updateBudgetWorkflow(projectId, 5, 'Respondent')
+    await updateBudgetWorkflow(
+      projectId,
+      5,
+      'Respondent',
+      'Approver',
+      'Approver',
+      'A budget item has been returned to Respondent for approver clarification.'
+    )
   },
 }
