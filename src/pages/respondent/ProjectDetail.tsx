@@ -61,7 +61,9 @@ import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { ClarificationThread } from '@/components/shared/ClarificationThread'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
+import { useInstance } from '@/context/InstanceContext'
 import { useToast } from '@/context/ToastContext'
+import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { cn } from '@/lib/utils'
 import { formatAEDFull } from '@/lib/utils'
 import type { BudgetItemDraft } from '@/domain/classification'
@@ -354,11 +356,37 @@ type PendingClarificationReply = {
   returnToRole: 'Reviewer' | 'Approver'
 }
 
+const WORKFLOW_STATUSCODE_BY_STATUS: Partial<Record<Project['status'], number>> = {
+  Draft: 1,
+  'Submitted to Reviewer': 776140001,
+  'Reviewer Review Completed': 576610001,
+  'Clarification Required': 776140010,
+  'Submitted to Approver': 776140002,
+  Approved: 776140003,
+  'Submitted to DGE': 776140004,
+}
+
 function getWorkflowOwner(status: string): WorkflowRole | null {
   if (status === 'Draft' || status === 'Clarification Required') return 'Respondent'
   if (status === 'Submitted to Reviewer' || status === 'Reviewer Review Completed') return 'Reviewer'
-  if (status === 'Submitted to Approver') return 'Approver'
+  if (status === 'Submitted to Approver' || status === 'Approved') return 'Approver'
   return null
+}
+
+function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fallbackStatus?: string): WorkflowRole | null {
+  switch (statusCode) {
+    case 1:
+    case 776140010:
+      return 'Respondent'
+    case 776140001:
+    case 576610001:
+      return 'Reviewer'
+    case 776140002:
+    case 776140003:
+      return 'Approver'
+    default:
+      return fallbackStatus ? getWorkflowOwner(fallbackStatus) : null
+  }
 }
 
 function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
@@ -403,11 +431,20 @@ function isProjectOwnedByCurrentContext(project: Project, role: WorkflowRole) {
   return false
 }
 
-function canRoleEdit(status: string, role: WorkflowRole, project: Project) {
-  return getWorkflowOwner(status) === role && isProjectOwnedByCurrentContext(project, role)
+function canRoleEdit(project: Project, role: WorkflowRole) {
+  return (
+    getWorkflowOwnerByStatusCode(project.statusCode, project.status) === role &&
+    isProjectOwnedByCurrentContext(project, role)
+  )
 }
 
-function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
+function workflowActionDetails(
+  action: WorkflowAction,
+  role: WorkflowRole,
+  options?: { directToDge?: boolean }
+) {
+  const directToDge = options?.directToDge === true
+
   if (action === 'delete-project') {
     return {
       title: 'Delete this project?',
@@ -449,10 +486,17 @@ function workflowActionDetails(action: WorkflowAction, role: WorkflowRole) {
   }
 
   return {
-    title: role === 'Approver' ? 'Approve this project?' : 'Complete this action?',
+    title:
+      role === 'Approver'
+        ? directToDge
+          ? 'Submit this project to DGE?'
+          : 'Approve this project?'
+        : 'Complete this action?',
     description:
-      'This will mark the project as approved by the approver and close the approval stage.',
-    confirmLabel: 'Approve Project',
+      role === 'Approver' && directToDge
+        ? 'This cycle already has a DGE submission, so this project will move directly into DGE strategic alignment review.'
+        : 'This will mark the project as approved by the approver and close the approval stage.',
+    confirmLabel: role === 'Approver' && directToDge ? 'Submit to DGE' : 'Approve Project',
     tone: 'primary' as const,
   }
 }
@@ -1061,6 +1105,7 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const { instanceId } = useInstance()
   const { runActionToast, showErrorToast, showSuccessToast } = useToast()
 
   const emptyProject: Project = useMemo(
@@ -1110,6 +1155,9 @@ export default function ProjectDetail() {
 
   const routeRole: WorkflowRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
   const currentRole = normalizeStoredRole(sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)) ?? routeRole
+  const roleProjectScope =
+    currentRole === 'Reviewer' ? 'reviewer' : currentRole === 'Approver' ? 'approver' : 'respondent'
+  const { items: cycleProjects } = useRoleProjects(roleProjectScope, instanceId)
   const backHref = isReviewerView ? '/reviewer/review-queue' : isApproverView ? '/approver/approval-queue' : '/respondent/projects'
   const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
   const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
@@ -1120,25 +1168,56 @@ export default function ProjectDetail() {
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
   const budgetFitTone = budgetFit === 'Aligned' ? 'green' : budgetFit === 'Review' ? 'amber' : 'red'
   const actionContextLabel = isApproverView ? 'Approver decision controls' : 'Reviewer decision controls'
-  const workflowOwner = getWorkflowOwner(project.status)
+  const hasCycleDgeSubmission = cycleProjects.some(
+    (cycleProject) =>
+      cycleProject.status === 'Submitted to DGE' && cycleProject.statusCode === 776140004
+  )
+  const workflowOwner = getWorkflowOwnerByStatusCode(project.statusCode, project.status)
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
-  const canCurrentRoleEdit = canRoleEdit(project.status, currentRole, project)
-  const canDeleteProject = currentRole === 'Respondent' && isCurrentOwner && project.status === 'Draft'
+  const canCurrentRoleEdit = canRoleEdit(project, currentRole)
+  const canDeleteProject =
+    currentRole === 'Respondent' &&
+    isCurrentOwner &&
+    (project.statusCode === 1 || (project.statusCode == null && project.status === 'Draft'))
   const canSubmitToReviewer =
     currentRole === 'Respondent' &&
     isCurrentOwner &&
-    project.status === 'Draft'
+    (project.statusCode === 1 || (project.statusCode == null && project.status === 'Draft'))
   const canSubmitToApprover =
-    currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Reviewer Review Completed'
+    currentRole === 'Reviewer' &&
+    isCurrentOwner &&
+    (
+      (hasCycleDgeSubmission &&
+        (project.statusCode === 776140001 ||
+          (project.statusCode == null && project.status === 'Submitted to Reviewer'))) ||
+      project.statusCode === 576610001 ||
+      (project.statusCode == null && project.status === 'Reviewer Review Completed')
+    )
   const canCompleteReview =
-    currentRole === 'Reviewer' && isCurrentOwner && project.status === 'Submitted to Reviewer'
+    currentRole === 'Reviewer' &&
+    isCurrentOwner &&
+    !hasCycleDgeSubmission &&
+    (project.statusCode === 776140001 ||
+      (project.statusCode == null && project.status === 'Submitted to Reviewer'))
   const canApproveProject =
-    currentRole === 'Approver' && isCurrentOwner && project.status === 'Submitted to Approver'
+    currentRole === 'Approver' &&
+    isCurrentOwner &&
+    (project.statusCode === 776140002 ||
+      (project.statusCode == null && project.status === 'Submitted to Approver'))
   const canRaiseClarification =
     ((currentRole === 'Reviewer' &&
-      project.status === 'Submitted to Reviewer') ||
-      (currentRole === 'Approver' && project.status === 'Submitted to Approver')) &&
+      (project.statusCode === 776140001 ||
+        (project.statusCode == null && project.status === 'Submitted to Reviewer'))) ||
+      (currentRole === 'Approver' &&
+        (project.statusCode === 776140002 ||
+          (project.statusCode == null && project.status === 'Submitted to Approver')))) &&
     isCurrentOwner
+  const approverUsesDirectDgeFlow =
+    currentRole === 'Approver' &&
+    hasCycleDgeSubmission &&
+    isCurrentOwner &&
+    (project.statusCode === 776140002 ||
+      (project.statusCode == null && project.status === 'Submitted to Approver'))
   const showPendingNotice = workflowOwner !== null && (workflowOwner !== currentRole || !isCurrentOwner)
   const pendingNoticeText = workflowOwner
     ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
@@ -1657,7 +1736,11 @@ export default function ProjectDetail() {
             ...current,
             status: nextStatus,
             approvalStatus: nextStatus,
-            pendingWith: getWorkflowOwner(nextStatus),
+            statusCode: WORKFLOW_STATUSCODE_BY_STATUS[nextStatus] ?? current.statusCode ?? null,
+            pendingWith: getWorkflowOwnerByStatusCode(
+              WORKFLOW_STATUSCODE_BY_STATUS[nextStatus] ?? current.statusCode ?? null,
+              nextStatus
+            ),
           }
         : current
     )
@@ -1785,7 +1868,9 @@ export default function ProjectDetail() {
         },
         {
           processingTitle: 'Submitting to approver',
-          processingDescription: 'Moving the project into approver review...',
+          processingDescription: hasCycleDgeSubmission
+            ? 'Moving the project directly into approver review without the extra reviewer-completed stage...'
+            : 'Moving the project into approver review...',
           successTitle: 'Submitted to approver',
           successDescription: 'The project is now with the approver.',
           errorTitle: 'Unable to submit to approver',
@@ -1798,26 +1883,47 @@ export default function ProjectDetail() {
 
     await runActionToast(
       async () => {
-        console.log('[ProjectDetail] Approving ICT budget without owner reassignment:', {
-          ictBudgetId,
-          status: ICT_BUDGET_STATUS.approvedByApprover,
-        })
-        await updateIctBudgetStatus(
-          ictBudgetId,
-          ICT_BUDGET_STATUS.approvedByApprover,
-          undefined,
-          'Approver',
-          'Approver'
-        )
-        syncLocalWorkflowState('Approved')
+        if (approverUsesDirectDgeFlow) {
+          console.log('[ProjectDetail] Directly submitting ICT budget to DGE from approver stage:', {
+            ictBudgetId,
+            status: ICT_BUDGET_STATUS.underDgeReview,
+            targetOwner: 'Strategy',
+          })
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.underDgeReview,
+            'Strategy',
+            'Approver',
+            'Approver',
+            'A budget item has been submitted to DGE for strategic alignment review.'
+          )
+          syncLocalWorkflowState('Submitted to DGE')
+        } else {
+          console.log('[ProjectDetail] Approving ICT budget without owner reassignment:', {
+            ictBudgetId,
+            status: ICT_BUDGET_STATUS.approvedByApprover,
+          })
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.approvedByApprover,
+            undefined,
+            'Approver',
+            'Approver'
+          )
+          syncLocalWorkflowState('Approved')
+        }
         setIsEditMode(false)
       },
       {
-        processingTitle: 'Approving project',
-        processingDescription: 'Marking the ICT budget as approved by the approver...',
-        successTitle: 'Project approved',
-        successDescription: 'The project has been approved successfully.',
-        errorTitle: 'Unable to approve project',
+        processingTitle: approverUsesDirectDgeFlow ? 'Submitting to DGE' : 'Approving project',
+        processingDescription: approverUsesDirectDgeFlow
+          ? 'Submitting the ICT budget directly into DGE strategic alignment review...'
+          : 'Marking the ICT budget as approved by the approver...',
+        successTitle: approverUsesDirectDgeFlow ? 'Submitted to DGE' : 'Project approved',
+        successDescription: approverUsesDirectDgeFlow
+          ? 'The project has been sent directly to DGE successfully.'
+          : 'The project has been approved successfully.',
+        errorTitle: approverUsesDirectDgeFlow ? 'Unable to submit to DGE' : 'Unable to approve project',
         minDurationMs: 1800,
       }
     )
@@ -3206,7 +3312,7 @@ export default function ProjectDetail() {
                         onClick={() => setPendingWorkflowAction('approve-project')}
                       >
                         <ShieldCheck className="h-4 w-4" />
-                        Approve Project
+                        {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
                       </Button>
                     )}
                     {!canCurrentRoleEdit && !canRaiseClarification && !canCompleteReview && !canSubmitToApprover && !canApproveProject && (
@@ -3393,24 +3499,32 @@ export default function ProjectDetail() {
         }}
         title={
           pendingWorkflowAction
-            ? workflowActionDetails(pendingWorkflowAction, currentRole).title
+            ? workflowActionDetails(pendingWorkflowAction, currentRole, {
+                directToDge: pendingWorkflowAction === 'approve-project' && approverUsesDirectDgeFlow,
+              }).title
             : 'Confirm action'
         }
         description={
           pendingWorkflowAction
-            ? workflowActionDetails(pendingWorkflowAction, currentRole).description
+            ? workflowActionDetails(pendingWorkflowAction, currentRole, {
+                directToDge: pendingWorkflowAction === 'approve-project' && approverUsesDirectDgeFlow,
+              }).description
             : 'Please confirm this workflow action.'
         }
         confirmLabel={
           pendingWorkflowAction
-            ? workflowActionDetails(pendingWorkflowAction, currentRole).confirmLabel
+            ? workflowActionDetails(pendingWorkflowAction, currentRole, {
+                directToDge: pendingWorkflowAction === 'approve-project' && approverUsesDirectDgeFlow,
+              }).confirmLabel
             : 'Confirm'
         }
         cancelLabel="Cancel"
         onConfirm={() => void handleConfirmWorkflowAction()}
         tone={
           pendingWorkflowAction
-            ? workflowActionDetails(pendingWorkflowAction, currentRole).tone
+            ? workflowActionDetails(pendingWorkflowAction, currentRole, {
+                directToDge: pendingWorkflowAction === 'approve-project' && approverUsesDirectDgeFlow,
+              }).tone
             : 'primary'
         }
         meta={

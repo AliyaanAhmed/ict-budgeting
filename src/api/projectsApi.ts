@@ -26,4 +26,5 @@ export interface ProjectsApi {
   reviewerRaiseClarification(projectId: string, payload: ClarificationPayload): Promise<void>
   approverApprove(projectId: string): Promise<void>
   approverRaiseClarification(projectId: string, payload: ClarificationPayload): Promise<void>
+  approverSubmitToDge(projectIds: string[]): Promise<void>
 }

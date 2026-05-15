@@ -11,7 +11,7 @@ import {
   type ModuleConfigTeamIds,
 } from '@/services/userContextService'
 
-export type NotificationRole = 'Respondent' | 'Reviewer' | 'Approver'
+export type NotificationRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy'
 
 export interface AppNotificationItem {
   id: string
@@ -54,7 +54,8 @@ function getTargetTeamId(role: NotificationRole): string | null {
   const teamIds = getStoredModuleConfigTeamIds()
   if (role === 'Respondent') return teamIds?.respondentTeamId?.trim() || null
   if (role === 'Reviewer') return teamIds?.reviewerTeamId?.trim() || null
-  return teamIds?.approverTeamId?.trim() || null
+  if (role === 'Approver') return teamIds?.approverTeamId?.trim() || null
+  return teamIds?.strategyTeamId?.trim() || null
 }
 
 function getFormattedAnnotation(record: unknown, key: string) {

@@ -10,6 +10,34 @@ import type {
   ProjectLookups,
 } from '@/domain/types'
 
+export const RESPONDENT_SUBMITTED_STATUSES: ProjectStatus[] = [
+  'Submitted to Reviewer',
+  'Reviewer Review Completed',
+  'Submitted to Approver',
+  'Approved',
+  'Submitted to DGE',
+]
+
+export const REVIEWER_SENT_TO_APPROVER_STATUSES: ProjectStatus[] = [
+  'Submitted to Approver',
+  'Approved',
+  'Submitted to DGE',
+]
+
+export const APPROVER_SUBMITTED_TO_DGE_STATUSES: ProjectStatus[] = ['Submitted to DGE']
+
+export function isRespondentSubmittedProjectStatus(status: ProjectStatus) {
+  return RESPONDENT_SUBMITTED_STATUSES.includes(status)
+}
+
+export function isReviewerSentToApproverProjectStatus(status: ProjectStatus) {
+  return REVIEWER_SENT_TO_APPROVER_STATUSES.includes(status)
+}
+
+export function isApproverSubmittedToDgeProjectStatus(status: ProjectStatus) {
+  return APPROVER_SUBMITTED_TO_DGE_STATUSES.includes(status)
+}
+
 export const projectService = {
   getRespondentProjects(filters?: RoleProjectFilters): Promise<Project[]> {
     return projectsApi.getRespondentProjects(filters)
@@ -67,12 +95,16 @@ export const projectService = {
     return projectsApi.approverRaiseClarification(projectId, payload)
   },
 
+  approverSubmitToDge(projectIds: string[]): Promise<void> {
+    return projectsApi.approverSubmitToDge(projectIds)
+  },
+
   // Shared list logic for Respondent + Reviewer project screens.
   buildRoleStatusFilter(role: 'respondent' | 'reviewer' | 'approver', tab: string): ProjectStatus[] | undefined {
     if (role === 'respondent') {
       if (tab === 'needs-work') return ['Draft']
       if (tab === 'clarification') return ['Clarification Required']
-      if (tab === 'submitted-reviewer') return ['Submitted to Reviewer']
+      if (tab === 'submitted-reviewer') return RESPONDENT_SUBMITTED_STATUSES
       return undefined
     }
 
@@ -80,7 +112,7 @@ export const projectService = {
       if (tab === 'pending-review') return ['Submitted to Reviewer']
       if (tab === 'review-completed') return ['Reviewer Review Completed']
       if (tab === 'clarification') return ['Clarification Required']
-      if (tab === 'submitted-approver') return ['Submitted to Approver']
+      if (tab === 'submitted-approver') return REVIEWER_SENT_TO_APPROVER_STATUSES
       return undefined
     }
 

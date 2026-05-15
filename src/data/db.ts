@@ -26,6 +26,7 @@ export type ProjectStatus =
   | 'Clarification Required'
   | 'Submitted to Approver'
   | 'Approved'
+  | 'Submitted to DGE'
   | 'Needs Work'
 
 export type RiskLevel = 'Low' | 'Medium' | 'High'
@@ -78,6 +79,7 @@ export interface Project {
   ictBudgetId?: string
   ownerId?: string | null
   ownerType?: string | null
+  statusCode?: number | null
   submittedById?: string | null
   name: string
   strategicPriority: string

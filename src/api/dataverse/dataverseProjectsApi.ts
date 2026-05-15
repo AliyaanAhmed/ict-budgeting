@@ -26,6 +26,7 @@ import type { Dga_ict_budgetsdga_status_for_adge } from '@/generated/models/Dga_
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 
 type WorkflowStatusForAdge = Dga_ict_budgetsdga_status_for_adge | 12
+type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy'
 
 const ICT_BUDGET_SELECT_FIELDS = [
   'dga_ict_budgetid',
@@ -36,6 +37,7 @@ const ICT_BUDGET_SELECT_FIELDS = [
   'dga_initiative_project_requirement_name',
   '_ownerid_value',
   'dga_status_for_adge',
+  'statuscode',
   '_dga_strategic_priority_value',
   '_dga_strategic_priority_classification_value',
   'dga_total_budget_requested',
@@ -82,14 +84,16 @@ function getStoredUserTeams(): UserTeam[] {
   }
 }
 
-function getTargetOwnerBinding(target: 'Respondent' | 'Reviewer' | 'Approver') {
+function getTargetOwnerBinding(target: WorkflowTargetOwner) {
   const moduleConfigTeamIds = getStoredModuleConfigTeamIds()
   const configuredTeamId =
     target === 'Respondent'
       ? moduleConfigTeamIds?.respondentTeamId
       : target === 'Reviewer'
         ? moduleConfigTeamIds?.reviewerTeamId
-        : moduleConfigTeamIds?.approverTeamId
+        : target === 'Approver'
+          ? moduleConfigTeamIds?.approverTeamId
+          : moduleConfigTeamIds?.strategyTeamId
 
   console.log('[DataverseProjectsApi] Resolving target owner binding:', {
     target,
@@ -126,6 +130,7 @@ const STATUS_CODE_MAP: Partial<Record<WorkflowStatusForAdge, number>> = {
   3: 776140002, // Submitted to Approver
   4: 776140003, // Approved
   5: 776140010, // Clarification Required
+  6: 776140004, // Under DGE Review
   12: 576610001, // Reviewer Review Completed
 }
 
@@ -151,7 +156,7 @@ function getActorRoleBinding(role: 'Respondent' | 'Reviewer' | 'Approver') {
 async function updateBudgetWorkflow(
   projectId: string,
   status: WorkflowStatusForAdge,
-  targetOwner?: 'Respondent' | 'Reviewer' | 'Approver',
+  targetOwner?: WorkflowTargetOwner,
   shareWithRole?: 'Respondent' | 'Reviewer' | 'Approver',
   actorRole?: 'Respondent' | 'Reviewer' | 'Approver',
   notificationText?: string
@@ -216,6 +221,13 @@ function mapStatus(value: number | null | undefined, formatted: string | null): 
       return 'Approved'
     case 5:
       return 'Clarification Required'
+    case 6:
+    case 7:
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+      return 'Submitted to DGE'
     case 12:
       return 'Reviewer Review Completed'
     default:
@@ -224,6 +236,16 @@ function mapStatus(value: number | null | undefined, formatted: string | null): 
       if (formatted === 'Reviewer Review Completed') return 'Reviewer Review Completed'
       if (formatted === 'Under Approver Review') return 'Submitted to Approver'
       if (formatted === 'Approved by Approver') return 'Approved'
+      if (
+        formatted === 'Under DGE Review' ||
+        formatted === 'Allocation In Progress' ||
+        formatted === 'Allocation In Review' ||
+        formatted === 'Allocation Completed' ||
+        formatted === 'Utilization in Progress' ||
+        formatted === 'Utilization Completed'
+      ) {
+        return 'Submitted to DGE'
+      }
       return 'Draft'
   }
 }
@@ -293,6 +315,7 @@ function mapBudgetRecordToProject(
       getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname') ||
       getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.associatednavigationproperty') ||
       null,
+    statusCode: record.statuscode ?? null,
     name:
       record.dga_initiative_project_requirement_name?.trim() ||
       record.dga_budget_ref_id?.trim() ||
@@ -429,7 +452,7 @@ export const dataverseProjectsApi: ProjectsApi = {
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: combineFilters(
-        'dga_status_for_adge eq 2 or dga_status_for_adge eq 5 or dga_status_for_adge eq 12',
+        'dga_status_for_adge eq 2 or dga_status_for_adge eq 3 or dga_status_for_adge eq 4 or dga_status_for_adge eq 5 or dga_status_for_adge eq 6 or dga_status_for_adge eq 7 or dga_status_for_adge eq 8 or dga_status_for_adge eq 9 or dga_status_for_adge eq 10 or dga_status_for_adge eq 11 or dga_status_for_adge eq 12',
         getInstanceFilter()
       ),
       orderBy: ['modifiedon desc'],
@@ -438,7 +461,8 @@ export const dataverseProjectsApi: ProjectsApi = {
     return (result.data ?? []).map((record): ReviewQueueProject => {
       const sv = Number(record.dga_status_for_adge ?? 0)
       const queueStatus: ReviewQueueProject['status'] =
-        sv === 2 ? 'To Review' : sv === 12 ? 'Reviewed' : 'Clarification Pending'
+        sv === 2 ? 'To Review' : sv === 5 ? 'Clarification Pending' : 'Reviewed'
+      const isActionable = sv === 2 || sv === 12
 
       return {
         id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN',
@@ -446,6 +470,7 @@ export const dataverseProjectsApi: ProjectsApi = {
         name: record.dga_initiative_project_requirement_name?.trim() || 'Untitled Budget Item',
         entity: getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') || '-',
         status: queueStatus,
+        isActionable,
         riskLevel: 'Low',
         hasMissingDocs: false,
         requestedBudget: record.dga_total_budget_requested ?? 0,
@@ -467,16 +492,21 @@ export const dataverseProjectsApi: ProjectsApi = {
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: combineFilters(
-        'dga_status_for_adge eq 3 or dga_status_for_adge eq 4 or dga_status_for_adge eq 5',
+        'dga_status_for_adge eq 3 or dga_status_for_adge eq 4 or dga_status_for_adge eq 5 or dga_status_for_adge eq 6 or dga_status_for_adge eq 7 or dga_status_for_adge eq 8 or dga_status_for_adge eq 9 or dga_status_for_adge eq 10 or dga_status_for_adge eq 11',
         getInstanceFilter()
       ),
       orderBy: ['modifiedon desc'],
     })
-
     return (result.data ?? []).map((record): ApprovalQueueProject => {
       const sv = record.dga_status_for_adge
       const queueStatus: ApprovalQueueProject['status'] =
-        sv === 3 ? 'Pending' : sv === 4 ? 'Approved' : 'Clarification Pending'
+        sv === 3
+          ? 'Pending'
+          : sv === 4
+            ? 'Approved'
+            : sv === 5
+              ? 'Clarification Pending'
+              : 'Submitted to DGE'
 
       return {
         id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN',
@@ -571,5 +601,17 @@ export const dataverseProjectsApi: ProjectsApi = {
       'Approver',
       'A budget item has been returned to Respondent for approver clarification.'
     )
+  },
+  async approverSubmitToDge(projectIds: string[]) {
+    for (const projectId of projectIds) {
+      await updateBudgetWorkflow(
+        projectId,
+        6,
+        'Strategy',
+        'Approver',
+        'Approver',
+        'A budget item has been submitted to DGE for strategic alignment review.'
+      )
+    }
   },
 }

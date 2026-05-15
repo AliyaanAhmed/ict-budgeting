@@ -11,6 +11,7 @@ import {
   Inbox,
   ListFilter,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
   Undo2,
@@ -26,20 +27,30 @@ import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { useToast } from '@/context/ToastContext'
 import { useQueueCounts } from '@/context/QueueCountsContext'
 import { projectService } from '@/services/projectService'
+import { useCycle } from '@/context/CycleContext'
+import { useInstance } from '@/context/InstanceContext'
+import { useRoleProjects } from '@/hooks/useRoleProjects'
 import type { ApprovalQueueProject, ClarificationPayload } from '@/domain/types'
 
-type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification'
+type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification' | 'submitted-dge'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
+
+const LOCAL_STATUSCODE_BY_STATUS = {
+  Approved: 776140003,
+  'Submitted to DGE': 776140004,
+} as const
 
 function statusAccent(status: ApprovalQueueProject['status']) {
   if (status === 'Pending') return '#286CFF'
   if (status === 'Approved') return '#22C55E'
+  if (status === 'Submitted to DGE') return '#7C3AED'
   return '#F59E0B'
 }
 
 function statusBadgeClass(status: string) {
   if (status === 'Pending') return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
   if (status === 'Approved') return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  if (status === 'Submitted to DGE') return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
   return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
 }
 
@@ -106,18 +117,21 @@ function AiPanel({ expanded, onToggle, children }: { expanded: boolean; onToggle
   )
 }
 
-function SelectionControl({ selected, onClick, label }: { selected: boolean; onClick: () => void; label: string }) {
+function SelectionControl({ selected, onClick, label, disabled = false }: { selected: boolean; onClick: () => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={selected}
-      onClick={onClick}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
       className={cn(
         'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all',
         selected
           ? 'border-transparent bg-[#286CFF] text-white shadow-sm shadow-blue-100'
-          : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5',
+          : disabled
+            ? 'cursor-not-allowed border-[#E2E8F0] bg-[#F8FAFC] text-transparent dark:border-white/10 dark:bg-white/5'
+            : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5',
       )}
     >
       {selected && <Check className="h-4 w-4" />}
@@ -172,6 +186,9 @@ function EmptyState({ search, budgetType }: { search: string; budgetType: string
 }
 
 export default function ApprovalQueue() {
+  const { selectedCycle } = useCycle()
+  const { instanceId } = useInstance()
+  const { items: liveProjects } = useRoleProjects('approver', instanceId)
   const [projects, setProjects] = useState<ApprovalQueueProject[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -185,6 +202,8 @@ export default function ApprovalQueue() {
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingApprove, setPendingApprove] = useState<string[] | null>(null)
+  const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, 'Approved' | 'Submitted to DGE'>>({})
   const { runActionToast } = useToast()
   const { setApprovalCount } = useQueueCounts()
 
@@ -209,10 +228,38 @@ export default function ApprovalQueue() {
     return () => { mounted = false }
   }, [setApprovalCount])
 
+  const effectiveLiveProjects = useMemo(
+    () =>
+      liveProjects.map((project) => {
+        const override = project.ictBudgetId ? statusOverrides[project.ictBudgetId] : undefined
+        if (!override) return project
+
+        return {
+          ...project,
+          status: override,
+          statusCode: LOCAL_STATUSCODE_BY_STATUS[override],
+        }
+      }),
+    [liveProjects, statusOverrides]
+  )
+
   const pendingCount = projects.filter(p => p.status === 'Pending').length
   const approvedCount = projects.filter(p => p.status === 'Approved').length
   const clarificationCount = projects.filter(p => p.status === 'Clarification Pending').length
+  const submittedToDgeCount = projects.filter(p => p.status === 'Submitted to DGE').length
   const totalRequested = projects.reduce((s, p) => s + p.requestedBudget, 0)
+  const cycleProjectCount = effectiveLiveProjects.length
+  const respondentCount = effectiveLiveProjects.filter((project) => project.status === 'Draft' || project.status === 'Clarification Required').length
+  const reviewerCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed').length
+  const approverOwnedCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Approver' || project.status === 'Approved').length
+  const allProjectsApproved = cycleProjectCount > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
+  const hasCycleDgeSubmission = effectiveLiveProjects.some(
+    (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
+  )
+  const directDgeFlowActive = hasCycleDgeSubmission
+  const portfolioAlreadySubmittedToDge =
+    portfolioSubmittedToDge || hasCycleDgeSubmission
+  const submitToDgeDisabled = !allProjectsApproved || portfolioAlreadySubmittedToDge
 
   const filtered = useMemo(() =>
     projects
@@ -223,7 +270,8 @@ export default function ApprovalQueue() {
           activeFilter === 'all' ? true :
           activeFilter === 'pending' ? p.status === 'Pending' :
           activeFilter === 'approved' ? p.status === 'Approved' :
-          p.status === 'Clarification Pending'
+          activeFilter === 'clarification' ? p.status === 'Clarification Pending' :
+          p.status === 'Submitted to DGE'
         const matchesBudget = budgetTypeFilter === 'all' || p.budgetType === budgetTypeFilter
         return matchesSearch && matchesTab && matchesBudget
       })
@@ -235,46 +283,114 @@ export default function ApprovalQueue() {
     [projects, activeFilter, search, budgetTypeFilter, sortOrder]
   )
 
-  const visibleIds = filtered.map(p => p.id)
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id))
+  const visibleActionableIds = filtered.filter(p => p.status === 'Pending').map(p => p.id)
+  const allVisibleSelected = visibleActionableIds.length > 0 && visibleActionableIds.every(id => selectedIds.includes(id))
   const actionableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'Pending')
 
   const toggleSelected = (id: string) =>
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setSelectedIds(prev => {
+      const project = projects.find(p => p.id === id)
+      if (!project || project.status !== 'Pending') {
+        return prev
+      }
+      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    })
 
   const toggleAllVisible = () =>
     setSelectedIds(prev =>
       allVisibleSelected
-        ? prev.filter(id => !visibleIds.includes(id))
-        : Array.from(new Set([...prev, ...visibleIds]))
+        ? prev.filter(id => !visibleActionableIds.includes(id))
+        : Array.from(new Set([...prev, ...visibleActionableIds]))
     )
 
   const getIctId = (projectId: string) =>
     projects.find(p => p.id === projectId)?.ictBudgetId ?? ''
 
   const handleApprove = async (projectIds: string[]) => {
+    const ictBudgetIds = projectIds
+      .map((id) => getIctId(id))
+      .filter(Boolean)
+
     await runActionToast(
       async () => {
-        for (const id of projectIds) {
-          await projectService.approverApprove(getIctId(id))
+        if (directDgeFlowActive) {
+          await projectService.approverSubmitToDge(ictBudgetIds)
+        } else {
+          for (const id of projectIds) {
+            await projectService.approverApprove(getIctId(id))
+          }
         }
+        setStatusOverrides((prev) => {
+          const next = { ...prev }
+          for (const ictBudgetId of ictBudgetIds) {
+            next[ictBudgetId] = directDgeFlowActive ? 'Submitted to DGE' : 'Approved'
+          }
+          return next
+        })
         setProjects(prev => {
-          const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Approved' as const } : p)
+          const updated = prev.map(p =>
+            projectIds.includes(p.id)
+              ? { ...p, status: directDgeFlowActive ? ('Submitted to DGE' as const) : ('Approved' as const) }
+              : p
+          )
           setApprovalCount(updated.filter(p => p.status === 'Pending').length)
           return updated
         })
         setSelectedIds(prev => prev.filter(id => !projectIds.includes(id)))
       },
       {
-        processingTitle: 'Approving project',
-        processingDescription: `Marking ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} as approved...`,
-        successTitle: 'Project approved',
-        successDescription: `${projectIds.length} project${projectIds.length === 1 ? '' : 's'} approved successfully.`,
-        errorTitle: 'Unable to approve',
+        processingTitle: directDgeFlowActive ? 'Submitting to DGE' : 'Approving project',
+        processingDescription: directDgeFlowActive
+          ? `Sending ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} directly to DGE review...`
+          : `Marking ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} as approved...`,
+        successTitle: directDgeFlowActive ? 'Submitted to DGE' : 'Project approved',
+        successDescription: directDgeFlowActive
+          ? `${projectIds.length} project${projectIds.length === 1 ? '' : 's'} submitted directly to DGE successfully.`
+          : `${projectIds.length} project${projectIds.length === 1 ? '' : 's'} approved successfully.`,
+        errorTitle: directDgeFlowActive ? 'Unable to submit to DGE' : 'Unable to approve',
         minDurationMs: 1400,
       }
     )
     setPendingApprove(null)
+  }
+
+  const handleSubmitToDge = async () => {
+    const projectIds = effectiveLiveProjects
+      .filter((project) => project.ictBudgetId && project.status === 'Approved')
+      .map((project) => project.ictBudgetId as string)
+
+    if (!projectIds.length) {
+      return
+    }
+
+    await runActionToast(
+      async () => {
+        await projectService.approverSubmitToDge(projectIds)
+        setPortfolioSubmittedToDge(true)
+        setStatusOverrides((prev) => {
+          const next = { ...prev }
+          for (const projectId of projectIds) {
+            next[projectId] = 'Submitted to DGE'
+          }
+          return next
+        })
+        setProjects((prev) =>
+          prev.map((project) =>
+            projectIds.includes(project.ictBudgetId)
+              ? { ...project, status: 'Submitted to DGE' as const }
+              : project
+          )
+        )
+      },
+      {
+        processingTitle: 'Submitting to DGE',
+        processingDescription: 'Assigning approved projects to the strategy team and moving them into DGE review...',
+        successTitle: 'Submitted to DGE',
+        successDescription: 'All approved projects were submitted to DGE successfully.',
+        errorTitle: 'Unable to submit to DGE',
+        minDurationMs: 1600,
+      }
+    )
   }
 
   const handleRaiseClarification = async (projectIds: string[], payload: ClarificationPayload) => {
@@ -342,8 +458,8 @@ export default function ApprovalQueue() {
           sub="Current value in approver scope"
         />
         <QueueStat label="Pending Approval" value={loading ? '—' : pendingCount} icon={AlertTriangle} tone="amber" sub="Awaiting final decision" />
-        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" sub="Cleared for onward submission" />
-        <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={Sparkles} tone="red" sub="Returned for more information" />
+        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" sub="Ready for DGE handoff" />
+        <QueueStat label="Submitted to DGE" value={loading ? '—' : submittedToDgeCount} icon={Sparkles} tone="red" sub="Already with strategy team" />
       </div>
 
       <div className="hidden grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -362,22 +478,76 @@ export default function ApprovalQueue() {
       <AiPanel expanded={aiPortfolioExpanded} onToggle={() => setAiPortfolioExpanded(v => !v)}>
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">Portfolio Risk</p>
-            <p className="mt-1 text-lg font-bold text-amber-600">Moderate</p>
+            <p className="text-xs text-[#64748B]">Projects in cycle</p>
+            <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{cycleProjectCount}</p>
           </div>
           <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">Ready to Approve</p>
-            <p className="mt-1 text-lg font-bold text-green-600">{pendingCount}</p>
+            <p className="text-xs text-[#64748B]">With approver</p>
+            <p className="mt-1 text-lg font-bold text-green-600">{approverOwnedCount}</p>
           </div>
           <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">Recommended Focus</p>
-            <p className="mt-1 text-sm font-bold text-[#286CFF]">High-value evidence</p>
+            <p className="text-xs text-[#64748B]">Submitted to DGE</p>
+            <p className="mt-1 text-lg font-bold text-[#7C3AED]">{submittedToDgeCount}</p>
           </div>
         </div>
         <p className="mt-3 text-xs leading-5 text-[#475569] dark:text-slate-200">
-          AI recommends approving low-risk reviewer-cleared items first, then checking high-value submissions for document evidence and budget concentration.
+          {cycleProjectCount} projects are in this cycle. {respondentCount} are with Respondent, {reviewerCount} are with Reviewer, and {approverOwnedCount} are currently with Approver for final action.
         </p>
       </AiPanel>
+
+      <div className="rounded-[26px] border border-[#D9E6F5] bg-white p-5 shadow-none dark:border-white/10 dark:bg-[#162339]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_16px_30px_rgba(40,108,255,0.20)]">
+              <Send className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-[#0F172A] dark:text-white">Submit To DGE</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                Once every project in {selectedCycle?.name ?? 'this cycle'} is approved, move the full ADGE portfolio to the strategy team for DGE review.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
+                <span className="rounded-full bg-[#EEF5FF] px-3 py-1 text-[#286CFF]">{cycleProjectCount} total projects</span>
+                <span className="rounded-full bg-[#F0FDF4] px-3 py-1 text-[#16A34A]">{approvedCount} approved</span>
+                <span className="rounded-full bg-[#F8FAFC] px-3 py-1 text-[#64748B] dark:bg-white/5 dark:text-slate-100">{respondentCount} respondent / {reviewerCount} reviewer / {approverOwnedCount} approver</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 lg:min-w-[250px]">
+            {portfolioAlreadySubmittedToDge ? (
+              <div className="rounded-2xl border border-[#DDD6FE] bg-[#F5F3FF] px-4 py-3 dark:border-[#5B3AA8] dark:bg-[#2A1C4A]">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-[#5B21B6] dark:text-[#DDD6FE]">Submitted to DGE</p>
+                    <p className="mt-1 text-xs leading-5 text-[#6D28D9] dark:text-slate-100">
+                      The ADGE entity has already been handed off to the strategy team. New approver-stage projects will now move directly to DGE.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Button
+                className="h-11 rounded-2xl"
+                disabled={submitToDgeDisabled}
+                onClick={() => void handleSubmitToDge()}
+              >
+                <Send className="h-4 w-4" />
+                Submit to DGE
+              </Button>
+            )}
+            <p className="text-xs text-[#64748B] dark:text-slate-200">
+              {portfolioAlreadySubmittedToDge
+                ? 'The approved portfolio has already been submitted to the strategy team.'
+                : allProjectsApproved
+                  ? 'All cycle projects are approved. The entity is ready for DGE submission.'
+                  : 'This stays disabled until every cycle project is approved by the approver.'}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* ── Filter bar ── */}
       <div className="rounded-2xl border border-[#DDEBFF] bg-white p-3 dark:border-white/10 dark:bg-[#1E293B]">
@@ -388,6 +558,7 @@ export default function ApprovalQueue() {
               { id: 'pending' as const, label: 'Pending', count: pendingCount },
               { id: 'approved' as const, label: 'Approved', count: approvedCount },
               { id: 'clarification' as const, label: 'Clarification', count: clarificationCount },
+              { id: 'submitted-dge' as const, label: 'Submitted to DGE', count: submittedToDgeCount },
             ]).map(tab => (
               <button
                 key={tab.id}
@@ -483,7 +654,8 @@ export default function ApprovalQueue() {
               className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
               onClick={() => setPendingApprove(actionableSelected)}
             >
-              <ShieldCheck className="h-4 w-4" />Approve &amp; Submit to DGE
+              {directDgeFlowActive ? <Send className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+              {directDgeFlowActive ? 'Submit Selected to DGE' : 'Approve Selected'}
             </Button>
           </div>
         </div>
@@ -522,7 +694,7 @@ export default function ApprovalQueue() {
                   {/* Top row */}
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
-                      <SelectionControl selected={isSelected} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
+                      <SelectionControl selected={isSelected} disabled={!isActionable} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs text-[#94A3B8]">{proj.id}</span>
@@ -530,11 +702,7 @@ export default function ApprovalQueue() {
                             {proj.status}
                           </span>
                           <RiskBadge risk={proj.riskLevel} />
-                          {proj.status !== 'Clarification Pending' && (
-                            <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                              Reviewer Approved
-                            </span>
-                          )}
+                         
                         </div>
                         <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200">
@@ -607,7 +775,8 @@ export default function ApprovalQueue() {
                       className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
                       onClick={() => { if (isActionable) setPendingApprove([proj.id]) }}
                     >
-                      <ShieldCheck className="h-4 w-4" />Approve &amp; Submit to DGE
+                      {directDgeFlowActive ? <Send className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                      {directDgeFlowActive ? 'Submit to DGE' : 'Approve Project'}
                     </Button>
                   </div>
                 </div>
@@ -623,15 +792,19 @@ export default function ApprovalQueue() {
         onOpenChange={open => { if (!open) setPendingApprove(null) }}
         title={
           (pendingApprove?.length ?? 0) === 1
-            ? 'Approve & Submit to DGE?'
-            : `Approve ${pendingApprove?.length ?? 0} Projects & Submit to DGE?`
+            ? directDgeFlowActive ? 'Submit Project to DGE?' : 'Approve Project?'
+            : directDgeFlowActive ? `Submit ${pendingApprove?.length ?? 0} Projects to DGE?` : `Approve ${pendingApprove?.length ?? 0} Projects?`
         }
         description={
           (pendingApprove?.length ?? 0) === 1
-            ? 'This will mark the project as approved and submit it to DGE. This action cannot be undone.'
-            : `This will approve ${pendingApprove?.length ?? 0} projects and submit them to DGE. This action cannot be undone.`
+            ? directDgeFlowActive
+              ? 'This cycle has already been submitted once to DGE, so this project will move directly into DGE review.'
+              : 'This will mark the project as approved and keep it in the approver portfolio until the full entity is submitted to DGE.'
+            : directDgeFlowActive
+              ? `This will move ${pendingApprove?.length ?? 0} projects directly into DGE review.`
+              : `This will approve ${pendingApprove?.length ?? 0} projects and keep them ready for the later DGE submission step.`
         }
-        confirmLabel="Approve & Submit to DGE"
+        confirmLabel={directDgeFlowActive ? 'Submit to DGE' : 'Approve Project'}
         onConfirm={() => { if (pendingApprove) void handleApprove(pendingApprove) }}
         tone="primary"
       />

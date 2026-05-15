@@ -8,6 +8,7 @@ export interface ReviewQueueProject {
   name: string
   entity: string
   status: 'To Review' | 'Reviewed' | 'Clarification Pending'
+  isActionable?: boolean
   riskLevel: RiskLevel
   hasMissingDocs: boolean
   requestedBudget: number
@@ -30,7 +31,7 @@ export interface ApprovalQueueProject {
   ictBudgetId: string
   name: string
   entity: string
-  status: 'Pending' | 'Approved' | 'Clarification Pending'
+  status: 'Pending' | 'Approved' | 'Clarification Pending' | 'Submitted to DGE'
   budgetType: string
   budgetCategory: string
   requestedBudget: number

@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 
-type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved'
+type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -131,7 +131,7 @@ export default function ApproverProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'pending-approval' || tab === 'clarification' || tab === 'approved' || tab === 'all') {
+    if (tab === 'pending-approval' || tab === 'clarification' || tab === 'approved' || tab === 'submitted-dge' || tab === 'all') {
       setActiveTab(tab)
       return
     }
@@ -144,6 +144,7 @@ export default function ApproverProjects() {
     { id: 'pending-approval' as const, label: 'Pending Approval', count: projects.filter((project) => project.status === 'Submitted to Approver').length },
     { id: 'clarification' as const, label: 'Clarification Required', count: projects.filter((project) => project.status === 'Clarification Required').length },
     { id: 'approved' as const, label: 'Approved', count: projects.filter((project) => project.status === 'Approved').length },
+    { id: 'submitted-dge' as const, label: 'Submitted to DGE', count: projects.filter((project) => project.status === 'Submitted to DGE').length },
   ]
 
   const filtered = projects.filter((project) => {
@@ -156,7 +157,8 @@ export default function ApproverProjects() {
       activeTab === 'all' ||
       (activeTab === 'pending-approval' && project.status === 'Submitted to Approver') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'approved' && project.status === 'Approved')
+      (activeTab === 'approved' && project.status === 'Approved') ||
+      (activeTab === 'submitted-dge' && project.status === 'Submitted to DGE')
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
@@ -240,6 +242,7 @@ export default function ApproverProjects() {
               <SelectItem value="Submitted to Reviewer">Submitted to Reviewer</SelectItem>
               <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
               <SelectItem value="Approved">Approved</SelectItem>
+              <SelectItem value="Submitted to DGE">Submitted to DGE</SelectItem>
             </SelectContent>
           </Select>
         </div>

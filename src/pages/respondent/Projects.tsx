@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 
 type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -182,7 +183,7 @@ export default function RespondentProjects() {
     { id: 'all', label: 'All Projects', count: projects.length },
     { id: 'needs-work', label: 'Needs Work / Draft', count: projects.filter((p) => p.status === 'Draft').length },
     { id: 'clarification', label: 'Clarification Required', count: projects.filter((p) => p.status === 'Clarification Required').length },
-    { id: 'submitted-reviewer', label: 'Submitted to Reviewer', count: projects.filter((p) => p.status === 'Submitted to Reviewer').length },
+    { id: 'submitted-reviewer', label: 'Submitted to Reviewer', count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status)).length },
   ]
 
   const filtered = projects.filter((project) => {
@@ -195,7 +196,7 @@ export default function RespondentProjects() {
       activeTab === 'all' ||
       (activeTab === 'needs-work' && project.status === 'Draft') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-reviewer' && project.status === 'Submitted to Reviewer')
+      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status))
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
@@ -294,8 +295,10 @@ export default function RespondentProjects() {
               <SelectItem value="Draft">Draft</SelectItem>
               <SelectItem value="Clarification Required">Clarification Required</SelectItem>
               <SelectItem value="Submitted to Reviewer">Submitted to Reviewer</SelectItem>
+              <SelectItem value="Reviewer Review Completed">Reviewer Review Completed</SelectItem>
               <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
               <SelectItem value="Approved">Approved</SelectItem>
+              <SelectItem value="Submitted to DGE">Submitted to DGE</SelectItem>
             </SelectContent>
           </Select>
         </div>

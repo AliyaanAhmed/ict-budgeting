@@ -65,12 +65,13 @@ export const ICT_BUDGET_STATUS = {
   underApproverReview: 3,
   approvedByApprover: 4,
   clarificationPending: 5,
+  underDgeReview: 6,
   reviewerReviewCompleted: 12,
 } as const
 
 type WorkflowStatusForAdge = Dga_ict_budgetsdga_status_for_adge | 12
 
-type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver'
+type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy'
 
 function getFormattedAnnotation(record: unknown, key: string) {
   const value = (record as Record<string, unknown> | null)?.[key]
@@ -118,7 +119,9 @@ function getTargetOwnerBinding(target: WorkflowTargetOwner) {
       ? moduleConfigTeamIds?.respondentTeamId
       : target === 'Reviewer'
         ? moduleConfigTeamIds?.reviewerTeamId
-        : moduleConfigTeamIds?.approverTeamId
+        : target === 'Approver'
+          ? moduleConfigTeamIds?.approverTeamId
+          : moduleConfigTeamIds?.strategyTeamId
 
   console.log('[IctBudgetDraftService] moduleConfigTeamIDs for target owner lookup:', {
     target,
@@ -515,6 +518,7 @@ const STATUS_CODE_MAP: Partial<Record<WorkflowStatusForAdge, number>> = {
   3: 776140002, // Submitted to Approver
   4: 776140003, // Approved
   5: 776140010, // Clarification Required
+  6: 776140004, // Under DGE Review
   12: 576610001, // Reviewer Review Completed
 }
 
@@ -522,7 +526,7 @@ export async function updateIctBudgetStatus(
   ictBudgetId: string,
   status: WorkflowStatusForAdge,
   targetOwner?: WorkflowTargetOwner,
-  shareWithRole?: WorkflowTargetOwner,
+  shareWithRole?: 'Respondent' | 'Reviewer' | 'Approver',
   actorRole?: WorkflowTargetOwner,
   notificationText?: string
 ) {

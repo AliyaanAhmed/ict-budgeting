@@ -52,6 +52,7 @@ import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
+import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
 
@@ -310,10 +311,17 @@ export default function RespondentDashboard() {
     : 0
 
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
-  const submittedToReviewerProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
+  const submittedToReviewerProjects = liveProjects.filter((project) => isRespondentSubmittedProjectStatus(project.status))
   const clarificationRequiredProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
   const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
+  const submittedToDgeProjects = liveProjects.filter((project) => project.status === 'Submitted to DGE')
+  const reviewerStageProjects = liveProjects.filter(
+    (project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed'
+  )
+  const approverStageProjects = liveProjects.filter(
+    (project) => project.status === 'Submitted to Approver' || project.status === 'Approved'
+  )
 
   const submittedToReviewer = submittedToReviewerProjects.length
   const clarificationRequired = clarificationRequiredProjects.length
@@ -392,29 +400,29 @@ export default function RespondentDashboard() {
 
   const requestedBudgetByStatus = [
     {
-      name: 'With Reviewer',
-      value: submittedToReviewerProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.withReviewer,
-    },
-    {
-      name: 'Clarification',
-      value: clarificationRequiredProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.clarification,
-    },
-    {
-      name: 'Needs Work',
+      name: 'Pending My Approval',
       value: draftProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.needsWork,
     },
     {
+      name: 'With Reviewer',
+      value: reviewerStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      fill: dashboardStatusColors.withReviewer,
+    },
+    {
       name: 'With Approver',
-      value: submittedToApproverProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: approverStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
       fill: dashboardStatusColors.withApprover,
     },
     {
-      name: 'Approved',
-      value: approvedProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.approved,
+      name: 'Clarification Open',
+      value: clarificationRequiredProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      fill: dashboardStatusColors.clarification,
+    },
+    {
+      name: 'Submitted to DGE',
+      value: submittedToDgeProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      fill: '#7C3AED',
     },
   ]
     .map((item) => ({

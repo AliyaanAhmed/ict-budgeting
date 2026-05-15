@@ -24,8 +24,10 @@ import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ClarificationModal } from '@/components/shared/ClarificationModal'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
+import { useInstance } from '@/context/InstanceContext'
 import { useToast } from '@/context/ToastContext'
 import { useQueueCounts } from '@/context/QueueCountsContext'
+import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
@@ -110,18 +112,21 @@ function AiInsightRow({ expanded, onToggle, confidence, children }: {
   )
 }
 
-function SelectionControl({ selected, onClick, label }: { selected: boolean; onClick: () => void; label: string }) {
+function SelectionControl({ selected, onClick, label, disabled = false }: { selected: boolean; onClick: () => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={selected}
-      onClick={onClick}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
       className={cn(
         'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-all',
         selected
           ? 'border-transparent bg-[#286CFF] text-white shadow-sm shadow-blue-100'
-          : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5',
+          : disabled
+            ? 'cursor-not-allowed border-[#E2E8F0] bg-[#F8FAFC] text-transparent dark:border-white/10 dark:bg-white/5'
+            : 'border-[#BFD8FF] bg-white text-transparent hover:border-[#286CFF] hover:bg-[#E7F5FF] dark:border-white/10 dark:bg-white/5',
       )}
     >
       {selected && <Check className="h-4 w-4" />}
@@ -176,6 +181,8 @@ function EmptyState({ search, budgetType }: { search: string; budgetType: string
 }
 
 export default function ReviewQueue() {
+  const { instanceId } = useInstance()
+  const { items: cycleProjects } = useRoleProjects('reviewer', instanceId)
   const [projects, setProjects] = useState<ReviewQueueProject[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -190,6 +197,10 @@ export default function ReviewQueue() {
   const [pendingSubmit, setPendingSubmit] = useState<string[] | null>(null)
   const { runActionToast } = useToast()
   const { setReviewCount } = useQueueCounts()
+  const hasCycleDgeSubmission = cycleProjects.some(
+    (cycleProject) =>
+      cycleProject.status === 'Submitted to DGE' && cycleProject.statusCode === 776140004
+  )
 
   useEffect(() => {
     let mounted = true
@@ -235,23 +246,45 @@ export default function ReviewQueue() {
         : a.submittedDateRaw.localeCompare(b.submittedDateRaw)
     )
 
-  const visibleIds = filtered.map(p => p.id)
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id))
-  const completableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'To Review')
-  const submittableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'Reviewed')
+  const isProjectActionable = (project: ReviewQueueProject) =>
+    project.isActionable !== false &&
+    (
+      project.status === 'To Review' ||
+      (!hasCycleDgeSubmission && project.status === 'Reviewed')
+    )
+
+  const visibleActionableIds = filtered.filter(isProjectActionable).map(p => p.id)
+  const allVisibleSelected = visibleActionableIds.length > 0 && visibleActionableIds.every(id => selectedIds.includes(id))
+  const completableSelected = hasCycleDgeSubmission
+    ? []
+    : selectedIds.filter(id => {
+        const project = projects.find(p => p.id === id)
+        return Boolean(project && project.status === 'To Review' && isProjectActionable(project))
+      })
+  const submittableSelected = selectedIds.filter(id => {
+    const project = projects.find(p => p.id === id)
+    if (!project || !isProjectActionable(project)) return false
+    return hasCycleDgeSubmission ? project.status === 'To Review' : project.status === 'Reviewed'
+  })
   const clarificationSelected = selectedIds.filter(id => {
-    const status = projects.find(p => p.id === id)?.status
-    return status === 'To Review'
+    const project = projects.find(p => p.id === id)
+    return Boolean(project && project.status === 'To Review' && isProjectActionable(project))
   })
 
   const toggleSelected = (id: string) =>
-    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    setSelectedIds(prev => {
+      const project = projects.find(p => p.id === id)
+      if (!project || !isProjectActionable(project)) {
+        return prev
+      }
+      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    })
 
   const toggleAllVisible = () =>
     setSelectedIds(prev =>
       allVisibleSelected
-        ? prev.filter(id => !visibleIds.includes(id))
-        : Array.from(new Set([...prev, ...visibleIds]))
+        ? prev.filter(id => !visibleActionableIds.includes(id))
+        : Array.from(new Set([...prev, ...visibleActionableIds]))
     )
 
   const getIctId = (projectId: string) =>
@@ -296,7 +329,9 @@ export default function ReviewQueue() {
       },
       {
         processingTitle: 'Submitting to approver',
-        processingDescription: `Forwarding ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} to approver review...`,
+        processingDescription: hasCycleDgeSubmission
+          ? `Forwarding ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} directly to approver review...`
+          : `Forwarding ${projectIds.length} project${projectIds.length === 1 ? '' : 's'} to approver review...`,
         successTitle: 'Submitted to approver',
         successDescription: `${projectIds.length} project${projectIds.length === 1 ? '' : 's'} forwarded successfully.`,
         errorTitle: 'Unable to submit to approver',
@@ -485,14 +520,16 @@ export default function ReviewQueue() {
             >
               <MessageSquare className="h-4 w-4" />Raise Clarification
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={completableSelected.length === 0}
-              onClick={() => void handleCompleteReview(completableSelected)}
-            >
-              <Check className="h-4 w-4" />Complete Review
-            </Button>
+            {!hasCycleDgeSubmission && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={completableSelected.length === 0}
+                onClick={() => void handleCompleteReview(completableSelected)}
+              >
+                <Check className="h-4 w-4" />Complete Review
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={submittableSelected.length === 0}
@@ -521,9 +558,10 @@ export default function ReviewQueue() {
           filtered.map(proj => {
             const accent = statusAccent(proj.status)
             const isSelected = selectedIds.includes(proj.id)
-            const isCompletable = proj.status === 'To Review'
-            const isSubmittable = proj.status === 'Reviewed'
-            const canClarify = proj.status === 'To Review'
+            const isActionable = isProjectActionable(proj)
+            const isCompletable = !hasCycleDgeSubmission && proj.status === 'To Review' && isActionable
+            const isSubmittable = (hasCycleDgeSubmission ? proj.status === 'To Review' : proj.status === 'Reviewed') && isActionable
+            const canClarify = proj.status === 'To Review' && isActionable
             const aiExpanded = expandedAiId === proj.id
 
             return (
@@ -539,7 +577,7 @@ export default function ReviewQueue() {
                   {/* Top row */}
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
-                      <SelectionControl selected={isSelected} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
+                      <SelectionControl selected={isSelected} disabled={!isActionable} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs text-[#94A3B8]">{proj.id}</span>
@@ -641,15 +679,17 @@ export default function ReviewQueue() {
                         <Eye className="h-4 w-4" />Review
                       </Link>
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!isCompletable}
-                      className="disabled:opacity-50"
-                      onClick={() => { if (isCompletable) void handleCompleteReview([proj.id]) }}
-                    >
-                      <Check className="h-4 w-4" />Complete Review
-                    </Button>
+                    {!hasCycleDgeSubmission && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!isCompletable}
+                        className="disabled:opacity-50"
+                        onClick={() => { if (isCompletable) void handleCompleteReview([proj.id]) }}
+                      >
+                        <Check className="h-4 w-4" />Complete Review
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       disabled={!isSubmittable}
@@ -677,8 +717,12 @@ export default function ReviewQueue() {
         }
         description={
           (pendingSubmit?.length ?? 0) === 1
-            ? 'This will forward the project to the approver for final review. The reviewer will no longer be able to make changes.'
-            : `This will forward ${pendingSubmit?.length ?? 0} projects to the approver for final review.`
+            ? hasCycleDgeSubmission
+              ? 'This cycle already has a DGE submission, so the project will move directly to the approver without the intermediate review-completed stage.'
+              : 'This will forward the project to the approver for final review. The reviewer will no longer be able to make changes.'
+            : hasCycleDgeSubmission
+              ? `This will forward ${pendingSubmit?.length ?? 0} projects directly to the approver without the extra review-completed stage.`
+              : `This will forward ${pendingSubmit?.length ?? 0} projects to the approver for final review.`
         }
         confirmLabel="Submit to Approver"
         onConfirm={() => { if (pendingSubmit) void handleSubmitToApprover(pendingSubmit) }}

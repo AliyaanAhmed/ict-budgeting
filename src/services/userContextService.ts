@@ -33,6 +33,7 @@ export interface ModuleConfigTeamIds {
   respondentTeamId: string | null
   reviewerTeamId: string | null
   approverTeamId: string | null
+  strategyTeamId: string | null
 }
 
 export interface AppUserContext {
@@ -58,6 +59,7 @@ const EMPTY_MODULE_CONFIG_TEAM_IDS: ModuleConfigTeamIds = {
   respondentTeamId: null,
   reviewerTeamId: null,
   approverTeamId: null,
+  strategyTeamId: null,
 }
 
 const ROLE_ACCOUNT_SESSION_KEY: Record<TeamRole, string> = {
@@ -92,6 +94,27 @@ function storeModuleTypeId(moduleTypeId: string | null) {
 
 function storeModuleConfigTeamIds(payload: ModuleConfigTeamIds) {
   setSessionJson(SESSION_MODULE_CONFIG_TEAM_IDS_KEY, payload)
+}
+
+function mergeStoredModuleConfigTeamIds(partial: Partial<ModuleConfigTeamIds>) {
+  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  let current = EMPTY_MODULE_CONFIG_TEAM_IDS
+
+  if (raw) {
+    try {
+      current = {
+        ...EMPTY_MODULE_CONFIG_TEAM_IDS,
+        ...(JSON.parse(raw) as Partial<ModuleConfigTeamIds>),
+      }
+    } catch {
+      current = EMPTY_MODULE_CONFIG_TEAM_IDS
+    }
+  }
+
+  storeModuleConfigTeamIds({
+    ...current,
+    ...partial,
+  })
 }
 
 async function fetchAndStoreIctBudgetingModuleTypeId(): Promise<string | null> {
@@ -143,11 +166,27 @@ async function fetchAndStoreModuleConfigTeamIds(accountId: string | null, module
       respondentTeamId: record?._dga_respondent_team_value ?? null,
       reviewerTeamId: record?._dga_reviewer_team_value ?? null,
       approverTeamId: record?._dga_approver_team_value ?? null,
+      strategyTeamId: null,
     }
 
     storeModuleConfigTeamIds(payload)
   } catch (error) {
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
+  }
+}
+
+async function fetchAndStoreStrategyTeamId() {
+  try {
+    const result = await TeamsService.getAll({
+      select: ['teamid', 'name'],
+      filter: `name eq 'ICT - Strategy Team'`,
+      top: 1,
+    })
+
+    const strategyTeamId = result.data?.[0]?.teamid?.trim() || null
+    mergeStoredModuleConfigTeamIds({ strategyTeamId })
+  } catch {
+    mergeStoredModuleConfigTeamIds({ strategyTeamId: null })
   }
 }
 
@@ -306,6 +345,7 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
     uniqueAccountIds[0] ??
     null
   await fetchAndStoreModuleConfigTeamIds(availableAccountId, moduleTypeId)
+  await fetchAndStoreStrategyTeamId()
 }
 
 export async function initUserContext(): Promise<void> {

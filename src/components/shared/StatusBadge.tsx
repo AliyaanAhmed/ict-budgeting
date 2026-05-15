@@ -9,6 +9,7 @@ const statusConfig: Record<ProjectStatus, { label: string; className: string }> 
   'Clarification Required': { label: 'Clarification Required', className: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400' },
   'Submitted to Approver': { label: 'Submitted to Approver', className: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400' },
   Approved: { label: 'Approved', className: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' },
+  'Submitted to DGE': { label: 'Submitted to DGE', className: 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300' },
 }
 
 interface StatusBadgeProps {

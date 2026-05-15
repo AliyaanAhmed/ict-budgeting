@@ -44,6 +44,7 @@ import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
+import { isReviewerSentToApproverProjectStatus } from '@/services/projectService'
 
 function PieTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
@@ -252,9 +253,13 @@ export default function ReviewerDashboard() {
   const pendingReviewProjects = liveProjects.filter((project) => project.status === 'Submitted to Reviewer')
   const reviewCompletedProjects = liveProjects.filter((project) => project.status === 'Reviewer Review Completed')
   const clarificationSentProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
-  const sentToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
+  const sentToApproverProjects = liveProjects.filter((project) => isReviewerSentToApproverProjectStatus(project.status))
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
+  const submittedToDgeProjects = liveProjects.filter((project) => project.status === 'Submitted to DGE')
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
+  const approverStageProjects = liveProjects.filter(
+    (project) => project.status === 'Submitted to Approver' || project.status === 'Approved'
+  )
 
   const toReview = pendingReviewProjects.length
   const reviewCompleted = reviewCompletedProjects.length
@@ -263,7 +268,9 @@ export default function ReviewerDashboard() {
 
   const totalQueueBudget = liveProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
   const reviewedBudget = sentToApproverProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const approverStageBudget = approverStageProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
   const approvedBudget = approvedProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const submittedToDgeBudget = submittedToDgeProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
   const avgConfidence = liveProjects.length > 0
     ? Math.round(liveProjects.reduce((sum, p) => sum + p.aiScore, 0) / liveProjects.length)
     : 0
@@ -334,34 +341,29 @@ export default function ReviewerDashboard() {
 
   const budgetByReviewStatus = [
     {
-      name: 'Drafts on Respondent',
-      value: draftProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
-      fill: dashboardStatusColors.needsWork,
-    },
-    {
-      name: 'Pending Review',
+      name: 'Pending My Approval',
       value: pendingReviewProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
       fill: dashboardStatusColors.toReview,
     },
     {
-      name: 'Clarification Sent',
+      name: 'With Respondent',
+      value: draftProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      fill: dashboardStatusColors.needsWork,
+    },
+    {
+      name: 'With Approver',
+      value: approverStageBudget,
+      fill: dashboardStatusColors.reviewed,
+    },
+    {
+      name: 'Clarification Open',
       value: clarificationSentProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
       fill: dashboardStatusColors.clarificationPending,
     },
     {
-      name: 'Review Completed',
-      value: reviewCompletedProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
-      fill: '#16A34A',
-    },
-    {
-      name: 'Sent To Approver',
-      value: reviewedBudget,
-      fill: dashboardStatusColors.reviewed,
-    },
-    {
-      name: 'Approved by Approver',
-      value: approvedBudget,
-      fill: dashboardStatusColors.approved,
+      name: 'Submitted to DGE',
+      value: submittedToDgeBudget,
+      fill: '#7C3AED',
     },
   ].map((item) => ({
     ...item,

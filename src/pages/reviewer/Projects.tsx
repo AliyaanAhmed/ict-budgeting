@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { isReviewerSentToApproverProjectStatus } from '@/services/projectService'
 
 type FilterTab = 'all' | 'pending-review' | 'review-completed' | 'clarification' | 'submitted-approver'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -144,7 +145,7 @@ export default function ReviewerProjects() {
     { id: 'pending-review' as const, label: 'Pending Review', count: projects.filter((project) => project.status === 'Submitted to Reviewer').length },
     { id: 'review-completed' as const, label: 'Review Completed', count: projects.filter((project) => project.status === 'Reviewer Review Completed').length },
     { id: 'clarification' as const, label: 'Clarification Required', count: projects.filter((project) => project.status === 'Clarification Required').length },
-    { id: 'submitted-approver' as const, label: 'Submitted to Approver', count: projects.filter((project) => project.status === 'Submitted to Approver').length },
+    { id: 'submitted-approver' as const, label: 'Submitted to Approver', count: projects.filter((project) => isReviewerSentToApproverProjectStatus(project.status)).length },
   ]
 
   const filtered = projects.filter((project) => {
@@ -158,7 +159,7 @@ export default function ReviewerProjects() {
       (activeTab === 'pending-review' && project.status === 'Submitted to Reviewer') ||
       (activeTab === 'review-completed' && project.status === 'Reviewer Review Completed') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-approver' && project.status === 'Submitted to Approver')
+      (activeTab === 'submitted-approver' && isReviewerSentToApproverProjectStatus(project.status))
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
@@ -243,6 +244,7 @@ export default function ReviewerProjects() {
               <SelectItem value="Reviewer Review Completed">Reviewer Review Completed</SelectItem>
               <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
               <SelectItem value="Approved">Approved</SelectItem>
+              <SelectItem value="Submitted to DGE">Submitted to DGE</SelectItem>
             </SelectContent>
           </Select>
         </div>

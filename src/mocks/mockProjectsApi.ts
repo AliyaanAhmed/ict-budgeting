@@ -90,4 +90,5 @@ export const mockProjectsApi: ProjectsApi = {
   reviewerRaiseClarification: async (_projectId: string, _payload: ClarificationPayload) => noop(),
   approverApprove: noop,
   approverRaiseClarification: async (_projectId: string, _payload: ClarificationPayload) => noop(),
+  approverSubmitToDge: async (_projectIds: string[]) => noop(),
 }
