@@ -59,6 +59,70 @@ function buildSharePointDocumentFetchXml(budgetId: string): string {
 </fetch>`
 }
 
+interface TechnologyRelationshipBody {
+  actionName: 'associate' | 'disassociate'
+  isAdmin: boolean
+  userId: string
+  targetTableName: string
+  relatedTableName: string
+  targetId: string
+  relatedId: string
+  relationship: string
+}
+
+async function callTechnologyProductRelationship(
+  actionName: 'associate' | 'disassociate',
+  ictBudgetId: string,
+  productId: string
+): Promise<void> {
+  const client = getClient(dataSourcesInfo)
+  const requestBody: TechnologyRelationshipBody = {
+    actionName,
+    isAdmin: true,
+    userId: '',
+    targetTableName: 'dga_technology',
+    relatedTableName: 'dga_ict_budget',
+    targetId: productId,
+    relatedId: ictBudgetId,
+    relationship: 'dga_ict_budget_technology_product',
+  }
+
+  console.log(`[WebApiForPortalService] Calling dga_WebApiForPortal ${actionName}:`, {
+    ictBudgetId,
+    productId,
+    requestBody,
+  })
+
+  const result = await client.executeAsync<TechnologyRelationshipBody, unknown>({
+    dataverseRequest: {
+      action: 'customapi',
+      parameters: {
+        operationName: OPERATION_NAME,
+        tableName: DATA_SOURCE_KEY,
+        body: requestBody,
+      },
+    },
+  })
+
+  console.log(`[WebApiForPortalService] ${actionName} result:`, result)
+
+  if (!result.success) {
+    const errMsg =
+      result.error instanceof Error
+        ? result.error.message
+        : String(result.error?.message ?? result.error ?? 'Unknown error')
+    throw new Error(`dga_WebApiForPortal ${actionName} failed for product ${productId}: ${errMsg}`)
+  }
+}
+
+export async function associateTechnologyProduct(ictBudgetId: string, productId: string): Promise<void> {
+  return callTechnologyProductRelationship('associate', ictBudgetId, productId)
+}
+
+export async function disassociateTechnologyProduct(ictBudgetId: string, productId: string): Promise<void> {
+  return callTechnologyProductRelationship('disassociate', ictBudgetId, productId)
+}
+
 export async function retrieveSharePointDocumentsByBudget(budgetId: string): Promise<WebApiPortalDocument[]> {
   const client = getClient(dataSourcesInfo)
   const fetchXml = buildSharePointDocumentFetchXml(budgetId)

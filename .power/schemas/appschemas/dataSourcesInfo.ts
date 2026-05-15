@@ -280,9 +280,12 @@ export const dataSourcesInfo = {
           { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
           { "name": "userId", "in": "body", "required": false, "type": "string" },
           { "name": "tableName", "in": "body", "required": false, "type": "string" },
+          { "name": "targetTableName", "in": "body", "required": false, "type": "string" },
+          { "name": "relatedTableName", "in": "body", "required": false, "type": "string" },
           { "name": "relatedId", "in": "body", "required": false, "type": "string" },
           { "name": "targetId", "in": "body", "required": false, "type": "string" },
-          { "name": "fetchXml", "in": "body", "required": true, "type": "string" }
+          { "name": "relationship", "in": "body", "required": false, "type": "string" },
+          { "name": "fetchXml", "in": "body", "required": false, "type": "string" }
         ]
       }
     }

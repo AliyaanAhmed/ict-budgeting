@@ -46,9 +46,7 @@ This keeps Dataverse calls typed and consistent with Power Apps runtime policies
 
 ## Associate / Disassociate
 
-Right now, explicit associate/disassociate helper methods are **not implemented** in current generated services.
-
-We are following two practical Code App-safe patterns:
+We follow three patterns for N:N association depending on the operation context.
 
 ### Pattern 1 - Create Relationship Rows Through The Relationship Table Service
 
@@ -60,7 +58,7 @@ Real example:
 - table: `dga_ict_budget_dga_technology_product`
 - service: `Dga_ict_budget_dga_technology_productsetService`
 
-Used during ICT budget create/update to associate selected technology products with the budget.
+Used during ICT budget **Create** form to associate selected technology products with the budget.
 
 Typical payload shape:
 
@@ -71,11 +69,11 @@ await Dga_ict_budget_dga_technology_productsetService.create({
 })
 ```
 
-This is the preferred association pattern when the relationship table is available as a datasource.
+This is the preferred association pattern on initial create when the relationship table is available as a datasource.
 
 ### Pattern 2 - Query The Relationship Table Explicitly
 
-For retrieval of associated rows, we also query the relationship table directly instead of relying on raw Web API associate APIs.
+For retrieval of associated rows, we query the relationship table directly instead of relying on raw Web API associate APIs.
 
 Real example:
 
@@ -88,13 +86,70 @@ await Dga_ict_budget_dga_technology_productsetService.getAll({
 
 This is how the app restores selected Technology Product values in the View / Edit form.
 
-### Pattern 3 - Use `client.executeAsync(...)` Only When Needed
+### Pattern 3 - Associate / Disassociate On Edit Via Custom API
 
-If a relationship cannot be handled through a registered relationship table datasource, we can still fall back to:
+For the **Edit form**, when the user changes the Technology Product multi-select and saves, we diff the original product IDs (loaded from Dataverse on form open) against the new selection and call `dga_WebApiForPortal` via `executeAsync` for each change.
 
-- `client.executeAsync({ dataverseRequest: ... })`
+Service helpers:
 
-with the proper Dataverse associate/disassociate request payload.
+- `src/services/webApiForPortalService.ts`
+  - `associateTechnologyProduct(ictBudgetId, productId)`
+  - `disassociateTechnologyProduct(ictBudgetId, productId)`
+
+#### Associate payload
+
+```ts
+{
+  actionName: 'associate',
+  isAdmin: true,
+  userId: '',
+  targetTableName: 'dga_technology',
+  relatedTableName: 'dga_ict_budget',
+  targetId: productId,        // dga_technologyid of the product being added
+  relatedId: ictBudgetId,     // dga_ict_budgetid of the opened record
+  relationship: 'dga_ict_budget_technology_product',
+}
+```
+
+#### Disassociate payload
+
+```ts
+{
+  actionName: 'disassociate',
+  isAdmin: true,
+  userId: '',
+  targetTableName: 'dga_technology',
+  relatedTableName: 'dga_ict_budget',
+  targetId: productId,        // dga_technologyid of the product being removed
+  relatedId: ictBudgetId,     // dga_ict_budgetid of the opened record
+  relationship: 'dga_ict_budget_technology_product',
+}
+```
+
+#### How the diff works (in `handleSaveEdit`)
+
+```ts
+const originalProductIds = new Set(savedFormValues.technologyProductIds)
+const updatedProductIds  = new Set(formValues.technologyProductIds)
+
+const toAssociate    = formValues.technologyProductIds.filter(id => !originalProductIds.has(id))
+const toDisassociate = savedFormValues.technologyProductIds.filter(id => !updatedProductIds.has(id))
+
+await Promise.all([
+  ...toAssociate.map(productId    => associateTechnologyProduct(ictBudgetId, productId)),
+  ...toDisassociate.map(productId => disassociateTechnologyProduct(ictBudgetId, productId)),
+])
+```
+
+- `savedFormValues.technologyProductIds` holds the IDs fetched from Dataverse when the form opened (via `getAssociatedTechnologyProductIds`).
+- This diff runs inside the main `runActionToast` callback, after `updateIctBudgetDraft` succeeds.
+- `savedFormValues` is only updated after all associate/disassociate calls succeed.
+- If no products changed, no custom API calls are made.
+- Associate and disassociate calls for different products run in parallel.
+
+#### Important field note
+
+`dga_WebApiForPortal` for associate/disassociate requires `targetTableName`, `relatedTableName`, `targetId`, `relatedId`, and `relationship` to be registered as body parameters in `.power/schemas/appschemas/dataSourcesInfo.ts` under the `dga_webapiforportal` entry. These were added manually alongside the existing `actionName`, `isAdmin`, `userId`, and `fetchXml` params. Verify this entry is preserved whenever `add-flow` or `add-data-source` regenerates that file.
 
 ## How Dataverse Was Connected To This Code App
 

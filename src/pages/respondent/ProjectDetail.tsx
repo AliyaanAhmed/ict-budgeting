@@ -119,7 +119,12 @@ import {
 } from '@/services/clarificationService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
-import { retrieveSharePointDocumentsByBudget, type WebApiPortalDocument } from '@/services/webApiForPortalService'
+import {
+  associateTechnologyProduct,
+  disassociateTechnologyProduct,
+  retrieveSharePointDocumentsByBudget,
+  type WebApiPortalDocument,
+} from '@/services/webApiForPortalService'
 import { deleteSharePointDocument } from '@/services/fileDeleteService'
 import { SupportingDocuments } from '@/components/shared/SupportingDocuments'
 import { getAuditLogsByBudgetId, type AuditLogEntry } from '@/services/auditLogService'
@@ -1587,6 +1592,20 @@ export default function ProjectDetail() {
       await runActionToast(
         async () => {
           await updateIctBudgetDraft(ictBudgetId, formValues)
+
+          const originalProductIds = new Set(savedFormValues.technologyProductIds)
+          const updatedProductIds = new Set(formValues.technologyProductIds)
+          const toAssociate = formValues.technologyProductIds.filter((id) => !originalProductIds.has(id))
+          const toDisassociate = savedFormValues.technologyProductIds.filter((id) => !updatedProductIds.has(id))
+
+          if (toAssociate.length > 0 || toDisassociate.length > 0) {
+            console.log('[ProjectDetail] Technology product changes detected:', { toAssociate, toDisassociate })
+            await Promise.all([
+              ...toAssociate.map((productId) => associateTechnologyProduct(ictBudgetId, productId)),
+              ...toDisassociate.map((productId) => disassociateTechnologyProduct(ictBudgetId, productId)),
+            ])
+          }
+
           setSavedFormValues(formValues)
           setSavedTechnologyProductNames(
             selectedTechnologyCompany?.products
@@ -2571,15 +2590,6 @@ export default function ProjectDetail() {
               Modify the fields below. Respondents can also reply to open clarifications in this mode.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleCancelEdit} className="h-9 rounded-xl border-[#286CFF]/30 text-[#475569] dark:border-white/10">
-              Cancel
-            </Button>
-            <Button size="sm" onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="h-9 gap-1.5 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
-              <Save className="h-3.5 w-3.5" />
-              {savingIctBudget ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
         </div>
       )}
 
@@ -3132,7 +3142,27 @@ export default function ProjectDetail() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    {canCurrentRoleEdit && (
+                    {isEditMode && (
+                      <>
+                        <Button
+                          className="w-full justify-start gap-2 text-white"
+                          style={{ backgroundColor: '#286CFF' }}
+                          onClick={() => void handleSaveEdit()}
+                          disabled={savingIctBudget}
+                        >
+                          <Save className="h-4 w-4" />
+                          {savingIctBudget ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start gap-2"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    )}
+                    {canCurrentRoleEdit && !isEditMode && (
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
@@ -3227,9 +3257,29 @@ export default function ProjectDetail() {
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-2 p-4">
                   <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
+                  {isEditMode && (
+                    <>
+                      <Button
+                        className="w-full justify-start gap-2 text-white"
+                        style={{ backgroundColor: '#286CFF' }}
+                        onClick={() => void handleSaveEdit()}
+                        disabled={savingIctBudget}
+                      >
+                        <Save className="h-4 w-4" />
+                        {savingIctBudget ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2"
+                        onClick={handleCancelEdit}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
                   {(canCurrentRoleEdit || canSubmitToReviewer || canDeleteProject) ? (
                     <>
-                      {canCurrentRoleEdit && (
+                      {canCurrentRoleEdit && !isEditMode && (
                         <Button
                           variant="outline"
                           className="w-full justify-start gap-2"
