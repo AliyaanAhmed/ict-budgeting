@@ -208,6 +208,7 @@ function ActionMetricCard({
   badge,
   icon,
   href,
+  description,
 }: {
   title: string
   value: number
@@ -215,6 +216,7 @@ function ActionMetricCard({
   badge: string
   icon: React.ReactNode
   href: string
+  description: string
 }) {
   return (
     <Link
@@ -242,8 +244,8 @@ function ActionMetricCard({
           {icon}
         </div>
       </div>
-      <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
-        Open related projects and continue the next workflow step.
+      <div className="mt-3 min-h-[3rem] text-sm text-[#64748B] dark:text-slate-100">
+        {description}
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Projects</span>
@@ -528,6 +530,7 @@ export default function RespondentDashboard() {
             badge="In Review"
             icon={<Radar className="h-5 w-5" />}
             href="/respondent/projects?tab=submitted-reviewer"
+            description="Projects already sent forward and now tracked in review flow."
           />
           <ActionMetricCard
             title="Needs Work / Draft"
@@ -536,6 +539,7 @@ export default function RespondentDashboard() {
             badge="Action Needed"
             icon={<TrendingDown className="h-5 w-5" />}
             href="/respondent/projects?tab=needs-work"
+            description="Draft items still waiting for respondent updates and submit."
           />
           <ActionMetricCard
             title="Clarification Required"
@@ -544,6 +548,7 @@ export default function RespondentDashboard() {
             badge="Urgent"
             icon={<FolderOpen className="h-5 w-5" />}
             href="/respondent/projects?tab=clarification"
+            description="Projects returned for clarification before review can resume."
           />
         </div>
 

@@ -52,6 +52,9 @@ export interface RetrievedIctBudgetDraft {
   createdOn: string | null
   modifiedOn: string | null
   statusLabel: string | null
+  respondentName: string | null
+  reviewerName: string | null
+  approverName: string | null
 }
 
 export interface CreatedIctBudgetDraft {
@@ -349,6 +352,12 @@ function mapRetrievedBudgetRecord(
       ) ??
       record.dga_status_for_adgename ??
       null,
+    respondentName:
+      getFormattedAnnotation(record, '_dga_respondent_value@OData.Community.Display.V1.FormattedValue') ?? null,
+    reviewerName:
+      getFormattedAnnotation(record, '_dga_reviewer_value@OData.Community.Display.V1.FormattedValue') ?? null,
+    approverName:
+      getFormattedAnnotation(record, '_dga_approver_value@OData.Community.Display.V1.FormattedValue') ?? null,
   } satisfies RetrievedIctBudgetDraft
 }
 
@@ -449,6 +458,9 @@ export async function getIctBudgetDraftById(
         '_createdby_value',
         'createdon',
         'modifiedon',
+        '_dga_respondent_value',
+        '_dga_reviewer_value',
+        '_dga_approver_value',
       ],
     }),
     getAssociatedTechnologyProductIds(ictBudgetId),

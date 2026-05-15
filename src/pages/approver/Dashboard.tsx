@@ -151,13 +151,15 @@ function ActionMetricCard({
   badge,
   icon,
   href,
+  description,
 }: {
-  title: string
+  title: React.ReactNode
   value: number
   accent: string
   badge: string
   icon: React.ReactNode
   href: string
+  description: string
 }) {
   return (
     <Link
@@ -166,9 +168,11 @@ function ActionMetricCard({
       style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
-          <div className="mt-4 flex items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="min-h-[3.25rem]">
+            <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+          </div>
+          <div className="mt-3 flex items-end gap-3">
             <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -185,8 +189,8 @@ function ActionMetricCard({
           {icon}
         </div>
       </div>
-      <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
-        Open the workspace and continue approvals, clarifications, or final checks.
+      <div className="mt-3 min-h-[3rem] text-sm text-[#64748B] dark:text-slate-100">
+        {description}
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Workspace</span>
@@ -643,36 +647,40 @@ export default function ApproverDashboard() {
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <ActionMetricCard
-            title="Pending My Approval"
+            title={<><span className="block">Pending</span><span className="block">Approval</span></>}
             value={pendingApproval}
             accent={dashboardPalette.camelYellow}
             badge="Pending"
             icon={<ClipboardCheck className="h-5 w-5" />}
             href="/approver/projects?tab=pending-approval"
+            description="Projects waiting for approver decision before final handoff."
           />
           <ActionMetricCard
-            title="Clarification Open"
+            title={<><span className="block">Clarification</span><span className="block">Open</span></>}
             value={clarificationCount}
             accent={dashboardPalette.desertOrange}
             badge="Open"
             icon={<MessageSquareMore className="h-5 w-5" />}
             href="/approver/projects?tab=clarification"
+            description="Approver-returned items pending respondent clarification."
           />
           <ActionMetricCard
-            title="Approved Project"
+            title={<><span className="block">Approved</span><span className="block">Project</span></>}
             value={approvedCount}
             accent={dashboardPalette.aeGreen}
             badge="Ready"
             icon={<CheckCircle2 className="h-5 w-5" />}
             href="/approver/projects?tab=approved"
+            description="Approved items held until the entity moves onward to DGE."
           />
           <ActionMetricCard
-            title="Submitted to DGE"
+            title={<><span className="block">Submitted</span><span className="block">DGE</span></>}
             value={submittedToDgeCount}
             accent="#7C3AED"
             badge="Forwarded"
             icon={<Send className="h-5 w-5" />}
             href="/approver/projects?tab=submitted-dge"
+            description="Portfolio items already handed off for strategic review."
           />
         </div>
 

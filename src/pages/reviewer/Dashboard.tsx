@@ -156,13 +156,15 @@ function ActionMetricCard({
   badge,
   icon,
   href,
+  description,
 }: {
-  title: string
+  title: React.ReactNode
   value: number
   accent: string
   badge: string
   icon: React.ReactNode
   href: string
+  description: string
 }) {
   return (
     <Link
@@ -171,9 +173,11 @@ function ActionMetricCard({
       style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
     >
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
-          <div className="mt-4 flex items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="min-h-[3.25rem]">
+            <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+          </div>
+          <div className="mt-3 flex items-end gap-3">
             <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -190,8 +194,8 @@ function ActionMetricCard({
           {icon}
         </div>
       </div>
-      <div className="mt-3 text-sm text-[#64748B] dark:text-slate-100">
-        Open the reviewer projects view and continue the next workflow step.
+      <div className="mt-3 min-h-[3rem] text-sm text-[#64748B] dark:text-slate-100">
+        {description}
       </div>
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Projects</span>
@@ -460,36 +464,40 @@ export default function ReviewerDashboard() {
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
           <ActionMetricCard
-            title="Pending Review"
+            title={<><span className="block">Pending</span><span className="block">Review</span></>}
             value={toReview}
             accent={dashboardPalette.seaBlue}
             badge="Pending"
             icon={<Radar className="h-5 w-5" />}
             href="/reviewer/projects?tab=pending-review"
+            description="Submitted items waiting for reviewer assessment and action."
           />
           <ActionMetricCard
-            title="Review Completed"
+            title={<><span className="block">Review</span><span className="block">Completed</span></>}
             value={reviewCompleted}
             accent={dashboardPalette.aeGreen}
             badge="Ready"
             icon={<ClipboardCheck className="h-5 w-5" />}
             href="/reviewer/projects?tab=review-completed"
+            description="Reviewer-cleared items ready for onward approver submission."
           />
           <ActionMetricCard
-            title="Clarification Sent"
+            title={<><span className="block">Clarification</span><span className="block">Open</span></>}
             value={clarificationPending}
             accent={dashboardPalette.camelYellow}
             badge="Open"
             icon={<MessageSquareMore className="h-5 w-5" />}
             href="/reviewer/projects?tab=clarification"
+            description="Projects sent back to respondent for reviewer clarification."
           />
           <ActionMetricCard
-            title="Sent To Approver"
+            title={<><span className="block">Sent</span><span className="block">Approver</span></>}
             value={reviewed}
             accent={dashboardPalette.aeGreen}
             badge="Forwarded"
             icon={<ClipboardCheck className="h-5 w-5" />}
             href="/reviewer/projects?tab=submitted-approver"
+            description="Reviewer-forwarded items now progressing in approver flow."
           />
         </div>
 

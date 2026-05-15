@@ -31,7 +31,10 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  UserCheck,
   WalletCards,
+  Zap,
+  BarChart2,
 } from 'lucide-react'
 import {
   addMonths,
@@ -1289,6 +1292,9 @@ export default function ProjectDetail() {
   const [ictBudgetCreatedByName, setIctBudgetCreatedByName] = useState<string | null>(null)
   const [ictBudgetCreatedOn, setIctBudgetCreatedOn] = useState<string | null>(null)
   const [ictBudgetModifiedOn, setIctBudgetModifiedOn] = useState<string | null>(null)
+  const [ictBudgetRespondentName, setIctBudgetRespondentName] = useState<string | null>(null)
+  const [ictBudgetReviewerName, setIctBudgetReviewerName] = useState<string | null>(null)
+  const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<IctBudgetFieldErrorMap>({})
   const [workStreamModalOpen, setWorkStreamModalOpen] = useState(false)
   const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
@@ -1559,6 +1565,9 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(retrievedBudget.createdByName)
           setIctBudgetCreatedOn(retrievedBudget.createdOn)
           setIctBudgetModifiedOn(retrievedBudget.modifiedOn)
+          setIctBudgetRespondentName(retrievedBudget.respondentName)
+          setIctBudgetReviewerName(retrievedBudget.reviewerName)
+          setIctBudgetApproverName(retrievedBudget.approverName)
           setIctBudgetError(null)
         } else {
           const fallbackFormValues: IctBudgetFormValues = {
@@ -3240,12 +3249,11 @@ export default function ProjectDetail() {
             <>
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="p-4">
-                  <div className="mb-4 flex items-center gap-3">
-                    <SectionIcon icon={Bot} />
-                    <div>
-                      <p className="font-semibold text-[#0F172A] dark:text-white">Recommended Actions</p>
-                      <p className="text-xs text-[#64748B] dark:text-slate-200">{actionContextLabel}</p>
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <Bot className="h-4 w-4" />
                     </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Recommended Actions</p>
                   </div>
                   <div className="space-y-2">
                     {isEditMode && (
@@ -3324,6 +3332,39 @@ export default function ProjectDetail() {
                 </CardContent>
               </Card>
 
+              <Card className="overflow-hidden rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <UserCheck className="h-4 w-4" />
+                    </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Activity</p>
+                  </div>
+                  <div className="divide-y divide-[#F1F5F9] dark:divide-white/5">
+                    {(
+                      [
+                        { role: 'Respondent', name: ictBudgetRespondentName, color: '#10B981', bg: '#D1FAE5', icon: UserCheck },
+                        { role: 'Reviewer',   name: ictBudgetReviewerName,   color: '#F59E0B', bg: '#FEF3C7', icon: ClipboardCheck },
+                        { role: 'Approver',   name: ictBudgetApproverName,   color: '#286CFF', bg: '#DBEAFE', icon: ShieldCheck },
+                      ] as const
+                    ).map(({ role, name, color, bg, icon: RoleIcon }) => (
+                      <div key={role} className="group flex items-center gap-3 py-2.5 transition-colors duration-150 first:pt-0 last:pb-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-transform duration-150 group-hover:scale-110" style={{ backgroundColor: bg, color }}>
+                          <RoleIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8] dark:text-slate-400">{role}</p>
+                          <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">
+                            {name ?? <span className="font-normal text-[#94A3B8] dark:text-slate-500">—</span>}
+                          </p>
+                        </div>
+                        <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: name ? color : '#CBD5E1' }} />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
               <AiCard title="AI Review Insights">
                 <div className="grid grid-cols-2 gap-3">
                   <AiSignal label="Confidence" value={`${confidence}%`} tone={confidenceTone} />
@@ -3362,7 +3403,12 @@ export default function ProjectDetail() {
             <>
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-2 p-4">
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
+                  <div className="mb-1 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <Zap className="h-4 w-4" />
+                    </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
+                  </div>
                   {isEditMode && (
                     <>
                       <Button
@@ -3425,9 +3471,47 @@ export default function ProjectDetail() {
                 </CardContent>
               </Card>
 
+              <Card className="overflow-hidden rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <UserCheck className="h-4 w-4" />
+                    </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Activity</p>
+                  </div>
+                  <div className="divide-y divide-[#F1F5F9] dark:divide-white/5">
+                    {(
+                      [
+                        { role: 'Respondent', name: ictBudgetRespondentName, color: '#10B981', bg: '#D1FAE5', icon: UserCheck },
+                        { role: 'Reviewer',   name: ictBudgetReviewerName,   color: '#F59E0B', bg: '#FEF3C7', icon: ClipboardCheck },
+                        { role: 'Approver',   name: ictBudgetApproverName,   color: '#286CFF', bg: '#DBEAFE', icon: ShieldCheck },
+                      ] as const
+                    ).map(({ role, name, color, bg, icon: RoleIcon }) => (
+                      <div key={role} className="group flex items-center gap-3 py-2.5 transition-colors duration-150 first:pt-0 last:pb-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-transform duration-150 group-hover:scale-110" style={{ backgroundColor: bg, color }}>
+                          <RoleIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-[#94A3B8] dark:text-slate-400">{role}</p>
+                          <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">
+                            {name ?? <span className="font-normal text-[#94A3B8] dark:text-slate-500">—</span>}
+                          </p>
+                        </div>
+                        <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: name ? color : '#CBD5E1' }} />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-3 p-4">
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Project Creation Details</p>
+                  <div className="mb-1 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Project Creation Details</p>
+                  </div>
                   <Field label="Created By" value={display.createdBy} />
                   <Field label="Created On" value={display.createdOn} />
                   <Field label="Modified On" value={display.modifiedOn} />
@@ -3442,7 +3526,12 @@ export default function ProjectDetail() {
 
               <Card className="rounded-2xl border-[#DDEBFF] shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
                 <CardContent className="space-y-2 p-4">
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Project Signals</p>
+                  <div className="mb-1 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                      <BarChart2 className="h-4 w-4" />
+                    </div>
+                    <p className="font-semibold text-[#0F172A] dark:text-white">Project Signals</p>
+                  </div>
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Status</p>
                     <div className="mt-2"><DynamicStatusBadge status={display.status} fallbackStatus={project.status} /></div>
@@ -3455,6 +3544,7 @@ export default function ProjectDetail() {
               </Card>
             </>
           )}
+
         </aside>
       </div>
 
