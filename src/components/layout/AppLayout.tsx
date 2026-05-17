@@ -26,7 +26,7 @@ export function AppLayout() {
 
   useEffect(() => {
     const shouldBlurDuringTransition = isRTL
-
+ 
     if (isRTL) {
       document.documentElement.dir = 'rtl'
       document.documentElement.lang = 'ar'
@@ -36,11 +36,11 @@ export function AppLayout() {
       document.documentElement.lang = 'en'
       document.body.dir = 'ltr'
     }
-
+ 
     let cancelled = false
-
+ 
     setIsTranslating(shouldBlurDuringTransition)
-
+ 
     const timer = window.setTimeout(() => {
       void (async () => {
         try {
@@ -56,36 +56,33 @@ export function AppLayout() {
         }
       })()
     }, 50)
-
+ 
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
   }, [isRTL])
-
+ 
   useEffect(() => {
     if (!isRTL) return
-
+ 
     let cancelled = false
     setIsTranslating(true)
-
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          await translatePage(true)
-        } finally {
-          if (!cancelled) {
-            window.setTimeout(() => {
-              if (!cancelled) setIsTranslating(false)
-            }, 120)
-          }
+ 
+    void (async () => {
+      try {
+        await translatePage(true)
+      } finally {
+        if (!cancelled) {
+          window.setTimeout(() => {
+            if (!cancelled) setIsTranslating(false)
+          }, 120)
         }
-      })()
-    }, 50)
-
+      }
+    })()
+ 
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
   }, [location.pathname, isRTL])
 
@@ -116,14 +113,14 @@ export function AppLayout() {
   return (
     <div className="min-h-screen bg-[var(--background)]" dir={isRTL ? 'rtl' : 'ltr'}>
       <Sidebar collapsed={sidebarCollapsed} isRTL={isRTL} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
-      <Header
-        sidebarWidth={sidebarWidth}
-        isDark={isDark}
-        onToggleDark={() => setIsDark(!isDark)}
-        isRTL={isRTL}
-        onToggleRTL={() => setIsRTL(!isRTL)}
-        isTranslating={isTranslating}
-      />
+        <Header
+          sidebarWidth={sidebarWidth}
+          isDark={isDark}
+          onToggleDark={() => setIsDark(!isDark)}
+          isRTL={isRTL}
+          onToggleRTL={() => setIsRTL(!isRTL)}
+          isTranslating={isTranslating}
+        />
       <main
         className="pt-16 transition-[padding-left,padding-right] duration-300 ease-in-out will-change-[padding-left,padding-right]"
         style={isRTL ? { paddingRight: sidebarWidth, paddingLeft: 0 } : { paddingLeft: sidebarWidth, paddingRight: 0 }}

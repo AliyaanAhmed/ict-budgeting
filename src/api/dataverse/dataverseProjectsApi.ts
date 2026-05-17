@@ -10,6 +10,7 @@ import {
 import {
   raiseBudgetClarification,
 } from '@/services/clarificationService'
+import { getBudgetLineItemsByBudgetIds } from '@/services/budgetLineItemService'
 import { shareIctBudgetWithRoleTeam } from '@/services/recordShareService'
 import { createNotificationForRole } from '@/services/appNotificationService'
 import type {
@@ -457,16 +458,37 @@ export const dataverseProjectsApi: ProjectsApi = {
       ),
       orderBy: ['modifiedon desc'],
     })
+    const records = result.data ?? []
+    const budgetIds = records
+      .map((record) => record.dga_ict_budgetid)
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+    const lineItems = await getBudgetLineItemsByBudgetIds(budgetIds)
+    const lineItemsByBudgetId = new Map<string, typeof lineItems>()
 
-    return (result.data ?? []).map((record): ReviewQueueProject => {
+    for (const lineItem of lineItems) {
+      if (!lineItem.budgetId) continue
+      const existing = lineItemsByBudgetId.get(lineItem.budgetId) ?? []
+      existing.push(lineItem)
+      lineItemsByBudgetId.set(lineItem.budgetId, existing)
+    }
+
+    return records.map((record): ReviewQueueProject => {
       const sv = Number(record.dga_status_for_adge ?? 0)
       const queueStatus: ReviewQueueProject['status'] =
         sv === 2 ? 'To Review' : sv === 5 ? 'Clarification Pending' : 'Reviewed'
       const isActionable = sv === 2 || sv === 12
+      const budgetId = record.dga_ict_budgetid || ''
+      const projectLineItems = lineItemsByBudgetId.get(budgetId) ?? []
+      const capex = projectLineItems
+        .filter((item) => item.expenseTypeValue === 1)
+        .reduce((sum, item) => sum + item.budgetRequested, 0)
+      const opex = projectLineItems
+        .filter((item) => item.expenseTypeValue === 2)
+        .reduce((sum, item) => sum + item.budgetRequested, 0)
 
       return {
         id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN',
-        ictBudgetId: record.dga_ict_budgetid || '',
+        ictBudgetId: budgetId,
         name: record.dga_initiative_project_requirement_name?.trim() || 'Untitled Budget Item',
         entity: getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') || '-',
         status: queueStatus,
@@ -474,9 +496,9 @@ export const dataverseProjectsApi: ProjectsApi = {
         riskLevel: 'Low',
         hasMissingDocs: false,
         requestedBudget: record.dga_total_budget_requested ?? 0,
-        capex: 0,
-        opex: 0,
-        glCodeCount: 0,
+        capex,
+        opex,
+        glCodeCount: projectLineItems.length,
         submittedBy: getFormattedAnnotation(record, '_createdby_value@OData.Community.Display.V1.FormattedValue') || 'Unknown',
         submittedDate: formatDate(record, 'createdon@OData.Community.Display.V1.FormattedValue', record.createdon),
         submittedDateRaw: record.createdon ?? '',

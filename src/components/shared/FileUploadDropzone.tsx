@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { X, Upload } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useToast } from '@/context/ToastContext'
 
 interface FileUploadDropzoneProps {
   files: File[]
@@ -10,19 +11,19 @@ interface FileUploadDropzoneProps {
 }
 
 const FILE_TYPE_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
-  pdf:  { bg: '#FEE2E2', color: '#DC2626', label: 'PDF' },
-  doc:  { bg: '#DBEAFE', color: '#2563EB', label: 'DOC' },
+  pdf: { bg: '#FEE2E2', color: '#DC2626', label: 'PDF' },
+  doc: { bg: '#DBEAFE', color: '#2563EB', label: 'DOC' },
   docx: { bg: '#DBEAFE', color: '#2563EB', label: 'DOC' },
-  xls:  { bg: '#DCFCE7', color: '#16A34A', label: 'XLS' },
+  xls: { bg: '#DCFCE7', color: '#16A34A', label: 'XLS' },
   xlsx: { bg: '#DCFCE7', color: '#16A34A', label: 'XLS' },
-  png:  { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
-  jpg:  { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
+  png: { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
+  jpg: { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
   jpeg: { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
-  gif:  { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
-  ppt:  { bg: '#FFEDD5', color: '#EA580C', label: 'PPT' },
+  gif: { bg: '#F3E8FF', color: '#9333EA', label: 'IMG' },
+  ppt: { bg: '#FFEDD5', color: '#EA580C', label: 'PPT' },
   pptx: { bg: '#FFEDD5', color: '#EA580C', label: 'PPT' },
-  txt:  { bg: '#F1F5F9', color: '#475569', label: 'TXT' },
-  csv:  { bg: '#DCFCE7', color: '#16A34A', label: 'CSV' },
+  txt: { bg: '#F1F5F9', color: '#475569', label: 'TXT' },
+  csv: { bg: '#DCFCE7', color: '#16A34A', label: 'CSV' },
 }
 
 function getFileTypeConfig(extension: string) {
@@ -59,20 +60,42 @@ export function FileUploadDropzone({
   accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx,.txt,.csv',
   maxSizeMB = 20,
 }: FileUploadDropzoneProps) {
+  const { showErrorToast } = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const dragCounter = useRef(0)
 
   const addFiles = useCallback(
     (incoming: File[]) => {
+      const rejectedZeroKb: string[] = []
+      const rejectedOversize: string[] = []
       const valid = incoming.filter((f) => {
-        if (f.size > maxSizeMB * 1024 * 1024) return false
+        if (f.size <= 0) {
+          rejectedZeroKb.push(f.name)
+          return false
+        }
+        if (f.size > maxSizeMB * 1024 * 1024) {
+          rejectedOversize.push(f.name)
+          return false
+        }
         const already = files.some((existing) => existing.name === f.name && existing.size === f.size)
         return !already
       })
+      if (rejectedZeroKb.length > 0) {
+        showErrorToast(
+          'Empty files are not allowed',
+          `${rejectedZeroKb.join(', ')} ${rejectedZeroKb.length === 1 ? 'is' : 'are'} 0 KB and cannot be uploaded.`
+        )
+      }
+      if (rejectedOversize.length > 0) {
+        showErrorToast(
+          'File size exceeded',
+          `${rejectedOversize.join(', ')} ${rejectedOversize.length === 1 ? 'is' : 'are'} larger than ${maxSizeMB} MB and cannot be uploaded.`
+        )
+      }
       if (valid.length > 0) onChange([...files, ...valid])
     },
-    [files, onChange, maxSizeMB]
+    [files, maxSizeMB, onChange, showErrorToast]
   )
 
   const removeFile = (index: number) => {

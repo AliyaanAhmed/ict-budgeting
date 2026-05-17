@@ -185,13 +185,24 @@ function DetailSection({
   )
 }
 
-function EditField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function EditField({
+  label,
+  required,
+  error,
+  children,
+}: {
+  label: string
+  required?: boolean
+  error?: string
+  children: React.ReactNode
+}) {
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-[#0F172A] dark:text-white">
         {label}{required && <span className="ml-1 text-red-500">*</span>}
       </label>
       {children}
+      {error && <p className="text-xs font-medium text-[#B42318]">{error}</p>}
     </div>
   )
 }
@@ -200,10 +211,12 @@ function EditDatePickerField({
   value,
   onChange,
   placeholder = 'Pick a date',
+  invalid,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  invalid?: boolean
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -232,6 +245,7 @@ function EditDatePickerField({
         aria-expanded={open}
         className={cn(
           'inline-flex h-10 w-full shrink-0 items-center justify-start gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 py-2 text-left text-sm font-normal shadow-sm transition-colors duration-150 outline-none hover:border-[#043DFF] hover:bg-[#E7F5FF] hover:text-[#043DFF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5',
+          invalid ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : '',
           selectedDate ? 'text-[#0F172A] dark:text-white' : 'text-[#64748B]'
         )}
       >
@@ -815,7 +829,7 @@ function BudgetItemsTable({
   editable,
   savingId,
   deletingId,
-  onSaveBudgetRequested,
+  onChangeBudgetRequested,
   onDelete,
 }: {
   items: BudgetLineItemRecord[]
@@ -824,7 +838,7 @@ function BudgetItemsTable({
   editable: boolean
   savingId: string | null
   deletingId: string | null
-  onSaveBudgetRequested: (lineItemId: string, amount: number) => Promise<void>
+  onChangeBudgetRequested: (lineItemId: string, amount: number) => void
   onDelete: (item: BudgetLineItemRecord) => void
 }) {
   const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({})
@@ -878,8 +892,7 @@ function BudgetItemsTable({
             const draftValue = draftAmounts[item.id] ?? String(item.budgetRequested)
             const normalizedDraftValue = draftValue.replace(/,/g, '')
             const parsedAmount = Number(normalizedDraftValue)
-            const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount >= 0
-            const hasChanged = isValidAmount && parsedAmount !== item.budgetRequested
+            const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount > 0
             const isSaving = savingId === item.id
             const isDeleting = deletingId === item.id
 
@@ -912,30 +925,30 @@ function BudgetItemsTable({
                             : formattedInteger
 
                           setDraftAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                          const nextNumericValue = decimalPart !== undefined
+                            ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
+                            : Number(normalizedInteger || '0')
+                          onChangeBudgetRequested(item.id, Number.isFinite(nextNumericValue) ? nextNumericValue : 0)
                         }}
-                        placeholder="0"
-                        className="h-10 rounded-xl border-[#D9E6F7] bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
+                        placeholder="-"
+                        className={cn(
+                          'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                          isValidAmount || draftValue.trim().length === 0 ? 'border-[#D9E6F7]' : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                        )}
                       />
                     </div>
                   ) : (
-                    <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                    item.budgetRequested > 0 ? (
+                      <CurrencyAmount amount={item.budgetRequested} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                    ) : (
+                      <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                    )
                   )}
                 </td>
                 <td className="block py-2 md:table-cell md:px-4 md:py-3">
                   <div className="flex items-center gap-2">
                     {editable ? (
                       <>
-                        <Button
-                          size="sm"
-                          className="h-9 w-9 rounded-xl p-0 text-white"
-                          style={{ backgroundColor: '#286CFF' }}
-                          disabled={!hasChanged || isSaving || isDeleting}
-                          onClick={() => void onSaveBudgetRequested(item.id, parsedAmount)}
-                          title={isSaving ? 'Saving' : 'Save'}
-                          aria-label={isSaving ? `Saving ${item.accountName}` : `Save ${item.accountName}`}
-                        >
-                          <Save className={cn('h-4 w-4', isSaving && 'animate-pulse')} />
-                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -969,13 +982,33 @@ const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 // ─── Section registry (used by nav + IntersectionObserver) ───────────────────
 
 const FORM_SECTIONS = [
-  { id: 'sec-details',        label: 'Budget Item Details', icon: ClipboardCheck },
-  { id: 'sec-timelines',      label: 'Timelines',           icon: CalendarDays   },
+  { id: 'sec-details',        label: 'Project Details',     icon: ClipboardCheck },
+  { id: 'sec-timelines',      label: 'Project Timeline',    icon: CalendarDays   },
   { id: 'sec-summary',        label: 'Project Summary',     icon: FileText       },
-  { id: 'sec-budget',         label: 'Budget & Amounts',    icon: WalletCards    },
+  { id: 'sec-budget',         label: 'Budget Account Codes', icon: WalletCards   },
   { id: 'sec-documents',      label: 'Documents',           icon: FileCheck2     },
   { id: 'sec-clarifications', label: 'Clarifications',      icon: MessageSquare  },
 ]
+
+const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
+  initiativeName: 'Initiative / Budget Item Name',
+  strategicPriorityId: 'Strategic Priorities',
+  strategicPriorityClassificationId: 'Strategic Priority Classifications',
+  workStreamId: 'Work Stream',
+  technologyCompanyId: 'Technology (Company)',
+  technologyProductIds: 'Technology (Product)',
+  budgetItemType: 'ICT Budget Items Type',
+  plannedStartDate: 'Planned Start Date',
+  plannedEndDate: 'Planned End Date',
+  summary: 'Summary / Description',
+  activityType: 'Project Budget Type',
+  category: 'Category',
+  totalBudgetPaidPreviousYear: 'Total Budget Paid Previous Year',
+  totalBudgetPayableFutureYear: 'Total Budget Payable Future Years',
+  totalBudgetPayableNextYear: 'Total Budget Payable Next Year',
+  totalBudgetPayableForYearAfterNext: 'Total Budget Payable For Year After Next',
+  budgetItems: 'Budget Account Codes',
+}
 
 function ScrollSpySectionRail({
   sections,
@@ -1304,6 +1337,7 @@ export default function ProjectDetail() {
   const [budgetItemsLoading, setBudgetItemsLoading] = useState(false)
   const [budgetItemsError, setBudgetItemsError] = useState<string | null>(null)
   const [budgetLineItems, setBudgetLineItems] = useState<BudgetLineItemRecord[]>([])
+  const [savedBudgetLineItems, setSavedBudgetLineItems] = useState<BudgetLineItemRecord[]>([])
   const [savingBudgetLineItemId, setSavingBudgetLineItemId] = useState<string | null>(null)
   const [deletingBudgetLineItemId, setDeletingBudgetLineItemId] = useState<string | null>(null)
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
@@ -1397,6 +1431,7 @@ export default function ProjectDetail() {
     () =>
       project.budgetItems.map((item) => ({
         id: item.id,
+        budgetId: null,
         classificationId: item.id,
         accountName: item.accountName,
         l1: item.l1,
@@ -1519,6 +1554,7 @@ export default function ProjectDetail() {
 
   const handleCancelEdit = () => {
     setFormValues(savedFormValues)
+    setBudgetLineItems(savedBudgetLineItems)
     setFieldErrors({})
     setUploadedFiles([])
     setIsEditMode(false)
@@ -1640,7 +1676,7 @@ export default function ProjectDetail() {
       nextErrors.summary = 'Summary / Description is required.'
     }
     if (!formValues.activityType) {
-      nextErrors.activityType = 'Budget Type is required.'
+      nextErrors.activityType = 'Project Budget Type is required.'
     }
 
     visibleBudgetFields.forEach((field) => {
@@ -1649,12 +1685,18 @@ export default function ProjectDetail() {
       }
     })
 
-    setFieldErrors(nextErrors)
+    if (displayedBudgetItems.length === 0) {
+      nextErrors.budgetItems = 'Add at least one budget account code before continuing.'
+    } else if (displayedBudgetItems.some((item) => item.budgetRequested <= 0)) {
+      nextErrors.budgetItems = 'Each budget account code must have a requested budget greater than zero.'
+    }
 
+    setFieldErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) {
+      const missingFields = Object.keys(nextErrors).map((key) => VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS])
       showErrorToast(
         'Complete required fields',
-        'Please fill the highlighted fields before saving your changes.'
+        `Please review: ${missingFields.join(', ')}.`
       )
       return false
     }
@@ -1662,7 +1704,7 @@ export default function ProjectDetail() {
     return true
   }
 
-  const handleSaveEdit = async () => {
+  const saveProjectChanges = async (options?: { exitEditMode?: boolean }) => {
     if (!hasDataverseBudgetProject || !ictBudgetId) {
       showErrorToast(
         'ICT budget unavailable',
@@ -1672,7 +1714,7 @@ export default function ProjectDetail() {
     }
 
     if (!validateForm()) {
-      return
+      return false
     }
 
     setSavingIctBudget(true)
@@ -1694,7 +1736,19 @@ export default function ProjectDetail() {
             ])
           }
 
+          const changedBudgetLineItems = budgetLineItems.filter((item) => {
+            const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
+            return savedItem && savedItem.budgetRequested !== item.budgetRequested
+          })
+
+          if (changedBudgetLineItems.length > 0) {
+            await Promise.all(
+              changedBudgetLineItems.map((item) => updateBudgetLineItemAmount(item.id, item.budgetRequested))
+            )
+          }
+
           setSavedFormValues(formValues)
+          setSavedBudgetLineItems(budgetLineItems)
           setSavedTechnologyProductNames(
             selectedTechnologyCompany?.products
               .filter((product) => formValues.technologyProductIds.includes(product.id))
@@ -1732,10 +1786,17 @@ export default function ProjectDetail() {
         }
       }
 
-      setIsEditMode(false)
+      if (options?.exitEditMode !== false) {
+        setIsEditMode(false)
+      }
+      return true
     } finally {
       setSavingIctBudget(false)
     }
+  }
+
+  const handleSaveEdit = async () => {
+    await saveProjectChanges()
   }
 
   const syncLocalWorkflowState = (nextStatus: Project['status']) => {
@@ -1753,6 +1814,42 @@ export default function ProjectDetail() {
           }
         : current
     )
+  }
+
+  const prepareWorkflowAction = async (action: WorkflowAction) => {
+    if (action === 'delete-project') {
+      setPendingWorkflowAction(action)
+      return
+    }
+
+    if (action === 'submit-reviewer') {
+      if (!validateForm()) return
+      if (sharepointDocsLoading && uploadedFiles.length === 0) {
+        showErrorToast(
+          'Documents still loading',
+          'Please wait for supporting documents to finish loading before submitting to reviewer.'
+        )
+        return
+      }
+      if (!hasSupportingDocuments && uploadedFiles.length === 0) {
+        showErrorToast(
+          'Supporting document required',
+          'Upload at least one supporting document before submitting to reviewer.'
+        )
+        return
+      }
+    }
+
+    if (isEditMode) {
+      try {
+        const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+        if (!saveSucceeded) return
+      } catch {
+        return
+      }
+    }
+
+    setPendingWorkflowAction(action)
   }
 
   const handleConfirmWorkflowAction = async () => {
@@ -2296,6 +2393,7 @@ export default function ProjectDetail() {
 
     if (!hasDataverseBudgetProject) {
       setBudgetLineItems([])
+      setSavedBudgetLineItems([])
       setBudgetItemsError(null)
       setBudgetItemsLoading(false)
       return
@@ -2307,10 +2405,12 @@ export default function ProjectDetail() {
         const items = await getBudgetLineItemsByBudgetId(ictBudgetId!)
         if (cancelled) return
         setBudgetLineItems(items)
+        setSavedBudgetLineItems(items)
         setBudgetItemsError(null)
       } catch (error) {
         if (cancelled) return
         setBudgetLineItems([])
+        setSavedBudgetLineItems([])
         setBudgetItemsError(error instanceof Error ? error.message : 'Unable to load budget line items.')
       } finally {
         if (!cancelled) {
@@ -2390,7 +2490,14 @@ export default function ProjectDetail() {
         await createBudgetLineItems(ictBudgetId!, items)
         const refreshedItems = await getBudgetLineItemsByBudgetId(ictBudgetId!)
         setBudgetLineItems(refreshedItems)
+        setSavedBudgetLineItems(refreshedItems)
         setBudgetItemsError(null)
+        setFieldErrors((current) => {
+          if (!current.budgetItems) return current
+          const next = { ...current }
+          delete next.budgetItems
+          return next
+        })
         return refreshedItems
       },
       {
@@ -2403,32 +2510,21 @@ export default function ProjectDetail() {
     )
 
     setBudgetLineItems(createdItems)
+    setSavedBudgetLineItems(createdItems)
   }
 
-  const handleSaveBudgetRequested = async (lineItemId: string, amount: number) => {
-    setSavingBudgetLineItemId(lineItemId)
-    try {
-      await runActionToast(
-        async () => {
-          await updateBudgetLineItemAmount(lineItemId, amount)
-          setBudgetLineItems((current) =>
-            current.map((item) =>
-              item.id === lineItemId ? { ...item, budgetRequested: amount } : item
-            )
-          )
-        },
-        {
-          processingTitle: 'Updating requested budget',
-          processingDescription: 'Saving the requested budget amount for this line item.',
-          successTitle: 'Requested budget updated',
-          successDescription: 'The line item amount was updated successfully.',
-          errorTitle: 'Unable to update requested budget',
-          minDurationMs: 1800,
-        }
+  const handleBudgetRequestedChange = (lineItemId: string, amount: number) => {
+    setBudgetLineItems((current) =>
+      current.map((item) =>
+        item.id === lineItemId ? { ...item, budgetRequested: amount } : item
       )
-    } finally {
-      setSavingBudgetLineItemId(null)
-    }
+    )
+    setFieldErrors((current) => {
+      if (!current.budgetItems) return current
+      const next = { ...current }
+      delete next.budgetItems
+      return next
+    })
   }
 
   const handleConfirmDeleteBudgetLineItem = async () => {
@@ -2442,6 +2538,7 @@ export default function ProjectDetail() {
         async () => {
           await deleteBudgetLineItem(lineItemId)
           setBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+          setSavedBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
         },
         {
           processingTitle: 'Deleting budget line item',
@@ -2607,7 +2704,6 @@ export default function ProjectDetail() {
               )}
             </div>
             <div className="mt-2 max-w-3xl space-y-1">
-              <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">{display.name}</p>
               <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
                 Created By: <span className="font-semibold text-[#0F172A] dark:text-white">{display.createdBy}</span>
               </p>
@@ -2628,7 +2724,7 @@ export default function ProjectDetail() {
                       : 'text-[#64748B] hover:bg-[#F8FBFF] hover:text-[#286CFF] dark:text-slate-200 dark:hover:bg-white/5'
                   )}
                 >
-                  View Form
+                  Project Details
                 </button>
                 <button
                   type="button"
@@ -2644,7 +2740,7 @@ export default function ProjectDetail() {
                   )}
                 >
                   <History className="h-4 w-4" />
-                  View Logs
+                  Project Logs
                 </button>
               </div>
 
@@ -2840,10 +2936,10 @@ export default function ProjectDetail() {
           {isEditMode ? (
             /* ════ EDIT MODE SECTIONS ════════════════════════════════════════ */
             <>
-              <DetailSection id="sec-details" title="Budget Item Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
+              <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <EditField label="Initiative / Budget Item Name" required>
+                  <EditField label="Initiative / Budget Item Name" required error={fieldErrors.initiativeName}>
                       <Input
                         value={formValues.initiativeName}
                         onChange={(e) => updateField('initiativeName', e.target.value)}
@@ -2854,7 +2950,7 @@ export default function ProjectDetail() {
                       />
                     </EditField>
                   </div>
-                  <EditField label="Strategic Priorities" required>
+                  <EditField label="Strategic Priorities" required error={fieldErrors.strategicPriorityId}>
                     <LookupSelect
                       value={formValues.strategicPriorityId}
                       onChange={handleStrategicPriorityChange}
@@ -2868,7 +2964,7 @@ export default function ProjectDetail() {
                       invalid={Boolean(fieldErrors.strategicPriorityId)}
                     />
                   </EditField>
-                  <EditField label="Strategic Priority Classifications" required>
+                  <EditField label="Strategic Priority Classifications" required error={fieldErrors.strategicPriorityClassificationId}>
                     <LookupSelect
                       value={formValues.strategicPriorityClassificationId}
                       onChange={(value) => updateField('strategicPriorityClassificationId', value)}
@@ -2886,7 +2982,7 @@ export default function ProjectDetail() {
                       invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                     />
                   </EditField>
-                  <EditField label="Work Stream">
+                  <EditField label="Work Stream" error={fieldErrors.workStreamId}>
                     <div className="space-y-2">
                       <LookupSelect
                         value={formValues.workStreamId}
@@ -2911,7 +3007,7 @@ export default function ProjectDetail() {
                       </Button>
                     </div>
                   </EditField>
-                  <EditField label="ICT Budget Items Type" required>
+                  <EditField label="ICT Budget Items Type" required error={fieldErrors.budgetItemType}>
                     <LookupSelect
                       value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
                       onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
@@ -2938,7 +3034,7 @@ export default function ProjectDetail() {
                       disabled={lookupLoading || ictBudgetLoading}
                     />
                   </EditField>
-                  <EditField label="Technology (Company)">
+                  <EditField label="Technology (Company)" error={fieldErrors.technologyCompanyId}>
                     <LookupSelect
                       value={formValues.technologyCompanyId}
                       onChange={handleTechnologyCompanyChange}
@@ -2952,7 +3048,7 @@ export default function ProjectDetail() {
                       invalid={Boolean(fieldErrors.technologyCompanyId)}
                     />
                   </EditField>
-                  <EditField label="Technology (Product)">
+                  <EditField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
                     <div className="space-y-2">
                       <ProductMultiSelect
                         products={selectedTechnologyCompany?.products ?? []}
@@ -2975,37 +3071,42 @@ export default function ProjectDetail() {
                 </div>
               </DetailSection>
 
-              <DetailSection id="sec-timelines" title="Budget Item Timelines" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
+              <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <EditField label="Planned Start Date" required>
+                  <EditField label="Planned Start Date" required error={fieldErrors.plannedStartDate}>
                     <EditDatePickerField
                       value={formValues.plannedStartDate}
                       onChange={(value) => updateField('plannedStartDate', value)}
+                      invalid={Boolean(fieldErrors.plannedStartDate)}
                     />
                   </EditField>
-                  <EditField label="Planned End Date" required>
+                  <EditField label="Planned End Date" required error={fieldErrors.plannedEndDate}>
                     <EditDatePickerField
                       value={formValues.plannedEndDate}
                       onChange={(value) => updateField('plannedEndDate', value)}
+                      invalid={Boolean(fieldErrors.plannedEndDate)}
                     />
                   </EditField>
                 </div>
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                <EditField label="Summary / Description" required>
+                <EditField label="Summary / Description" required error={fieldErrors.summary}>
                   <Textarea
                     rows={6}
                     value={formValues.summary}
                     onChange={(e) => updateField('summary', e.target.value)}
-                    className="resize-none rounded-xl border-[#D9E6F7] bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]"
+                    className={cn(
+                      'resize-none rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                      fieldErrors.summary ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : 'border-[#D9E6F7]'
+                    )}
                   />
                 </EditField>
               </DetailSection>
 
               {/* Budget line items are editable through the classification picker modal */}
               <DetailSection
-                title="Budget Type & Amounts"
+                title="Project Budget Type & Budget Account Codes"
                 id="sec-budget"
                 description="Create and review project budget line items from the classification hierarchy."
                 icon={WalletCards}
@@ -3017,7 +3118,7 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <EditField label="Budget Type" required>
+                  <EditField label="Project Budget Type" required error={fieldErrors.activityType}>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       {ACTIVITY_TYPE_OPTIONS.map((option) => {
                         const selected = formValues.activityType === option.value
@@ -3075,7 +3176,7 @@ export default function ProjectDetail() {
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Layers className="h-4 w-4" />
-                      Add Budget Item
+                      Add Budget Account Code
                     </Button>
                   </div>
                 )}
@@ -3086,9 +3187,12 @@ export default function ProjectDetail() {
                   editable
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
-                  onSaveBudgetRequested={handleSaveBudgetRequested}
+                  onChangeBudgetRequested={handleBudgetRequestedChange}
                   onDelete={setLineItemToDelete}
                 />
+                {fieldErrors.budgetItems && (
+                  <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>
+                )}
               </DetailSection>
 
               {/* Documents section in edit mode */}
@@ -3097,14 +3201,17 @@ export default function ProjectDetail() {
                 description="Upload additional supporting files for this budget record."
                 icon={FileCheck2}
               >
-                <div className="mb-4">
-                  <SupportingDocuments
-                    docs={supportingDocuments}
-                    loading={sharepointDocsLoading}
-                    clarificationFileUrls={clarificationFileUrls}
-                    onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                  />
-                </div>
+                {(sharepointDocsLoading || supportingDocuments.length > 0) && (
+                  <div className="mb-4">
+                    <SupportingDocuments
+                      docs={supportingDocuments}
+                      loading={sharepointDocsLoading}
+                      clarificationFileUrls={clarificationFileUrls}
+                      alwaysShowDeleteButton={currentRole === 'Respondent'}
+                      onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
+                    />
+                  </div>
+                )}
                 {currentRole === 'Respondent' && (
                   <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
                 )}
@@ -3131,22 +3238,94 @@ export default function ProjectDetail() {
 
               {/* Save bar at the bottom of edit sections */}
               <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B]">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-[#64748B] dark:text-slate-200">Review all changes before saving.</p>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleCancelEdit} className="rounded-xl">Discard</Button>
-                    <Button onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
-                      <Save className="h-4 w-4" />
-                      {savingIctBudget ? 'Saving...' : 'Save Changes'}
-                    </Button>
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-[#64748B] dark:text-slate-200">Review all changes before saving.</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={handleCancelEdit} className="rounded-xl border-slate-300 dark:border-slate-500/50">Cancel</Button>
+                      <Button variant="outline" onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="gap-2 rounded-xl border-slate-300 dark:border-slate-500/50">
+                        <Save className="h-4 w-4" />
+                        {savingIctBudget ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                    </div>
                   </div>
+
+                  {(canRaiseClarification || canCompleteReview || canSubmitToApprover || canApproveProject || canSubmitToReviewer || canDeleteProject) && (
+                    <div className="border-t border-[#EAF0F6] pt-4 dark:border-white/10">
+                      <div className="mb-3 flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
+                          <Zap className="h-4 w-4" />
+                        </div>
+                        <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {canRaiseClarification && (
+                          <Button
+                            variant="outline"
+                            className="gap-2 rounded-xl"
+                            onClick={() => setClarificationModalOpen(true)}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            Raise Clarification
+                          </Button>
+                        )}
+                        {canCompleteReview && (
+                          <Button
+                            className="gap-2 rounded-xl"
+                            onClick={() => void prepareWorkflowAction('complete-review')}
+                          >
+                            <Check className="h-4 w-4" />
+                            Complete Review
+                          </Button>
+                        )}
+                        {canSubmitToApprover && (
+                          <Button
+                            className="gap-2 rounded-xl"
+                            onClick={() => void prepareWorkflowAction('submit-approver')}
+                          >
+                            <Send className="h-4 w-4" />
+                            Submit to Approver
+                          </Button>
+                        )}
+                        {canApproveProject && (
+                          <Button
+                            className="gap-2 rounded-xl"
+                            onClick={() => void prepareWorkflowAction('approve-project')}
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                            {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
+                          </Button>
+                        )}
+                        {canSubmitToReviewer && (
+                          <Button
+                            className="gap-2 rounded-xl"
+                            onClick={() => void prepareWorkflowAction('submit-reviewer')}
+                          >
+                            <Send className="h-4 w-4" />
+                            Submit to Reviewer
+                          </Button>
+                        )}
+                        {canDeleteProject && (
+                          <Button
+                            variant="destructive"
+                            className="gap-2 rounded-xl"
+                            onClick={() => void prepareWorkflowAction('delete-project')}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete Project
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </>
           ) : (
             /* ════ VIEW MODE SECTIONS ═════════════════════════════════════════ */
             <>
-              <DetailSection id="sec-details" title="Budget Item Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
+              <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label="Initiative / Budget Item Name" value={display.name} />
                   <Field label="Strategic Priorities" value={display.strategicPriority} />
@@ -3159,7 +3338,7 @@ export default function ProjectDetail() {
                 </div>
               </DetailSection>
 
-              <DetailSection id="sec-timelines" title="Budget Item Timelines" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
+              <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <Field label="Planned Start Date" value={display.plannedStartDate} />
                   <Field label="Planned End Date" value={display.plannedEndDate} />
@@ -3171,7 +3350,7 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection
-                title="Budget Type & Amounts"
+                title="Project Budget Type & Budget Account Codes"
                 id="sec-budget"
                 description="Account-level spend breakdown for review validation."
                 icon={WalletCards}
@@ -3183,7 +3362,7 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 grid grid-cols-1 gap-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5 md:grid-cols-2">
-                  <Field label="Budget Type" value={display.budgetActivityType} />
+                  <Field label="Project Budget Type" value={display.budgetActivityType} />
                   {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
                     <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
                       <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
@@ -3205,9 +3384,12 @@ export default function ProjectDetail() {
                   editable={false}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
-                  onSaveBudgetRequested={handleSaveBudgetRequested}
+                  onChangeBudgetRequested={handleBudgetRequestedChange}
                   onDelete={setLineItemToDelete}
                 />
+                {fieldErrors.budgetItems && (
+                  <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
@@ -3242,7 +3424,7 @@ export default function ProjectDetail() {
         </div>
 
         {/* ── Right aside ─────────────────────────────────────────────────── */}
-        <aside className="space-y-5 lg:sticky lg:top-20 lg:self-start">
+        <aside className="space-y-5">
 
           {/* ── Section navigator ── */}
           {isGovernanceView ? (
@@ -3259,8 +3441,8 @@ export default function ProjectDetail() {
                     {isEditMode && (
                       <>
                         <Button
-                          className="w-full justify-start gap-2 text-white"
-                          style={{ backgroundColor: '#286CFF' }}
+                          variant="outline"
+                          className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={() => void handleSaveEdit()}
                           disabled={savingIctBudget}
                         >
@@ -3269,7 +3451,7 @@ export default function ProjectDetail() {
                         </Button>
                         <Button
                           variant="outline"
-                          className="w-full justify-start gap-2"
+                          className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={handleCancelEdit}
                         >
                           Cancel
@@ -3299,7 +3481,7 @@ export default function ProjectDetail() {
                     {canCompleteReview && (
                       <Button
                         className="w-full justify-start gap-2"
-                        onClick={() => setPendingWorkflowAction('complete-review')}
+                        onClick={() => void prepareWorkflowAction('complete-review')}
                       >
                         <Check className="h-4 w-4" />
                         Complete Review
@@ -3308,7 +3490,7 @@ export default function ProjectDetail() {
                     {canSubmitToApprover && (
                       <Button
                         className="w-full justify-start gap-2"
-                        onClick={() => setPendingWorkflowAction('submit-approver')}
+                        onClick={() => void prepareWorkflowAction('submit-approver')}
                       >
                         <Send className="h-4 w-4" />
                         Submit to Approver
@@ -3317,7 +3499,7 @@ export default function ProjectDetail() {
                     {canApproveProject && (
                       <Button
                         className="w-full justify-start gap-2"
-                        onClick={() => setPendingWorkflowAction('approve-project')}
+                        onClick={() => void prepareWorkflowAction('approve-project')}
                       >
                         <ShieldCheck className="h-4 w-4" />
                         {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
@@ -3411,21 +3593,21 @@ export default function ProjectDetail() {
                   </div>
                   {isEditMode && (
                     <>
-                      <Button
-                        className="w-full justify-start gap-2 text-white"
-                        style={{ backgroundColor: '#286CFF' }}
-                        onClick={() => void handleSaveEdit()}
-                        disabled={savingIctBudget}
-                      >
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
+                          onClick={() => void handleSaveEdit()}
+                          disabled={savingIctBudget}
+                        >
                         <Save className="h-4 w-4" />
                         {savingIctBudget ? 'Saving...' : 'Save Changes'}
                       </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start gap-2"
-                        onClick={handleCancelEdit}
-                      >
-                        Cancel
+                        <Button
+                          variant="outline"
+                          className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
                       </Button>
                     </>
                   )}
@@ -3444,7 +3626,7 @@ export default function ProjectDetail() {
                       {canSubmitToReviewer && (
                         <Button
                           className="w-full justify-start gap-2"
-                          onClick={() => setPendingWorkflowAction('submit-reviewer')}
+                          onClick={() => void prepareWorkflowAction('submit-reviewer')}
                         >
                           <Send className="h-4 w-4" />
                           Submit to Reviewer
@@ -3454,7 +3636,7 @@ export default function ProjectDetail() {
                         <Button
                           variant="destructive"
                           className="w-full justify-start gap-2"
-                          onClick={() => setPendingWorkflowAction('delete-project')}
+                          onClick={() => void prepareWorkflowAction('delete-project')}
                         >
                           <Trash2 className="h-4 w-4" />
                           Delete Project

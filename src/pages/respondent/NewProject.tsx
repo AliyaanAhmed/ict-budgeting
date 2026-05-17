@@ -179,6 +179,26 @@ const INITIAL_FORM_VALUES: FormValues = {
   totalBudgetPayableForYearAfterNext: '',
 }
 
+const VALIDATION_LABELS: Record<keyof FormValues | 'budgetItems', string> = {
+  initiativeName: 'Initiative / Budget Item Name',
+  strategicPriorityId: 'Strategic Priorities',
+  strategicPriorityClassificationId: 'Strategic Priority Classifications',
+  workStreamId: 'Work Stream',
+  technologyCompanyId: 'Technology (Company)',
+  technologyProductIds: 'Technology (Product)',
+  budgetItemType: 'ICT Budget Items Type',
+  category: 'Category',
+  plannedStartDate: 'Planned Start Date',
+  plannedEndDate: 'Planned End Date',
+  summary: 'Summary / Description',
+  activityType: 'Project Budget Type',
+  totalBudgetPaidPreviousYear: 'Total Budget Paid Previous Year',
+  totalBudgetPayableFutureYear: 'Total Budget Payable Future Years',
+  totalBudgetPayableNextYear: 'Total Budget Payable Next Year',
+  totalBudgetPayableForYearAfterNext: 'Total Budget Payable For Year After Next',
+  budgetItems: 'Budget Account Codes',
+}
+
 function formatIntegerInput(value: string) {
   const digitsOnly = value.replace(/[^\d]/g, '')
   if (!digitsOnly) return ''
@@ -921,7 +941,7 @@ export default function NewProject() {
       nextErrors.summary = 'Summary / Description is required.'
     }
     if (!formValues.activityType) {
-      nextErrors.activityType = 'Budget Type is required.'
+      nextErrors.activityType = 'Project Budget Type is required.'
     }
 
     visibleBudgetFields.forEach((field) => {
@@ -931,16 +951,19 @@ export default function NewProject() {
     })
 
     if (budgetItems.length === 0) {
-      nextErrors.budgetItems = 'Add at least one budget line item before saving the draft.'
+      nextErrors.budgetItems = 'Add at least one budget account code before saving the draft.'
+    } else if (budgetItems.some((item) => item.budgetRequested <= 0)) {
+      nextErrors.budgetItems = 'Each budget account code must have a requested budget greater than zero.'
     }
 
     setFieldErrors(nextErrors)
     setBudgetItemsError(nextErrors.budgetItems ?? null)
 
     if (Object.keys(nextErrors).length > 0) {
+      const missingFields = Object.keys(nextErrors).map((key) => VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS])
       showErrorToast(
         'Complete required fields',
-        'Please fill the highlighted fields before saving this draft.'
+        `Please review: ${missingFields.join(', ')}.`
       )
       return false
     }
@@ -1078,7 +1101,7 @@ export default function NewProject() {
 
           <div className="space-y-5">
             <FormSection
-              title="Budget Item Details"
+              title="Project Details"
               description="Define the initiative, strategic alignment, work stream, technology, and item type using live Dataverse lookups."
               icon={ClipboardList}
               action={
@@ -1230,7 +1253,7 @@ export default function NewProject() {
             </FormSection>
 
             <FormSection
-              title="Budget Item Timelines"
+              title="Project Timeline"
               description="Set planned delivery dates so reviewers can understand the funding window."
               icon={CalendarDays}
             >
@@ -1284,7 +1307,7 @@ export default function NewProject() {
             </FormSection>
 
             <FormSection
-              title="Budget Type"
+              title="Project Budget Type"
               description="Select the budget type. The required budget fields below will adapt to your selection."
               icon={CircleDollarSign}
             >
@@ -1352,7 +1375,7 @@ export default function NewProject() {
             </FormSection>
 
             <FormSection
-              title="Budget Items"
+              title="Budget Account Codes"
               description="Add account-level amounts and GL classifications for the requested budget."
               icon={CircleDollarSign}
             >
@@ -1360,7 +1383,7 @@ export default function NewProject() {
                 items={budgetItems}
                 onChange={(items) => {
                   setBudgetItems(items)
-                  if (items.length > 0) {
+                  if (items.length > 0 && items.every((item) => item.budgetRequested > 0)) {
                     setBudgetItemsError(null)
                     setFieldErrors((prev) => {
                       if (!prev.budgetItems) return prev

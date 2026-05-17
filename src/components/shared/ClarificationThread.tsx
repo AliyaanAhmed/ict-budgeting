@@ -54,6 +54,12 @@ function formatDisplayDate(value: string | undefined) {
   })
 }
 
+function toSortTime(value: string | undefined) {
+  if (!value) return 0
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 function getFileUrls(value: string | undefined) {
   return (value ?? '')
     .split(/[,\n]/)
@@ -172,6 +178,9 @@ function ClarificationCard({
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length
   const clarificationFileUrls = getFileUrls(clarification.fileUrl)
+  const autoExpandedNewClarification = isOpen && replyCount === 0
+  const effectiveExpanded = isExpanded || autoExpandedNewClarification
+  const sortedReplies = [...clarification.replies].sort((left, right) => toSortTime(right.date) - toSortTime(left.date))
 
   const handleSend = () => {
     const msg = replyText.trim()
@@ -233,11 +242,13 @@ function ClarificationCard({
         </div>
       </div>
 
-      <button
-        onClick={onToggle}
-        className="w-full px-4 py-3 text-left transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/[0.03]"
+      <div
+        className={cn(
+          'w-full px-4 py-3 text-left',
+          !autoExpandedNewClarification && 'transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/[0.03]'
+        )}
       >
-        <p className={cn('text-sm leading-[1.65] text-[#0F172A] dark:text-white', !isExpanded && 'line-clamp-2')}>
+        <p className={cn('text-sm leading-[1.65] text-[#0F172A] dark:text-white', !effectiveExpanded && 'line-clamp-2')}>
           {clarification.message}
         </p>
         {clarificationFileUrls.length > 0 && (
@@ -247,9 +258,9 @@ function ClarificationCard({
             ))}
           </span>
         )}
-        <div className="mt-2 flex items-center gap-2">
+        {!autoExpandedNewClarification && <button onClick={onToggle} className="mt-2 flex items-center gap-2">
           <span className="flex items-center gap-1 text-xs font-semibold text-[#286CFF] dark:text-[#4F98FF]">
-            {isExpanded ? (
+            {effectiveExpanded ? (
               <>
                 <ChevronUp className="h-3.5 w-3.5" />
                 Collapse
@@ -261,20 +272,20 @@ function ClarificationCard({
               </>
             )}
           </span>
-          {!isExpanded && !isOpen && (
+          {!effectiveExpanded && !isOpen && (
             <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-400">
               <Lock className="h-3 w-3" />
               Closed
             </span>
           )}
-        </div>
-      </button>
+        </button>}
+      </div>
 
-      {isExpanded && (
+      {effectiveExpanded && (
         <div style={{ animation: 'fadeInUp 0.18s ease-out' }}>
           {replyCount > 0 && (
             <div className="space-y-3 border-t border-[#F1F5F9] px-4 py-3.5 dark:border-white/5">
-              {clarification.replies.map((reply) => (
+              {sortedReplies.map((reply) => (
                 <ReplyBubble key={reply.id} reply={reply} sharepointDocs={sharepointDocs} />
               ))}
             </div>
@@ -358,10 +369,10 @@ export function ClarificationThread({
 
   const openList = [...clarifications]
     .filter((clarification) => clarification.status === 'Open')
-    .sort((left, right) => right.date.localeCompare(left.date))
+    .sort((left, right) => toSortTime(right.date) - toSortTime(left.date))
   const closedList = [...clarifications]
     .filter((clarification) => clarification.status === 'Closed')
-    .sort((left, right) => (right.closedAt ?? right.date).localeCompare(left.closedAt ?? left.date))
+    .sort((left, right) => toSortTime(right.closedAt ?? right.date) - toSortTime(left.closedAt ?? left.date))
 
   const items = activeTab === 'open' ? openList : closedList
   const visible = items.slice(0, visibleCount)

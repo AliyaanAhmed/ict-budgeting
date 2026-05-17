@@ -22,6 +22,7 @@ const SELECT_FIELDS = [
 
 export interface BudgetLineItemRecord {
   id: string
+  budgetId: string | null
   classificationId: string | null
   accountName: string
   l1: string
@@ -85,6 +86,7 @@ function normalizeLineItem(
 
   return {
     id,
+    budgetId: asString(record._dga_ict_budget_value),
     classificationId,
     accountName,
     l1: l1Node?.name ?? '-',

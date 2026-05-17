@@ -12,8 +12,6 @@ import {
 import { cn } from '@/lib/utils'
 import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
 
-// ─── File type → icon + colour ────────────────────────────────────────────────
-
 interface FileTypeStyle {
   Icon: React.ElementType
   color: string
@@ -22,28 +20,22 @@ interface FileTypeStyle {
 
 function getFileTypeStyle(filetype: string | null): FileTypeStyle {
   const ft = (filetype ?? '').toLowerCase()
-  if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'heic'].includes(ft))
+  if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'heic'].includes(ft)) {
     return { Icon: Image, color: '#0EA5E9', bg: '#E0F2FE' }
-  if (ft === 'pdf')
-    return { Icon: FileText, color: '#EF4444', bg: '#FEE2E2' }
-  if (['doc', 'docx'].includes(ft))
-    return { Icon: FileText, color: '#2563EB', bg: '#DBEAFE' }
-  if (['xls', 'xlsx', 'csv'].includes(ft))
-    return { Icon: FileSpreadsheet, color: '#16A34A', bg: '#DCFCE7' }
-  if (['ppt', 'pptx'].includes(ft))
-    return { Icon: FileText, color: '#D97706', bg: '#FEF3C7' }
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ft))
-    return { Icon: Archive, color: '#7C3AED', bg: '#EDE9FE' }
+  }
+  if (ft === 'pdf') return { Icon: FileText, color: '#EF4444', bg: '#FEE2E2' }
+  if (['doc', 'docx'].includes(ft)) return { Icon: FileText, color: '#2563EB', bg: '#DBEAFE' }
+  if (['xls', 'xlsx', 'csv'].includes(ft)) return { Icon: FileSpreadsheet, color: '#16A34A', bg: '#DCFCE7' }
+  if (['ppt', 'pptx'].includes(ft)) return { Icon: FileText, color: '#D97706', bg: '#FEF3C7' }
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ft)) return { Icon: Archive, color: '#7C3AED', bg: '#EDE9FE' }
   return { Icon: File, color: '#64748B', bg: '#F1F5F9' }
 }
 
-// Truncates the base name to maxBase chars, then appends "...ext" so the
-// extension is always visible.  e.g. "ClarificationNeeded...png"
 function formatDocName(fullname: string | null, maxBase = 16): string {
   const raw = fullname ?? 'Unknown file'
   const lastDot = raw.lastIndexOf('.')
   const base = lastDot > 0 ? raw.slice(0, lastDot) : raw
-  const ext = lastDot > 0 ? raw.slice(lastDot) : ''   // includes the dot, e.g. ".png"
+  const ext = lastDot > 0 ? raw.slice(lastDot) : ''
 
   if (base.length > maxBase) {
     return `${base.slice(0, maxBase)}...${ext}`
@@ -63,16 +55,15 @@ function normalizeDocumentUrl(value: string | null | undefined) {
   }
 }
 
-// ─── Document card ─────────────────────────────────────────────────────────────
-
 interface DocumentCardProps {
   doc: WebApiPortalDocument
   isClarificationFile: boolean
   isDeleting: boolean
+  alwaysShowDeleteButton?: boolean
   onDelete?: (() => void) | undefined
 }
 
-function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: DocumentCardProps) {
+function DocumentCard({ doc, isClarificationFile, isDeleting, alwaysShowDeleteButton = false, onDelete }: DocumentCardProps) {
   const { Icon, color, bg } = getFileTypeStyle(doc.filetype)
   const ext = (doc.filetype ?? 'file').toUpperCase().slice(0, 5)
   const rawName = doc.fullname ?? doc.relativelocation ?? 'Unknown file'
@@ -100,11 +91,10 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
         'hover:border-[#286CFF]/40 hover:shadow-md dark:bg-[#1E293B]',
         isClarificationFile
           ? 'border-amber-200 dark:border-amber-700/40'
-          : 'border-[#E2E8F0] dark:border-white/10',
+          : 'border-[#E2E8F0] dark:border-white/10'
       )}
       title={rawName}
     >
-      {/* Left — icon + extension badge */}
       <div className="flex shrink-0 flex-col items-center gap-1">
         <div
           className="flex h-9 w-9 items-center justify-center rounded-xl"
@@ -120,7 +110,6 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
         </span>
       </div>
 
-      {/* Right — name + clarification badge */}
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold leading-tight text-[#0F172A] dark:text-white">
           {displayName}
@@ -133,32 +122,30 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, onDelete }: Docume
         )}
       </div>
 
-      {/* Delete button — appears on hover */}
       {onDelete && (
-      <button
-        type="button"
-        onClick={handleDelete}
-        disabled={isDeleting}
-        className={cn(
-          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full opacity-0 transition-all group-hover:opacity-100',
-          isDeleting
-            ? 'cursor-not-allowed bg-red-50 text-red-300'
-            : 'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white',
-        )}
-        title={isDeleting ? 'Deleting…' : 'Delete file'}
-      >
-        {isDeleting ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Trash2 className="h-3 w-3" />
-        )}
-      </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          className={cn(
+            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all',
+            alwaysShowDeleteButton ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+            isDeleting
+              ? 'cursor-not-allowed bg-red-50 text-red-300'
+              : 'bg-red-50 text-red-500 hover:bg-red-500 hover:text-white'
+          )}
+          title={isDeleting ? 'Deleting…' : 'Delete file'}
+        >
+          {isDeleting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Trash2 className="h-3 w-3" />
+          )}
+        </button>
       )}
     </div>
   )
 }
-
-// ─── Loading skeleton ──────────────────────────────────────────────────────────
 
 function DocSkeleton() {
   return (
@@ -172,12 +159,11 @@ function DocSkeleton() {
   )
 }
 
-// ─── Public component ──────────────────────────────────────────────────────────
-
 export interface SupportingDocumentsProps {
   docs: WebApiPortalDocument[]
   loading: boolean
   clarificationFileUrls: Set<string>
+  alwaysShowDeleteButton?: boolean
   onDelete?: ((doc: WebApiPortalDocument) => Promise<void>) | undefined
 }
 
@@ -185,6 +171,7 @@ export function SupportingDocuments({
   docs,
   loading,
   clarificationFileUrls,
+  alwaysShowDeleteButton = false,
   onDelete,
 }: SupportingDocumentsProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -229,6 +216,7 @@ export function SupportingDocuments({
             doc.absoluteurl && clarificationFileUrls.has(normalizeDocumentUrl(doc.absoluteurl) ?? '')
           )}
           isDeleting={deletingId === doc.sharepointdocumentid}
+          alwaysShowDeleteButton={alwaysShowDeleteButton}
           onDelete={onDelete ? () => void handleDelete(doc) : undefined}
         />
       ))}

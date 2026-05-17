@@ -594,7 +594,7 @@ export default function RespondentDashboard() {
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F6FBF9_0%,#FFFFFF_100%)] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F6FBF9_0%,#FFFFFF_100%)] p-4 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#1B2A41_0%,#162339_100%)]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">

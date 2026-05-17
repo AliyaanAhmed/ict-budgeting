@@ -59,7 +59,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                 {items.length === 0 ? 'Not set' : Array.from(new Set(items.map((item) => item.expenseTypeLabel ?? 'Unspecified'))).join(', ')}
               </p>
             </div>
-            <div className="rounded-2xl border border-[#B0DBFF] bg-[linear-gradient(180deg,#EAF4FF_0%,#FFFFFF_100%)] px-4 py-3 shadow-sm dark:border-white/10 dark:bg-[#286CFF]/10">
+            <div className="rounded-2xl border border-[#B0DBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Total Requested</p>
               <CurrencyAmount amount={totalRequested} full className="mt-1 text-lg font-bold text-[#286CFF]" iconSize={16} />
             </div>
@@ -67,7 +67,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
 
           <Button size="sm" className="h-10 rounded-xl shadow-sm" onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
-            Add Budget Item
+            Add Budget Account Code
           </Button>
         </div>
 
@@ -89,7 +89,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                     <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E9F4FF]">
                       <CircleDollarSign className="h-6 w-6 text-[var(--primary)]" />
                     </div>
-                    <p className="text-sm font-bold text-[#0F172A] dark:text-white">No budget items added yet</p>
+                    <p className="text-sm font-bold text-[#0F172A] dark:text-white">No budget account codes added yet</p>
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">
                       Use the classification picker to add GL accounts and then enter each requested amount.
                     </p>
