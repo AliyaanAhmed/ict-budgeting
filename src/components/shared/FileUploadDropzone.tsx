@@ -10,6 +10,55 @@ interface FileUploadDropzoneProps {
   maxSizeMB?: number
 }
 
+const RESTRICTED_FILE_EXTENSIONS = new Set([
+  'ade',
+  'adp',
+  'apk',
+  'app',
+  'appx',
+  'bat',
+  'cab',
+  'chm',
+  'cmd',
+  'com',
+  'cpl',
+  'dll',
+  'exe',
+  'gadget',
+  'hta',
+  'inf',
+  'ins',
+  'iso',
+  'jar',
+  'js',
+  'jse',
+  'lib',
+  'lnk',
+  'mde',
+  'msc',
+  'msi',
+  'msp',
+  'mst',
+  'pif',
+  'ps1',
+  'ps1xml',
+  'ps2',
+  'ps2xml',
+  'psc1',
+  'psc2',
+  'reg',
+  'scr',
+  'sh',
+  'sys',
+  'vb',
+  'vbe',
+  'vbs',
+  'ws',
+  'wsc',
+  'wsf',
+  'wsh',
+])
+
 const FILE_TYPE_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
   pdf: { bg: '#FEE2E2', color: '#DC2626', label: 'PDF' },
   doc: { bg: '#DBEAFE', color: '#2563EB', label: 'DOC' },
@@ -54,6 +103,20 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function getFileExtension(fileName: string) {
+  return fileName.split('.').pop()?.trim().toLowerCase() ?? ''
+}
+
+function getAcceptedExtensions(accept: string) {
+  return new Set(
+    accept
+      .split(',')
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.startsWith('.'))
+      .map((token) => token.slice(1))
+  )
+}
+
 export function FileUploadDropzone({
   files,
   onChange,
@@ -64,18 +127,30 @@ export function FileUploadDropzone({
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const dragCounter = useRef(0)
+  const acceptedExtensions = getAcceptedExtensions(accept)
 
   const addFiles = useCallback(
     (incoming: File[]) => {
       const rejectedZeroKb: string[] = []
       const rejectedOversize: string[] = []
+      const rejectedRestrictedType: string[] = []
+      const rejectedUnsupportedType: string[] = []
       const valid = incoming.filter((f) => {
+        const extension = getFileExtension(f.name)
         if (f.size <= 0) {
           rejectedZeroKb.push(f.name)
           return false
         }
         if (f.size > maxSizeMB * 1024 * 1024) {
           rejectedOversize.push(f.name)
+          return false
+        }
+        if (!extension || RESTRICTED_FILE_EXTENSIONS.has(extension)) {
+          rejectedRestrictedType.push(f.name)
+          return false
+        }
+        if (acceptedExtensions.size > 0 && !acceptedExtensions.has(extension)) {
+          rejectedUnsupportedType.push(f.name)
           return false
         }
         const already = files.some((existing) => existing.name === f.name && existing.size === f.size)
@@ -93,9 +168,21 @@ export function FileUploadDropzone({
           `${rejectedOversize.join(', ')} ${rejectedOversize.length === 1 ? 'is' : 'are'} larger than ${maxSizeMB} MB and cannot be uploaded.`
         )
       }
+      if (rejectedRestrictedType.length > 0) {
+        showErrorToast(
+          'Restricted file type',
+          `${rejectedRestrictedType.join(', ')} ${rejectedRestrictedType.length === 1 ? 'is' : 'are'} not allowed for security reasons.`
+        )
+      }
+      if (rejectedUnsupportedType.length > 0) {
+        showErrorToast(
+          'Unsupported file type',
+          `${rejectedUnsupportedType.join(', ')} ${rejectedUnsupportedType.length === 1 ? 'is' : 'are'} not in the supported file types list.`
+        )
+      }
       if (valid.length > 0) onChange([...files, ...valid])
     },
-    [files, maxSizeMB, onChange, showErrorToast]
+    [acceptedExtensions, files, maxSizeMB, onChange, showErrorToast]
   )
 
   const removeFile = (index: number) => {

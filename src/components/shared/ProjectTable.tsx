@@ -298,23 +298,33 @@ interface ProjectTableProps {
   projects: Project[]
   linkBase?: string
   showCreatedBy?: boolean
+  showAiScore?: boolean
 }
 
-export function ProjectTable({ projects, linkBase = '/respondent/projects', showCreatedBy = false }: ProjectTableProps) {
+export function ProjectTable({
+  projects,
+  linkBase = '/respondent/projects',
+  showCreatedBy = false,
+  showAiScore = true,
+}: ProjectTableProps) {
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({})
   const [sort, setSort] = useState<SortState | undefined>()
 
   const columns = useMemo<ColumnDefinition<Project>[]>(() => {
-    const baseColumns: ColumnDefinition<Project>[] = [
-      {
+    const baseColumns: ColumnDefinition<Project>[] = []
+
+    if (showAiScore) {
+      baseColumns.push({
         id: 'aiScore',
         header: 'AI Score',
         type: 'number',
         accessor: (project) => project.aiScore,
         render: (project) => <AiScore score={project.aiScore} />,
         headerClassName: 'w-28',
-      },
-      {
+      })
+    }
+
+    baseColumns.push({
         id: 'name',
         header: 'Project Name',
         type: 'text',
@@ -381,7 +391,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
         className: 'hidden md:table-cell',
         headerClassName: 'hidden md:table-cell',
       },
-    ]
+    )
 
     if (showCreatedBy) {
       baseColumns.push({
@@ -420,7 +430,7 @@ export function ProjectTable({ projects, linkBase = '/respondent/projects', show
     })
 
     return baseColumns
-  }, [linkBase, projects, showCreatedBy])
+  }, [linkBase, projects, showAiScore, showCreatedBy])
 
   const tableRows = useMemo(() => {
     const filteredRows = projects.filter((project) =>

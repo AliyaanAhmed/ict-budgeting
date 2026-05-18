@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useParams, Link, useNavigate } from 'react-router-dom'
+import { useBeforeUnload, useLocation, useParams, Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -205,6 +205,22 @@ function EditField({
       {error && <p className="text-xs font-medium text-[#B42318]">{error}</p>}
     </div>
   )
+}
+
+function normalizeFormValuesForComparison(values: IctBudgetFormValues) {
+  return {
+    ...values,
+    technologyProductIds: [...values.technologyProductIds].sort(),
+  }
+}
+
+function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
+  return [...items]
+    .map((item) => ({
+      id: item.id,
+      budgetRequested: item.budgetRequested,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id))
 }
 
 function EditDatePickerField({
@@ -1139,7 +1155,8 @@ function ChangeLogTable({
 
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
-  const { pathname } = useLocation()
+  const location = useLocation()
+  const { pathname } = location
   const navigate = useNavigate()
   const { instanceId } = useInstance()
   const { runActionToast, showErrorToast, showSuccessToast } = useToast()
@@ -1342,6 +1359,7 @@ export default function ProjectDetail() {
   const [deletingBudgetLineItemId, setDeletingBudgetLineItemId] = useState<string | null>(null)
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null)
+  const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
@@ -1468,6 +1486,29 @@ export default function ProjectDetail() {
     () => getVisibleBudgetFields(formValues.activityType),
     [formValues.activityType]
   )
+  const hasUnsavedFormFieldChanges = useMemo(
+    () =>
+      JSON.stringify(normalizeFormValuesForComparison(formValues)) !==
+      JSON.stringify(normalizeFormValuesForComparison(savedFormValues)),
+    [formValues, savedFormValues]
+  )
+  const hasUnsavedBudgetAccountCodeChanges = useMemo(
+    () =>
+      JSON.stringify(normalizeBudgetLineItemsForComparison(budgetLineItems)) !==
+      JSON.stringify(normalizeBudgetLineItemsForComparison(savedBudgetLineItems)),
+    [budgetLineItems, savedBudgetLineItems]
+  )
+  const hasUnsavedChanges = useMemo(() => {
+    if (!isEditMode) return false
+
+    return hasUnsavedFormFieldChanges || hasUnsavedBudgetAccountCodeChanges || uploadedFiles.length > 0
+  }, [hasUnsavedBudgetAccountCodeChanges, hasUnsavedFormFieldChanges, isEditMode, uploadedFiles.length])
+
+  useBeforeUnload((event) => {
+    if (!isEditMode || !hasUnsavedChanges) return
+    event.preventDefault()
+    event.returnValue = ''
+  })
 
   const updateField = <K extends keyof IctBudgetFormValues>(
     field: K,
@@ -1558,6 +1599,13 @@ export default function ProjectDetail() {
     setFieldErrors({})
     setUploadedFiles([])
     setIsEditMode(false)
+  }
+
+  const handleProtectedNavigation = (event: React.MouseEvent, to: string) => {
+    if (isEditMode && hasUnsavedChanges) {
+      event.preventDefault()
+      setPendingNavigationHref(to)
+    }
   }
 
   useEffect(() => {
@@ -1797,6 +1845,26 @@ export default function ProjectDetail() {
 
   const handleSaveEdit = async () => {
     await saveProjectChanges()
+  }
+
+  const handleSaveBeforeNavigation = async () => {
+    if (!pendingNavigationHref) return
+
+    const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+    if (saveSucceeded) {
+      navigate(pendingNavigationHref)
+      setPendingNavigationHref(null)
+    }
+  }
+
+  const handleDiscardAndNavigate = () => {
+    if (!pendingNavigationHref) return
+    navigate(pendingNavigationHref)
+    setPendingNavigationHref(null)
+  }
+
+  const handleKeepEditing = () => {
+    setPendingNavigationHref(null)
   }
 
   const syncLocalWorkflowState = (nextStatus: Project['status']) => {
@@ -2673,16 +2741,16 @@ export default function ProjectDetail() {
       {/* Page Header */}
       <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-[#64748B] dark:text-slate-200">
-          <Link to={homeHref} className="hover:text-[#286CFF]">Home</Link>
+          <Link to={homeHref} onClick={(event) => handleProtectedNavigation(event, homeHref)} className="hover:text-[#286CFF]">Home</Link>
           <span>/</span>
-          <Link to={backHref} className="hover:text-[#286CFF]">{queueLabel}</Link>
+          <Link to={backHref} onClick={(event) => handleProtectedNavigation(event, backHref)} className="hover:text-[#286CFF]">{queueLabel}</Link>
           <span>/</span>
           <span className="text-[#0F172A] dark:text-white">{display.name}</span>
         </nav>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <Link to={backHref} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200">
+            <Link to={backHref} onClick={(event) => handleProtectedNavigation(event, backHref)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200">
               <ArrowLeft className="h-4 w-4" />
               Back
             </Link>
@@ -2865,21 +2933,6 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* AI readiness banner */}
-      {!showLogs && <div className="flex items-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E7F5FF] text-[#286CFF]">
-          <ShieldCheck className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
-            {isGovernanceView ? 'Reviewer workspace ready' : 'Project submission appears complete and well-documented.'}
-          </p>
-          <p className="text-xs text-[#64748B] dark:text-slate-200">
-            AI detected {localClarifications.filter((c) => c.status === 'Open').length === 0 ? 'no open clarification issues' : `${localClarifications.filter((c) => c.status === 'Open').length} open clarification item(s)`} and estimates {confidence}% review confidence.
-          </p>
-        </div>
-      </div>}
-
       {!showLogs && (lookupLoading || ictBudgetLoading) && (
         <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
           Loading Dataverse project details...
@@ -2997,8 +3050,8 @@ export default function ProjectDetail() {
                         invalid={Boolean(fieldErrors.workStreamId)}
                       />
                       <Button
-                        variant="outline"
-                        className="rounded-xl"
+                        variant="ghost"
+                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
                         onClick={() => setWorkStreamModalOpen(true)}
                         disabled={lookupLoading || ictBudgetLoading}
                       >
@@ -3058,8 +3111,8 @@ export default function ProjectDetail() {
                         invalid={Boolean(fieldErrors.technologyProductIds)}
                       />
                       <Button
-                        variant="outline"
-                        className="rounded-xl"
+                        variant="ghost"
+                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
                         onClick={() => setTechnologyProductModalOpen(true)}
                         disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
                       >
@@ -3238,87 +3291,61 @@ export default function ProjectDetail() {
 
               {/* Save bar at the bottom of edit sections */}
               <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B]">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-[#64748B] dark:text-slate-200">Review all changes before saving.</p>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={handleCancelEdit} className="rounded-xl border-slate-300 dark:border-slate-500/50">Cancel</Button>
-                      <Button variant="outline" onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="gap-2 rounded-xl border-slate-300 dark:border-slate-500/50">
-                        <Save className="h-4 w-4" />
-                        {savingIctBudget ? 'Saving...' : 'Save Changes'}
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <p className="text-sm text-[#64748B] dark:text-slate-200">Review all changes before saving.</p>
+                  <div className="flex flex-wrap gap-2 xl:justify-end">
+                    <Button variant="outline" onClick={handleCancelEdit} className="rounded-xl border-slate-300 dark:border-slate-500/50">Cancel</Button>
+                    <Button variant="outline" onClick={() => void handleSaveEdit()} disabled={savingIctBudget} className="gap-2 rounded-xl border-slate-300 dark:border-slate-500/50">
+                      <Save className="h-4 w-4" />
+                      {savingIctBudget ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                    {canRaiseClarification && (
+                      <Button
+                        variant="outline"
+                        className="gap-2 rounded-xl"
+                        onClick={() => setClarificationModalOpen(true)}
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        Raise Clarification
                       </Button>
-                    </div>
+                    )}
+                    {canCompleteReview && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => void prepareWorkflowAction('complete-review')}
+                      >
+                        <Check className="h-4 w-4" />
+                        Complete Review
+                      </Button>
+                    )}
+                    {canSubmitToApprover && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => void prepareWorkflowAction('submit-approver')}
+                      >
+                        <Send className="h-4 w-4" />
+                        Submit to Approver
+                      </Button>
+                    )}
+                    {canApproveProject && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => void prepareWorkflowAction('approve-project')}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
+                      </Button>
+                    )}
+                    {canSubmitToReviewer && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => void prepareWorkflowAction('submit-reviewer')}
+                      >
+                        <Send className="h-4 w-4" />
+                        Submit to Reviewer
+                      </Button>
+                    )}
                   </div>
-
-                  {(canRaiseClarification || canCompleteReview || canSubmitToApprover || canApproveProject || canSubmitToReviewer || canDeleteProject) && (
-                    <div className="border-t border-[#EAF0F6] pt-4 dark:border-white/10">
-                      <div className="mb-3 flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-400">
-                          <Zap className="h-4 w-4" />
-                        </div>
-                        <p className="font-semibold text-[#0F172A] dark:text-white">Quick Actions</p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {canRaiseClarification && (
-                          <Button
-                            variant="outline"
-                            className="gap-2 rounded-xl"
-                            onClick={() => setClarificationModalOpen(true)}
-                          >
-                            <MessageSquare className="h-4 w-4" />
-                            Raise Clarification
-                          </Button>
-                        )}
-                        {canCompleteReview && (
-                          <Button
-                            className="gap-2 rounded-xl"
-                            onClick={() => void prepareWorkflowAction('complete-review')}
-                          >
-                            <Check className="h-4 w-4" />
-                            Complete Review
-                          </Button>
-                        )}
-                        {canSubmitToApprover && (
-                          <Button
-                            className="gap-2 rounded-xl"
-                            onClick={() => void prepareWorkflowAction('submit-approver')}
-                          >
-                            <Send className="h-4 w-4" />
-                            Submit to Approver
-                          </Button>
-                        )}
-                        {canApproveProject && (
-                          <Button
-                            className="gap-2 rounded-xl"
-                            onClick={() => void prepareWorkflowAction('approve-project')}
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
-                          </Button>
-                        )}
-                        {canSubmitToReviewer && (
-                          <Button
-                            className="gap-2 rounded-xl"
-                            onClick={() => void prepareWorkflowAction('submit-reviewer')}
-                          >
-                            <Send className="h-4 w-4" />
-                            Submit to Reviewer
-                          </Button>
-                        )}
-                        {canDeleteProject && (
-                          <Button
-                            variant="destructive"
-                            className="gap-2 rounded-xl"
-                            onClick={() => void prepareWorkflowAction('delete-project')}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete Project
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </>
@@ -3361,21 +3388,23 @@ export default function ProjectDetail() {
                   </div>
                 }
               >
-                <div className="mb-6 grid grid-cols-1 gap-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5 md:grid-cols-2">
+                <div className="mb-6 space-y-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                   <Field label="Project Budget Type" value={display.budgetActivityType} />
-                  {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
-                    <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
-                      <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
-                        {toCurrencyFieldLabel(field)}
-                      </p>
-                      <CurrencyAmount
-                        amount={Number(savedFormValues[field].replace(/,/g, '') || 0)}
-                        full
-                        className="text-sm font-semibold text-[#0F172A] dark:text-white"
-                        iconSize={14}
-                      />
-                    </div>
-                  ))}
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
+                      <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+                        <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
+                          {toCurrencyFieldLabel(field)}
+                        </p>
+                        <CurrencyAmount
+                          amount={Number(savedFormValues[field].replace(/,/g, '') || 0)}
+                          full
+                          className="text-sm font-semibold text-[#0F172A] dark:text-white"
+                          iconSize={14}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <BudgetItemsTable
                   items={displayedBudgetItems}
@@ -3762,6 +3791,112 @@ export default function ProjectDetail() {
           ) : null
         }
       />
+      <Dialog
+        open={pendingNavigationHref !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleKeepEditing()
+          }
+        }}
+      >
+        <DialogContent className="max-w-[520px] overflow-hidden rounded-[28px] border border-[#DDEBFF] p-0 shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10">
+          <div className="border-b border-[#B0DBFF] bg-[linear-gradient(135deg,#F8FBFF_0%,#E7F5FF_100%)] px-6 py-6 dark:border-white/10 dark:bg-[linear-gradient(135deg,#10213B_0%,#1E293B_100%)]">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_10px_24px_rgba(40,108,255,0.28)]">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 inline-flex items-center rounded-full border border-[#B0DBFF] bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-[#286CFF] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-blue-200">
+                  Leave Page
+                </div>
+                <DialogTitle className="text-[18px] font-bold leading-snug text-[#0F172A] dark:text-white">
+                  Unsaved Changes
+                </DialogTitle>
+                <p className="mt-1 text-[13px] font-medium text-[#64748B] dark:text-slate-300">
+                  {display.name}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-4 bg-white px-6 py-5 dark:bg-[#1E293B]">
+            <DialogDescription className="text-sm leading-relaxed text-[#475569] dark:text-slate-300">
+              If you leave this page now, your latest edits will be lost unless you save them first.
+            </DialogDescription>
+            <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-white/5">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#64748B] dark:text-slate-300">
+                Unsaved Items
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className={cn(
+                  'rounded-2xl border px-3 py-3 transition-colors',
+                  hasUnsavedFormFieldChanges
+                    ? 'border-[#B0DBFF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]'
+                    : 'border-transparent bg-[#EFF6FF]/80 opacity-60 dark:bg-white/5'
+                )}>
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#E7F5FF] text-[#286CFF] dark:bg-white/10 dark:text-blue-200">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Form Fields</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {hasUnsavedFormFieldChanges ? 'Edited and waiting to save' : 'No pending edits'}
+                  </p>
+                </div>
+                <div className={cn(
+                  'rounded-2xl border px-3 py-3 transition-colors',
+                  hasUnsavedBudgetAccountCodeChanges
+                    ? 'border-[#B0DBFF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]'
+                    : 'border-transparent bg-[#EFF6FF]/80 opacity-60 dark:bg-white/5'
+                )}>
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#E7F5FF] text-[#286CFF] dark:bg-white/10 dark:text-blue-200">
+                    <Layers className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Budget Account Codes</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {hasUnsavedBudgetAccountCodeChanges ? 'Amounts or items were updated' : 'No pending edits'}
+                  </p>
+                </div>
+                <div className={cn(
+                  'rounded-2xl border px-3 py-3 transition-colors',
+                  uploadedFiles.length > 0
+                    ? 'border-[#B0DBFF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]'
+                    : 'border-transparent bg-[#EFF6FF]/80 opacity-60 dark:bg-white/5'
+                )}>
+                  <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#E7F5FF] text-[#286CFF] dark:bg-white/10 dark:text-blue-200">
+                    <Upload className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Files</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {uploadedFiles.length > 0 ? `${uploadedFiles.length} file${uploadedFiles.length === 1 ? '' : 's'} ready to upload` : 'No pending uploads'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#E2E8F0] bg-white px-6 py-4 dark:border-white/10 dark:bg-[#1E293B]">
+            <Button
+              variant="outline"
+              onClick={handleKeepEditing}
+              className="h-11 rounded-xl border-[#DDEBFF] px-5 text-sm font-medium text-[#64748B] hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"
+            >
+              Keep Editing
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleDiscardAndNavigate}
+              className="h-11 rounded-xl border-slate-300 px-5 text-sm font-medium text-[#64748B] hover:bg-[#F8FAFC] dark:border-slate-500/50 dark:text-slate-200 dark:hover:bg-white/5"
+            >
+              Discard Changes
+            </Button>
+            <Button
+              onClick={() => void handleSaveBeforeNavigation()}
+              disabled={savingIctBudget}
+              className="h-11 rounded-xl px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(40,108,255,0.24)]"
+            >
+              {savingIctBudget ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <ConfirmationModal
         open={pendingWorkflowAction !== null}
         onOpenChange={(open) => {

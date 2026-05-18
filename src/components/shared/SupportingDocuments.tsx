@@ -128,7 +128,7 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, alwaysShowDeleteBu
           onClick={handleDelete}
           disabled={isDeleting}
           className={cn(
-            'flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-all',
+            'flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all',
             alwaysShowDeleteButton ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
             isDeleting
               ? 'cursor-not-allowed bg-red-50 text-red-300'
@@ -137,9 +137,9 @@ function DocumentCard({ doc, isClarificationFile, isDeleting, alwaysShowDeleteBu
           title={isDeleting ? 'Deleting…' : 'Delete file'}
         >
           {isDeleting ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Trash2 className="h-3 w-3" />
+            <Trash2 className="h-4 w-4" />
           )}
         </button>
       )}

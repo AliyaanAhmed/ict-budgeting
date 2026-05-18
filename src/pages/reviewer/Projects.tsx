@@ -280,7 +280,7 @@ export default function ReviewerProjects() {
             <ProjectListSkeleton />
           </div>
         ) : viewMode === 'table' ? (
-          <ProjectTable projects={filtered} linkBase="/reviewer/review-queue" showCreatedBy />
+          <ProjectTable projects={filtered} linkBase="/reviewer/review-queue" showCreatedBy showAiScore={false} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (

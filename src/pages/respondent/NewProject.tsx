@@ -1176,8 +1176,8 @@ export default function NewProject() {
                       invalid={Boolean(fieldErrors.workStreamId)}
                     />
                     <Button
-                      variant="outline"
-                      className="rounded-xl"
+                      variant="ghost"
+                      className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline"
                       onClick={() => setWorkStreamModalOpen(true)}
                     >
                       <Plus className="h-4 w-4" />
@@ -1239,8 +1239,8 @@ export default function NewProject() {
                       invalid={Boolean(fieldErrors.technologyProductIds)}
                     />
                     <Button
-                      variant="outline"
-                      className="rounded-xl"
+                      variant="ghost"
+                      className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
                       onClick={() => setTechnologyProductModalOpen(true)}
                       disabled={!selectedTechnologyCompany || lookupLoading}
                     >

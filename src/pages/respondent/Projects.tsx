@@ -362,7 +362,7 @@ export default function RespondentProjects() {
             <ProjectListSkeleton />
           </div>
         ) : viewMode === 'table' ? (
-          <ProjectTable projects={filtered} showCreatedBy />
+          <ProjectTable projects={filtered} showCreatedBy showAiScore={false} />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (
