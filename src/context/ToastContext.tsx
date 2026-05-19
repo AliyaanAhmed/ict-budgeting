@@ -195,7 +195,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             {toast.description && (
               <div className="px-4 py-3">
-                <p className="text-xs leading-5 text-[#64748B] dark:text-slate-100">{toast.description}</p>
+                <p className="whitespace-pre-line text-xs font-medium leading-5 text-[#64748B] dark:text-slate-100">{toast.description}</p>
               </div>
             )}
             <div className="h-1 w-full bg-[#EAF2FF] dark:bg-white/5">

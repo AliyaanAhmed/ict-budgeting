@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Minus, Search, TrendingDown, TrendingUp, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '@/domain/types'
@@ -47,7 +47,7 @@ function AiScore({ score }: { score: number }) {
   const color = score >= 85 ? 'text-green-600' : score >= 65 ? 'text-amber-600' : 'text-red-600'
   const Icon = score >= 85 ? TrendingUp : score >= 65 ? Minus : TrendingDown
   return (
-    <span className={`inline-flex items-center gap-1 font-mono text-sm font-semibold ${color}`}>
+    <span className={`inline-flex items-center gap-1 font-mono text-[14px] font-semibold ${color}`}>
       <Icon className="h-3.5 w-3.5" />
       {score}%
     </span>
@@ -299,6 +299,7 @@ interface ProjectTableProps {
   linkBase?: string
   showCreatedBy?: boolean
   showAiScore?: boolean
+  onFilterStateChange?: (active: boolean) => void
 }
 
 export function ProjectTable({
@@ -306,6 +307,7 @@ export function ProjectTable({
   linkBase = '/respondent/projects',
   showCreatedBy = false,
   showAiScore = true,
+  onFilterStateChange,
 }: ProjectTableProps) {
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({})
   const [sort, setSort] = useState<SortState | undefined>()
@@ -365,7 +367,7 @@ export function ProjectTable({
         type: 'number',
         accessor: (project) => project.requestedBudget,
         render: (project) => (
-          <CurrencyAmount amount={project.requestedBudget} className="text-xs font-semibold text-[#0F172A] dark:text-white" />
+          <CurrencyAmount amount={project.requestedBudget} className="text-[14px] font-semibold text-[#0F172A] dark:text-white" />
         ),
       },
       {
@@ -384,9 +386,9 @@ export function ProjectTable({
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <span className="text-xs font-medium text-[#475569] dark:text-slate-200">{project.pendingWith}</span>
+            <span className="text-[14px] font-medium text-[#475569] dark:text-slate-200">{project.pendingWith}</span>
           ) : (
-            <span className="text-xs text-[#94A3B8]">-</span>
+            <span className="text-[14px] text-[#94A3B8]">-</span>
           ),
         className: 'hidden md:table-cell',
         headerClassName: 'hidden md:table-cell',
@@ -421,7 +423,7 @@ export function ProjectTable({
       render: (project) => (
         <Link
           to={`${linkBase}/${project.id}`}
-          className="inline-flex items-center gap-1 rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-xs font-semibold text-[var(--primary)] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:hover:bg-[#286CFF]/25"
+          className="inline-flex items-center gap-1 rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-[14px] font-semibold text-[var(--primary)] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:hover:bg-[#286CFF]/25"
         >
           <Eye className="h-3.5 w-3.5" />
           View
@@ -460,16 +462,22 @@ export function ProjectTable({
     })
   }
 
+  const hasActiveTableFilters = Object.keys(filters).length > 0 || Boolean(sort)
+
+  useEffect(() => {
+    onFilterStateChange?.(hasActiveTableFilters)
+  }, [hasActiveTableFilters, onFilterStateChange])
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-[14px]">
         <thead>
           <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] dark:border-white/10 dark:bg-white/5">
             {columns.map((column) => (
               <th
                 key={column.id}
                 className={cn(
-                  'whitespace-nowrap px-4 py-3 text-start text-xs font-semibold text-[#475569] dark:text-slate-200',
+                  'whitespace-nowrap px-4 py-3 text-start text-[14px] font-semibold text-[#475569] dark:text-slate-200',
                   column.headerClassName
                 )}
               >
@@ -507,7 +515,7 @@ export function ProjectTable({
                   {column.render ? (
                     column.render(project)
                   ) : (
-                    <span className="text-xs text-[#475569] dark:text-slate-200">{column.accessor(project) || '-'}</span>
+                    <span className="text-[14px] text-[#475569] dark:text-slate-200">{column.accessor(project) || '-'}</span>
                   )}
                 </td>
               ))}
@@ -522,7 +530,7 @@ export function ProjectTable({
           )}
         </tbody>
       </table>
-      {(Object.keys(filters).length > 0 || sort) && (
+      {hasActiveTableFilters && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#F1F5F9] bg-white px-4 py-3 dark:border-white/5 dark:bg-[#1E293B]">
           <p className="text-xs font-medium text-[#64748B] dark:text-slate-200">
             Showing {tableRows.length} of {projects.length} projects

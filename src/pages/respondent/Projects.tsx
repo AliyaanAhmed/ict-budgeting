@@ -19,6 +19,7 @@ import type { Project, ProjectStatus } from '@/domain/types'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
+import { useToast } from '@/context/ToastContext'
 import { ProjectTable } from '@/components/shared/ProjectTable'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
+import { exportProjectsToExcel } from '@/services/projectExportService'
 
 type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -159,15 +161,18 @@ function ProjectListSkeleton() {
 export default function RespondentProjects() {
   const { selectedCycle } = useCycle()
   const { instanceId } = useInstance()
+  const { runActionToast } = useToast()
   const cycleName = selectedCycle?.name ?? 'ICT Budget Cycle'
   const { items: projects, loading, error } = useRoleProjects('respondent', instanceId)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
+  const [hasActiveTableFilters, setHasActiveTableFilters] = useState(false)
   const [aiExpanded, setAiExpanded] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all-statuses')
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -203,6 +208,25 @@ export default function RespondentProjects() {
 
     return matchesSearch && matchesTab && matchesStatus && matchesBudgetType
   })
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await runActionToast(
+        () => exportProjectsToExcel(filtered, 'Respondent'),
+        {
+          processingTitle: 'Preparing Excel export',
+          processingDescription: `Building a formatted workbook for ${filtered.length} project${filtered.length === 1 ? '' : 's'}.`,
+          successTitle: 'Excel exported',
+          successDescription: 'The project workbook was downloaded successfully.',
+          errorTitle: 'Export failed',
+          minDurationMs: 1200,
+        }
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="w-full space-y-5">
@@ -320,9 +344,9 @@ export default function RespondentProjects() {
           </Select>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => void handleExport()} disabled={exporting || loading}>
             <Download className="h-4 w-4" />
-            Export
+            {exporting ? 'Exporting...' : 'Export'}
           </Button>
           <div className="flex overflow-hidden rounded-[8px] border border-[#E2E8F0] dark:border-white/10">
             <button
@@ -362,7 +386,12 @@ export default function RespondentProjects() {
             <ProjectListSkeleton />
           </div>
         ) : viewMode === 'table' ? (
-          <ProjectTable projects={filtered} showCreatedBy showAiScore={false} />
+          <ProjectTable
+            projects={filtered}
+            showCreatedBy
+            showAiScore={false}
+            onFilterStateChange={setHasActiveTableFilters}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (
@@ -370,9 +399,11 @@ export default function RespondentProjects() {
             ))}
           </div>
         )}
-        <div className="border-t border-[#F1F5F9] px-5 py-3 text-sm text-[#475569] dark:border-white/5 dark:text-slate-200">
-          Showing {filtered.length} project{filtered.length === 1 ? '' : 's'}
-        </div>
+        {!(viewMode === 'table' && hasActiveTableFilters) && (
+          <div className="border-t border-[#F1F5F9] px-5 py-3 text-sm text-[#475569] dark:border-white/5 dark:text-slate-200">
+            Showing {filtered.length} project{filtered.length === 1 ? '' : 's'}
+          </div>
+        )}
       </div>
     </div>
   )

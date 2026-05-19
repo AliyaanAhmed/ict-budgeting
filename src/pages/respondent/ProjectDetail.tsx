@@ -1744,7 +1744,7 @@ export default function ProjectDetail() {
       const missingFields = Object.keys(nextErrors).map((key) => VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS])
       showErrorToast(
         'Complete required fields',
-        `Please review: ${missingFields.join(', ')}.`
+        `Please review:\n${missingFields.map((field) => `• ${field}`).join('\n')}`
       )
       return false
     }
@@ -2786,12 +2786,13 @@ export default function ProjectDetail() {
                   type="button"
                   onClick={() => setShowLogs(false)}
                   className={cn(
-                    'inline-flex h-8 items-center rounded-lg px-3 text-sm font-semibold transition-colors',
+                    'inline-flex h-8 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors',
                     !showLogs
                       ? 'bg-[#286CFF] text-white shadow-sm'
                       : 'text-[#64748B] hover:bg-[#F8FBFF] hover:text-[#286CFF] dark:text-slate-200 dark:hover:bg-white/5'
                   )}
                 >
+                  <ClipboardCheck className="h-4 w-4" />
                   Project Details
                 </button>
                 <button
@@ -3806,7 +3807,7 @@ export default function ProjectDetail() {
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="mb-2 inline-flex items-center rounded-full border border-[#B0DBFF] bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-[#286CFF] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-blue-200">
+                <div className="mb-1 inline-flex items-center rounded-full border border-[#B0DBFF] bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-[#286CFF] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-blue-200">
                   Leave Page
                 </div>
                 <DialogTitle className="text-[18px] font-bold leading-snug text-[#0F172A] dark:text-white">

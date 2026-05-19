@@ -45,6 +45,30 @@
         "workflowDisplayName": "ICT Budget / Clarificaitons - Delete File From SharePoint",
         "workflowName": "cc9f4499-56a6-270a-7b9d-a9114b71a1a9"
       }
+    },
+    "03f5be90-8cf2-4793-806f-988eae8e970b": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_getdocumentsummaryfromcompass"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "a168ced6-5d53-f111-bec6-70a8a51e931a",
+        "workflowDisplayName": "PowerAppV2 - Get Document Summary from Compass",
+        "workflowName": "7c1f4991-3d63-d609-528d-9d15937e6444"
+      }
+    },
+    "1b1bdcc5-a557-4fc7-802b-87de70993ffc": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_getcumulativedocumentsummaryfromcompass"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "d71fb1c7-8d53-f111-bec6-7ced8d57ea77",
+        "workflowDisplayName": "PowerAppV2 - Get Cumulative Document Summary from Compass",
+        "workflowName": "de9d862f-12e1-396c-66bb-23d91293c9a9"
+      }
     }
   },
   "databaseReferences": {
@@ -151,6 +175,11 @@
         "securityroles": {
           "entitySetName": "roles",
           "logicalName": "role",
+          "isHidden": false
+        },
+        "aiprompts": {
+          "entitySetName": "dga_ai_prompts",
+          "logicalName": "dga_ai_prompt",
           "isHidden": false
         }
       },

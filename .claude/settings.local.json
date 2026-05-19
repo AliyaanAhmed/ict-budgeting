@@ -10,7 +10,14 @@
       "Bash(del \"c:\\\\ICT-Budgeting-2026\\\\src\\\\services\\\\xrmContextService.ts\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "PowerShell(Get-ChildItem \"c:\\\\ICT-Budgeting-2026\" -File | Where-Object { $_.Extension -eq \".md\" } | Select-Object Name)",
+      "Bash(Copy-Item \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx\" \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx.bak\" -Force)",
+      "Bash(Write-Host \"Backup created.\")",
+      "Bash(cp \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx\" \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx.bak\" && echo \"Backup created.\")"
+    ],
+    "additionalDirectories": [
+      "c:\\ICT-Budgeting-2026\\src\\pages\\respondent"
     ]
   }
 }

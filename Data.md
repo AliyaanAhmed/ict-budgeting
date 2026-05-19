@@ -30,6 +30,67 @@ Both services use:
 Data source metadata/config comes from:
 - `.power/schemas/appschemas/dataSourcesInfo`
 
+## Excel Export
+
+Project list Excel export is handled by a shared service:
+
+- `src/services/projectExportService.ts`
+
+Library used:
+
+- `exceljs`
+
+Role pages wired to this export:
+
+- `src/pages/respondent/Projects.tsx`
+- `src/pages/reviewer/Projects.tsx`
+- `src/pages/approver/Projects.tsx`
+
+### Export flow
+
+Each role page exposes an `Export` button and calls:
+
+```ts
+await exportProjectsToExcel(filtered, 'Respondent')
+await exportProjectsToExcel(filtered, 'Reviewer')
+await exportProjectsToExcel(filtered, 'Approver')
+```
+
+Behavior:
+
+- export always uses the currently filtered project list (`filtered`)
+- export runs inside `runActionToast(...)`
+- download starts in the browser after the workbook buffer is generated
+- file name pattern is:
+  - `respondent-projects-YYYYMMDD.xlsx`
+  - `reviewer-projects-YYYYMMDD.xlsx`
+  - `approver-projects-YYYYMMDD.xlsx`
+
+### What the export includes
+
+The workbook is built from live project records plus resolved supporting data:
+
+- project core fields such as ID, name, status, strategic priority, classification, submitted by, pending with, and requested budget
+- resolved lookup display values such as:
+  - category
+  - work stream
+  - budget type
+  - technology company
+  - technology product
+- budget line items resolved by ICT budget ID where available
+- fallback project budget items when a Dataverse budget ID is not present
+
+### Service dependencies used during export
+
+The export service enriches the workbook using:
+
+- `getBudgetLineItemsByBudgetIds(...)`
+- `getIctBudgetDraftById(...)`
+- `getTechnologyCompanies()`
+- `getWorkStreamOptions()`
+
+This ensures the Excel output reflects the same resolved labels users see in the app rather than only raw stored values.
+
 ## Pattern We Are Following
 
 Pattern: **Generated Typed Service Layer** (service class per table)
@@ -974,7 +1035,7 @@ Result data is accessed via `result.data` (same as Dataverse services).
 
 ### Flows Added For File Upload
 
-Two flows are registered in this Code App for file upload:
+Three flows are registered in this Code App for file upload / document processing:
 
 #### 1. ICT Budget / Clarifications - Upload Files in Sharepoint
 - **Flow ID:** `c0932d99-c5e8-e0e8-6f97-973f0dfb97b3`
@@ -992,6 +1053,18 @@ Two flows are registered in this Code App for file upload:
 - **Input schema:**
   - `text` (title: Payload) — JSON stringified file data
   - `text_1` (title: URL) — the HTTP trigger URL of the upload flow
+
+#### 3. PowerAppV2 - Get Document Summary from Compass
+- **Flow ID:** `7c1f4991-3d63-d609-528d-9d15937e6444`
+- **Connection reference key:** `03f5be90-8cf2-4793-806f-988eae8e970b`
+- **Data source name:** `powerappv2_getdocumentsummaryfromcompass`
+- **Purpose:** PowerApps V2 trigger flow for AI document summarization from an attached file.
+- **Generated service:** `src/generated/services/PowerAppV2_GetDocumentSummaryfromCompassService.ts`
+- **Input schema:**
+  - `file.name`
+  - `file.contentBytes`
+- **Response schema:**
+  - `summary`
 
 ### File Upload Service
 
@@ -1026,6 +1099,31 @@ Important behavior:
 - this is true for:
   - clarification raised files
   - clarification reply files
+
+### Supporting Document AI Summary Service
+
+**File:** `src/services/aiSupportingDocumentEvaluationService.ts`
+
+This service now wraps the generated `PowerAppV2_GetDocumentSummaryfromCompassService` and handles:
+1. Reading the attached file as a base64 string using `FileReader`
+2. Building the flow input:
+   ```ts
+   {
+     fileContent: {
+       name: file.name,
+       contentBytes: base64Content,
+       mimeType: file.type || 'application/octet-stream',
+     },
+   }
+   ```
+3. Calling `PowerAppV2_GetDocumentSummaryfromCompassService.Run(...)`
+4. Logging the flow response in the browser console
+
+Important behavior:
+
+- this no longer uses `dga_ai_prompts`
+- this no longer appends prompt text plus base64 into `dga_CustomWebApi`
+- current UI trigger is the supporting document attachment flow in `src/pages/respondent/NewProject.tsx`
 
 ### FileUploadDropzone Component
 

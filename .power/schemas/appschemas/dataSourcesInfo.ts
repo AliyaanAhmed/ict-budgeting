@@ -12,10 +12,10 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "audits": {
+  "dga_ai_prompts": {
     "tableId": "",
     "version": "",
-    "primaryKey": "auditid",
+    "primaryKey": "dga_ai_promptid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -86,13 +86,6 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_module_configurationid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "dga_module_types": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "dga_module_typeid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -263,6 +256,105 @@ export const dataSourcesInfo = {
             "type": "void"
           }
         }
+      }
+    }
+  },
+  "powerappv2_getcumulativedocumentsummaryfromcompass": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_getdocumentsummaryfromcompass": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          { "name": "action", "in": "body", "required": true, "type": "string" },
+          { "name": "endpoint", "in": "body", "required": true, "type": "string" },
+          { "name": "apikey", "in": "body", "required": true, "type": "string" },
+          { "name": "model", "in": "body", "required": true, "type": "string" },
+          { "name": "prompt", "in": "body", "required": true, "type": "string" }
+        ]
       }
     }
   },

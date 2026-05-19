@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { X, Upload } from 'lucide-react'
+import { Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/context/ToastContext'
 
@@ -97,7 +97,7 @@ function FileTypeIcon({ extension }: { extension: string }) {
   )
 }
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -135,27 +135,33 @@ export function FileUploadDropzone({
       const rejectedOversize: string[] = []
       const rejectedRestrictedType: string[] = []
       const rejectedUnsupportedType: string[] = []
-      const valid = incoming.filter((f) => {
-        const extension = getFileExtension(f.name)
-        if (f.size <= 0) {
-          rejectedZeroKb.push(f.name)
+
+      const valid = incoming.filter((file) => {
+        const extension = getFileExtension(file.name)
+
+        if (file.size <= 0) {
+          rejectedZeroKb.push(file.name)
           return false
         }
-        if (f.size > maxSizeMB * 1024 * 1024) {
-          rejectedOversize.push(f.name)
+        if (file.size > maxSizeMB * 1024 * 1024) {
+          rejectedOversize.push(file.name)
           return false
         }
         if (!extension || RESTRICTED_FILE_EXTENSIONS.has(extension)) {
-          rejectedRestrictedType.push(f.name)
+          rejectedRestrictedType.push(file.name)
           return false
         }
         if (acceptedExtensions.size > 0 && !acceptedExtensions.has(extension)) {
-          rejectedUnsupportedType.push(f.name)
+          rejectedUnsupportedType.push(file.name)
           return false
         }
-        const already = files.some((existing) => existing.name === f.name && existing.size === f.size)
-        return !already
+
+        const alreadyExists = files.some(
+          (existing) => existing.name === file.name && existing.size === file.size
+        )
+        return !alreadyExists
       })
+
       if (rejectedZeroKb.length > 0) {
         showErrorToast(
           'Empty files are not allowed',
@@ -180,47 +186,52 @@ export function FileUploadDropzone({
           `${rejectedUnsupportedType.join(', ')} ${rejectedUnsupportedType.length === 1 ? 'is' : 'are'} not in the supported file types list.`
         )
       }
-      if (valid.length > 0) onChange([...files, ...valid])
+
+      if (valid.length > 0) {
+        onChange([...files, ...valid])
+      }
     },
     [acceptedExtensions, files, maxSizeMB, onChange, showErrorToast]
   )
 
   const removeFile = (index: number) => {
-    onChange(files.filter((_, i) => i !== index))
+    onChange(files.filter((_, fileIndex) => fileIndex !== index))
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault()
     dragCounter.current = 0
     setDragging(false)
-    addFiles(Array.from(e.dataTransfer.files))
+    addFiles(Array.from(event.dataTransfer.files))
   }
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault()
+  const handleDragEnter = (event: React.DragEvent) => {
+    event.preventDefault()
     dragCounter.current += 1
     setDragging(true)
   }
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault()
   }
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault()
     dragCounter.current -= 1
-    if (dragCounter.current === 0) setDragging(false)
+    if (dragCounter.current === 0) {
+      setDragging(false)
+    }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      addFiles(Array.from(e.target.files))
-      e.target.value = ''
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      addFiles(Array.from(event.target.files))
+      event.target.value = ''
     }
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div
         role="button"
         tabIndex={0}
@@ -229,39 +240,77 @@ export function FileUploadDropzone({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-        aria-label="Upload files — click or drag and drop"
+        onKeyDown={(event) => event.key === 'Enter' && inputRef.current?.click()}
+        aria-label="Upload files - click or drag and drop"
         className={cn(
-          'group relative cursor-pointer select-none rounded-xl border-2 border-dashed p-8 text-center outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2',
+          'group relative cursor-pointer select-none outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2',
+          files.length === 0
+            ? 'rounded-xl border-2 border-dashed p-8 text-center'
+            : 'rounded-2xl border px-4 py-3',
           dragging
             ? 'scale-[1.01] border-[#286CFF] bg-[#E7F5FF] dark:bg-[#1A2E4A]'
-            : 'border-[#BFD8FF] bg-[#F8FBFF] hover:border-[#286CFF] hover:bg-[#EFF6FF] dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10'
+            : files.length === 0
+              ? 'border-[#BFD8FF] bg-[#F8FBFF] hover:border-[#286CFF] hover:bg-[#EFF6FF] dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10'
+              : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5'
         )}
       >
-        <div
-          className={cn(
-            'mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200',
-            dragging
-              ? 'border-[#286CFF] bg-[#286CFF] text-white'
-              : 'border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] group-hover:border-[#286CFF] group-hover:bg-[#286CFF] group-hover:text-white dark:border-white/20 dark:bg-white/10 dark:text-white'
-          )}
-        >
-          <Upload
-            className={cn('h-5 w-5 transition-transform duration-200', dragging ? '-translate-y-1' : 'group-hover:-translate-y-1')}
-          />
-        </div>
+        {files.length === 0 ? (
+          <>
+            <div
+              className={cn(
+                'mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border transition-all duration-200',
+                dragging
+                  ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                  : 'border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] group-hover:border-[#286CFF] group-hover:bg-[#286CFF] group-hover:text-white dark:border-white/20 dark:bg-white/10 dark:text-white'
+              )}
+            >
+              <Upload
+                className={cn(
+                  'h-5 w-5 transition-transform duration-200',
+                  dragging ? '-translate-y-1' : 'group-hover:-translate-y-1'
+                )}
+              />
+            </div>
 
-        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
-          {dragging ? 'Release to upload' : 'Drop files here or click to browse'}
-        </p>
-        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-          PDF, DOCX, XLSX, PNG, JPG, PPT supported · Max {maxSizeMB} MB per file
-        </p>
+            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
+              {dragging ? 'Release to upload' : 'Drop files here or click to browse'}
+            </p>
+            <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+              PDF, DOCX, XLSX, PNG, JPG, PPT supported · Max {maxSizeMB} MB per file
+            </p>
+          </>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border transition-all duration-200',
+                  dragging
+                    ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                    : 'border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] group-hover:border-[#286CFF] group-hover:bg-[#286CFF] group-hover:text-white dark:border-white/20 dark:bg-white/10 dark:text-white'
+                )}
+              >
+                <Upload
+                  className={cn(
+                    'h-5 w-5 transition-transform duration-200',
+                    dragging ? '-translate-y-1' : 'group-hover:-translate-y-1'
+                  )}
+                />
+              </div>
 
-        {files.length > 0 && (
-          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#286CFF]/10 px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/20">
-            <span>{files.length} file{files.length !== 1 ? 's' : ''} selected</span>
-            <span className="opacity-60">· click to add more</span>
+              <div>
+                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
+                  {dragging ? 'Release to add more files' : 'Add another supporting document'}
+                </p>
+                <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-300">
+                  {files.length} file{files.length !== 1 ? 's' : ''} selected · click or drag more here
+                </p>
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-[#286CFF]/10 px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/20">
+              <span>AI will review each file separately</span>
+            </div>
           </div>
         )}
 
@@ -276,32 +325,38 @@ export function FileUploadDropzone({
       </div>
 
       {files.length > 0 && (
-        <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {files.map((file, index) => {
-            const ext = file.name.split('.').pop() ?? ''
+            const extension = file.name.split('.').pop() ?? ''
+
             return (
               <div
                 key={`${file.name}-${file.size}-${index}`}
-                className="group flex items-center gap-3 rounded-xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-sm transition-all hover:border-[#B0DBFF] hover:shadow dark:border-white/10 dark:bg-[#1E293B]"
+                className="group relative rounded-2xl border border-[#DDEBFF] bg-white p-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#B0DBFF] hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]"
               >
-                <FileTypeIcon extension={ext} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">
-                    {file.name}
-                  </p>
-                  <p className="text-xs text-[#64748B] dark:text-slate-300">{formatFileSize(file.size)}</p>
-                </div>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
+                  onClick={(event) => {
+                    event.stopPropagation()
                     removeFile(index)
                   }}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[#94A3B8] opacity-0 transition-all group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[#F8FAFC] text-[#94A3B8] transition-all hover:bg-red-50 hover:text-red-500 dark:bg-white/5 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                   aria-label={`Remove ${file.name}`}
                 >
                   <X className="h-4 w-4" />
                 </button>
+
+                <div className="flex min-w-0 items-center gap-3 pr-8">
+                  <FileTypeIcon extension={extension} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">
+                      {file.name}
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                      {formatFileSize(file.size)}
+                    </p>
+                  </div>
+                </div>
               </div>
             )
           })}
