@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Upload, X } from 'lucide-react'
+import { Loader2, Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/context/ToastContext'
 
@@ -8,6 +8,8 @@ interface FileUploadDropzoneProps {
   onChange: (files: File[]) => void
   accept?: string
   maxSizeMB?: number
+  compact?: boolean
+  fileStatuses?: Record<string, 'uploading' | 'analyzing' | 'error'>
 }
 
 const RESTRICTED_FILE_EXTENSIONS = new Set([
@@ -107,6 +109,10 @@ function getFileExtension(fileName: string) {
   return fileName.split('.').pop()?.trim().toLowerCase() ?? ''
 }
 
+function getFileKey(file: File) {
+  return `${file.name}::${file.size}::${file.lastModified}`
+}
+
 function getAcceptedExtensions(accept: string) {
   return new Set(
     accept
@@ -122,6 +128,8 @@ export function FileUploadDropzone({
   onChange,
   accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx,.txt,.csv',
   maxSizeMB = 20,
+  compact = false,
+  fileStatuses,
 }: FileUploadDropzoneProps) {
   const { showErrorToast } = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -244,17 +252,17 @@ export function FileUploadDropzone({
         aria-label="Upload files - click or drag and drop"
         className={cn(
           'group relative cursor-pointer select-none outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2',
-          files.length === 0
+          files.length === 0 && !compact
             ? 'rounded-xl border-2 border-dashed p-8 text-center'
             : 'rounded-2xl border px-4 py-3',
           dragging
             ? 'scale-[1.01] border-[#286CFF] bg-[#E7F5FF] dark:bg-[#1A2E4A]'
-            : files.length === 0
+            : files.length === 0 && !compact
               ? 'border-[#BFD8FF] bg-[#F8FBFF] hover:border-[#286CFF] hover:bg-[#EFF6FF] dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10'
               : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5'
         )}
       >
-        {files.length === 0 ? (
+        {files.length === 0 && !compact ? (
           <>
             <div
               className={cn(
@@ -328,6 +336,7 @@ export function FileUploadDropzone({
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {files.map((file, index) => {
             const extension = file.name.split('.').pop() ?? ''
+            const fileStatus = fileStatuses?.[getFileKey(file)]
 
             return (
               <div
@@ -353,10 +362,40 @@ export function FileUploadDropzone({
                       {file.name}
                     </p>
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                      {formatFileSize(file.size)}
+                      {fileStatus === 'uploading'
+                        ? 'Uploading to SharePoint...'
+                        : fileStatus === 'error'
+                          ? 'Upload or AI processing failed'
+                          : formatFileSize(file.size)}
                     </p>
                   </div>
                 </div>
+                {(fileStatus === 'uploading' || fileStatus === 'error' || fileStatus === 'analyzing') && (
+                  <div
+                    className={cn(
+                      'mt-3 flex items-center gap-2 rounded-xl px-2.5 py-2 text-xs font-medium',
+                      fileStatus === 'uploading' &&
+                        'border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-[#286CFF]/25 dark:bg-[#12243B] dark:text-[#93C5FD]',
+                      fileStatus === 'analyzing' &&
+                        'border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]',
+                      fileStatus === 'error' &&
+                        'border border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
+                    )}
+                  >
+                    {fileStatus === 'error' ? (
+                      <div className="h-2 w-2 rounded-full bg-red-500" />
+                    ) : (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    <span>
+                      {fileStatus === 'uploading'
+                        ? 'Uploading'
+                        : fileStatus === 'analyzing'
+                          ? 'AI analyzing'
+                        : 'Needs attention'}
+                    </span>
+                  </div>
+                )}
               </div>
             )
           })}

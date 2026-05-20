@@ -22,6 +22,7 @@ import {
   Loader2,
   MessageSquare,
   Package,
+  Paperclip,
   Plus,
   RefreshCw,
   Send,
@@ -90,9 +91,14 @@ import {
 import {
   evaluateCumulativeSupportingDocuments,
   evaluateSupportingDocument,
+  type SupportingDocumentBudgetLine,
   type SupportingDocumentEvaluationSummary,
   type SupportingDocumentSuggestedProjectField,
 } from '@/services/aiSupportingDocumentEvaluationService'
+import {
+  createDocumentSummaryRecords,
+  upsertCumulativeSummaryRecord,
+} from '@/services/documentAiSummaryStoreService'
 import { createBudgetLineItems } from '@/services/budgetLineItemService'
 import {
   buildBudgetItemDraft,
@@ -115,6 +121,12 @@ import {
   getWorkStreamOptions,
   type WorkStreamOption,
 } from '@/services/workStreamService'
+import {
+  getBudgetCopilotChatReply,
+  getBudgetCopilotStructuredAnalysis,
+  type BudgetCopilotChatMessage,
+  type BudgetCopilotRuntimeContext,
+} from '@/services/aiBudgetCopilotChatService'
 
 type ActivityType = Dga_ict_budgetsdga_activity_type
 type BudgetItemType = Dga_ict_budgetsdga_budget_item_type
@@ -140,6 +152,7 @@ interface UploadedSupportingDocumentAnalysis {
   status: 'queued' | 'analyzing' | 'complete' | 'error'
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
+  responseTimeMs?: number | null
   error?: string | null
 }
 
@@ -147,9 +160,28 @@ interface UploadedSupportingDocumentCumulativeAnalysis {
   status: 'idle' | 'analyzing' | 'complete' | 'error'
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
+  responseTimeMs?: number | null
   error?: string | null
   sourceFileCount: number
   scopeKey: string | null
+}
+
+interface CompletedSupportingDocumentInput {
+  id: string
+  file: File
+  rawSummary: string
+  responseTimeMs: number | null
+  parsedSummary: SupportingDocumentEvaluationSummary | null
+}
+
+interface CopilotPendingSuggestion {
+  title: string
+  fields: Partial<Record<keyof FormValues, string | string[]>>
+  budgetRows: BudgetItemDraft[]
+  source: 'chat' | 'document' | 'cumulative' | 'strategic_priority'
+  evidence?: string
+  reviewFlags?: Array<{ flag?: string; reason?: string; severity?: string }>
+  rawModelResponse?: string
 }
 
 interface FormValues {
@@ -241,6 +273,30 @@ function getUploadedFileSignature(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`
 }
 
+function buildCompletedSupportingDocumentInputs(
+  files: File[],
+  analyses: Record<string, UploadedSupportingDocumentAnalysis>
+): CompletedSupportingDocumentInput[] {
+  return files
+    .map((file) => {
+      const signature = getUploadedFileSignature(file)
+      const analysis = analyses[signature]
+
+      if (analysis?.status !== 'complete' || !analysis.rawSummary?.trim()) {
+        return null
+      }
+
+      return {
+        id: signature,
+        file,
+        rawSummary: analysis.rawSummary,
+        responseTimeMs: analysis.responseTimeMs ?? null,
+        parsedSummary: analysis.parsedSummary,
+      }
+    })
+    .filter(Boolean) as CompletedSupportingDocumentInput[]
+}
+
 const VALIDATION_LABELS: Record<keyof FormValues | 'budgetItems', string> = {
   initiativeName: 'Initiative / Budget Item Name',
   strategicPriorityId: 'Strategic Priorities',
@@ -288,6 +344,25 @@ function formatAiFieldValue(value: string | string[] | undefined) {
 
 function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSummary | null) {
   return (summary?.budget_lines ?? []).reduce((sum, line) => sum + (line.amount ?? 0), 0)
+}
+
+function renderCopilotMessage(text: string) {
+  const lines = text.split('\n')
+  return lines.map((line, lineIndex) => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/)
+    return (
+      <span key={lineIndex}>
+        {lineIndex > 0 && <br />}
+        {parts.map((part, partIndex) =>
+          part.startsWith('**') && part.endsWith('**') ? (
+            <strong key={partIndex}>{part.slice(2, -2)}</strong>
+          ) : (
+            part
+          )
+        )}
+      </span>
+    )
+  })
 }
 
 function EmptyActionCard({
@@ -349,6 +424,91 @@ function toCurrencyFieldLabel(field: BudgetCurrencyField) {
     default:
       return ''
   }
+}
+
+function buildCreateDraftPayload(values: FormValues): CreateIctBudgetDraftInput {
+  return {
+    initiativeName: values.initiativeName,
+    strategicPriorityId: values.strategicPriorityId,
+    strategicPriorityClassificationId: values.strategicPriorityClassificationId,
+    workStreamId: values.workStreamId || null,
+    technologyCompanyId: values.technologyCompanyId || null,
+    technologyProductIds: values.technologyProductIds,
+    plannedStartDate: values.plannedStartDate,
+    plannedEndDate: values.plannedEndDate,
+    summary: values.summary,
+    activityType: values.activityType as ActivityType,
+    budgetItemType: values.budgetItemType as BudgetItemType,
+    category: values.category,
+    totalBudgetPaidPreviousYear: parseCurrencyValue(values.totalBudgetPaidPreviousYear),
+    totalBudgetPayableFutureYear: parseCurrencyValue(values.totalBudgetPayableFutureYear),
+    totalBudgetPayableNextYear: parseCurrencyValue(values.totalBudgetPayableNextYear),
+    totalBudgetPayableForYearAfterNext: parseCurrencyValue(values.totalBudgetPayableForYearAfterNext),
+  }
+}
+
+function validateDraftState(input: {
+  values: FormValues
+  budgetItems: BudgetItemDraft[]
+  setFieldErrors: React.Dispatch<React.SetStateAction<FieldErrorMap>>
+  setBudgetItemsError: React.Dispatch<React.SetStateAction<string | null>>
+  showErrorToast: (title: string, description?: string) => void
+}) {
+  const nextErrors: FieldErrorMap = {}
+  const visibleBudgetFields = getVisibleBudgetFields(input.values.activityType)
+
+  if (!input.values.initiativeName.trim()) {
+    nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
+  }
+  if (!input.values.strategicPriorityId) {
+    nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+  }
+  if (!input.values.strategicPriorityClassificationId) {
+    nextErrors.strategicPriorityClassificationId = 'Strategic Priority Classifications is required.'
+  }
+  if (!input.values.budgetItemType) {
+    nextErrors.budgetItemType = 'ICT Budget Items Type is required.'
+  }
+  if (!input.values.plannedStartDate) {
+    nextErrors.plannedStartDate = 'Planned Start Date is required.'
+  }
+  if (!input.values.plannedEndDate) {
+    nextErrors.plannedEndDate = 'Planned End Date is required.'
+  }
+  if (!input.values.summary.trim()) {
+    nextErrors.summary = 'Summary / Description is required.'
+  }
+  if (!input.values.activityType) {
+    nextErrors.activityType = 'Project Budget Type is required.'
+  }
+
+  visibleBudgetFields.forEach((field) => {
+    if (!input.values[field]) {
+      nextErrors[field] = `${toCurrencyFieldLabel(field)} is required.`
+    }
+  })
+
+  if (input.budgetItems.length === 0) {
+    nextErrors.budgetItems = 'Add at least one budget account code before saving the draft.'
+  } else if (input.budgetItems.some((item) => item.budgetRequested <= 0)) {
+    nextErrors.budgetItems = 'Each budget account code must have a requested budget greater than zero.'
+  }
+
+  input.setFieldErrors(nextErrors)
+  input.setBudgetItemsError(nextErrors.budgetItems ?? null)
+
+  if (Object.keys(nextErrors).length > 0) {
+    const missingFields = Object.keys(nextErrors).map(
+      (key) => VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS]
+    )
+    input.showErrorToast(
+      'Complete required fields',
+      `Please review:\n${missingFields.map((field) => `• ${field}`).join('\n')}`
+    )
+    return false
+  }
+
+  return true
 }
 
 function FormField({
@@ -675,6 +835,109 @@ function resolveAiFieldMapping(
   return null
 }
 
+function normalizeCopilotSuggestedFieldKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function mapCopilotSuggestedFieldKey(rawKey: string, rawLabel: string, normalizedValue: string): keyof FormValues | null {
+  const key = normalizeCopilotSuggestedFieldKey(rawKey)
+  const label = normalizeCopilotSuggestedFieldKey(rawLabel)
+  const candidates = [key, label]
+
+  if (candidates.includes('project_name') || candidates.includes('initiative_budget_item_name') || candidates.includes('initiative_name')) return 'initiativeName'
+  if (candidates.includes('project_description') || candidates.includes('summary_description') || candidates.includes('summary')) return 'summary'
+  if (candidates.includes('category')) return 'category'
+  if (candidates.includes('technology_company') || candidates.includes('technology')) return 'technologyCompanyId'
+  if (candidates.includes('technology_product') || candidates.includes('technology_products')) return 'technologyProductIds'
+  if (candidates.includes('planned_start_date') || candidates.includes('start_date')) return 'plannedStartDate'
+  if (candidates.includes('planned_end_date') || candidates.includes('end_date')) return 'plannedEndDate'
+  if (candidates.includes('work_stream') || candidates.includes('program_name')) return 'workStreamId'
+  if (candidates.includes('strategic_priority')) return 'strategicPriorityId'
+  if (candidates.includes('strategic_priority_classification')) return 'strategicPriorityClassificationId'
+  if (candidates.includes('budget_item_type') || candidates.includes('ict_budget_items_type')) return 'budgetItemType'
+  if (candidates.includes('budget_item_classification') || candidates.includes('budget_type') || candidates.includes('project_budget_type')) return 'activityType'
+
+  if (normalizedValue && candidates.includes('project_type')) return 'budgetItemType'
+  return null
+}
+
+function collectCopilotSuggestedFields(analysis: Record<string, unknown>): Partial<Record<keyof FormValues, string | string[]>> {
+  const nextFields: Partial<Record<keyof FormValues, string | string[]>> = {}
+
+  const suggestedFields = Array.isArray(analysis.suggested_project_fields)
+    ? (analysis.suggested_project_fields as Array<Record<string, unknown>>)
+    : []
+
+  for (const field of suggestedFields) {
+    const rawValue = field.suggested_value
+    if (rawValue === null || rawValue === undefined) continue
+
+    const stringValue = Array.isArray(rawValue)
+      ? rawValue.filter((item): item is string => typeof item === 'string')
+      : String(rawValue).trim()
+
+    const normalizedValue = Array.isArray(stringValue)
+      ? stringValue.join(', ').trim()
+      : stringValue
+
+    const mappedKey = mapCopilotSuggestedFieldKey(
+      String(field.field_key ?? ''),
+      String(field.field_label ?? ''),
+      normalizedValue
+    )
+
+    if (!mappedKey) continue
+    nextFields[mappedKey] = stringValue
+  }
+
+  return nextFields
+}
+
+function buildBudgetItemsFromSupportingDocumentSummary(summary: Record<string, unknown>) {
+  const accountCodeSuggestions = Array.isArray(summary.account_code_suggestions)
+    ? (summary.account_code_suggestions as Array<Record<string, unknown>>)
+    : []
+  const budgetLines = Array.isArray(summary.budget_lines)
+    ? (summary.budget_lines as SupportingDocumentBudgetLine[])
+    : []
+
+  return accountCodeSuggestions.reduce<BudgetItemDraft[]>((items, suggestion, index) => {
+    const accountCode = String(suggestion.account_code ?? '').trim()
+    if (!accountCode) return items
+
+    const lineNumberMatches = Array.isArray(suggestion.mapped_budget_line_numbers)
+      ? (suggestion.mapped_budget_line_numbers as number[])
+      : []
+    const matchedLine = budgetLines.find((line) => lineNumberMatches.includes(line.line_number ?? -1)) ?? budgetLines[index] ?? null
+
+    items.push({
+      id: `copilot-${accountCode}-${index}`,
+      accountName: accountCode,
+      l1: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l1 ?? 'Pending L1'),
+      l2: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l2 ?? 'Pending L2'),
+      l3: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l3 ?? 'Pending L3'),
+      ebsCode: '',
+      fusionCode: '',
+      glCode: accountCode,
+      accountGroup: null,
+      description: null,
+      expenseTypeValue: null,
+      expenseTypeLabel: String(suggestion.expense_type ?? 'Pending'),
+      budgetRequested: typeof suggestion.requested_budget === 'number'
+        ? suggestion.requested_budget
+        : typeof matchedLine?.amount === 'number'
+          ? matchedLine.amount
+          : 0,
+    })
+
+    return items
+  }, [])
+}
+
 function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Potential Conflict') {
     return {
@@ -686,9 +949,9 @@ function toMatchTypeAccent(matchType: PolicyMatchType) {
 
   if (matchType === 'Coordination Required') {
     return {
-      badge: 'border-[#E9D5FF] bg-[#FAF5FF] text-[#A855F7] dark:border-white/10 dark:bg-[#A855F7]/10 dark:text-[#E9D5FF]',
-      icon: 'bg-[#F3E8FF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]',
-      card: 'border-[#E9D5FF]',
+      badge: 'border-[#F3D7A0] bg-[#FFF8E8] text-[#B7791F] dark:border-[#B7791F]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]',
+      icon: 'bg-[#FDECC8] text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]',
+      card: 'border-[#F3D7A0]',
     }
   }
 
@@ -710,9 +973,9 @@ function getPolicyPanelTheme(matchType: PolicyMatchType | 'No Policy Match') {
 
   if (matchType === 'Coordination Required') {
     return {
-      panel: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-[#6B3A87] dark:bg-[#271739]',
-      hover: 'hover:bg-[#FDF7FF]/80 dark:hover:bg-white/5',
-      pill: 'bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]',
+      panel: 'border-[#F3D7A0] bg-[#FFFBF0] dark:border-[#7A5A1F] dark:bg-[#2F2310]',
+      hover: 'hover:bg-[#FFF8E8]/80 dark:hover:bg-white/5',
+      pill: 'bg-[#FFF1CF] text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]',
     }
   }
 
@@ -892,11 +1155,50 @@ export default function NewProject() {
     status: 'idle',
     parsedSummary: null,
     rawSummary: '',
+    responseTimeMs: null,
     error: null,
     sourceFileCount: 0,
     scopeKey: null,
   })
   const supportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
+  const [copilotFormValues, setCopilotFormValues] = useState<FormValues>(INITIAL_FORM_VALUES)
+  const [copilotFieldErrors, setCopilotFieldErrors] = useState<FieldErrorMap>({})
+  const [copilotBudgetItems, setCopilotBudgetItems] = useState<BudgetItemDraft[]>([])
+  const [copilotBudgetItemsError, setCopilotBudgetItemsError] = useState<string | null>(null)
+  const [copilotUploadedFiles, setCopilotUploadedFiles] = useState<File[]>([])
+  const [copilotSupportingDocumentAnalyses, setCopilotSupportingDocumentAnalyses] = useState<Record<string, UploadedSupportingDocumentAnalysis>>({})
+  const copilotSupportingDocumentAnalysisInFlightRef = useRef<Set<string>>(new Set())
+  const [copilotSupportingDocumentCumulativeAnalysis, setCopilotSupportingDocumentCumulativeAnalysis] = useState<UploadedSupportingDocumentCumulativeAnalysis>({
+    status: 'idle',
+    parsedSummary: null,
+    rawSummary: '',
+    responseTimeMs: null,
+    error: null,
+    sourceFileCount: 0,
+    scopeKey: null,
+  })
+  const copilotSupportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
+  const [copilotPendingSuggestion, setCopilotPendingSuggestion] = useState<CopilotPendingSuggestion | null>(null)
+  const [copilotBusy, setCopilotBusy] = useState(false)
+  const [copilotTyping, setCopilotTyping] = useState(false)
+  const [copilotAiSuggestionLoading, setCopilotAiSuggestionLoading] = useState(false)
+  const [copilotAiSuggestionError, setCopilotAiSuggestionError] = useState<string | null>(null)
+  const [copilotAiSuggestions, setCopilotAiSuggestions] = useState<StrategicPrioritySuggestion[]>([])
+  const [copilotAiPromptUsecase, setCopilotAiPromptUsecase] = useState<string | null>(null)
+  const [copilotLastAiRequestedSignature, setCopilotLastAiRequestedSignature] = useState<string | null>(null)
+  const [copilotAiSuggestionsNeedRefresh, setCopilotAiSuggestionsNeedRefresh] = useState(false)
+  const [copilotBudgetConsiderationResult, setCopilotBudgetConsiderationResult] = useState<IctBudgetConsiderationsEvaluationResult | null>(null)
+  const [copilotBudgetConsiderationLoading, setCopilotBudgetConsiderationLoading] = useState(false)
+  const [copilotBudgetConsiderationError, setCopilotBudgetConsiderationError] = useState<string | null>(null)
+  const [chatStagedFile, setChatStagedFile] = useState<File | null>(null)
+  const chatFileInputRef = useRef<HTMLInputElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = chatScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [chatMessages])
+
   const [strategicPriorities, setStrategicPriorities] = useState<StrategicPriorityOption[]>([])
   const [workStreams, setWorkStreams] = useState<WorkStreamOption[]>([])
   const [technologyCompanies, setTechnologyCompanies] = useState<TechnologyCompanyOption[]>([])
@@ -923,6 +1225,14 @@ export default function NewProject() {
     [formValues.strategicPriorityId, strategicPriorities]
   )
 
+  const copilotStrategicPriorityClassificationOptions = useMemo(
+    () =>
+      strategicPriorities
+        .filter((option) => option.parentId === copilotFormValues.strategicPriorityId)
+        .map((option) => ({ value: option.id, label: option.name })),
+    [copilotFormValues.strategicPriorityId, strategicPriorities]
+  )
+
   const matchedAiSuggestions = useMemo<MatchedAiSuggestion[]>(
     () =>
       aiSuggestions.map((suggestion) => {
@@ -947,6 +1257,31 @@ export default function NewProject() {
         }
       }),
     [aiSuggestions, strategicPriorities]
+  )
+
+  const matchedCopilotAiSuggestions = useMemo<MatchedAiSuggestion[]>(
+    () =>
+      copilotAiSuggestions.map((suggestion) => {
+        const priorityRecord =
+          strategicPriorities.find(
+            (option) => !option.parentId && labelsMatch(option.name, suggestion.strategicPriority)
+          ) ?? null
+        const classificationRecord =
+          strategicPriorities.find((option) => {
+            if (!option.parentId) return false
+            if (!labelsMatch(option.name, suggestion.strategicPriorityClassification)) return false
+            if (!priorityRecord) return true
+            return option.parentId === priorityRecord.id
+          }) ?? null
+
+        return {
+          ...suggestion,
+          priorityId: priorityRecord?.id ?? null,
+          classificationId: classificationRecord?.id ?? null,
+          classificationParentId: classificationRecord?.parentId ?? null,
+        }
+      }),
+    [copilotAiSuggestions, strategicPriorities]
   )
   const topAiSuggestion = matchedAiSuggestions[0] ?? null
   const policyMatchGroups = useMemo<PolicyMatchGroup[]>(
@@ -1009,6 +1344,7 @@ export default function NewProject() {
             status: 'queued',
             parsedSummary: null,
             rawSummary: '',
+            responseTimeMs: null,
             error: null,
           }
         }
@@ -1040,6 +1376,7 @@ export default function NewProject() {
           ...(current[signature] ?? {
             parsedSummary: null,
             rawSummary: '',
+            responseTimeMs: null,
             error: null,
           }),
           status: 'analyzing',
@@ -1060,6 +1397,7 @@ export default function NewProject() {
               status: response.parsedSummary ? 'complete' : 'error',
               parsedSummary: response.parsedSummary,
               rawSummary: response.summary,
+              responseTimeMs: response.responseTimeMs,
               error: response.parsedSummary
                 ? null
                 : 'The automate response did not contain a usable structured summary.',
@@ -1070,13 +1408,14 @@ export default function NewProject() {
           console.error('[NewProject] ICT Supporting Document Evaluation flow request failed:', error)
           setSupportingDocumentAnalyses((current) => ({
             ...current,
-            [signature]: {
-              ...(current[signature] ?? {
-                parsedSummary: null,
-                rawSummary: '',
-              }),
-              status: 'error',
-              error: error instanceof Error ? error.message : 'Document evaluation failed.',
+                [signature]: {
+                  ...(current[signature] ?? {
+                    parsedSummary: null,
+                    rawSummary: '',
+                    responseTimeMs: null,
+                  }),
+                  status: 'error',
+                  error: error instanceof Error ? error.message : 'Document evaluation failed.',
             },
           }))
         })
@@ -1085,6 +1424,104 @@ export default function NewProject() {
         })
     }
   }, [mode, supportingDocumentAnalyses, uploadedFiles])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+    const activeSignatures = new Set(copilotUploadedFiles.map((file) => getUploadedFileSignature(file)))
+
+    setCopilotSupportingDocumentAnalyses((current) => {
+      const nextEntries = Object.entries(current).filter(([signature]) => activeSignatures.has(signature))
+      return Object.fromEntries(nextEntries)
+    })
+  }, [copilotUploadedFiles, mode])
+
+  useEffect(() => {
+    if (mode !== 'ai' || copilotUploadedFiles.length === 0) return
+
+    setCopilotSupportingDocumentAnalyses((current) => {
+      const next = { ...current }
+      for (const file of copilotUploadedFiles) {
+        const signature = getUploadedFileSignature(file)
+        if (!next[signature]) {
+          next[signature] = {
+            status: 'queued',
+            parsedSummary: null,
+            rawSummary: '',
+            responseTimeMs: null,
+            error: null,
+          }
+        }
+      }
+      return next
+    })
+  }, [copilotUploadedFiles, mode])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+
+    const queuedFiles = copilotUploadedFiles.filter((file) => {
+      const signature = getUploadedFileSignature(file)
+      return (
+        copilotSupportingDocumentAnalyses[signature]?.status === 'queued' &&
+        !copilotSupportingDocumentAnalysisInFlightRef.current.has(signature)
+      )
+    })
+
+    if (queuedFiles.length === 0) return
+
+    for (const file of queuedFiles) {
+      const signature = getUploadedFileSignature(file)
+      copilotSupportingDocumentAnalysisInFlightRef.current.add(signature)
+
+      setCopilotSupportingDocumentAnalyses((current) => ({
+        ...current,
+        [signature]: {
+          ...(current[signature] ?? {
+            parsedSummary: null,
+            rawSummary: '',
+            responseTimeMs: null,
+            error: null,
+          }),
+          status: 'analyzing',
+          error: null,
+        },
+      }))
+
+      void evaluateSupportingDocument({ file })
+        .then((response) => {
+          setCopilotSupportingDocumentAnalyses((current) => ({
+            ...current,
+            [signature]: {
+              status: response.parsedSummary ? 'complete' : 'error',
+              parsedSummary: response.parsedSummary,
+              rawSummary: response.summary,
+              responseTimeMs: response.responseTimeMs,
+              error: response.parsedSummary
+                ? null
+                : 'The automate response did not contain a usable structured summary.',
+            },
+          }))
+        })
+        .catch((error) => {
+          console.error('[NewProject] Copilot supporting document evaluation request failed:', error)
+          setCopilotSupportingDocumentAnalyses((current) => ({
+            ...current,
+            [signature]: {
+              ...(current[signature] ?? {
+                parsedSummary: null,
+                rawSummary: '',
+                responseTimeMs: null,
+              }),
+              status: 'error',
+              error: error instanceof Error ? error.message : 'Document evaluation failed.',
+            },
+          }))
+        })
+        .finally(() => {
+          copilotSupportingDocumentAnalysisInFlightRef.current.delete(signature)
+        })
+    }
+  }, [copilotSupportingDocumentAnalyses, copilotUploadedFiles, mode])
 
   const supportingDocumentInsightItems = useMemo<SupportingDocumentAiInsightItem[]>(
     () =>
@@ -1104,30 +1541,29 @@ export default function NewProject() {
     [supportingDocumentAnalyses, uploadedFiles]
   )
   const completedSupportingDocumentInputs = useMemo(
-    () =>
-      uploadedFiles
-        .map((file) => {
-          const signature = getUploadedFileSignature(file)
-          const analysis = supportingDocumentAnalyses[signature]
-
-          if (analysis?.status !== 'complete' || !analysis.rawSummary?.trim()) {
-            return null
-          }
-
-          return {
-            id: signature,
-            file,
-            rawSummary: analysis.rawSummary,
-            parsedSummary: analysis.parsedSummary,
-          }
-        })
-        .filter(Boolean) as Array<{
-        id: string
-        file: File
-        rawSummary: string
-        parsedSummary: SupportingDocumentEvaluationSummary | null
-      }>,
+    () => buildCompletedSupportingDocumentInputs(uploadedFiles, supportingDocumentAnalyses),
     [supportingDocumentAnalyses, uploadedFiles]
+  )
+  const copilotSupportingDocumentInsightItems = useMemo<SupportingDocumentAiInsightItem[]>(
+    () =>
+      copilotUploadedFiles.map((file) => {
+        const id = getUploadedFileSignature(file)
+        const analysis = copilotSupportingDocumentAnalyses[id]
+
+        return {
+          id,
+          file,
+          status: analysis?.status ?? 'queued',
+          parsedSummary: analysis?.parsedSummary ?? null,
+          rawSummary: analysis?.rawSummary,
+          error: analysis?.error,
+        }
+      }),
+    [copilotSupportingDocumentAnalyses, copilotUploadedFiles]
+  )
+  const completedCopilotSupportingDocumentInputs = useMemo(
+    () => buildCompletedSupportingDocumentInputs(copilotUploadedFiles, copilotSupportingDocumentAnalyses),
+    [copilotSupportingDocumentAnalyses, copilotUploadedFiles]
   )
   const completedSupportingDocumentScopeKey = useMemo(
     () =>
@@ -1135,6 +1571,13 @@ export default function NewProject() {
         .map((item) => `${item.id}:${item.rawSummary.length}`)
         .join('|'),
     [completedSupportingDocumentInputs]
+  )
+  const completedCopilotSupportingDocumentScopeKey = useMemo(
+    () =>
+      completedCopilotSupportingDocumentInputs
+        .map((item) => `${item.id}:${item.rawSummary.length}`)
+        .join('|'),
+    [completedCopilotSupportingDocumentInputs]
   )
 
   useEffect(() => {
@@ -1146,6 +1589,7 @@ export default function NewProject() {
         status: 'idle',
         parsedSummary: null,
         rawSummary: '',
+        responseTimeMs: null,
         error: null,
         sourceFileCount: completedSupportingDocumentInputs.length,
         scopeKey: completedSupportingDocumentInputs.length === 1 ? completedSupportingDocumentScopeKey : null,
@@ -1173,6 +1617,7 @@ export default function NewProject() {
       status: 'analyzing',
       parsedSummary: null,
       rawSummary: '',
+      responseTimeMs: null,
       error: null,
       sourceFileCount: completedSupportingDocumentInputs.length,
       scopeKey: completedSupportingDocumentScopeKey,
@@ -1189,6 +1634,7 @@ export default function NewProject() {
           status: response.parsedSummary ? 'complete' : 'error',
           parsedSummary: response.parsedSummary,
           rawSummary: response.summary,
+          responseTimeMs: response.responseTimeMs,
           error: response.parsedSummary
             ? null
             : 'The cumulative automate response did not contain a usable structured summary.',
@@ -1202,6 +1648,7 @@ export default function NewProject() {
           status: 'error',
           parsedSummary: null,
           rawSummary: '',
+          responseTimeMs: null,
           error: error instanceof Error ? error.message : 'Cumulative document evaluation failed.',
           sourceFileCount: completedSupportingDocumentInputs.length,
           scopeKey: completedSupportingDocumentScopeKey,
@@ -1218,6 +1665,93 @@ export default function NewProject() {
     mode,
     supportingDocumentCumulativeAnalysis.scopeKey,
     supportingDocumentCumulativeAnalysis.status,
+  ])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+
+    if (completedCopilotSupportingDocumentInputs.length <= 1) {
+      copilotSupportingDocumentCumulativeInFlightRef.current = null
+      setCopilotSupportingDocumentCumulativeAnalysis({
+        status: 'idle',
+        parsedSummary: null,
+        rawSummary: '',
+        responseTimeMs: null,
+        error: null,
+        sourceFileCount: completedCopilotSupportingDocumentInputs.length,
+        scopeKey: completedCopilotSupportingDocumentInputs.length === 1 ? completedCopilotSupportingDocumentScopeKey : null,
+      })
+      return
+    }
+
+    if (
+      copilotSupportingDocumentCumulativeAnalysis.scopeKey === completedCopilotSupportingDocumentScopeKey &&
+      (
+        copilotSupportingDocumentCumulativeAnalysis.status === 'complete' ||
+        copilotSupportingDocumentCumulativeAnalysis.status === 'analyzing' ||
+        copilotSupportingDocumentCumulativeAnalysis.status === 'error'
+      )
+    ) {
+      return
+    }
+
+    if (copilotSupportingDocumentCumulativeInFlightRef.current === completedCopilotSupportingDocumentScopeKey) {
+      return
+    }
+
+    copilotSupportingDocumentCumulativeInFlightRef.current = completedCopilotSupportingDocumentScopeKey
+    setCopilotSupportingDocumentCumulativeAnalysis({
+      status: 'analyzing',
+      parsedSummary: null,
+      rawSummary: '',
+      responseTimeMs: null,
+      error: null,
+      sourceFileCount: completedCopilotSupportingDocumentInputs.length,
+      scopeKey: completedCopilotSupportingDocumentScopeKey,
+    })
+
+    void evaluateCumulativeSupportingDocuments({
+      fileInputs: completedCopilotSupportingDocumentInputs.map((item) => ({
+        filename: item.file.name,
+        fileResponse: item.rawSummary,
+      })),
+    })
+      .then((response) => {
+        setCopilotSupportingDocumentCumulativeAnalysis({
+          status: response.parsedSummary ? 'complete' : 'error',
+          parsedSummary: response.parsedSummary,
+          rawSummary: response.summary,
+          responseTimeMs: response.responseTimeMs,
+          error: response.parsedSummary
+            ? null
+            : 'The cumulative automate response did not contain a usable structured summary.',
+          sourceFileCount: completedCopilotSupportingDocumentInputs.length,
+          scopeKey: completedCopilotSupportingDocumentScopeKey,
+        })
+      })
+      .catch((error) => {
+        console.error('[NewProject] Copilot cumulative supporting document summary flow request failed:', error)
+        setCopilotSupportingDocumentCumulativeAnalysis({
+          status: 'error',
+          parsedSummary: null,
+          rawSummary: '',
+          responseTimeMs: null,
+          error: error instanceof Error ? error.message : 'Cumulative document evaluation failed.',
+          sourceFileCount: completedCopilotSupportingDocumentInputs.length,
+          scopeKey: completedCopilotSupportingDocumentScopeKey,
+        })
+      })
+      .finally(() => {
+        if (copilotSupportingDocumentCumulativeInFlightRef.current === completedCopilotSupportingDocumentScopeKey) {
+          copilotSupportingDocumentCumulativeInFlightRef.current = null
+        }
+      })
+  }, [
+    completedCopilotSupportingDocumentInputs,
+    completedCopilotSupportingDocumentScopeKey,
+    copilotSupportingDocumentCumulativeAnalysis.scopeKey,
+    copilotSupportingDocumentCumulativeAnalysis.status,
+    mode,
   ])
 
   const activeSupportingDocumentSummary = useMemo(() => {
@@ -1272,6 +1806,64 @@ export default function NewProject() {
       error: null,
     }
   }, [completedSupportingDocumentInputs, supportingDocumentCumulativeAnalysis, uploadedFiles.length])
+  const activeCopilotSupportingDocumentSummary = useMemo(() => {
+    if (completedCopilotSupportingDocumentInputs.length > 1) {
+      if (copilotSupportingDocumentCumulativeAnalysis.status === 'complete' && copilotSupportingDocumentCumulativeAnalysis.parsedSummary) {
+        return {
+          type: 'cumulative' as const,
+          fileCount: completedCopilotSupportingDocumentInputs.length,
+          parsedSummary: copilotSupportingDocumentCumulativeAnalysis.parsedSummary,
+          loading: false,
+          error: copilotSupportingDocumentCumulativeAnalysis.error,
+        }
+      }
+
+      if (copilotSupportingDocumentCumulativeAnalysis.status === 'analyzing') {
+        return {
+          type: 'cumulative' as const,
+          fileCount: completedCopilotSupportingDocumentInputs.length,
+          parsedSummary: copilotSupportingDocumentCumulativeAnalysis.parsedSummary,
+          loading: true,
+          error: null,
+        }
+      }
+
+      if (copilotSupportingDocumentCumulativeAnalysis.status === 'error') {
+        return {
+          type: 'cumulative' as const,
+          fileCount: completedCopilotSupportingDocumentInputs.length,
+          parsedSummary: null,
+          loading: false,
+          error: copilotSupportingDocumentCumulativeAnalysis.error,
+        }
+      }
+    }
+
+    const latestSingle = completedCopilotSupportingDocumentInputs[completedCopilotSupportingDocumentInputs.length - 1] ?? null
+    return {
+      type: 'single' as const,
+      fileCount: latestSingle ? 1 : 0,
+      parsedSummary: latestSingle?.parsedSummary ?? null,
+      loading: copilotUploadedFiles.length > 0,
+      error: null,
+    }
+  }, [completedCopilotSupportingDocumentInputs, copilotSupportingDocumentCumulativeAnalysis, copilotUploadedFiles.length])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+    if (!activeCopilotSupportingDocumentSummary.parsedSummary) return
+
+    stageCopilotSuggestionFromAnalysis(
+      activeCopilotSupportingDocumentSummary.parsedSummary as unknown as Record<string, unknown>,
+      activeCopilotSupportingDocumentSummary.type === 'cumulative'
+        ? 'Synthesized from combined supporting documents.'
+        : 'Synthesized from the latest supporting document.',
+      activeCopilotSupportingDocumentSummary.type === 'cumulative' &&
+        activeCopilotSupportingDocumentSummary.fileCount > 1
+        ? 'cumulative'
+        : 'document'
+    )
+  }, [activeCopilotSupportingDocumentSummary, mode])
   const actionSummary = activeSupportingDocumentSummary.parsedSummary
   const latestCompletedSupportingDocument = completedSupportingDocumentInputs[completedSupportingDocumentInputs.length - 1] ?? null
   const actionSummarySourceLabel =
@@ -1284,6 +1876,73 @@ export default function NewProject() {
   const actionDocumentSummary = actionSummary?.file_summary ?? null
   const actionEvidenceAssessment = actionSummary?.evidence_assessment ?? null
   const actionBudgetTotal = getDocumentSummaryBudgetTotal(actionSummary ?? null)
+  const copilotActionSummary = activeCopilotSupportingDocumentSummary.parsedSummary
+  const latestCompletedCopilotSupportingDocument =
+    completedCopilotSupportingDocumentInputs[completedCopilotSupportingDocumentInputs.length - 1] ?? null
+  const copilotActionSummarySourceLabel =
+    activeCopilotSupportingDocumentSummary.type === 'cumulative' &&
+    activeCopilotSupportingDocumentSummary.fileCount > 1
+      ? `Cumulative summary across ${activeCopilotSupportingDocumentSummary.fileCount} files`
+      : latestCompletedCopilotSupportingDocument?.file.name ?? 'Single document summary'
+  const copilotActionSuggestedFields = copilotActionSummary?.suggested_project_fields ?? []
+  const copilotActionBudgetLines = copilotActionSummary?.budget_lines ?? []
+  const copilotActionAccountCode = copilotActionSummary?.account_code_suggestions?.[0] ?? null
+  const copilotActionDocumentSummary = copilotActionSummary?.file_summary ?? null
+  const copilotActionEvidenceAssessment = copilotActionSummary?.evidence_assessment ?? null
+  const copilotActionBudgetTotal = getDocumentSummaryBudgetTotal(copilotActionSummary ?? null)
+
+  const persistSupportingDocumentAiRecordsForBudget = async (
+    budgetId: string,
+    completedInputs: CompletedSupportingDocumentInput[],
+    cumulativeAnalysis: UploadedSupportingDocumentCumulativeAnalysis
+  ) => {
+    if (completedInputs.length === 0) {
+      return
+    }
+
+    await createDocumentSummaryRecords(
+      completedInputs.map((item) => ({
+        budgetId,
+        documentName: item.file.name,
+        documentSummary: item.rawSummary,
+      }))
+    )
+
+    if (completedInputs.length === 1) {
+      const single = completedInputs[0]
+      await upsertCumulativeSummaryRecord({
+        budgetId,
+        responseJson: single.rawSummary,
+        responseTime: single.responseTimeMs,
+      })
+      return
+    }
+
+    let cumulativeResponseJson = cumulativeAnalysis.rawSummary?.trim() || ''
+    let cumulativeResponseTime = cumulativeAnalysis.responseTimeMs ?? null
+
+    if (!cumulativeResponseJson) {
+      const cumulativeResponse = await evaluateCumulativeSupportingDocuments({
+        fileInputs: completedInputs.map((item) => ({
+          filename: item.file.name,
+          fileResponse: item.rawSummary,
+        })),
+      })
+
+      cumulativeResponseJson = cumulativeResponse.summary
+      cumulativeResponseTime = cumulativeResponse.responseTimeMs
+    }
+
+    if (!cumulativeResponseJson) {
+      return
+    }
+
+    await upsertCumulativeSummaryRecord({
+      budgetId,
+      responseJson: cumulativeResponseJson,
+      responseTime: cumulativeResponseTime,
+    })
+  }
 
   const workStreamOptions = useMemo(
     () => workStreams.map((option) => ({ value: option.id, label: option.name })),
@@ -1300,14 +1959,29 @@ export default function NewProject() {
     [formValues.technologyCompanyId, technologyCompanies]
   )
 
+  const selectedCopilotTechnologyCompany = useMemo(
+    () => technologyCompanies.find((company) => company.id === copilotFormValues.technologyCompanyId) ?? null,
+    [copilotFormValues.technologyCompanyId, technologyCompanies]
+  )
+
   const visibleBudgetFields = useMemo(
     () => getVisibleBudgetFields(formValues.activityType),
     [formValues.activityType]
   )
 
+  const copilotVisibleBudgetFields = useMemo(
+    () => getVisibleBudgetFields(copilotFormValues.activityType),
+    [copilotFormValues.activityType]
+  )
+
   const totalRequested = useMemo(
     () => budgetItems.reduce((sum, item) => sum + item.budgetRequested, 0),
     [budgetItems]
+  )
+
+  const copilotTotalRequested = useMemo(
+    () => copilotBudgetItems.reduce((sum, item) => sum + item.budgetRequested, 0),
+    [copilotBudgetItems]
   )
 
   useEffect(() => {
@@ -1348,25 +2022,6 @@ export default function NewProject() {
     }
   }, [mode])
 
-  const handleOptionSelect = (label: string) => {
-    setChatMessages((prev) => [
-      ...prev,
-      { from: 'user', text: label },
-      { from: 'ai', text: `Great. You selected "${label}". Please describe scope, beneficiaries, budget and timeline.` },
-    ])
-    setOptionSelected(true)
-  }
-
-  const handleSend = () => {
-    if (!chatInput.trim()) return
-    setChatMessages((prev) => [
-      ...prev,
-      { from: 'user', text: chatInput },
-      { from: 'ai', text: 'Thanks. I am now structuring this into the required budget fields.' },
-    ])
-    setChatInput('')
-  }
-
   const updateField = <K extends keyof FormValues>(field: K, value: FormValues[K]) => {
     setFormValues((prev) => ({ ...prev, [field]: value }))
     setFieldErrors((prev) => {
@@ -1392,6 +2047,22 @@ export default function NewProject() {
         setPolicyEvaluationResult(null)
         setPolicyEvaluationExpanded(false)
       }
+    }
+  }
+
+  const updateCopilotField = <K extends keyof FormValues>(field: K, value: FormValues[K]) => {
+    setCopilotFormValues((prev) => ({ ...prev, [field]: value }))
+    setCopilotFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const nextErrors = { ...prev }
+      delete nextErrors[field]
+      return nextErrors
+    })
+
+    if (field === 'initiativeName' || field === 'summary') {
+      setCopilotAiSuggestionError(null)
+      setCopilotAiSuggestionsNeedRefresh(true)
+      setCopilotBudgetConsiderationError(null)
     }
   }
 
@@ -1462,6 +2133,481 @@ export default function NewProject() {
     }
   }
 
+  const refreshCopilotAiSuggestions = async (nameOverride?: string, descriptionOverride?: string) => {
+    const projectName = (nameOverride ?? copilotFormValues.initiativeName).trim()
+    const projectDescription = (descriptionOverride ?? copilotFormValues.summary).trim()
+
+    if (!projectName || !projectDescription) {
+      return
+    }
+
+    const entityName = getStoredInstanceDetail()?.name?.trim() || ''
+    const requestSignature = JSON.stringify({ entityName, projectName, projectDescription })
+
+    if (
+      !nameOverride &&
+      !descriptionOverride &&
+      !copilotAiSuggestionsNeedRefresh &&
+      requestSignature === copilotLastAiRequestedSignature
+    ) {
+      return
+    }
+
+    setCopilotAiSuggestionLoading(true)
+    setCopilotAiSuggestionError(null)
+
+    try {
+      const response = await getStrategicPrioritySuggestions({
+        entityName,
+        projectName,
+        projectDescription,
+      })
+
+      setCopilotAiSuggestions(response.recommendations)
+      setCopilotAiPromptUsecase(response.promptUsecase)
+      setCopilotLastAiRequestedSignature(requestSignature)
+      setCopilotAiSuggestionsNeedRefresh(false)
+    } catch (error) {
+      setCopilotAiSuggestionError(
+        error instanceof Error ? error.message : 'Unable to retrieve AI suggestions.'
+      )
+    } finally {
+      setCopilotAiSuggestionLoading(false)
+    }
+  }
+
+  const runCopilotBudgetConsiderationCheck = async (
+    nameOverride?: string,
+    descriptionOverride?: string
+  ) => {
+    const projectName = (nameOverride ?? copilotFormValues.initiativeName).trim()
+    const projectDescription = (descriptionOverride ?? copilotFormValues.summary).trim()
+
+    if (!projectName || !projectDescription) {
+      showErrorToast(
+        'Missing project context',
+        'Add both the project name and summary before running AI Budget Considerations.'
+      )
+      return
+    }
+
+    setCopilotBudgetConsiderationLoading(true)
+    setCopilotBudgetConsiderationError(null)
+
+    try {
+      const response = await evaluateIctBudgetConsiderations({
+        entityName: getStoredInstanceDetail()?.name?.trim() || '',
+        projectName,
+        projectDescription,
+      })
+      setCopilotBudgetConsiderationResult(response)
+    } catch (error) {
+      setCopilotBudgetConsiderationResult(null)
+      setCopilotBudgetConsiderationError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to retrieve ICT Budget Considerations evaluation.'
+      )
+    } finally {
+      setCopilotBudgetConsiderationLoading(false)
+    }
+  }
+
+  const buildCopilotRuntimeContext = (): BudgetCopilotRuntimeContext => ({
+    current_form_state: copilotFormValues,
+    uploaded_documents: copilotUploadedFiles.map((file) => ({
+      name: file.name,
+      size: file.size,
+      signature: getUploadedFileSignature(file),
+    })),
+    file_analyses: completedCopilotSupportingDocumentInputs.map((item) => ({
+      fileName: item.file.name,
+      summary: item.parsedSummary,
+    })),
+    cumulative_analysis: activeCopilotSupportingDocumentSummary.parsedSummary,
+    budget_rows: copilotBudgetItems,
+    pending_suggestions: copilotPendingSuggestion,
+    entity_name: getStoredInstanceDetail()?.name?.trim() || '',
+  })
+
+  const toCopilotChatHistory = (messages: { from: 'ai' | 'user'; text: string }[]): BudgetCopilotChatMessage[] =>
+    messages.map((message) => ({
+      role: message.from === 'ai' ? 'assistant' : 'user',
+      content: message.text,
+    }))
+
+  const simulateCopilotAssistantMessage = async (targetText: string) => {
+    setCopilotTyping(true)
+    setChatMessages((prev) => [...prev, { from: 'ai', text: '' }])
+
+    let current = ''
+    while (current.length < targetText.length) {
+      const remaining = targetText.length - current.length
+      const chunkSize = remaining > 140 ? 14 : remaining > 60 ? 8 : 4
+      current = targetText.slice(0, current.length + chunkSize)
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const index = next.length - 1
+        if (index >= 0 && next[index].from === 'ai') {
+          next[index] = { ...next[index], text: current }
+        }
+        return next
+      })
+      await new Promise((resolve) => window.setTimeout(resolve, 18))
+    }
+
+    setCopilotTyping(false)
+  }
+
+  const clearCopilotWorkspace = () => {
+    setChatInput('')
+    setOptionSelected(false)
+    setChatMessages([
+      {
+        from: 'ai',
+        text: 'Welcome to the Budget Copilot.\n\nTell me what you are trying to budget, upload any supporting files, and I will stage suggestions for you to review before you apply them.',
+      },
+    ])
+    setCopilotFormValues(INITIAL_FORM_VALUES)
+    setCopilotFieldErrors({})
+    setCopilotBudgetItems([])
+    setCopilotBudgetItemsError(null)
+    setCopilotUploadedFiles([])
+    setCopilotSupportingDocumentAnalyses({})
+    setCopilotSupportingDocumentCumulativeAnalysis({
+      status: 'idle',
+      parsedSummary: null,
+      rawSummary: '',
+      responseTimeMs: null,
+      error: null,
+      sourceFileCount: 0,
+      scopeKey: null,
+    })
+    setCopilotPendingSuggestion(null)
+    setCopilotAiSuggestions([])
+    setCopilotAiSuggestionError(null)
+    setCopilotAiPromptUsecase(null)
+    setCopilotLastAiRequestedSignature(null)
+    setCopilotAiSuggestionsNeedRefresh(false)
+    setCopilotBudgetConsiderationResult(null)
+    setCopilotBudgetConsiderationError(null)
+  }
+
+  // Types into the last existing AI message rather than appending a new one
+  const simulateCopilotAssistantMessageInPlace = async (targetText: string) => {
+    setCopilotTyping(true)
+    let current = ''
+    while (current.length < targetText.length) {
+      const remaining = targetText.length - current.length
+      const chunkSize = remaining > 140 ? 14 : remaining > 60 ? 8 : 4
+      current = targetText.slice(0, current.length + chunkSize)
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai') {
+          next[lastIndex] = { ...next[lastIndex], text: current }
+        }
+        return next
+      })
+      await new Promise((resolve) => window.setTimeout(resolve, 18))
+    }
+    setCopilotTyping(false)
+  }
+
+  const stageCopilotSuggestionFromAnalysis = (
+    parsed: Record<string, unknown> | null,
+    assistantText: string,
+    source: CopilotPendingSuggestion['source'],
+    extraFields?: Partial<Record<keyof FormValues, string | string[]>>
+  ) => {
+    if (!parsed && !extraFields) return
+    const baseFields = parsed ? collectCopilotSuggestedFields(parsed) : {}
+    const nextFields = { ...baseFields, ...(extraFields ?? {}) }
+    const nextBudgetRows = parsed ? buildBudgetItemsFromSupportingDocumentSummary(parsed) : []
+    const reviewFlags = parsed && Array.isArray(parsed.review_flags)
+      ? (parsed.review_flags as Array<Record<string, unknown>>).map((flag) => ({
+          flag: String(flag.flag ?? ''),
+          reason: String(flag.reason ?? ''),
+          severity: String(flag.severity ?? ''),
+        }))
+      : []
+
+    if (Object.keys(nextFields).length === 0 && nextBudgetRows.length === 0) {
+      return
+    }
+
+    setCopilotPendingSuggestion({
+      title:
+        source === 'cumulative'
+          ? 'Suggestions From Combined Documents'
+          : source === 'document'
+            ? 'Suggestions From Supporting Documents'
+            : 'Suggestions From This Conversation',
+      fields: nextFields,
+      budgetRows: nextBudgetRows,
+      source,
+      evidence: assistantText,
+      reviewFlags,
+      rawModelResponse: JSON.stringify(parsed),
+    })
+  }
+
+  const mergeStrategicPriorityIntoSuggestion = async (
+    structuredParsed: Record<string, unknown> | null
+  ) => {
+    const extracted = structuredParsed ? collectCopilotSuggestedFields(structuredParsed) : {}
+    const name = ((extracted.initiativeName as string | undefined) ?? copilotFormValues.initiativeName).trim()
+    const desc = ((extracted.summary as string | undefined) ?? copilotFormValues.summary).trim()
+    if (!name || !desc) return
+
+    try {
+      const entityName = getStoredInstanceDetail()?.name?.trim() || ''
+      const response = await getStrategicPrioritySuggestions({ entityName, projectName: name, projectDescription: desc })
+      const top = response.recommendations[0]
+      if (!top) return
+
+      setCopilotAiSuggestions(response.recommendations)
+      setCopilotAiPromptUsecase(response.promptUsecase)
+
+      const priorityRecord = strategicPriorities.find(
+        (opt) => !opt.parentId && labelsMatch(opt.name, top.strategicPriority)
+      ) ?? null
+      const classificationRecord = priorityRecord
+        ? strategicPriorities.find(
+            (opt) => opt.parentId === priorityRecord.id && labelsMatch(opt.name, top.strategicPriorityClassification)
+          ) ?? null
+        : null
+
+      if (!priorityRecord?.id) return
+
+      // Store names (not IDs) — applyCopilotFieldPatch does fuzzy name→ID resolution at apply time
+      const priorityExtraFields: Partial<Record<keyof FormValues, string | string[]>> = {
+        strategicPriorityId: priorityRecord.name,
+      }
+      if (classificationRecord?.id) {
+        priorityExtraFields.strategicPriorityClassificationId = classificationRecord.name
+      }
+
+      setCopilotPendingSuggestion((prev) => {
+        if (!prev) return prev
+        return { ...prev, fields: { ...prev.fields, ...priorityExtraFields } }
+      })
+    } catch {
+      // non-blocking — strategic priority merge failure does not affect chat flow
+    }
+  }
+
+  const sendCopilotPrompt = async (messageText: string) => {
+    const trimmed = messageText.trim()
+    if (!trimmed || copilotBusy) return
+
+    setCopilotBusy(true)
+    setOptionSelected(true)
+    setChatMessages((prev) => [...prev, { from: 'user', text: trimmed }])
+    setChatInput('')
+
+    const nextMessages: Array<{ from: 'ai' | 'user'; text: string }> = [
+      ...chatMessages,
+      { from: 'user', text: trimmed },
+    ]
+    try {
+      const runtimeContext = buildCopilotRuntimeContext()
+      const chatReply = await getBudgetCopilotChatReply({
+        messages: toCopilotChatHistory(nextMessages),
+        runtimeContext,
+      })
+
+      await simulateCopilotAssistantMessage(
+        chatReply.text.trim() ||
+          'I reviewed that and prepared draft guidance for the budget form. Review the staged suggestions before applying them.'
+      )
+
+      const structured = await getBudgetCopilotStructuredAnalysis({
+        messages: toCopilotChatHistory([
+          ...nextMessages,
+          { from: 'ai', text: chatReply.text },
+        ]),
+        runtimeContext,
+      })
+
+      const parsedAnalysis = structured.parsed && typeof structured.parsed === 'object'
+        ? (structured.parsed as Record<string, unknown>)
+        : null
+
+      stageCopilotSuggestionFromAnalysis(parsedAnalysis, chatReply.text, 'chat')
+      void mergeStrategicPriorityIntoSuggestion(parsedAnalysis)
+    } catch (error) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: 'ai',
+          text:
+            error instanceof Error
+              ? `I ran into a problem while preparing the reply: ${error.message}`
+              : 'I ran into a problem while preparing the reply.',
+        },
+      ])
+    } finally {
+      setCopilotBusy(false)
+      setCopilotTyping(false)
+    }
+  }
+
+  const handleOptionSelect = (label: string) => {
+    void sendCopilotPrompt(label)
+  }
+
+  const handleSend = () => {
+    if (chatStagedFile) {
+      void sendCopilotPromptWithFile(chatStagedFile, chatInput)
+    } else {
+      void sendCopilotPrompt(chatInput)
+    }
+  }
+
+  const sendCopilotPromptWithFile = async (file: File, text?: string) => {
+    if (copilotBusy) return
+
+    const signature = getUploadedFileSignature(file)
+    const userText = text?.trim()
+      ? `${text.trim()}\n\n📎 Attached: **${file.name}**`
+      : `📎 Attached: **${file.name}**`
+
+    setCopilotBusy(true)
+    setOptionSelected(true)
+    setChatInput('')
+    setChatStagedFile(null)
+
+    // Add file to the shared uploaded-files pool (right-side panel + cumulative analysis)
+    setCopilotUploadedFiles((prev) =>
+      prev.some((f) => getUploadedFileSignature(f) === signature) ? prev : [...prev, file]
+    )
+
+    // Pre-mark as analyzing so the background useEffect skips it
+    copilotSupportingDocumentAnalysisInFlightRef.current.add(signature)
+    setCopilotSupportingDocumentAnalyses((current) => ({
+      ...current,
+      [signature]: { status: 'analyzing', parsedSummary: null, rawSummary: '', responseTimeMs: null, error: null },
+    }))
+
+    setChatMessages((prev) => [...prev, { from: 'user', text: userText }])
+
+    // Placeholder "analyzing" message
+    setChatMessages((prev) => [...prev, { from: 'ai', text: `Analyzing **${file.name}**...` }])
+
+    try {
+      const analysisResponse = await evaluateSupportingDocument({ file })
+
+      const analysisEntry: UploadedSupportingDocumentAnalysis = {
+        status: analysisResponse.parsedSummary ? 'complete' : 'error',
+        parsedSummary: analysisResponse.parsedSummary,
+        rawSummary: analysisResponse.summary,
+        responseTimeMs: analysisResponse.responseTimeMs,
+        error: analysisResponse.parsedSummary
+          ? null
+          : 'The response did not contain a usable structured summary.',
+      }
+      setCopilotSupportingDocumentAnalyses((current) => ({ ...current, [signature]: analysisEntry }))
+
+      // Build runtime context with the just-completed analysis already included
+      const completedForContext = analysisResponse.parsedSummary
+        ? [{ fileName: file.name, summary: analysisResponse.parsedSummary }]
+        : []
+      const runtimeContext: BudgetCopilotRuntimeContext = {
+        current_form_state: copilotFormValues,
+        uploaded_documents: [
+          ...copilotUploadedFiles.map((f) => ({
+            name: f.name,
+            size: f.size,
+            signature: getUploadedFileSignature(f),
+          })),
+          { name: file.name, size: file.size, signature },
+        ],
+        file_analyses: [
+          ...completedCopilotSupportingDocumentInputs.map((item) => ({
+            fileName: item.file.name,
+            summary: item.parsedSummary,
+          })),
+          ...completedForContext,
+        ],
+        cumulative_analysis: activeCopilotSupportingDocumentSummary.parsedSummary,
+        budget_rows: copilotBudgetItems,
+        pending_suggestions: copilotPendingSuggestion,
+        entity_name: getStoredInstanceDetail()?.name?.trim() || '',
+      }
+
+      const historyForChat = toCopilotChatHistory([
+        ...chatMessages,
+        { from: 'user', text: userText },
+      ])
+
+      // Get the actual copilot reply so the response is conversational, not raw analysis output
+      const chatReply = await getBudgetCopilotChatReply({
+        messages: historyForChat,
+        runtimeContext,
+      })
+
+      const copilotReplyText = chatReply.text.trim() ||
+        `I've reviewed **${file.name}**. Check the suggestions below and apply what looks right.`
+
+      // Replace "Analyzing..." placeholder with the copilot's reply via typing simulation
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai') {
+          next[lastIndex] = { ...next[lastIndex], text: '' }
+        }
+        return next
+      })
+      await simulateCopilotAssistantMessageInPlace(copilotReplyText)
+
+      // Structured extraction uses the copilot reply as part of transcript
+      const structured = await getBudgetCopilotStructuredAnalysis({
+        messages: toCopilotChatHistory([
+          ...chatMessages,
+          { from: 'user', text: userText },
+          { from: 'ai', text: copilotReplyText },
+        ]),
+        runtimeContext,
+      })
+
+      const parsedAnalysis = structured.parsed && typeof structured.parsed === 'object'
+        ? (structured.parsed as Record<string, unknown>)
+        : null
+
+      stageCopilotSuggestionFromAnalysis(parsedAnalysis, copilotReplyText, 'document')
+      void mergeStrategicPriorityIntoSuggestion(parsedAnalysis)
+    } catch (error) {
+      setCopilotSupportingDocumentAnalyses((current) => ({
+        ...current,
+        [signature]: {
+          status: 'error',
+          parsedSummary: null,
+          rawSummary: '',
+          responseTimeMs: null,
+          error: error instanceof Error ? error.message : 'Document analysis failed.',
+        },
+      }))
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai') {
+          next[lastIndex] = {
+            ...next[lastIndex],
+            text: error instanceof Error
+              ? `Analysis failed for **${file.name}**: ${error.message}`
+              : `Analysis failed for **${file.name}**.`,
+          }
+        }
+        return next
+      })
+    } finally {
+      copilotSupportingDocumentAnalysisInFlightRef.current.delete(signature)
+      setCopilotBusy(false)
+      setCopilotTyping(false)
+    }
+  }
+
   const applyAiSuggestion = (
     suggestion: MatchedAiSuggestion,
     mode: 'both' | 'priority' | 'classification'
@@ -1519,6 +2665,60 @@ export default function NewProject() {
     })
   }
 
+  const applyCopilotAiSuggestion = (
+    suggestion: MatchedAiSuggestion,
+    mode: 'both' | 'priority' | 'classification'
+  ) => {
+    const nextPriorityId =
+      mode === 'priority' || mode === 'both'
+        ? suggestion.priorityId
+        : suggestion.classificationParentId ?? copilotFormValues.strategicPriorityId
+    const nextClassificationId = mode === 'priority' ? '' : suggestion.classificationId ?? ''
+
+    if (!nextPriorityId) {
+      showErrorToast(
+        'Suggestion could not be applied',
+        'The recommended Strategic Priority could not be matched to a live Dataverse option.'
+      )
+      return
+    }
+
+    if ((mode === 'classification' || mode === 'both') && !nextClassificationId) {
+      showErrorToast(
+        'Suggestion could not be applied',
+        'The recommended Strategic Priority Classification could not be matched to a live Dataverse option.'
+      )
+      return
+    }
+
+    setCopilotFormValues((prev) => ({
+      ...prev,
+      strategicPriorityId: nextPriorityId,
+      strategicPriorityClassificationId: nextClassificationId,
+    }))
+
+    setCopilotFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.strategicPriorityId
+      delete nextErrors.strategicPriorityClassificationId
+      return nextErrors
+    })
+  }
+
+  const handleCopilotStrategicPriorityChange = (value: string) => {
+    setCopilotFormValues((prev) => ({
+      ...prev,
+      strategicPriorityId: value,
+      strategicPriorityClassificationId: '',
+    }))
+    setCopilotFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.strategicPriorityId
+      delete nextErrors.strategicPriorityClassificationId
+      return nextErrors
+    })
+  }
+
   const handleTechnologyCompanyChange = (value: string) => {
     setFormValues((prev) => ({
       ...prev,
@@ -1526,6 +2726,20 @@ export default function NewProject() {
       technologyProductIds: [],
     }))
     setFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.technologyCompanyId
+      delete nextErrors.technologyProductIds
+      return nextErrors
+    })
+  }
+
+  const handleCopilotTechnologyCompanyChange = (value: string) => {
+    setCopilotFormValues((prev) => ({
+      ...prev,
+      technologyCompanyId: value,
+      technologyProductIds: [],
+    }))
+    setCopilotFieldErrors((prev) => {
       const nextErrors = { ...prev }
       delete nextErrors.technologyCompanyId
       delete nextErrors.technologyProductIds
@@ -1566,8 +2780,50 @@ export default function NewProject() {
     })
   }
 
+  const handleCopilotActivityTypeChange = (value: ActivityType) => {
+    const nextVisibleFields = getVisibleBudgetFields(value)
+
+    setCopilotFormValues((prev) => ({
+      ...prev,
+      activityType: value,
+      totalBudgetPaidPreviousYear: nextVisibleFields.includes('totalBudgetPaidPreviousYear')
+        ? prev.totalBudgetPaidPreviousYear
+        : '',
+      totalBudgetPayableFutureYear: nextVisibleFields.includes('totalBudgetPayableFutureYear')
+        ? prev.totalBudgetPayableFutureYear
+        : '',
+      totalBudgetPayableNextYear: nextVisibleFields.includes('totalBudgetPayableNextYear')
+        ? prev.totalBudgetPayableNextYear
+        : '',
+      totalBudgetPayableForYearAfterNext: nextVisibleFields.includes(
+        'totalBudgetPayableForYearAfterNext'
+      )
+        ? prev.totalBudgetPayableForYearAfterNext
+        : '',
+    }))
+
+    setCopilotFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      delete nextErrors.activityType
+      delete nextErrors.totalBudgetPaidPreviousYear
+      delete nextErrors.totalBudgetPayableFutureYear
+      delete nextErrors.totalBudgetPayableNextYear
+      delete nextErrors.totalBudgetPayableForYearAfterNext
+      return nextErrors
+    })
+  }
+
   const toggleTechnologyProduct = (productId: string) => {
     setFormValues((prev) => ({
+      ...prev,
+      technologyProductIds: prev.technologyProductIds.includes(productId)
+        ? prev.technologyProductIds.filter((id) => id !== productId)
+        : [...prev.technologyProductIds, productId],
+    }))
+  }
+
+  const toggleCopilotTechnologyProduct = (productId: string) => {
+    setCopilotFormValues((prev) => ({
       ...prev,
       technologyProductIds: prev.technologyProductIds.includes(productId)
         ? prev.technologyProductIds.filter((id) => id !== productId)
@@ -1768,10 +3024,135 @@ export default function NewProject() {
           'Documents not uploaded',
           'The budget draft was saved but document upload failed. Check the browser console for details.'
         )
+        navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
+        return
+      }
+      if (completedSupportingDocumentInputs.length > 0) {
+        try {
+          await runActionToast(
+            () =>
+              persistSupportingDocumentAiRecordsForBudget(
+                createdBudget.id,
+                completedSupportingDocumentInputs,
+                supportingDocumentCumulativeAnalysis
+              ),
+            {
+              processingTitle: 'Saving AI summaries',
+              processingDescription: 'Storing individual and cumulative document summaries in Dataverse...',
+              successTitle: 'AI summaries saved',
+              successDescription: 'Supporting-document AI summaries were linked to the draft.',
+              errorTitle: 'AI summary save failed',
+              minDurationMs: 1200,
+            }
+          )
+        } catch (summaryError) {
+          console.error('[NewProject] Draft and documents saved, but AI summary persistence failed.', summaryError)
+          showErrorToast(
+            'AI summaries not saved',
+            'The draft and files were saved successfully, but the AI document summaries could not be persisted.'
+          )
+        }
       }
     }
 
     navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
+  }
+
+  const validateCopilotForm = () =>
+    validateDraftState({
+      values: copilotFormValues,
+      budgetItems: copilotBudgetItems,
+      setFieldErrors: setCopilotFieldErrors,
+      setBudgetItemsError: setCopilotBudgetItemsError,
+      showErrorToast,
+    })
+
+  const saveDraftFromState = async (input: {
+    values: FormValues
+    budgetRows: BudgetItemDraft[]
+    files: File[]
+    completedInputs: CompletedSupportingDocumentInput[]
+    cumulativeAnalysis: UploadedSupportingDocumentCumulativeAnalysis
+  }) => {
+    const createdBudget = await runActionToast(
+      async () => {
+        const budget = await createIctBudgetDraft(buildCreateDraftPayload(input.values))
+        await createBudgetLineItems(budget.id, input.budgetRows)
+        return budget
+      },
+      {
+        processingTitle: 'Saving draft',
+        processingDescription:
+          'Creating the ICT budget, associating technologies, and saving budget line items...',
+        successTitle: 'Draft saved successfully',
+        successDescription: 'The Create Project draft has been created in Dataverse.',
+        errorTitle: 'Draft save failed',
+        minDurationMs: 3600,
+      }
+    )
+
+    if (input.files.length > 0) {
+      try {
+        await runActionToast(() => uploadFilesToRecord(createdBudget.id, input.files), {
+          processingTitle: 'Uploading documents',
+          processingDescription: `Uploading ${input.files.length} supporting document${input.files.length !== 1 ? 's' : ''}...`,
+          successTitle: 'Documents uploaded',
+          successDescription: `${input.files.length} document${input.files.length !== 1 ? 's' : ''} uploaded successfully.`,
+          errorTitle: 'Document upload failed',
+          minDurationMs: 2000,
+        })
+      } catch (uploadErr) {
+        console.error('[FileUpload] Upload failed — draft was saved successfully, documents were not uploaded.', uploadErr)
+        showErrorToast(
+          'Documents not uploaded',
+          'The budget draft was saved but document upload failed. Check the browser console for details.'
+        )
+        navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
+        return
+      }
+
+      if (input.completedInputs.length > 0) {
+        try {
+          await runActionToast(
+            () =>
+              persistSupportingDocumentAiRecordsForBudget(
+                createdBudget.id,
+                input.completedInputs,
+                input.cumulativeAnalysis
+              ),
+            {
+              processingTitle: 'Saving AI summaries',
+              processingDescription:
+                'Storing individual and cumulative document summaries in Dataverse...',
+              successTitle: 'AI summaries saved',
+              successDescription: 'Supporting-document AI summaries were linked to the draft.',
+              errorTitle: 'AI summary save failed',
+              minDurationMs: 1200,
+            }
+          )
+        } catch (summaryError) {
+          console.error('[NewProject] Draft and documents saved, but AI summary persistence failed.', summaryError)
+          showErrorToast(
+            'AI summaries not saved',
+            'The draft and files were saved successfully, but the AI document summaries could not be persisted.'
+          )
+        }
+      }
+    }
+
+    navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
+  }
+
+  const handleCopilotSaveDraft = async () => {
+    if (!validateCopilotForm()) return
+
+    await saveDraftFromState({
+      values: copilotFormValues,
+      budgetRows: copilotBudgetItems,
+      files: copilotUploadedFiles,
+      completedInputs: completedCopilotSupportingDocumentInputs,
+      cumulativeAnalysis: copilotSupportingDocumentCumulativeAnalysis,
+    })
   }
 
   const applyAiFieldSuggestion = (
@@ -1929,6 +3310,241 @@ export default function NewProject() {
     }
   }
 
+  const applyCopilotFieldPatch = (patch: Partial<Record<keyof FormValues, string | string[]>>) => {
+    const nextValues = { ...copilotFormValues }
+
+    for (const [key, value] of Object.entries(patch) as Array<[keyof FormValues, string | string[]]>) {
+      if (value === undefined || value === null) continue
+
+      if (key === 'initiativeName' || key === 'summary' || key === 'plannedStartDate' || key === 'plannedEndDate') {
+        nextValues[key] = Array.isArray(value) ? value.join(', ') : value
+        continue
+      }
+
+      if (key === 'category') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = CATEGORY_OPTIONS.find((option) => option.label.toLowerCase() === raw.toLowerCase())
+        if (matched) nextValues.category = matched.value
+        continue
+      }
+
+      if (key === 'budgetItemType') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = BUDGET_ITEM_TYPE_OPTIONS.find((option) => option.label.toLowerCase() === raw.toLowerCase())
+        if (matched) nextValues.budgetItemType = matched.value
+        continue
+      }
+
+      if (key === 'activityType') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = ACTIVITY_TYPE_OPTIONS.find((option) => option.title.toLowerCase() === raw.toLowerCase())
+        if (matched) nextValues.activityType = matched.value
+        continue
+      }
+
+      if (key === 'technologyCompanyId') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = technologyCompanies.find(
+          (company) =>
+            company.name.toLowerCase() === raw.toLowerCase() ||
+            company.name.toLowerCase().includes(raw.toLowerCase()) ||
+            raw.toLowerCase().includes(company.name.toLowerCase())
+        )
+        if (matched) {
+          nextValues.technologyCompanyId = matched.id
+          nextValues.technologyProductIds = []
+        }
+        continue
+      }
+
+      if (key === 'technologyProductIds') {
+        const rawValues = Array.isArray(value) ? value : [value]
+        const selectedCompany =
+          technologyCompanies.find((company) => company.id === nextValues.technologyCompanyId) ?? null
+        if (selectedCompany) {
+          nextValues.technologyProductIds = selectedCompany.products
+            .filter((product) =>
+              rawValues.some(
+                (raw) =>
+                  product.name.toLowerCase() === raw.toLowerCase() ||
+                  product.name.toLowerCase().includes(raw.toLowerCase()) ||
+                  raw.toLowerCase().includes(product.name.toLowerCase())
+              )
+            )
+            .map((product) => product.id)
+        }
+        continue
+      }
+
+      if (key === 'workStreamId') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = workStreams.find((stream) => labelsMatch(stream.name, raw))
+        if (matched) nextValues.workStreamId = matched.id
+        continue
+      }
+
+      if (key === 'strategicPriorityId') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = strategicPriorities.find((option) => !option.parentId && labelsMatch(option.name, raw))
+        if (matched) {
+          nextValues.strategicPriorityId = matched.id
+          nextValues.strategicPriorityClassificationId = ''
+        }
+        continue
+      }
+
+      if (key === 'strategicPriorityClassificationId') {
+        const raw = Array.isArray(value) ? value[0] ?? '' : value
+        const matched = strategicPriorities.find(
+          (option) =>
+            Boolean(option.parentId) &&
+            labelsMatch(option.name, raw) &&
+            (!nextValues.strategicPriorityId || option.parentId === nextValues.strategicPriorityId)
+        )
+        if (matched) {
+          nextValues.strategicPriorityClassificationId = matched.id
+          if (!nextValues.strategicPriorityId && matched.parentId) {
+            nextValues.strategicPriorityId = matched.parentId
+          }
+        }
+      }
+    }
+
+    setCopilotFormValues(nextValues)
+    setCopilotFieldErrors((prev) => {
+      const nextErrors = { ...prev }
+      Object.keys(patch).forEach((key) => delete nextErrors[key as keyof FieldErrorMap])
+      return nextErrors
+    })
+  }
+
+  const applyCopilotPendingSuggestion = async () => {
+    if (!copilotPendingSuggestion) return
+    applyCopilotFieldPatch(copilotPendingSuggestion.fields)
+
+    if (copilotPendingSuggestion.budgetRows.length > 0) {
+      try {
+        const classificationRecords = await getClassificationRecords()
+        const { nodeMap } = buildClassificationTree(classificationRecords)
+        const resolvedItems: BudgetItemDraft[] = []
+
+        for (const row of copilotPendingSuggestion.budgetRows) {
+          // Already has a real classification GUID — use as-is
+          if (!row.id.startsWith('copilot-')) {
+            resolvedItems.push(row)
+            continue
+          }
+
+          // Resolve the GL code string to a real classification record
+          const searchTerm = row.glCode.trim().toLowerCase()
+          let matchedId: string | null = null
+
+          for (const [id, node] of nodeMap.entries()) {
+            if (node.level !== 4) continue
+            const nodeName = (node.name ?? '').toLowerCase()
+            if (
+              nodeName.includes(searchTerm) ||
+              searchTerm.includes(nodeName) ||
+              (node.ebsCode ?? '').toLowerCase() === searchTerm ||
+              (node.fusionCode ?? '').toLowerCase() === searchTerm
+            ) {
+              matchedId = id
+              break
+            }
+          }
+
+          if (!matchedId) continue
+
+          const draft = buildBudgetItemDraft(matchedId, nodeMap)
+          if (draft) resolvedItems.push({ ...draft, budgetRequested: row.budgetRequested })
+        }
+
+        if (resolvedItems.length > 0) {
+          setCopilotBudgetItems((prev) => {
+            const existing = new Set(prev.map((item) => item.id))
+            const additions = resolvedItems.filter((item) => !existing.has(item.id))
+            return additions.length > 0 ? [...prev, ...additions] : prev
+          })
+          setCopilotBudgetItemsError(null)
+        }
+      } catch (error) {
+        showErrorToast(
+          'Budget items not applied',
+          error instanceof Error ? error.message : 'Could not resolve GL codes to classification records.'
+        )
+      }
+    }
+
+    setCopilotPendingSuggestion(null)
+  }
+
+  const applyCopilotDocumentFieldSuggestion = (field: SupportingDocumentSuggestedProjectField) => {
+    const mapped = collectCopilotSuggestedFields({
+      suggested_project_fields: [field],
+    })
+    if (Object.keys(mapped).length === 0) {
+      showErrorToast('Suggestion could not be applied', 'This field could not be mapped to the draft.')
+      return
+    }
+    applyCopilotFieldPatch(mapped)
+  }
+
+  const applyAllCopilotDocumentFieldSuggestions = () => {
+    const mapped = collectCopilotSuggestedFields({
+      suggested_project_fields: copilotActionSuggestedFields,
+    })
+    if (Object.keys(mapped).length === 0) return
+    applyCopilotFieldPatch(mapped)
+  }
+
+  const applyCopilotAccountCodeSuggestion = async () => {
+    if (!copilotActionAccountCode?.account_code) return
+
+    try {
+      const classificationRecords = await getClassificationRecords()
+      const { nodeMap } = buildClassificationTree(classificationRecords)
+      const searchTerm = copilotActionAccountCode.account_code.trim().toLowerCase()
+
+      let matchedId: string | null = null
+
+      for (const [id, node] of nodeMap.entries()) {
+        if (node.level !== 4) continue
+        const nodeName = (node.name ?? '').toLowerCase()
+        if (
+          nodeName.includes(searchTerm) ||
+          searchTerm.includes(nodeName) ||
+          (node.ebsCode ?? '').toLowerCase() === searchTerm ||
+          (node.fusionCode ?? '').toLowerCase() === searchTerm
+        ) {
+          matchedId = id
+          break
+        }
+      }
+
+      if (!matchedId) {
+        showErrorToast(
+          'Account code not found',
+          `No GL account matching "${copilotActionAccountCode.account_code}" was found in the classification tree.`
+        )
+        return
+      }
+
+      const draft = buildBudgetItemDraft(matchedId, nodeMap)
+      if (!draft) return
+
+      setCopilotBudgetItems((prev) => {
+        if (prev.some((item) => item.id === draft.id)) return prev
+        return [...prev, { ...draft, budgetRequested: copilotActionAccountCode.requested_budget ?? 0 }]
+      })
+      setCopilotBudgetItemsError(null)
+    } catch (error) {
+      showErrorToast(
+        'Apply failed',
+        error instanceof Error ? error.message : 'Could not apply the account code suggestion.'
+      )
+    }
+  }
+
   return (
     <div className="w-full space-y-6">
       <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
@@ -2018,10 +3634,7 @@ export default function NewProject() {
                         setPolicyEvaluationExpanded((value) => !value)
                       }
                     }}
-                    className={cn(
-                      'flex w-full items-start justify-between gap-4 px-6 py-5 text-left transition-colors',
-                      policyPanelTheme.hover
-                    )}
+                    className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
                   >
                     <div className="flex items-start gap-4">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#A855F7_0%,#C084FC_100%)] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
@@ -2066,7 +3679,7 @@ export default function NewProject() {
                             </span>
                           )}
                           {policyEvaluationResult.overallAssessment.hasCoordinationRequirement && (
-                            <span className="rounded-full bg-[#FAF5FF] px-2.5 py-1 text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                            <span className="rounded-full bg-[#FFF1CF] px-2.5 py-1 text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]">
                               {policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0}{' '}
                               <span className="text-[#64748B] dark:text-slate-100">coordination</span>
                             </span>
@@ -2840,7 +4453,7 @@ export default function NewProject() {
                             <div key={field.field_key ?? field.field_label} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">
                                     {field.field_label ?? field.field_key ?? 'Suggested Field'}
                                   </p>
                                   <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">
@@ -2913,7 +4526,7 @@ export default function NewProject() {
                           </div>
                         ))}
                         <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Total extracted amount</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Total Extracted Amount</p>
                           <CurrencyAmount amount={actionBudgetTotal} full className="mt-1 text-sm font-bold text-[#A855F7]" />
                         </div>
                       </div>
@@ -2948,11 +4561,11 @@ export default function NewProject() {
                         <div className="rounded-xl border border-[#E9D5FF] bg-[linear-gradient(135deg,#FDF7FF_0%,#FAF5FF_100%)] px-3 py-3 dark:border-white/10 dark:bg-[linear-gradient(135deg,#2A123D_0%,#1E293B_100%)]">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Primary account code</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Primary Account Code</p>
                               <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{actionAccountCode.account_code ?? '-'}</p>
                               {typeof actionAccountCode.requested_budget === 'number' && (
                                 <div className="mt-1.5 flex items-center gap-1.5">
-                                  <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64748B] dark:text-slate-300">Requested</p>
+                                  <p className="text-[10px] font-semibold text-[#64748B] dark:text-slate-300">Requested</p>
                                   <CurrencyAmount amount={actionAccountCode.requested_budget} full className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]" />
                                 </div>
                               )}
@@ -2967,7 +4580,7 @@ export default function NewProject() {
                         <div className="grid gap-2 sm:grid-cols-3">
                           {(['l1', 'l2', 'l3'] as const).map((level) => (
                             <div key={level} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">{level.toUpperCase()}</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{level.replace(/^l/i, 'L')}</p>
                               <p className="mt-1 text-xs font-semibold text-[#0F172A] dark:text-white">
                                 {actionAccountCode.classification_path?.[level] ?? '-'}
                               </p>
@@ -3035,7 +4648,7 @@ export default function NewProject() {
                         {(actionEvidenceAssessment?.recommended_user_action || actionEvidenceAssessment?.evidence_score) && (
                           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
                             <div className="flex items-center justify-between gap-3">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Evidence snapshot</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Snapshot</p>
                               {typeof actionEvidenceAssessment?.evidence_score === 'number' && (
                                 <span className="rounded-full bg-[#FAF5FF] px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                                   {actionEvidenceAssessment.evidence_score}
@@ -3061,61 +4674,68 @@ export default function NewProject() {
           </div>
         </>
       ) : (
-        <div className="sticky top-6 flex h-[calc(100vh-180px)] w-full flex-col overflow-hidden rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white shadow-md dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
-          <div className="flex items-center justify-between border-b border-[#B0DBFF] bg-gradient-to-r from-[#286CFF]/5 to-transparent px-5 py-4 dark:border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-lg shadow-blue-200 dark:shadow-none">
-                <Sparkles className="h-5 w-5 text-white" />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <div className="space-y-6">
+            <section className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_14px_36px_rgba(15,23,42,0.08)] dark:border-white/10 dark:from-[#241735] dark:to-[#1E293B]">
+              <div className="flex items-center justify-between border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_10px_24px_rgba(168,85,247,0.24)]">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-[#0F172A] dark:text-white">Budget Copilot Workspace</h3>
+                    <p className="text-xs text-[#64748B] dark:text-slate-300">
+                      Guided draft creation using chat, AI suggestions, and supporting documents.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="ghost" className="rounded-xl text-[#A855F7] hover:bg-[#F6EBFF] hover:text-[#9333EA]" onClick={clearCopilotWorkspace}>
+                  <RefreshCw className="h-4 w-4" />
+                  Clear
+                </Button>
               </div>
-              <div>
-                <h3 className="font-semibold text-slate-900 dark:text-white">Budget Copilot</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-300">Interactive AI Assistant</p>
-              </div>
-            </div>
-            <button className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-transparent px-3 text-sm font-medium text-slate-500 transition-colors hover:bg-[#E7F5FF] hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:text-slate-200 dark:hover:bg-white/10">
-              <RefreshCw className="mr-1 h-4 w-4" />
-              Clear
-            </button>
-          </div>
 
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
-            {chatMessages.map((msg, i) => (
-              <div key={i} className={cn('flex gap-3', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
-                {msg.from === 'ai' && (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-xs text-white shadow-md">
-                    <Zap className="h-4 w-4 text-white" />
-                  </div>
-                )}
-                <div className="max-w-[90%] space-y-3">
-                  <div
-                    className={cn(
-                      'rounded-2xl px-4 py-3 text-sm shadow-sm',
-                      msg.from === 'ai'
-                        ? 'rounded-tl-none border border-slate-200 bg-white text-slate-800 dark:border-white/10 dark:bg-[#1E293B] dark:text-white'
-                        : 'rounded-tr-none bg-[#286CFF] text-white'
-                    )}
-                  >
-                    <p className="whitespace-pre-line">{msg.text}</p>
-                  </div>
-                  {msg.from === 'ai' && i === 1 && !optionSelected && (
-                    <div className="space-y-2">
+              <div className="space-y-4 px-5 py-5">
+                <div ref={chatScrollRef} className="max-h-[420px] space-y-4 overflow-y-auto pr-1">
+                  {chatMessages.map((msg, i) => (
+                    <div key={i} className={cn('flex gap-3', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
+                      {msg.from === 'ai' && (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#A855F7_0%,#C084FC_100%)] text-white shadow-sm">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                      )}
+                      <div
+                        className={cn(
+                          'max-w-[90%] rounded-2xl px-4 py-3 text-sm shadow-sm',
+                          msg.from === 'ai'
+                            ? 'rounded-tl-none border border-[#F0D9FF] bg-white text-[#334155] dark:border-white/10 dark:bg-[#1E293B] dark:text-white'
+                            : 'rounded-tr-none bg-[#A855F7] text-white'
+                        )}
+                      >
+                        <p className="leading-6">{renderCopilotMessage(msg.text)}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {!optionSelected && (
+                    <div className="grid gap-2 sm:grid-cols-2">
                       {COPILOT_OPTIONS.map((opt) => {
                         const Icon = opt.icon
                         return (
                           <button
                             key={opt.label}
+                            type="button"
                             onClick={() => handleOptionSelect(opt.label)}
-                            className="group w-full rounded-xl border border-slate-200 bg-white p-4 text-left transition-all hover:border-[#286CFF] hover:bg-blue-50/30 dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-[#24344E]"
+                            className="group rounded-2xl border border-[#F0D9FF] bg-white p-4 text-left transition-colors hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5"
                           >
                             <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#E7F5FF] transition-colors group-hover:bg-[#286CFF]">
-                                <Icon className="h-5 w-5 text-[#286CFF] group-hover:text-white" />
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                                <Icon className="h-5 w-5" />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-slate-800 group-hover:text-[#286CFF] dark:text-white">{opt.label}</p>
-                                <p className="text-xs text-slate-500 dark:text-slate-300">{opt.sub}</p>
+                                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{opt.label}</p>
+                                <p className="text-xs text-[#64748B] dark:text-slate-300">{opt.sub}</p>
                               </div>
-                              <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-[#286CFF]" />
                             </div>
                           </button>
                         )
@@ -3123,29 +4743,341 @@ export default function NewProject() {
                     </div>
                   )}
                 </div>
+
+                {chatStagedFile && (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#E9D5FF] bg-[#FDF7FF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                    <FileText className="h-4 w-4 shrink-0 text-[#A855F7]" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#334155] dark:text-white">{chatStagedFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setChatStagedFile(null)}
+                      className="shrink-0 rounded-full p-0.5 text-[#94A3B8] hover:text-[#A855F7] dark:hover:text-[#E9D5FF]"
+                      aria-label="Remove attached file"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <input
+                  ref={chatFileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null
+                    setChatStagedFile(file)
+                    event.target.value = ''
+                  }}
+                />
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => chatFileInputRef.current?.click()}
+                    disabled={copilotBusy}
+                    title="Attach a supporting document"
+                    className={cn(
+                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#E9D5FF] bg-white shadow-sm transition-colors hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5',
+                      chatStagedFile && 'border-[#A855F7] bg-[#FDF7FF] text-[#A855F7] dark:bg-[#A855F7]/10',
+                      copilotBusy && 'cursor-not-allowed opacity-50'
+                    )}
+                  >
+                    <Paperclip className={cn('h-4 w-4', chatStagedFile ? 'text-[#A855F7]' : 'text-[#94A3B8]')} />
+                  </button>
+
+                  <Input
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        handleSend()
+                      }
+                    }}
+                    placeholder={chatStagedFile ? 'Add a note about this file (optional)...' : 'Describe the project, ask for help, or provide additional details...'}
+                    className="h-11 rounded-xl border-[#E9D5FF] bg-white shadow-sm focus-visible:ring-[#A855F7] dark:border-white/10 dark:bg-[#1E293B]"
+                  />
+
+                  <Button
+                    type="button"
+                    className="h-11 rounded-xl bg-[#A855F7] px-4 text-white hover:bg-[#9333EA]"
+                    onClick={handleSend}
+                    disabled={copilotBusy || (!chatInput.trim() && !chatStagedFile)}
+                  >
+                    {copilotBusy || copilotTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
-            ))}
+            </section>
+
+            {copilotPendingSuggestion && (
+              <section className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#241735] dark:to-[#1E293B]">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-[#A855F7] dark:text-[#E9D5FF]">{copilotPendingSuggestion.title}</h3>
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                      Suggestions are staged first. Review them, then apply them into the draft when you are ready.
+                    </p>
+                  </div>
+                  <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => void applyCopilotPendingSuggestion()}>
+                    <Check className="h-4 w-4" />
+                    Apply Suggestions
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {Object.entries(copilotPendingSuggestion.fields).length > 0 && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {Object.entries(copilotPendingSuggestion.fields).map(([key, value]) => (
+                        <div key={key} className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
+                          <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {copilotPendingSuggestion.budgetRows.length > 0 && (
+                    <div className="rounded-xl border border-[#F0D9FF] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Rows Preview</p>
+                      <div className="mt-2 space-y-2">
+                        {copilotPendingSuggestion.budgetRows.map((row) => (
+                          <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#FDF7FF] px-3 py-2 dark:bg-white/5">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{row.accountName}</p>
+                              <p className="text-xs text-[#64748B] dark:text-slate-300">{row.l1} • {row.l2} • {row.l3}</p>
+                            </div>
+                            <CurrencyAmount amount={row.budgetRequested} full className="text-sm font-bold text-[#A855F7]" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5">
+                    <Upload className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents Preview</h3>
+                    <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
+                      Files are analyzed immediately for AI guidance, but they are uploaded only when you save the draft.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-5 p-4 sm:p-6">
+                <FileUploadDropzone files={copilotUploadedFiles} onChange={setCopilotUploadedFiles} />
+              </div>
+            </section>
           </div>
 
-          <div className="px-5 pb-5">
-            <input accept=".pdf,.docx,.xlsx" className="hidden" multiple type="file" />
-            <div className="flex gap-2">
-              <input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Describe your project or ask a question..."
-                className="h-9 min-w-0 flex-1 rounded-xl border border-[#B0DBFF] bg-white px-3 py-1 text-base shadow-sm outline-none transition-[color,box-shadow] placeholder:text-slate-400 focus:border-[#286CFF] focus:ring-2 focus:ring-[#286CFF]/10 dark:border-white/10 dark:bg-[#0F172A]/35 dark:text-white dark:placeholder:text-slate-500 md:text-sm"
+          <div className="space-y-6">
+            {(copilotBudgetConsiderationLoading || copilotBudgetConsiderationError || copilotBudgetConsiderationResult) && (
+              <section className="rounded-2xl border border-[#E9D5FF] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+                {copilotBudgetConsiderationLoading ? (
+                  <div className="flex items-center gap-3 text-sm text-[#A855F7]">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Evaluating ICT Budget Considerations policies...
+                  </div>
+                ) : copilotBudgetConsiderationError ? (
+                  <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318]">
+                    {copilotBudgetConsiderationError}
+                  </div>
+                ) : copilotBudgetConsiderationResult ? (
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Budget Considerations</h3>
+                        <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
+                          {copilotBudgetConsiderationResult.overallAssessment.summary}
+                        </p>
+                      </div>
+                      {(() => {
+                        const overall = copilotBudgetConsiderationResult.overallAssessment
+                        const matchLabel = overall.hasPotentialConflict
+                          ? 'Potential Conflict'
+                          : overall.hasCoordinationRequirement
+                            ? 'Coordination Required'
+                            : overall.hasAllowedWithConditions
+                              ? 'Allowed With Conditions'
+                              : 'No Policy Match'
+
+                        return (
+                          <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', getPolicyPanelTheme(matchLabel).pill)}>
+                            {matchLabel}
+                          </span>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            )}
+
+            <FormSection
+              title="Copilot Draft"
+              description="Review and refine the project details prepared with Budget Copilot. Nothing is final until you save the draft."
+              icon={ClipboardList}
+              action={
+                <Button variant="outline" className="rounded-xl border-[#E9D5FF] text-[#A855F7]" onClick={() => void runCopilotBudgetConsiderationCheck()}>
+                  <Bot className="h-4 w-4" />
+                  Check Policies
+                </Button>
+              }
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormField label="Initiative / Budget Item Name" required error={copilotFieldErrors.initiativeName}>
+                  <Input value={copilotFormValues.initiativeName} onChange={(event) => updateCopilotField('initiativeName', event.target.value)} className={cn('h-12 rounded-xl bg-white shadow-sm dark:bg-[#1E293B]', copilotFieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
+                </FormField>
+                <FormField label="Strategic Priorities" required error={copilotFieldErrors.strategicPriorityId}>
+                  <LookupSelect value={copilotFormValues.strategicPriorityId} onChange={handleCopilotStrategicPriorityChange} placeholder="Select parent strategic priority" options={strategicPriorityParentOptions} icon={TrendingUp} disabled={lookupLoading} invalid={Boolean(copilotFieldErrors.strategicPriorityId)} />
+                </FormField>
+                <FormField label="Strategic Priority Classification" required error={copilotFieldErrors.strategicPriorityClassificationId}>
+                  <LookupSelect value={copilotFormValues.strategicPriorityClassificationId} onChange={(value) => updateCopilotField('strategicPriorityClassificationId', value)} placeholder="Select strategic priority classification" options={copilotStrategicPriorityClassificationOptions} icon={Layers} disabled={!copilotFormValues.strategicPriorityId || lookupLoading} invalid={Boolean(copilotFieldErrors.strategicPriorityClassificationId)} />
+                </FormField>
+                <FormField label="Work Stream" error={copilotFieldErrors.workStreamId}>
+                  <LookupSelect value={copilotFormValues.workStreamId} onChange={(value) => updateCopilotField('workStreamId', value)} placeholder="Select work stream" options={workStreamOptions} icon={Briefcase} disabled={lookupLoading} invalid={Boolean(copilotFieldErrors.workStreamId)} />
+                </FormField>
+                <FormField label="ICT Budget Items Type" required error={copilotFieldErrors.budgetItemType}>
+                  <LookupSelect value={copilotFormValues.budgetItemType ? String(copilotFormValues.budgetItemType) : ''} onChange={(value) => updateCopilotField('budgetItemType', Number(value) as BudgetItemType)} placeholder="Select ICT budget item type" options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))} icon={Package} invalid={Boolean(copilotFieldErrors.budgetItemType)} />
+                </FormField>
+                <FormField label="Category">
+                  <LookupSelect value={copilotFormValues.category ? String(copilotFormValues.category) : ''} onChange={(value) => updateCopilotField('category', Number(value) as CategoryType)} placeholder="Select category" options={CATEGORY_OPTIONS.map((option) => ({ value: String(option.value), label: option.label }))} icon={FolderKanban} />
+                </FormField>
+                <FormField label="Technology (Company)" error={copilotFieldErrors.technologyCompanyId}>
+                  <LookupSelect value={copilotFormValues.technologyCompanyId} onChange={handleCopilotTechnologyCompanyChange} placeholder="Select technology company" options={technologyCompanyOptions} icon={Building2} disabled={lookupLoading} invalid={Boolean(copilotFieldErrors.technologyCompanyId)} />
+                </FormField>
+                <FormField label="Technology (Product)" error={copilotFieldErrors.technologyProductIds}>
+                  <ProductMultiSelect products={selectedCopilotTechnologyCompany?.products ?? []} selectedIds={copilotFormValues.technologyProductIds} disabled={!selectedCopilotTechnologyCompany || lookupLoading} onToggle={toggleCopilotTechnologyProduct} invalid={Boolean(copilotFieldErrors.technologyProductIds)} />
+                </FormField>
+              </div>
+
+              {(copilotAiSuggestionLoading || copilotAiSuggestionError || matchedCopilotAiSuggestions.length > 0) && (
+                <div className="mt-5 rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] p-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Suggested Strategic Priority</p>
+                      <p className="text-xs text-[#64748B] dark:text-slate-300">{copilotAiPromptUsecase ?? 'AI-matched against strategic priorities'}</p>
+                    </div>
+                    <Button variant="outline" className="rounded-xl border-[#E9D5FF] text-[#A855F7]" onClick={() => void refreshCopilotAiSuggestions()}>
+                      <RefreshCw className="h-4 w-4" />
+                      Refresh
+                    </Button>
+                  </div>
+                  {copilotAiSuggestionLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-[#A855F7]"><Loader2 className="h-4 w-4 animate-spin" />Preparing strategic-priority matches...</div>
+                  ) : copilotAiSuggestionError ? (
+                    <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-3 py-3 text-sm text-[#B42318]">{copilotAiSuggestionError}</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {matchedCopilotAiSuggestions.slice(0, 2).map((suggestion) => (
+                        <div key={`${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`} className="rounded-xl border border-[#F0D9FF] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{suggestion.strategicPriority}</p>
+                              <p className="mt-1 text-sm text-[#0F172A] dark:text-white">{suggestion.strategicPriorityClassification}</p>
+                            </div>
+                            <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => applyCopilotAiSuggestion(suggestion, 'both')}>
+                              <Check className="h-4 w-4" />
+                              Apply
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </FormSection>
+
+            <FormSection title="Project Timeline" description="Set the expected delivery window for this budget request." icon={CalendarDays}>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <FormField label="Planned Start Date" required error={copilotFieldErrors.plannedStartDate}>
+                  <DatePickerField value={copilotFormValues.plannedStartDate} onChange={(value) => updateCopilotField('plannedStartDate', value)} invalid={Boolean(copilotFieldErrors.plannedStartDate)} />
+                </FormField>
+                <FormField label="Planned End Date" required error={copilotFieldErrors.plannedEndDate}>
+                  <DatePickerField value={copilotFormValues.plannedEndDate} onChange={(value) => updateCopilotField('plannedEndDate', value)} invalid={Boolean(copilotFieldErrors.plannedEndDate)} />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection title="Project Summary" description="Capture the business need, scope, beneficiaries, and expected outcome." icon={FileText}>
+              <FormField label="Summary / Description" required error={copilotFieldErrors.summary}>
+                <Textarea value={copilotFormValues.summary} onChange={(event) => updateCopilotField('summary', event.target.value)} rows={6} className={cn('rounded-xl bg-white shadow-sm focus-visible:ring-[#A855F7]', copilotFieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
+              </FormField>
+            </FormSection>
+
+            <FormSection title="Project Budget Type" description="Select the budget type. The required financial fields below will adapt accordingly." icon={CircleDollarSign}>
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {ACTIVITY_TYPE_OPTIONS.map((option) => {
+                    const selected = copilotFormValues.activityType === option.value
+                    return (
+                      <button key={option.value} type="button" onClick={() => handleCopilotActivityTypeChange(option.value)} className={cn('rounded-2xl border p-4 text-left transition-colors', selected ? 'border-[#A855F7] bg-[#FDF7FF]' : 'border-[#DDEBFF] bg-white hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5')}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{option.description}</p>
+                          </div>
+                          <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', selected ? 'border-[#A855F7] bg-[#A855F7] text-white' : 'border-[#CBD5E1] text-transparent')}>
+                            <Check className="h-3.5 w-3.5" />
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+                {copilotFieldErrors.activityType && <p className="text-xs font-medium text-[#B42318]">{copilotFieldErrors.activityType}</p>}
+                {copilotVisibleBudgetFields.length > 0 && (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {copilotVisibleBudgetFields.map((field) => (
+                      <FormField key={field} label={toCurrencyFieldLabel(field)} required error={copilotFieldErrors[field]}>
+                        <CurrencyField value={copilotFormValues[field]} onChange={(value) => updateCopilotField(field, value)} invalid={Boolean(copilotFieldErrors[field])} />
+                      </FormField>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </FormSection>
+
+            <FormSection title="Budget Account Codes" description="Review the GL lines the copilot or documents suggested, and add or adjust them before saving." icon={CircleDollarSign}>
+              <BudgetItemsBuilder
+                items={copilotBudgetItems}
+                onChange={(items) => {
+                  setCopilotBudgetItems(items)
+                  if (items.length > 0 && items.every((item) => item.budgetRequested > 0)) {
+                    setCopilotBudgetItemsError(null)
+                    setCopilotFieldErrors((prev) => {
+                      if (!prev.budgetItems) return prev
+                      const nextErrors = { ...prev }
+                      delete nextErrors.budgetItems
+                      return nextErrors
+                    })
+                  }
+                }}
               />
-              <button
-                onClick={handleSend}
-                disabled={!chatInput.trim()}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-transparent bg-gradient-to-r from-[#286CFF] to-[#4F98FF] p-0 text-white shadow-md transition-colors hover:opacity-90 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#002DC2] focus-visible:ring-offset-2"
-              >
-                <Send className="h-4 w-4 text-white" />
-              </button>
+              {copilotBudgetItemsError && <p className="mt-3 text-xs font-medium text-[#B42318]">{copilotBudgetItemsError}</p>}
+            </FormSection>
+
+            <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B] sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
+                  <CheckCircle2 className="h-5 w-5 text-[#A855F7]" />
+                  <span>Save Draft uses the same safe create flow as manual mode, including file upload and AI-summary persistence after the budget record is created.</span>
+                </div>
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+                  <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
+                  <Button variant="outline" className="w-full rounded-xl border-[#E9D5FF] text-[#A855F7] sm:w-auto" onClick={() => void handleCopilotSaveDraft()}>
+                    Save Draft
+                  </Button>
+                </div>
+              </div>
             </div>
-            <p className="mt-2 text-center text-xs text-slate-400 dark:text-slate-300">Try: "Cloud migration project for AED 2M starting Q1 2026"</p>
           </div>
         </div>
       )}

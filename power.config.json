@@ -181,6 +181,16 @@
           "entitySetName": "dga_ai_prompts",
           "logicalName": "dga_ai_prompt",
           "isHidden": false
+        },
+        "ictdocumentsummaries": {
+          "entitySetName": "dga_ict_document_summaries",
+          "logicalName": "dga_ict_document_summary",
+          "isHidden": false
+        },
+        "ictaisummaries": {
+          "entitySetName": "dga_ict_ai_summaries",
+          "logicalName": "dga_ict_ai_summary",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

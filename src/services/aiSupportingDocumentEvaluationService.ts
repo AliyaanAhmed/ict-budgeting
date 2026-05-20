@@ -256,6 +256,7 @@ export async function evaluateSupportingDocument(input: {
   const fileName = normalizeText(file.name)
   const base64Content = await fileToBase64(file)
   const mimeType = normalizeText(file.type || 'application/octet-stream')
+  const startedAt = Date.now()
 
   const flowInput = {
     fileContent: {
@@ -273,6 +274,7 @@ export async function evaluateSupportingDocument(input: {
   })
 
   const result = await PowerAppV2_GetDocumentSummaryfromCompassService.Run(flowInput)
+  const responseTimeMs = Date.now() - startedAt
 
   console.log('[AiSupportingDocumentEvaluationService] Power Automate response:', result)
 
@@ -288,6 +290,7 @@ export async function evaluateSupportingDocument(input: {
     fileName: file.name,
     mimeType,
     base64Length: base64Content.length,
+    responseTimeMs,
     summary: result.data?.summary ?? '',
     rawResponse: result.data,
     parsedSummary: parseSupportingDocumentEvaluationSummary(result.data?.summary ?? result.data),
@@ -297,6 +300,7 @@ export async function evaluateSupportingDocument(input: {
 export async function evaluateCumulativeSupportingDocuments(input: {
   fileInputs: SupportingDocumentFlowFileInput[]
 }) {
+  const startedAt = Date.now()
   const normalizedInputs = input.fileInputs
     .map((item) => ({
       filename: normalizeText(item.filename),
@@ -316,6 +320,7 @@ export async function evaluateCumulativeSupportingDocuments(input: {
   })
 
   const result = await PowerAppV2_GetCumulativeDocumentSummaryfromCompassService.Run(flowInput)
+  const responseTimeMs = Date.now() - startedAt
 
   console.log('[AiSupportingDocumentEvaluationService] Cumulative document summary response:', result)
 
@@ -329,6 +334,7 @@ export async function evaluateCumulativeSupportingDocuments(input: {
 
   return {
     summary: result.data?.summary ?? '',
+    responseTimeMs,
     rawResponse: result.data,
     parsedSummary: parseSupportingDocumentEvaluationSummary(result.data?.summary ?? result.data),
   }

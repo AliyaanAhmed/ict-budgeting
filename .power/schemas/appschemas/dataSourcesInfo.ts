@@ -54,6 +54,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_ict_ai_summaries": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_ai_summaryid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_ict_budget_instances": {
     "tableId": "",
     "version": "",
@@ -79,6 +86,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_ict_clarificationid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_ict_document_summaries": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_document_summaryid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -144,6 +158,49 @@ export const dataSourcesInfo = {
     "primaryKey": "dga_work_streamid",
     "dataSourceType": "Dataverse",
     "apis": {}
+  },
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          { "name": "action", "in": "body", "required": true, "type": "string" },
+          { "name": "endpoint", "in": "body", "required": true, "type": "string" },
+          { "name": "apikey", "in": "body", "required": true, "type": "string" },
+          { "name": "model", "in": "body", "required": true, "type": "string" },
+          { "name": "prompt", "in": "body", "required": true, "type": "string" }
+        ]
+      }
+    }
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          { "name": "actionName", "in": "body", "required": true, "type": "string" },
+          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
+          { "name": "userId", "in": "body", "required": false, "type": "string" },
+          { "name": "fetchXml", "in": "body", "required": false, "type": "string" },
+          { "name": "targetTableName", "in": "body", "required": false, "type": "string" },
+          { "name": "relatedTableName", "in": "body", "required": false, "type": "string" },
+          { "name": "targetId", "in": "body", "required": false, "type": "string" },
+          { "name": "relatedId", "in": "body", "required": false, "type": "string" },
+          { "name": "relationship", "in": "body", "required": false, "type": "string" },
+          { "name": "tableName", "in": "body", "required": false, "type": "string" }
+        ]
+      }
+    }
   },
   "ictbudget_clarificaitons_deletefilefromsharepoint": {
     "tableId": "",
@@ -336,49 +393,6 @@ export const dataSourcesInfo = {
             "type": "object"
           }
         }
-      }
-    }
-  },
-  "dga_customwebapi": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_CustomWebApi": {
-        "path": "/api/data/v9.2/dga_CustomWebApi",
-        "method": "POST",
-        "parameters": [
-          { "name": "action", "in": "body", "required": true, "type": "string" },
-          { "name": "endpoint", "in": "body", "required": true, "type": "string" },
-          { "name": "apikey", "in": "body", "required": true, "type": "string" },
-          { "name": "model", "in": "body", "required": true, "type": "string" },
-          { "name": "prompt", "in": "body", "required": true, "type": "string" }
-        ]
-      }
-    }
-  },
-  "dga_webapiforportal": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_WebApiForPortal": {
-        "path": "/api/data/v9.2/dga_WebApiForPortal",
-        "method": "POST",
-        "parameters": [
-          { "name": "actionName", "in": "body", "required": true, "type": "string" },
-          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
-          { "name": "userId", "in": "body", "required": false, "type": "string" },
-          { "name": "tableName", "in": "body", "required": false, "type": "string" },
-          { "name": "targetTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedId", "in": "body", "required": false, "type": "string" },
-          { "name": "targetId", "in": "body", "required": false, "type": "string" },
-          { "name": "relationship", "in": "body", "required": false, "type": "string" },
-          { "name": "fetchXml", "in": "body", "required": false, "type": "string" }
-        ]
       }
     }
   }

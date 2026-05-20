@@ -192,6 +192,69 @@ Current cumulative behavior:
   - after all currently completed file summaries are available, the cumulative flow is called
   - cumulative summary replaces the right-side action-card content
 
+## Dataverse Persistence For Document AI
+New Dataverse tables now persist document AI output after the budget save flow completes.
+
+New data sources:
+- `dga_ict_document_summaries`
+- `dga_ict_ai_summaries`
+
+Persistence service:
+- `src/services/documentAiSummaryStoreService.ts`
+
+### Individual File Summary Storage
+Table:
+- `dga_ict_document_summary`
+
+Stored values:
+- budget lookup -> `dga_ict_budget@odata.bind`
+- document name -> `dga_document_name`
+- raw individual file summary JSON/string -> `dga_document_summary`
+
+Create-form behavior:
+- individual file AI still runs in the browser before save for preview purposes
+- actual Dataverse record creation only happens after:
+  - budget draft creation succeeds
+  - downstream save actions complete
+  - file upload succeeds
+
+Edit-form behavior:
+- when files are uploaded in edit mode, AI preview can be shown in-session
+- persisted individual summary records are only created after:
+  - save changes succeeds
+  - file upload succeeds
+
+Delete behavior:
+- when a supporting document is deleted in edit/detail flow
+- matching `dga_ict_document_summary` records are also deleted
+
+### Cumulative Summary Storage
+Table:
+- `dga_ict_ai_summary`
+
+Stored values:
+- budget lookup -> `dga_ReferenceRecordId@odata.bind`
+- static context:
+  - `dga_role_context = 7`
+  - `dga_summary_category = 8`
+  - `dga_summary_stage = 1`
+  - `dga_summary_type = 1`
+- validity -> `dga_is_valid`
+- automate response time in ms -> `dga_response_time`
+- raw cumulative summary JSON/string -> `dga_response_json`
+
+Persistence rule:
+- only one cumulative summary record is maintained per budget context
+- when a newer cumulative result is available, the existing record is updated
+
+Single-file special case:
+- if only one file exists, no separate cumulative flow is required
+- the single-file raw summary is also persisted into `dga_ict_ai_summary`
+
+Multi-file case:
+- once 2+ individual file summaries exist, cumulative flow is called using those stored raw file summaries
+- latest cumulative output is then upserted into `dga_ict_ai_summary`
+
 ## Create Form AI Document UX
 Current manual-mode form layout in:
 - `src/pages/respondent/NewProject.tsx`
@@ -203,7 +266,7 @@ Layout behavior:
   - supporting document upload
   - per-file AI Document Reader
 - right side:
-  - sticky AI action-card rail
+  - scrollable AI action-card rail that moves with the form
 
 Current AI action cards:
 1. `Suggested Project Fields`
@@ -222,12 +285,74 @@ Action-card population behavior:
   - action cards show empty instructional placeholders
 
 Current implementation note:
-- apply functionality for these cards is intentionally not fully wired yet
-- the UI is designed so future apply actions can set:
-  - form fields
-  - lookups/dropdowns
-  - budget lines
-  - account-code selections
+- apply functionality is now partially wired in the create form
+- currently implemented actions:
+  - `Suggested Project Fields`
+    - individual `Apply` buttons are available for supported field mappings
+    - `Apply All` is available for the card when one or more mappable suggestions exist
+    - currently mapped fields:
+      - project name -> `initiativeName`
+      - project description -> `summary`
+      - category -> `category`
+      - technology company -> `technologyCompanyId`
+  - `Account Code Suggestion`
+    - `Add to Budget Line Items` is available
+    - the action attempts to match the suggested GL/account code against the classification tree
+    - when matched, it creates a new budget draft line item in the form and sets the requested budget from the AI suggestion
+- not fully applied yet:
+  - budget-line card does not yet push all suggested budget lines into the form in bulk
+  - account-code application currently adds to budget items, but does not yet complete every downstream budgeting action automatically
+  - additional lookup/dropdown mappings can still be extended
+
+## Detail / Edit Form AI Usage
+AI is now also wired into:
+- `src/pages/respondent/ProjectDetail.tsx`
+
+Current detail/edit form behavior:
+- supporting documents are still retrieved normally for the document section
+- persisted individual document summaries are retrieved from:
+  - `dga_ict_document_summary`
+- persisted cumulative summary is retrieved from:
+  - `dga_ict_ai_summary`
+
+Document section behavior:
+- supporting documents remain visible through the normal document component
+- AI Document Reader is rendered below the document list using stored individual summaries
+- per-file detail currently shows:
+  - `Document Profile`
+  - `File Summary`
+  - `Evidence Assessment`
+  - `Review Flags`
+
+Edit-mode save behavior:
+- when new files are uploaded and save changes succeeds:
+  - files are uploaded first
+  - individual file summary records are created
+  - cumulative summary is recalculated
+  - cumulative summary record is created or updated
+- if upload fails:
+  - persisted AI summary records are not created for those new files
+
+Role-based right-side AI cards in detail flow:
+- Respondent:
+  - `Suggested Project Fields`
+  - `Budget Lines`
+  - `Account Code Suggestion`
+  - `Summary`
+- Reviewer / Approver:
+  - `Budget Lines`
+  - `Summary`
+
+Current apply support in detail flow:
+- respondent edit mode supports:
+  - strategic priority / classification apply
+  - suggested project field apply
+  - account code -> add to budget line items
+
+Current AI text recommendation support in detail flow:
+- Strategic Priority and Classification suggestion
+- ICT Budget Considerations evaluation
+- document-based individual and cumulative summary cards
 
 ## Supporting Document Parsing Notes
 The supporting-document service includes resilient parsing because the flow response may contain nested serialized JSON.
@@ -260,6 +385,7 @@ Current AI services log:
 ## Current Page Usage Summary
 AI is currently wired on:
 - `src/pages/respondent/NewProject.tsx`
+- `src/pages/respondent/ProjectDetail.tsx`
 
 Current create form AI usage:
 - Strategic Priority recommendation

@@ -2,18 +2,18 @@ import { ICTBudget_Clarificaitons_DeleteFileFromSharePointService } from '@/gene
 import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
 
 export async function deleteSharePointDocument(doc: WebApiPortalDocument): Promise<void> {
-  const payload = JSON.stringify({
-    absoluteUrl: doc.absoluteurl,
-    relativeLocation: doc.relativelocation,
-    documentId: doc.sharepointdocumentid,
-    fileName: doc.fullname,
-  })
+  const payload = doc.relativelocation?.trim() ?? ''
+
+  if (!payload) {
+    throw new Error(`Delete failed for "${doc.fullname ?? 'Unknown file'}": relative location is missing.`)
+  }
 
   console.log('[FileDeleteService] Deleting SharePoint document:', {
     sharepointdocumentid: doc.sharepointdocumentid,
     fullname: doc.fullname,
     relativelocation: doc.relativelocation,
     absoluteurl: doc.absoluteurl,
+    payload,
   })
 
   const result = await ICTBudget_Clarificaitons_DeleteFileFromSharePointService.Run({

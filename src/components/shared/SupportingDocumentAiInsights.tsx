@@ -15,7 +15,10 @@ import type { SupportingDocumentEvaluationSummary } from '@/services/aiSupportin
 
 export interface SupportingDocumentAiInsightItem {
   id: string
-  file: File
+  file: {
+    name: string
+    size?: number | null
+  }
   status: 'queued' | 'analyzing' | 'complete' | 'error'
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
@@ -102,7 +105,9 @@ function AnalyzingState({ fileName }: { fileName: string }) {
               </div>
               <p className="truncate text-base font-semibold text-[#0F172A] dark:text-white">{fileName}</p>
               <p className="mt-1 max-w-2xl text-sm text-[#64748B] dark:text-slate-300">
-                Reading the document, extracting budget evidence, and mapping project fields with confidence signals.
+                {fileName
+                  ? 'Uploading the document, then extracting budget evidence and mapping project fields with confidence signals.'
+                  : 'Uploading the document and preparing AI analysis.'}
               </p>
             </div>
 
@@ -120,8 +125,8 @@ function AnalyzingState({ fileName }: { fileName: string }) {
 
               <div className="space-y-2">
                 {[
+                  'Uploading the document to SharePoint',
                   'Detecting document profile and purpose',
-                  'Checking evidence strength and budget support',
                   'Building a compact reviewer summary',
                 ].map((label, index) => (
                   <div key={label} className="flex items-center gap-3">
@@ -284,7 +289,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
 }
 
 export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsightsProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(items[0]?.id ?? null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const previousItemsRef = useRef<SupportingDocumentAiInsightItem[]>(items)
 
   const orderedItems = useMemo(() => {
@@ -308,24 +313,37 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
   }, [items])
 
   useEffect(() => {
-    const previousIds = new Set(previousItemsRef.current.map((item) => item.id))
-    const previousStatusById = new Map(previousItemsRef.current.map((item) => [item.id, item.status]))
-    const newestActive = orderedItems.find(
-      (item) =>
-        !previousIds.has(item.id) &&
-        (item.status === 'queued' || item.status === 'analyzing')
+    const previousItems = previousItemsRef.current
+    const previousActiveIds = new Set(
+      previousItems
+        .filter((item) => item.status === 'queued' || item.status === 'analyzing')
+        .map((item) => item.id)
     )
-    const newlyCompletedExpandedItem = orderedItems.find(
+    const currentActiveItem = orderedItems.find(
+      (item) => item.status === 'queued' || item.status === 'analyzing'
+    )
+    const newestActiveItem = orderedItems.find(
       (item) =>
-        item.id === expandedId &&
-        item.status === 'complete' &&
-        (previousStatusById.get(item.id) === 'queued' || previousStatusById.get(item.id) === 'analyzing')
+        (item.status === 'queued' || item.status === 'analyzing') &&
+        !previousActiveIds.has(item.id)
     )
 
-    if (newestActive) {
-      setExpandedId(newestActive.id)
-    } else if (newlyCompletedExpandedItem) {
-      setExpandedId(null)
+    if (newestActiveItem) {
+      setExpandedId(newestActiveItem.id)
+    } else if (previousItems.length === 0 && currentActiveItem) {
+      setExpandedId(currentActiveItem.id)
+    }
+
+    if (expandedId) {
+      const previousExpanded = previousItems.find((item) => item.id === expandedId)
+      const currentExpanded = items.find((item) => item.id === expandedId)
+      const wasActive =
+        previousExpanded?.status === 'queued' || previousExpanded?.status === 'analyzing'
+      const isNowComplete = currentExpanded?.status === 'complete'
+
+      if (wasActive && isNowComplete) {
+        setExpandedId(null)
+      }
     }
 
     previousItemsRef.current = items
@@ -408,9 +426,11 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-sm font-bold text-[#0F172A] dark:text-white">{item.file.name}</p>
-                    <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-medium text-[#64748B] dark:bg-white/10 dark:text-slate-300">
-                      {formatFileSize(item.file.size)}
-                    </span>
+                    {typeof item.file.size === 'number' && item.file.size > 0 && (
+                      <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-medium text-[#64748B] dark:bg-white/10 dark:text-slate-300">
+                        {formatFileSize(item.file.size)}
+                      </span>
+                    )}
                   </div>
                   {item.status === 'complete' ? (
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#64748B] dark:text-slate-300">
