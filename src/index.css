@@ -7,7 +7,7 @@
   --primary-hover: #4F98FF;
   --primary-light: #B0DBFF;
   --primary-subtle: #81C1FF;
-  --background: #F7FAFE;
+  --background: #F4F6FB;
   --surface: #FFFFFF;
   --foreground: #0F172A;
   --muted: #EEF3F8;
@@ -96,6 +96,30 @@ body {
   80% { transform: translateX(1px); }
 }
 
+@keyframes suggestionBlink {
+  0%   { background-color: transparent; color: #A855F7; border-color: #E9D5FF; }
+  20%  { background-color: #A855F7;    color: #ffffff; border-color: #A855F7; }
+  40%  { background-color: transparent; color: #A855F7; border-color: #E9D5FF; }
+  60%  { background-color: #A855F7;    color: #ffffff; border-color: #A855F7; }
+  80%  { background-color: transparent; color: #A855F7; border-color: #E9D5FF; }
+  100% { background-color: transparent; color: #A855F7; border-color: #E9D5FF; }
+}
+
+@keyframes dashboardCtaGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.suggestion-blink {
+  animation: suggestionBlink 2s ease-in-out forwards;
+}
+
+.dashboard-cta-gradient {
+  background-size: 135% 135%;
+  animation: dashboardCtaGradient 14s ease-in-out infinite;
+}
+
 .animate-fadeInUp {
   opacity: 0;
   animation: fadeInUp 0.3s ease forwards;
@@ -169,6 +193,4 @@ body {
     color: #F5D0FE;
   }
 }
-
-
 

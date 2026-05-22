@@ -174,7 +174,7 @@ async function callBudgetCopilotPrompt(prompt: string) {
     const message =
       result.error instanceof Error
         ? result.error.message
-        : String(result.error?.message ?? result.error ?? 'Budget Copilot request failed.')
+        : String(result.error?.message ?? result.error ?? 'Budget Assistant request failed.')
     throw new Error(message)
   }
 
@@ -194,7 +194,7 @@ export async function getBudgetCopilotChatReply(input: {
     runtimeContext: input.runtimeContext,
     messages: input.messages,
     instruction:
-      'Reply as Budget Copilot. Be concise, helpful, and focused on ICT budget project creation. Do not return JSON. Keep suggestions advisory until the user applies them.',
+      'Reply as Budget Assistant. Refer to yourself as Budget Assistant, not Copilot. Be concise, helpful, and focused on ICT budget project creation. Do not return JSON. Keep suggestions advisory until the user applies them.',
   })
 
   return callBudgetCopilotPrompt(prompt)

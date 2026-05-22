@@ -25,7 +25,7 @@ export function CapexOpexDonut() {
 
   const data = [
     { name: 'CapEx', value: totalCapex, pct: Math.round((totalCapex / total) * 100), fill: dashboardPalette.chartBlue },
-    { name: 'OpEx', value: totalOpex, pct: Math.round((totalOpex / total) * 100), fill: dashboardPalette.chartCyan },
+    { name: 'OpEx', value: totalOpex, pct: Math.round((totalOpex / total) * 100), fill: dashboardPalette.primarySoft },
   ]
 
   const totalM = (total / 1_000_000).toFixed(1)
@@ -70,8 +70,8 @@ export function CapexOpexDonut() {
 
 export function NewVsRecurringDonut() {
   const data = [
-    { name: 'New Projects', value: 52_400_000, pct: 42, fill: dashboardPalette.chartYellow },
-    { name: 'Recurring', value: 71_900_000, pct: 58, fill: dashboardPalette.chartOrange },
+    { name: 'New Projects', value: 52_400_000, pct: 42, fill: dashboardPalette.primary },
+    { name: 'Recurring', value: 71_900_000, pct: 58, fill: dashboardPalette.primaryMuted },
   ]
   const total = data.reduce((s, d) => s + d.value, 0)
   const totalM = (total / 1_000_000).toFixed(1)

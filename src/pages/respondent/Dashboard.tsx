@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   BadgeDollarSign,
-  Bot,
   BrainCircuit,
   Calendar,
   ChevronDown,
@@ -13,6 +12,7 @@ import {
   CopyPlus,
   FolderOpen,
   Info,
+  Layers,
   MessageSquareMore,
   MoveRight,
   Radar,
@@ -22,6 +22,7 @@ import {
   Sparkles,
   TrendingDown,
   TrendingUp,
+  WalletCards,
 } from 'lucide-react'
 import {
   Bar,
@@ -49,7 +50,7 @@ import {
   useStrategicPriorityCycleComparison,
 } from '@/hooks/useDashboardBudgetCharts'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
-import { dashboardPalette, dashboardStatusColors } from '@/lib/dashboardPalette'
+import { dashboardPalette } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
@@ -150,10 +151,10 @@ function MetricCard({
   return (
     <div
       className={cn(
-        'group overflow-hidden rounded-[24px] border bg-white p-4 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-none dark:bg-[#18263F] sm:p-5',
+        'group overflow-hidden rounded-[24px] border bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] dark:bg-[#18263F] sm:p-5',
         className
       )}
-      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
+      style={{ borderColor: `${accent}3D` }}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
@@ -221,8 +222,7 @@ function ActionMetricCard({
   return (
     <Link
       to={href}
-      className="group flex h-full flex-col overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
-      style={{ borderColor: `${accent}3D`, boxShadow: 'none' }}
+      className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#18263F] sm:px-5 sm:py-6"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -244,9 +244,7 @@ function ActionMetricCard({
           {icon}
         </div>
       </div>
-      <div className="mt-3 min-h-[3rem] text-sm text-[#64748B] dark:text-slate-100">
-        {description}
-      </div>
+
       <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Projects</span>
         <ChevronRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
@@ -362,30 +360,30 @@ export default function RespondentDashboard() {
     {
       key: 'Operational Non-Recurring',
       label: 'Operational Non-Recurring',
-      accent: '#D97706',
-      bgClass: 'border-[#F6E4B4] dark:border-[#5E4C1E]',
-      badgeClass: 'bg-[#FFF3D9] text-[#D97706] dark:bg-[#D97706]/18 dark:text-[#FCD34D]',
-    },
-    {
-      key: 'Operational Recurring',
-      label: 'Operational Recurring',
-      accent: '#16A34A',
-      bgClass: 'border-[#CDEFD7] dark:border-[#29583C]',
-      badgeClass: 'bg-[#DCFCE7] text-[#16A34A] dark:bg-[#16A34A]/18 dark:text-[#BBF7D0]',
-    },
-    {
-      key: 'New Project',
-      label: 'New Project',
-      accent: '#286CFF',
+      accent: dashboardPalette.primary,
       bgClass: 'border-[#D8E7FF] dark:border-[#315389]',
       badgeClass: 'bg-[#DCEAFE] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white',
     },
     {
+      key: 'Operational Recurring',
+      label: 'Operational Recurring',
+      accent: dashboardPalette.primarySoft,
+      bgClass: 'border-[#DDE8FF] dark:border-[#3E5F93]',
+      badgeClass: 'bg-[#EAF1FF] text-[#4F86FF] dark:bg-[#4F86FF]/18 dark:text-[#CFE0FF]',
+    },
+    {
+      key: 'New Project',
+      label: 'New Project',
+      accent: dashboardPalette.primaryDeep,
+      bgClass: 'border-[#D3E1FF] dark:border-[#284B86]',
+      badgeClass: 'bg-[#E0EAFF] text-[#1D4ED8] dark:bg-[#1D4ED8]/18 dark:text-[#D9E5FF]',
+    },
+    {
       key: 'Project Continuation',
       label: 'Project Continuation',
-      accent: '#7C3AED',
-      bgClass: 'border-[#E9D5FF] dark:border-[#52307A]',
-      badgeClass: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/18 dark:text-[#E9D5FF]',
+      accent: dashboardPalette.primaryMuted,
+      bgClass: 'border-[#E3ECFF] dark:border-[#476596]',
+      badgeClass: 'bg-[#F1F6FF] text-[#6E9FFF] dark:bg-[#6E9FFF]/18 dark:text-[#E4EEFF]',
     },
   ] as const
 
@@ -404,27 +402,27 @@ export default function RespondentDashboard() {
     {
       name: 'Pending My Approval',
       value: draftProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.needsWork,
+      fill: dashboardPalette.primary,
     },
     {
       name: 'With Reviewer',
       value: reviewerStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.withReviewer,
+      fill: dashboardPalette.primarySoft,
     },
     {
       name: 'With Approver',
       value: approverStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.withApprover,
+      fill: dashboardPalette.primaryDeep,
     },
     {
       name: 'Clarification Open',
       value: clarificationRequiredProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: dashboardStatusColors.clarification,
+      fill: dashboardPalette.primaryMuted,
     },
     {
       name: 'Submitted to DGE',
       value: submittedToDgeProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
-      fill: '#7C3AED',
+      fill: dashboardPalette.primaryPale,
     },
   ]
     .map((item) => ({
@@ -437,35 +435,35 @@ export default function RespondentDashboard() {
       title: '1 project appears to be duplicate or near-duplicate.',
       detail: 'Network Modernization Infrastructure, Network Infrastructure Upgrade',
       icon: <CopyPlus className="h-4 w-4" />,
-      tone: '#F59E0B',
+      tone: dashboardPalette.primary,
       badge: 'Warning',
     },
     {
       title: '4 projects are high risk due to incomplete supporting evidence.',
       detail: 'Missing proposals, technical assessments, and cost backup in current submissions.',
       icon: <ShieldAlert className="h-4 w-4" />,
-      tone: '#EF4444',
+      tone: dashboardPalette.primaryDeep,
       badge: 'Critical',
     },
     {
       title: '1 similar project was rejected in the previous cycle.',
       detail: 'Cloud Migration Phase 2',
       icon: <Clock3 className="h-4 w-4" />,
-      tone: '#F59E0B',
+      tone: dashboardPalette.primarySoft,
       badge: 'Warning',
     },
     {
       title: '2 projects show budget values that do not align with attached cost documents.',
       detail: 'ERP Integration Programme, On-Premise Data Center Expansion',
       icon: <Scale className="h-4 w-4" />,
-      tone: '#F59E0B',
+      tone: dashboardPalette.primaryMuted,
       badge: 'Warning',
     },
     {
       title: '2 submissions may have weak strategic alignment justification.',
       detail: 'Mobile Workforce Solution, Cloud Migration Phase 2',
       icon: <CircleAlert className="h-4 w-4" />,
-      tone: '#286CFF',
+      tone: dashboardPalette.primaryInk,
       badge: 'Info',
     },
   ]
@@ -484,34 +482,28 @@ export default function RespondentDashboard() {
 
   return (
     <div className="w-full space-y-6 pb-4">
-      <section className="relative overflow-hidden rounded-[30px] border border-[#D7E4F4] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_45%,#FFFFFF_100%)] p-6 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#0F172A_0%,#16263E_52%,#102946_100%)]">
-        <div className="absolute -left-10 top-0 h-36 w-36 rounded-full bg-[#286CFF]/10 blur-3xl dark:bg-[#286CFF]/20" />
-        <div className="absolute right-0 top-8 h-40 w-40 rounded-full bg-[#22C55E]/10 blur-3xl dark:bg-[#22C55E]/10" />
+      <section className="relative p-1">
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#CFE0FF] bg-white/75 px-3 py-1 text-xs font-semibold text-[#286CFF] backdrop-blur dark:border-[#4F98FF]/30 dark:bg-white/5 dark:text-[#9FC4FF]">
-              <Sparkles className="h-3.5 w-3.5" />
-              Respondent Workspace
-            </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
+            <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
               {cycleName}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
               Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#E7F5FF] px-3 py-1.5 font-medium text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#1D4ED8] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#BFDBFE]">
                 <Calendar className="h-4 w-4" />
                 {instanceDetail?.name ?? cycleName}
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#F3FAF4] px-3 py-1.5 font-medium text-[#2C7A43] dark:bg-[#22C55E]/15 dark:text-[#C9F4D1]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
                 <Radar className="h-4 w-4" />
                 {daysRemaining} days remaining
               </span>
             </div>
           </div>
           <div className="flex shrink-0 lg:self-center">
-            <Button asChild className="h-11 w-full rounded-2xl px-6 shadow-[0_14px_30px_rgba(40,108,255,0.22)] sm:w-auto">
+            <Button asChild className="dashboard-cta-gradient h-11 w-full rounded-2xl bg-[linear-gradient(135deg,#286CFE_0%,#4F80FF_100%)] px-6 text-white shadow-[0_14px_30px_rgba(40,108,254,0.18)] hover:text-white sm:w-auto">
               <Link to="/respondent/projects/new">
                 Start New Project
                 <ArrowRight className="h-4 w-4" />
@@ -552,11 +544,12 @@ export default function RespondentDashboard() {
           />
         </div>
 
-        <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">
+        <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
           <CardContent className="p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
                   <InfoHint text="Consolidated budget view for the current cycle, previous-year baseline, and AI-estimated approval outlook." />
                 </div>
@@ -564,13 +557,10 @@ export default function RespondentDashboard() {
                   Informational metrics for planning context and approval outlook
                 </p>
               </div>
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-white">
-                <BadgeDollarSign className="h-5 w-5" />
-              </div>
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Requested Budgets</p>
                   <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15">
@@ -582,27 +572,27 @@ export default function RespondentDashboard() {
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1B2A41]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Last Year Requested</p>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EEF3F8] text-[#64748B] dark:bg-white/10 dark:text-slate-100">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EFF6FF] text-[#4F86FF] dark:bg-[#4F86FF]/15 dark:text-[#DBEAFE]">
                     <TrendingUp className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="mt-4">
-                  <CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.slate} />
+                  <CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.primarySoft} />
                 </div>
               </div>
 
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F6FBF9_0%,#FFFFFF_100%)] p-4 shadow-none dark:border-white/10 dark:bg-[linear-gradient(135deg,#1B2A41_0%,#162339_100%)]">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F8FBFF_0%,#FFFFFF_100%)] p-4 dark:border-white/10 dark:bg-[linear-gradient(135deg,#1B2A41_0%,#162339_100%)]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
                     <BrainCircuit className="h-4 w-4" />
                   </div>
                 </div>
                 <div className="mt-4">
-                  <CompactAmount amount={predictedBudget} iconColor="#0F9D7A" />
+                  <CompactAmount amount={predictedBudget} iconColor={dashboardPalette.primary} />
                 </div>
               </div>
             </div>
@@ -612,7 +602,7 @@ export default function RespondentDashboard() {
 
       <section
         title="AI summary of portfolio-wide risks, confidence, and recommended cleanup before submission."
-        className="overflow-hidden rounded-[28px] border border-[#F6C9CF] bg-[linear-gradient(135deg,#FFF8FA_0%,#FFF9F6_100%)] shadow-none dark:border-[#5D3240] dark:bg-[linear-gradient(135deg,#26131C_0%,#1E2438_100%)]"
+        className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
       >
         <button
           type="button"
@@ -620,14 +610,14 @@ export default function RespondentDashboard() {
           className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-white/30 dark:hover:bg-white/5"
         >
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white shadow-[0_16px_30px_rgba(124,58,237,0.28)]">
-              <Bot className="h-5 w-5" />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
+              <Sparkles className="h-6 w-6" />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</h2>
                 <InfoHint text="AI reviews portfolio-wide risk patterns, duplicate signals, document gaps, and strategic alignment concerns before respondent submissions move forward." />
-                <span className="inline-flex items-center rounded-full bg-[#FFF1F2] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
+                <span className="inline-flex items-center rounded-full bg-[#FDF8FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                   High Portfolio Risk
                 </span>
               </div>
@@ -641,10 +631,10 @@ export default function RespondentDashboard() {
               <span className="text-[#0F172A] dark:text-white">
                 {liveProjects.length} <span className="text-[#64748B] dark:text-slate-100">projects</span>
               </span>
-              <span className="text-[#286CFF] dark:text-[#C6DBFF]">
+              <span className="text-[#A855F7] dark:text-[#E9D5FF]">
                 {confidenceScore}% <span className="text-[#64748B] dark:text-slate-100">avg confidence</span>
               </span>
-              <span className="text-[#F59E0B] dark:text-[#FCD34D]">
+              <span className="text-[#C084FC] dark:text-[#E9D5FF]">
                 {attentionCount} <span className="text-[#64748B] dark:text-slate-100">need attention</span>
               </span>
               <RefreshCcw className="h-4 w-4 text-[#64748B] dark:text-slate-100" />
@@ -655,18 +645,15 @@ export default function RespondentDashboard() {
           </div>
         </button>
         {portfolioExpanded && (
-          <div className="border-t border-[#F3D8DD] px-6 pb-6 pt-5 dark:border-white/10">
+          <div className="border-t border-[#E9D5FF] px-6 pb-6 pt-5 dark:border-white/10">
             <div className="space-y-3">
               {portfolioIssues.map((issue) => (
                 <div
                   key={issue.title}
-                  className="flex items-start justify-between gap-4 rounded-[22px] border border-white/80 bg-white/70 px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5"
+                  className="flex items-start justify-between gap-4 rounded-[22px] border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
                 >
                   <div className="flex items-start gap-3">
-                    <div
-                      className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl"
-                      style={{ backgroundColor: `${issue.tone}14`, color: issue.tone }}
-                    >
+                    <div className="mt-0.5 shrink-0 text-[#A855F7]">
                       {issue.icon}
                     </div>
                     <div>
@@ -676,7 +663,7 @@ export default function RespondentDashboard() {
                   </div>
                   <span
                     className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: `${issue.tone}14`, color: issue.tone }}
+                    style={{ backgroundColor: '#FDF8FF', color: '#A855F7' }}
                   >
                     {issue.badge}
                   </span>
@@ -684,8 +671,8 @@ export default function RespondentDashboard() {
               ))}
             </div>
 
-            <div className="mt-5 border-t border-[#F3D8DD] pt-5 dark:border-white/10">
-              <p className="text-xs font-semibold tracking-[0.06em] text-[#7C3AED] dark:text-[#DAC0FF]">
+            <div className="mt-5 border-t border-[#F0D9FF] pt-5 dark:border-white/10">
+              <p className="text-xs font-semibold tracking-[0.06em] text-[#A855F7] dark:text-[#E9D5FF]">
                 Recommended Next Actions
               </p>
               <div className="mt-3 grid gap-2 text-sm text-[#475569] dark:text-slate-100">
@@ -696,7 +683,7 @@ export default function RespondentDashboard() {
                   'Verify budget breakdowns match supporting documentation.',
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-2">
-                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7C3AED] dark:text-[#DAC0FF]" />
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                     <span>{item}</span>
                   </div>
                 ))}
@@ -706,15 +693,16 @@ export default function RespondentDashboard() {
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
           title={showClarificationPanel ? 'Projects that were returned to the respondent for clarification and need response.' : 'Latest ICT budget records created by the respondent.'}
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <MessageSquareMore className={cn('h-5 w-5 shrink-0', showClarificationPanel ? 'text-[#286CFE]' : 'text-[#286CFF]')} />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">{showClarificationPanel ? 'Clarification Projects' : 'ICT Budgets'}</h3>
                   <InfoHint text={showClarificationPanel ? 'Projects in this list are waiting for the respondent to answer clarification comments before they can move back to review.' : 'The latest ICT budget records created in the current respondent workspace.'} />
                 </div>
@@ -724,9 +712,6 @@ export default function RespondentDashboard() {
                     : 'Open the latest ICT budgets and continue where you left off'}
                 </p>
               </div>
-              <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${showClarificationPanel ? 'bg-[#F59E0B]/12 text-[#F59E0B] dark:bg-[#F59E0B]/18 dark:text-[#FCD34D]' : 'bg-[#286CFF]/12 text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#9FC4FF]'}`}>
-                <MessageSquareMore className="h-5 w-5" />
-              </div>
             </div>
 
             <div className="space-y-3">
@@ -734,12 +719,12 @@ export default function RespondentDashboard() {
                 <Link
                   key={project.id}
                   to={`/respondent/projects/${project.id}`}
-                  className="group block rounded-[22px] border border-[#DCE8F6] bg-white p-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-none dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
+                  className="group block rounded-[22px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#FFF4E5] text-xs font-bold text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
+                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-xs font-bold text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
                           {index + 1}
                         </span>
                         <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
@@ -750,7 +735,7 @@ export default function RespondentDashboard() {
                           : project.summary || `${project.strategicPriority} / ${project.classification}`}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-semibold ${showClarificationPanel ? 'bg-[#FFF4E5] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]' : 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]'}`}>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 font-semibold ${showClarificationPanel ? 'bg-[#EEF5FF] text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]' : 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]'}`}>
                           {showClarificationPanel ? 'Clarification needed' : project.status}
                         </span>
                         <span>{showClarificationPanel ? project.lastModified : project.submittedDate}</span>
@@ -775,21 +760,19 @@ export default function RespondentDashboard() {
 
         <Card
           title="Requested budget distribution across your current project statuses."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Requested Budget Mix</h3>
                   <InfoHint text="A quick view of where your total requested budget currently sits by project status, helping respondents understand what is blocked, in review, or already approved." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
                   Understand where your total requested budget is currently sitting
                 </p>
-              </div>
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#286CFF]/12 text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#9FC4FF]">
-                <BadgeDollarSign className="h-5 w-5" />
               </div>
             </div>
 
@@ -823,10 +806,10 @@ export default function RespondentDashboard() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {requestedBudgetByStatus.map((item) => (
-                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.fill }} />
+                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
                         <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
                       </div>
                       <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
@@ -843,11 +826,11 @@ export default function RespondentDashboard() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2 [&_*]:shadow-none">
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         {hasPreviousCycle ? (
           <Card
             title="Compare the selected cycle against the immediately previous cycle across strategic priorities."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -868,7 +851,7 @@ export default function RespondentDashboard() {
                     {selectedCycle?.name ?? 'Selected Cycle'}
                   </span>
                   <span className="inline-flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#AEBBCC]" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#93C5FD]" />
                     {previousCycle?.name ?? 'Previous Cycle'}
                   </span>
                 </div>
@@ -903,7 +886,7 @@ export default function RespondentDashboard() {
                       dataKey="previous"
                       name={previousCycle?.name ?? 'Previous Cycle'}
                       radius={[8, 8, 0, 0]}
-                      fill="#AEBBCC"
+                      fill="#93C5FD"
                       maxBarSize={28}
                     />
                   </BarChart>
@@ -914,12 +897,13 @@ export default function RespondentDashboard() {
         ) : (
           <Card
             title="Shows requested budget distribution by strategic priority for the selected cycle."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
+                    <Layers className="h-5 w-5 shrink-0 text-[#286CFF]" />
                     <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Category</h3>
                     <InfoHint text="Shows the selected cycle requested budget grouped by strategic priority." />
                   </div>
@@ -934,12 +918,13 @@ export default function RespondentDashboard() {
         )}
         <Card
           title="Shows which account codes are driving the largest share of your requested budget."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
                   <InfoHint text="Highlights the account codes receiving the largest share of requested budget across your submissions." />
                 </div>
@@ -960,15 +945,16 @@ export default function RespondentDashboard() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr] [&_*]:shadow-none">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[1fr_1fr]">
         <Card
           title="Quick access to active submission states and the next actions you should take in Projects."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="flex h-full flex-col p-6">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <FolderOpen className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Projects Workspace</h3>
                   <InfoHint text="This workspace brings respondent-owned statuses together and points you toward the next best actions in the Projects area." />
                 </div>
@@ -976,19 +962,16 @@ export default function RespondentDashboard() {
                   Jump into the full projects page to continue edits, resolve clarifications, and prepare submissions.
                 </p>
               </div>
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#286CFF]/10 text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
-                <FolderOpen className="h-5 w-5" />
-              </div>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               {[ 
-                { label: 'On Respondent', value: respondentOwned, tone: dashboardStatusColors.clarification },
-                { label: 'On Reviewer', value: submittedToReviewer, tone: dashboardStatusColors.withReviewer },
-                { label: 'On Approver', value: submittedToApprover, tone: dashboardStatusColors.withApprover },
-                { label: 'Needs Attention', value: attentionCount, tone: dashboardStatusColors.needsWork },
+                { label: 'On Respondent', value: respondentOwned, tone: dashboardPalette.primary },
+                { label: 'On Reviewer', value: submittedToReviewer, tone: dashboardPalette.primarySoft },
+                { label: 'On Approver', value: submittedToApprover, tone: dashboardPalette.primaryDeep },
+                { label: 'Needs Attention', value: attentionCount, tone: dashboardPalette.primaryMuted },
               ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                     {item.label}
                   </p>
@@ -1000,7 +983,7 @@ export default function RespondentDashboard() {
               ))}
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white p-4 shadow-none dark:border-[#315389] dark:bg-[#1B2A41]">
+            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-[#315389] dark:bg-[#1B2A41]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
                   <Sparkles className="h-4.5 w-4.5" />
@@ -1014,7 +997,7 @@ export default function RespondentDashboard() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+            <div className="mt-5 rounded-[24px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4.5 w-4.5 text-[var(--ai-accent)]" />
                 <p className="text-xs font-semibold tracking-[0.06em] text-[var(--ai-accent)]">
@@ -1049,11 +1032,12 @@ export default function RespondentDashboard() {
         <div className="grid h-full gap-5">
           <Card
             title="Shows the split between new initiatives and recurring budget demand in the current cycle."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
               <div className="mb-5">
                 <div className="flex flex-wrap items-center gap-2">
+                  <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
                   <InfoHint text="Shows how requested budget is distributed across the four ICT budget activity types in the respondent workspace." />
                 </div>
@@ -1063,7 +1047,7 @@ export default function RespondentDashboard() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {budgetTypeBreakdown.map((item) => (
-                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-none dark:bg-[#18263F] ${item.bgClass}`}>
+                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
                     <div className="flex items-center gap-3">
                       <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
                         {item.count}
@@ -1096,19 +1080,19 @@ export default function RespondentDashboard() {
 
           <Card
             title="AI model estimate for how much of the requested budget is likely to be approved."
-            className="overflow-hidden rounded-[28px] border-[#F5D3DC] bg-white shadow-none dark:border-[#5D3240] dark:bg-[#162339]"
+            className="overflow-hidden rounded-[28px] border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
           >
             <CardContent className="p-6">
               <div className="flex flex-col gap-4">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#7C3AED_0%,#A855F7_100%)] text-white shadow-[0_16px_30px_rgba(124,58,237,0.28)]">
-                    <Bot className="h-5 w-5" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
+                    <Sparkles className="h-6 w-6" />
                   </div>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Budget Prediction</h2>
                         <InfoHint text="AI estimates how much of the currently requested budget is likely to be approved based on approval history, risk, and project profile signals." />
-                        <span className="inline-flex items-center rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#DAC0FF]">
+                        <span className="inline-flex items-center rounded-full bg-[#FDF8FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                           Beta
                         </span>
                     </div>
@@ -1116,8 +1100,8 @@ export default function RespondentDashboard() {
                       Based on budget patterns, strategic alignment, and recent approval behavior, AI predicts that{' '}
                       <CurrencyAmount
                         amount={predictedBudget}
-                        className="font-semibold text-[#7C3AED] dark:text-[#DAC0FF]"
-                        iconColor="#7C3AED"
+                        className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]"
+                        iconColor="#A855F7"
                         iconSize={13}
                       />{' '}
                       of your requested budget is most likely to move forward.
@@ -1142,13 +1126,13 @@ export default function RespondentDashboard() {
                 </div>
               </div>
               <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-xs font-medium text-[#7C3AED] dark:text-[#DAC0FF]">
+                <div className="mb-2 flex items-center justify-between text-xs font-medium text-[#A855F7] dark:text-[#E9D5FF]">
                   <span>Approval likelihood</span>
                   <span>{totalBudget > 0 ? Math.round((predictedBudget / totalBudget) * 100) : 0}%</span>
                 </div>
                 <div className="h-3 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
                   <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,#7C3AED_0%,#A855F7_45%,#C084FC_100%)] shadow-[0_8px_24px_rgba(124,58,237,0.28)]"
+                    className="h-full rounded-full bg-[#A855F7] shadow-[0_8px_24px_rgba(168,85,247,0.24)]"
                     style={{ width: `${totalBudget > 0 ? Math.round((predictedBudget / totalBudget) * 100) : 0}%` }}
                   />
                 </div>

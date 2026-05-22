@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
-import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { exportProjectsToExcel } from '@/services/projectExportService'
 
 type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge'
@@ -23,6 +22,10 @@ type BudgetTypeFilter =
   | 'Operational Non-Recurring'
   | 'New Project'
   | 'Project Continuation'
+
+function formatBudgetValue(amount: number) {
+  return amount.toLocaleString('en-AE')
+}
 
 function AiScore({ score }: { score: number }) {
   const tone =
@@ -68,7 +71,7 @@ function ProjectCard({ project }: { project: Project }) {
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
-            <CurrencyAmount amount={project.requestedBudget} className="text-sm font-bold text-[#0F172A] dark:text-white" />
+            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Budget Type</p>
@@ -215,7 +218,7 @@ export default function ApproverProjects() {
               'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
               activeTab === tab.id
                 ? 'bg-[var(--primary)] text-white'
-                : 'border border-[#E2E8F0] bg-white text-[#475569] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-200 dark:hover:bg-white/5'
+                : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
             )}
           >
             {tab.label}

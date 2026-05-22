@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight,
@@ -26,6 +26,7 @@ import {
   Plus,
   RefreshCw,
   Send,
+  ShieldCheck,
   Sparkles,
   TrendingUp,
   Upload,
@@ -244,10 +245,11 @@ const CATEGORY_OPTIONS: Array<{ value: CategoryType; label: string }> = [
   { value: 2, label: 'Part of Any Other Project' },
 ]
 
-const COPILOT_OPTIONS = [
-  { icon: Sparkles, label: 'New Project', sub: 'Starting fresh, no prior submissions' },
-  { icon: RefreshCw, label: 'Continuation of Existing Project', sub: 'Project already exists, requesting additional budget' },
-  { icon: TrendingUp, label: 'Phase 2 or Later', sub: 'Subsequent phase of a multi-phase project' },
+const BUDGET_ASSISTANT_PROMPTS = [
+  'Azure data platform project for AED 600K starting December',
+  'Maintenance contract for out-of-warranty laptops',
+  'Cloud migration project for AED 2M starting Q1 2027',
+  'What is the Budget Type field?',
 ]
 
 const INITIAL_FORM_VALUES: FormValues = {
@@ -337,6 +339,297 @@ function truncateAiText(value: string | undefined, maxCharacters: number) {
   return `${normalized.slice(0, maxCharacters).trimEnd()}...`
 }
 
+function limitCopilotText(value: string | undefined, maxCharacters: number) {
+  const normalized = value?.trim() ?? ''
+  if (!normalized) return ''
+  if (normalized.length <= maxCharacters) return normalized
+  return `${normalized.slice(0, maxCharacters).trimEnd()}...`
+}
+
+function formatCopilotBudgetAmount(amount?: number | null, currency?: string | null) {
+  if (typeof amount !== 'number') return null
+  return `${currency ? `${currency} ` : ''}${amount.toLocaleString('en-AE')}`
+}
+
+function buildCopilotIndividualAnalysisMessage(
+  fileName: string,
+  summary: SupportingDocumentEvaluationSummary | null
+) {
+  if (!summary) {
+    return [
+      '## File Analysis Complete',
+      `### ${fileName}`,
+      'The file was analyzed, but the response did not contain a usable structured summary.',
+    ].join('\n')
+  }
+
+  const profile = summary.document_profile
+  const fileMeta = (summary as Record<string, unknown>).file as Record<string, unknown> | undefined
+  const fileSummary = summary.file_summary
+  const evidence = summary.evidence_assessment
+  const reviewFlags = summary.review_flags ?? []
+  const budgetLines = summary.budget_lines ?? []
+
+  const lines = [
+    '## File Analysis Complete',
+    `### ${fileName}`,
+  ]
+
+  lines.push(
+    '',
+    '### Document Profile',
+    `- Type: ${profile?.document_type ?? 'Not identified'}`,
+    `- Vendor / Issuer: ${profile?.issuer_or_vendor ?? 'Not identified'}`,
+    `- Recipient / Entity: ${profile?.recipient_or_entity ?? 'Not identified'}`,
+    `- Date: ${profile?.document_date ?? 'Not identified'}`,
+    `- Pages: ${typeof fileMeta?.page_count === 'number' ? String(fileMeta.page_count) : 'Not identified'}`,
+  )
+
+  if (fileSummary?.short_summary) {
+    lines.push('', '### File Summary', limitCopilotText(fileSummary.short_summary, 700))
+  }
+
+  lines.push(
+    '',
+    '### Evidence Assessment',
+    `- Supports project: ${evidence?.supports_project ?? 'Unclear'}`,
+    `- Evidence quality: ${evidence?.evidence_quality ?? 'Unclear'}`,
+    `- Evidence score: ${typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'Not scored'}`,
+  )
+
+  if (budgetLines.length > 0) {
+    lines.push('', '### Budget Lines')
+    for (const line of budgetLines.slice(0, 3)) {
+      lines.push(
+        `- ${line.description ?? 'Budget line'}${formatCopilotBudgetAmount(line.amount, line.currency) ? ` — ${formatCopilotBudgetAmount(line.amount, line.currency)}` : ''}`
+      )
+    }
+  }
+
+  if (reviewFlags.length > 0) {
+    lines.push('', '### Review Flags')
+    for (const flag of reviewFlags.slice(0, 3)) {
+      lines.push(`- ${flag.flag ?? 'Review'}: ${flag.reason ?? 'Needs confirmation.'}`)
+    }
+  }
+
+  lines.push('', 'Use the suggested field card to review extracted fields, budget lines, and account-code guidance.')
+  return lines.join('\n')
+}
+
+function buildCopilotCumulativeAnalysisMessage(summary: SupportingDocumentEvaluationSummary | null) {
+  if (!summary) {
+    return [
+      '## Cumulative Analysis Complete',
+      'The documents were combined, but the cumulative response did not contain a usable structured summary.',
+    ].join('\n')
+  }
+
+  const record = summary as Record<string, unknown>
+  const analysisStatus = record.analysis_status as Record<string, unknown> | undefined
+  const sourceFiles = Array.isArray(record.source_files) ? (record.source_files as Array<Record<string, unknown>>) : []
+  const fileSummary = summary.file_summary
+  const evidence = summary.evidence_assessment
+  const reviewFlags = summary.review_flags ?? []
+  const recommendedActions = Array.isArray(record.recommended_user_actions)
+    ? (record.recommended_user_actions as string[])
+    : []
+
+  const lines = ['## Cumulative Analysis Complete']
+
+  if (analysisStatus) {
+    lines.push(
+      '',
+      '### Analysis Status',
+      `- Total uploaded files: ${analysisStatus.total_uploaded_files ?? sourceFiles.length}`,
+      `- Completed file analyses: ${analysisStatus.completed_file_analyses ?? sourceFiles.length}`,
+      `- Pending file analyses: ${analysisStatus.pending_file_analyses ?? 0}`,
+      `- Failed file analyses: ${analysisStatus.failed_file_analyses ?? 0}`,
+    )
+  }
+
+  if (sourceFiles.length > 0) {
+    lines.push('', '### Source Files')
+    for (const file of sourceFiles.slice(0, 4)) {
+      lines.push(
+        `- ${String(file.file_name ?? 'Source file')} — ${String(file.document_type ?? 'Document')} (${String(file.evidence_quality ?? 'Unrated')}${typeof file.evidence_score === 'number' ? `, score ${file.evidence_score}` : ''})`
+      )
+    }
+  }
+
+  if (fileSummary?.short_summary) {
+    lines.push('', '### Summary', limitCopilotText(fileSummary.short_summary, 900))
+  }
+
+  lines.push(
+    '',
+    '### Evidence Assessment',
+    `- Supports project: ${evidence?.supports_project ?? 'Unclear'}`,
+    `- Evidence quality: ${evidence?.evidence_quality ?? 'Unclear'}`,
+    `- Evidence score: ${typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'Not scored'}`,
+  )
+
+  if (reviewFlags.length > 0) {
+    lines.push('', '### Review Flags')
+    for (const flag of reviewFlags.slice(0, 4)) {
+      lines.push(`- ${flag.flag ?? 'Review'}: ${flag.reason ?? 'Needs confirmation.'}`)
+    }
+  }
+
+  if (recommendedActions.length > 0) {
+    lines.push('', '### Recommended User Actions')
+    for (const action of recommendedActions.slice(0, 4)) {
+      lines.push(`- ${action}`)
+    }
+  }
+
+  lines.push('', 'The suggested field card now reflects the combined evidence from all analyzed files.')
+  return lines.join('\n')
+}
+
+function buildCopilotBudgetConsiderationMessage(
+  result: IctBudgetConsiderationsEvaluationResult
+) {
+  const overall = result.overallAssessment
+  const matchGroups = result.assessmentItems.slice(0, 4)
+  const matchLabel = overall.hasPotentialConflict
+    ? 'Potential Conflict'
+    : overall.hasCoordinationRequirement
+      ? 'Coordination Required'
+      : overall.hasAllowedWithConditions
+        ? 'Allowed With Conditions'
+        : 'No Policy Match'
+
+  const lines = [
+    '## DGE Budget Considerations',
+    `### ${matchLabel}`,
+    overall.summary || 'AI reviewed the current project against DGE ICT Budget Considerations.',
+  ]
+
+  if (matchGroups.length > 0) {
+    lines.push('', '### Policy Matches')
+    for (const item of matchGroups) {
+      lines.push(`- Policy ${item.policyNumber}: ${item.policyName} — ${item.matchType}`)
+      if (item.requiredAction) {
+        lines.push(`  Action: ${item.requiredAction}`)
+      }
+    }
+  }
+
+  return lines.join('\n')
+}
+
+type CopilotChatMessage = {
+  from: 'ai' | 'user'
+  text: string
+  kind?: 'text' | 'status' | 'document-analysis' | 'cumulative-analysis' | 'policy-analysis'
+  title?: string
+  detail?: string
+  fileName?: string
+  summary?: SupportingDocumentEvaluationSummary | null
+  policyResult?: IctBudgetConsiderationsEvaluationResult | null
+}
+
+function renderCopilotInlineText(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g).filter(Boolean)
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index} className="font-semibold text-[#0F172A] dark:text-white">{part.slice(2, -2)}</strong>
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={index} className="rounded bg-[#F6EBFF] px-1.5 py-0.5 text-[0.95em] font-medium text-[#7E22CE] dark:bg-white/10 dark:text-[#E9D5FF]">{part.slice(1, -1)}</code>
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={index} className="italic">{part.slice(1, -1)}</em>
+    }
+    return <Fragment key={index}>{part}</Fragment>
+  })
+}
+
+function renderCopilotMessageText(text: string) {
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  let bulletBuffer: string[] = []
+  let numberedBuffer: string[] = []
+
+  const flushBullets = (keyPrefix: string) => {
+    if (bulletBuffer.length === 0) return
+    elements.push(
+      <ul key={`${keyPrefix}-bullets-${elements.length}`} className="ml-4 list-disc space-y-1 text-sm leading-6">
+        {bulletBuffer.map((bullet, index) => (
+          <li key={`${keyPrefix}-bullet-${index}`}>{renderCopilotInlineText(bullet)}</li>
+        ))}
+      </ul>
+    )
+    bulletBuffer = []
+  }
+
+  const flushNumbers = (keyPrefix: string) => {
+    if (numberedBuffer.length === 0) return
+    elements.push(
+      <ol key={`${keyPrefix}-numbers-${elements.length}`} className="ml-5 list-decimal space-y-2 text-sm leading-6">
+        {numberedBuffer.map((item, index) => (
+          <li key={`${keyPrefix}-number-${index}`}>{renderCopilotInlineText(item)}</li>
+        ))}
+      </ol>
+    )
+    numberedBuffer = []
+  }
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      flushBullets(`line-${index}`)
+      flushNumbers(`line-${index}`)
+      return
+    }
+
+    if (trimmed.startsWith('- ')) {
+      flushNumbers(`line-${index}`)
+      bulletBuffer.push(trimmed.slice(2))
+      return
+    }
+
+    const numberedMatch = trimmed.match(/^\d+\.\s+(.*)$/)
+    if (numberedMatch) {
+      flushBullets(`line-${index}`)
+      numberedBuffer.push(numberedMatch[1])
+      return
+    }
+
+    flushBullets(`line-${index}`)
+    flushNumbers(`line-${index}`)
+
+    if (trimmed.startsWith('## ')) {
+      elements.push(
+        <h3 key={`h2-${index}`} className="text-base font-bold text-[#A855F7] dark:text-[#E9D5FF]">
+          {renderCopilotInlineText(trimmed.slice(3))}
+        </h3>
+      )
+      return
+    }
+
+    if (trimmed.startsWith('### ')) {
+      elements.push(
+        <h4 key={`h3-${index}`} className="text-sm font-semibold text-[#7E22CE] dark:text-[#E9D5FF]">
+          {renderCopilotInlineText(trimmed.slice(4))}
+        </h4>
+      )
+      return
+    }
+
+    elements.push(
+      <p key={`p-${index}`} className="text-sm leading-6 text-[#334155] dark:text-slate-100">
+        {renderCopilotInlineText(trimmed)}
+      </p>
+    )
+  })
+
+  flushBullets('final')
+  flushNumbers('final')
+  return <div className="space-y-2">{elements}</div>
+}
+
 function formatAiFieldValue(value: string | string[] | undefined) {
   if (!value) return '-'
   return Array.isArray(value) ? value.join(', ') : value
@@ -344,6 +637,394 @@ function formatAiFieldValue(value: string | string[] | undefined) {
 
 function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSummary | null) {
   return (summary?.budget_lines ?? []).reduce((sum, line) => sum + (line.amount ?? 0), 0)
+}
+
+function CopilotStatusMessage({
+  title,
+  detail,
+}: {
+  title: string
+  detail?: string
+}) {
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="flex items-start gap-3">
+        <div className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FAF5FF] text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{title}</p>
+            <span className="text-xs font-medium text-[#A855F7] dark:text-[#E9D5FF]">Working</span>
+          </div>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">{detail ?? 'Working on your request.'}</p>
+          <div className="mt-3 space-y-2">
+            <div className="h-2 w-[92%] animate-pulse rounded-full bg-[#F1F5F9] dark:bg-white/10" />
+            <div className="h-2 w-[84%] animate-pulse rounded-full bg-[#F1F5F9] dark:bg-white/10" />
+            <div className="h-2 w-[70%] animate-pulse rounded-full bg-[#F1F5F9] dark:bg-white/10" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BudgetAssistantWelcomeCard({
+  onPromptSelect,
+}: {
+  onPromptSelect: (prompt: string) => void
+}) {
+  return (
+    <div className="space-y-5 py-2">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F3E8FF] text-[#A855F7]">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <h4 className="text-xl font-bold text-[#0F172A] dark:text-white">Welcome to Budget Assistant</h4>
+          <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
+            Your AI-powered guide for ICT budget creation.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#A855F7]">
+            <MessageSquare className="h-3.5 w-3.5" />
+          </div>
+          <p className="mt-0.5 text-sm text-[#334155] dark:text-slate-200">
+            Describe your ICT project and I&apos;ll suggest fields for you to review before applying.
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#A855F7]">
+            <Lightbulb className="h-3.5 w-3.5" />
+          </div>
+          <p className="mt-0.5 text-sm text-[#334155] dark:text-slate-200">
+            Ask about any form field and get tailored guidance based on your project context.
+          </p>
+        </div>
+        <div className="flex items-start gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#A855F7]">
+            <FileText className="h-3.5 w-3.5" />
+          </div>
+          <p className="mt-0.5 text-sm text-[#334155] dark:text-slate-200">
+            Upload a supporting document and I&apos;ll extract budget insights and evidence scores.
+          </p>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2.5 flex items-center gap-2">
+          <Zap className="h-3.5 w-3.5 text-[#A855F7]" />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B] dark:text-slate-400">
+            Try asking
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {BUDGET_ASSISTANT_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => onPromptSelect(prompt)}
+              className="group rounded-xl border border-[#E9D5FF] px-3 py-2.5 text-left transition-all hover:border-[#D8B4FE] hover:bg-[#FAF5FF] dark:border-white/10 dark:hover:bg-white/10"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm leading-5 text-[#334155] dark:text-slate-100">{prompt}</p>
+                <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-[#C084FC] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-[#E9D5FF]" />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CopilotDocumentAnalysisMessage({
+  fileName,
+  summary,
+}: {
+  fileName: string
+  summary: SupportingDocumentEvaluationSummary | null
+}) {
+  const profile = summary?.document_profile
+  const fileSummary = summary?.file_summary
+  const evidence = summary?.evidence_assessment
+  const budgetLines = summary?.budget_lines ?? []
+  const reviewFlags = summary?.review_flags ?? []
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="border-b border-[#E9D5FF] px-4 py-4 dark:border-white/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#A855F7]">
+            <FileText className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Individual File Analysis Complete</p>
+            <h4 className="mt-1 truncate text-base font-bold text-[#0F172A] dark:text-white">{fileName}</h4>
+            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
+              {limitCopilotText(fileSummary?.short_summary ?? 'The file was analyzed and mapped into project evidence.', 320)}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3 px-4 py-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Document Profile</p>
+            <div className="mt-2 space-y-1.5 text-sm text-[#334155] dark:text-slate-200">
+              <p><span className="font-semibold">Type:</span> {profile?.document_type ?? 'Not identified'}</p>
+              <p><span className="font-semibold">Vendor:</span> {profile?.issuer_or_vendor ?? 'Not identified'}</p>
+              <p><span className="font-semibold">Entity:</span> {profile?.recipient_or_entity ?? 'Not identified'}</p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                Supports Project: {evidence?.supports_project ?? 'Unclear'}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-200">
+                Quality Score: {typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'N/A'}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
+              {limitCopilotText(evidence?.reason ?? evidence?.recommended_user_action ?? 'The AI extracted evidence quality and project support signals from the file.', 220)}
+            </p>
+          </div>
+        </div>
+        {(budgetLines.length > 0 || reviewFlags.length > 0) && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {budgetLines.length > 0 && (
+              <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Budget Lines</p>
+                <div className="mt-2 space-y-2">
+                  {budgetLines.slice(0, 2).map((line, index) => (
+                    <div key={`${fileName}-line-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{line.description ?? 'Budget line'}</p>
+                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{formatCopilotBudgetAmount(line.amount, line.currency) ?? 'Amount pending confirmation'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {reviewFlags.length > 0 && (
+              <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Review Flags</p>
+                <div className="mt-2 space-y-2">
+                  {reviewFlags.slice(0, 2).map((flag, index) => (
+                    <div key={`${fileName}-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{flag.flag ?? 'Review'}</p>
+                      <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{flag.reason ?? 'Needs confirmation.'}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CopilotCumulativeAnalysisMessage({
+  summary,
+}: {
+  summary: SupportingDocumentEvaluationSummary | null
+}) {
+  const record = (summary ?? {}) as Record<string, unknown>
+  const sourceFiles = Array.isArray(record.source_files) ? (record.source_files as Array<Record<string, unknown>>) : []
+  const fileSummary = summary?.file_summary
+  const evidence = summary?.evidence_assessment
+  const reviewFlags = summary?.review_flags ?? []
+  const recommendedActions = Array.isArray(record.recommended_user_actions)
+    ? (record.recommended_user_actions as string[])
+    : []
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="border-b border-[#E9D5FF] px-4 py-4 dark:border-white/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#A855F7]">
+            <Layers className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Cumulative Analysis Complete</p>
+            <h4 className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">Combined Evidence View</h4>
+            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
+              {limitCopilotText(fileSummary?.short_summary ?? 'The uploaded files were combined into one cumulative project evidence summary.', 360)}
+            </p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3 px-4 py-4">
+        {sourceFiles.length > 0 && (
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Source Files</p>
+            <div className="mt-2 space-y-2">
+              {sourceFiles.slice(0, 3).map((file, index) => (
+                <div key={`source-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{String(file.file_name ?? 'Source file')}</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {String(file.document_type ?? 'Document')} - {String(file.evidence_quality ?? 'Unrated')}
+                    {typeof file.evidence_score === 'number' ? ` (Score ${file.evidence_score})` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                Supports Project: {evidence?.supports_project ?? 'Unclear'}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-200">
+                Quality Score: {typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'N/A'}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
+              {limitCopilotText(evidence?.reason ?? 'The AI combined all completed files into one evidence assessment.', 250)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Recommended Actions</p>
+            <div className="mt-2 space-y-2">
+              {(recommendedActions.length > 0 ? recommendedActions.slice(0, 3) : ['Review the combined suggestions card before applying fields into the draft.']).map((action, index) => (
+                <div key={`action-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-[#334155] dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
+                  {action}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        {reviewFlags.length > 0 && (
+          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Review Flags</p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {reviewFlags.slice(0, 4).map((flag, index) => (
+                <div key={`cumulative-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{flag.flag ?? 'Review'}</p>
+                  <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{flag.reason ?? 'Needs confirmation.'}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CopilotPolicyAnalysisMessage({
+  result,
+}: {
+  result: IctBudgetConsiderationsEvaluationResult
+}) {
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null)
+  const overall = result.overallAssessment
+  const conflictCount = result.assessmentItems.filter((i) => i.matchType === 'Potential Conflict').length
+  const coordinationCount = result.assessmentItems.filter((i) => i.matchType === 'Coordination Required').length
+  const allowedCount = result.assessmentItems.filter((i) => i.matchType === 'Allowed With Conditions').length
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="border-b border-[#E9D5FF] px-4 py-4 dark:border-white/10">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#A855F7]">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">DGE Budget Considerations</p>
+            <h4 className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">Policy Review</h4>
+            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
+              {overall.summary || 'AI reviewed the project against DGE ICT Budget Considerations.'}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {conflictCount > 0 && (
+                <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  {conflictCount} Potential Conflict{conflictCount !== 1 ? 's' : ''}
+                </span>
+              )}
+              {coordinationCount > 0 && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+                  {coordinationCount} Coordination Required
+                </span>
+              )}
+              {allowedCount > 0 && (
+                <span className="rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                  {allowedCount} Allowed With Conditions
+                </span>
+              )}
+              {result.assessmentItems.length === 0 && (
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+                  No Policy Matches
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        {result.assessmentItems.slice(0, 4).map((item, index) => {
+          const isExpanded = expandedIndex === index
+          const tagClass =
+            item.matchType === 'Potential Conflict'
+              ? 'bg-red-50 text-red-700 border border-red-200'
+              : item.matchType === 'Coordination Required'
+                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                : 'bg-green-50 text-green-700 border border-green-200'
+          return (
+            <div key={`policy-${index}`} className="border-b border-[#F0D9FF] last:border-0 dark:border-white/10">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/5"
+                onClick={() => setExpandedIndex(isExpanded ? null : index)}
+              >
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-[#0F172A] dark:text-white">
+                    {item.policyName}
+                  </span>
+                  <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', tagClass)}>
+                    {item.matchType}
+                  </span>
+                </div>
+                <ChevronDown className={cn('h-4 w-4 shrink-0 text-[#94A3B8] transition-transform duration-200', isExpanded && 'rotate-180')} />
+              </button>
+              {isExpanded && (
+                <div className="px-4 pb-3 pt-0 text-sm leading-6 text-[#475569] dark:text-slate-200">
+                  {item.requiredAction || 'No specific action required.'}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function renderCopilotChatMessageContent(message: CopilotChatMessage) {
+  if (message.kind === 'status') {
+    return <CopilotStatusMessage title={message.title ?? 'Working'} detail={message.detail} />
+  }
+  if (message.kind === 'document-analysis') {
+    return <CopilotDocumentAnalysisMessage fileName={message.fileName ?? 'Uploaded file'} summary={message.summary ?? null} />
+  }
+  if (message.kind === 'cumulative-analysis') {
+    return <CopilotCumulativeAnalysisMessage summary={message.summary ?? null} />
+  }
+  if (message.kind === 'policy-analysis' && message.policyResult) {
+    return <CopilotPolicyAnalysisMessage result={message.policyResult} />
+  }
+
+  return renderCopilotMessageText(message.text)
 }
 
 function renderCopilotMessage(text: string) {
@@ -373,8 +1054,8 @@ function EmptyActionCard({
   icon: React.ElementType
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-4 py-5 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+    <div className="flex items-start gap-3 rounded-2xl border border-dashed border-[#A855F726] bg-[#FDF8FF] px-4 py-5 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
         <Icon className="h-5 w-5" />
       </div>
       <p className="leading-6">{description}</p>
@@ -564,8 +1245,9 @@ function LookupSelect({
         )}
       >
         <span
+          style={{ gap: '15px' }}
           className={cn(
-            'inline-flex w-full min-w-0 items-center gap-5 whitespace-nowrap',
+            'inline-flex w-full min-w-0 items-center whitespace-nowrap',
             value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]'
           )}
         >
@@ -754,20 +1436,28 @@ function FormSection({
   icon: Icon,
   children,
   action,
+  noIconBg,
 }: {
   title: string
   description: string
   icon: React.ElementType
   children: React.ReactNode
   action?: React.ReactNode
+  noIconBg?: boolean
 }) {
   return (
     <section className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B] sm:p-6">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
-            <Icon className="h-6 w-6" />
-          </div>
+        <div className={cn('flex items-start', noIconBg ? 'gap-2.5' : 'gap-4')}>
+          {noIconBg ? (
+            <div className="mt-1 shrink-0 text-[var(--primary)]">
+              <Icon className="h-6 w-6" />
+            </div>
+          ) : (
+            <div className="flex h-12 w-12 shrink-0 items-start justify-center pt-[10px] rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
+              <Icon className="h-6 w-6" />
+            </div>
+          )}
           <div>
             <h3 className="mb-1 text-lg font-bold text-[var(--foreground)]">{title}</h3>
             <p className="max-w-2xl text-sm leading-6 text-[var(--muted-foreground)]">{description}</p>
@@ -833,6 +1523,76 @@ function resolveAiFieldMapping(
     return 'technologyCompany'
   }
   return null
+}
+
+function resolveManualAiFieldSuggestion(
+  field: SupportingDocumentSuggestedProjectField,
+  technologyCompanies: TechnologyCompanyOption[]
+): {
+  patch: Partial<FormValues>
+  appliedName?: string
+  appliedDescription?: string
+  error?: string
+} {
+  const mapping = resolveAiFieldMapping(field)
+  if (!mapping) {
+    return { patch: {} }
+  }
+
+  const rawValue = Array.isArray(field.suggested_value)
+    ? field.suggested_value.join(', ')
+    : String(field.suggested_value ?? '')
+
+  if (mapping === 'initiativeName') {
+    return {
+      patch: { initiativeName: rawValue },
+      appliedName: rawValue,
+    }
+  }
+
+  if (mapping === 'summary') {
+    return {
+      patch: { summary: rawValue },
+      appliedDescription: rawValue,
+    }
+  }
+
+  if (mapping === 'category') {
+    const matched = CATEGORY_OPTIONS.find(
+      (opt) => opt.label.toLowerCase() === rawValue.toLowerCase()
+    )
+
+    return matched
+      ? { patch: { category: matched.value } }
+      : {
+          patch: {},
+          error: `Category "${rawValue}" does not match any available category option.`,
+        }
+  }
+
+  if (mapping === 'technologyCompany') {
+    const normalized = rawValue.toLowerCase()
+    const matched = technologyCompanies.find(
+      (company) =>
+        company.name.toLowerCase() === normalized ||
+        company.name.toLowerCase().includes(normalized) ||
+        normalized.includes(company.name.toLowerCase())
+    )
+
+    return matched
+      ? {
+          patch: {
+            technologyCompanyId: matched.id,
+            technologyProductIds: [],
+          },
+        }
+      : {
+          patch: {},
+          error: `Technology Company "${rawValue}" does not match any available option.`,
+        }
+  }
+
+  return { patch: {} }
 }
 
 function normalizeCopilotSuggestedFieldKey(value: string) {
@@ -942,6 +1702,9 @@ function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Potential Conflict') {
     return {
       badge: 'border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#B42318]/10 dark:text-[#FCA5A5]',
+      sofbadge: 'border-[#FECACA] text-[#DC2626] dark:border-[#DC2626]/30 dark:text-[#FCA5A5]',
+      dot: 'bg-[#DC2626]',
+      text: 'text-[#DC2626] dark:text-[#FCA5A5]',
       icon: 'bg-[#FEE4E2] text-[#B42318] dark:bg-[#B42318]/15 dark:text-[#FCA5A5]',
       card: 'border-[#F5C2C7]',
     }
@@ -950,6 +1713,9 @@ function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Coordination Required') {
     return {
       badge: 'border-[#F3D7A0] bg-[#FFF8E8] text-[#B7791F] dark:border-[#B7791F]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]',
+      sofbadge: 'border-[#FDE68A] text-[#B45309] dark:border-[#B45309]/30 dark:text-[#F6D28A]',
+      dot: 'bg-[#F59E0B]',
+      text: 'text-[#B45309] dark:text-[#F6D28A]',
       icon: 'bg-[#FDECC8] text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]',
       card: 'border-[#F3D7A0]',
     }
@@ -957,6 +1723,9 @@ function toMatchTypeAccent(matchType: PolicyMatchType) {
 
   return {
     badge: 'border-[#CFE9D9] bg-[#EEF9F1] text-[#16794B] dark:border-[#16794B]/30 dark:bg-[#123123] dark:text-[#86EFAC]',
+    sofbadge: 'border-[#BBF7D0] text-[#16A34A] dark:border-[#16A34A]/30 dark:text-[#86EFAC]',
+    dot: 'bg-[#22C55E]',
+    text: 'text-[#16A34A] dark:text-[#86EFAC]',
     icon: 'bg-[#DCFCE7] text-[#16794B] dark:bg-[#16794B]/15 dark:text-[#86EFAC]',
     card: 'border-[#CFE9D9]',
   }
@@ -1119,16 +1888,7 @@ export default function NewProject() {
   const [mode, setMode] = useState<'manual' | 'ai'>('manual')
   const [budgetItems, setBudgetItems] = useState<BudgetItemDraft[]>([])
   const [chatInput, setChatInput] = useState('')
-  const [chatMessages, setChatMessages] = useState<{ from: 'ai' | 'user'; text: string }[]>([
-    {
-      from: 'ai',
-      text: 'Welcome to the Budget Copilot!\n\nBefore we begin, I need to understand a few things about your project to help you better.',
-    },
-    {
-      from: 'ai',
-      text: "Is this a new project you're starting, or is it a continuation of an existing initiative?",
-    },
-  ])
+  const [chatMessages, setChatMessages] = useState<CopilotChatMessage[]>([])
   const [optionSelected, setOptionSelected] = useState(false)
   const [formValues, setFormValues] = useState<FormValues>(INITIAL_FORM_VALUES)
   const [fieldErrors, setFieldErrors] = useState<FieldErrorMap>({})
@@ -1190,14 +1950,29 @@ export default function NewProject() {
   const [copilotBudgetConsiderationResult, setCopilotBudgetConsiderationResult] = useState<IctBudgetConsiderationsEvaluationResult | null>(null)
   const [copilotBudgetConsiderationLoading, setCopilotBudgetConsiderationLoading] = useState(false)
   const [copilotBudgetConsiderationError, setCopilotBudgetConsiderationError] = useState<string | null>(null)
+  const [copilotWorkspaceView, setCopilotWorkspaceView] = useState<'chat' | 'suggestions'>('chat')
   const [chatStagedFile, setChatStagedFile] = useState<File | null>(null)
+  const [suggestionFlashOn, setSuggestionFlashOn] = useState(false)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
+  const shownCopilotDocumentSummaryRef = useRef<Set<string>>(new Set())
+  const prevSuggestionCountRef = useRef(0)
+  const shownCopilotCumulativeSummaryScopeRef = useRef<string | null>(null)
 
   useEffect(() => {
     const el = chatScrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [chatMessages])
+
+  useEffect(() => {
+    const count = copilotPendingSuggestion ? Object.keys(copilotPendingSuggestion.fields).length : 0
+    if (count > prevSuggestionCountRef.current) {
+      prevSuggestionCountRef.current = count
+      setSuggestionFlashOn(true)
+    } else {
+      prevSuggestionCountRef.current = count
+    }
+  }, [copilotPendingSuggestion])
 
   const [strategicPriorities, setStrategicPriorities] = useState<StrategicPriorityOption[]>([])
   const [workStreams, setWorkStreams] = useState<WorkStreamOption[]>([])
@@ -1863,7 +2638,112 @@ export default function NewProject() {
         ? 'cumulative'
         : 'document'
     )
+    void mergeStrategicPriorityIntoSuggestion(
+      activeCopilotSupportingDocumentSummary.parsedSummary as unknown as Record<string, unknown>
+    )
   }, [activeCopilotSupportingDocumentSummary, mode])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+
+    for (const item of copilotSupportingDocumentInsightItems) {
+      if (item.status !== 'complete' || !item.parsedSummary) continue
+      if (shownCopilotDocumentSummaryRef.current.has(item.id)) continue
+
+      shownCopilotDocumentSummaryRef.current.add(item.id)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: 'ai',
+          kind: 'document-analysis',
+          fileName: item.file.name,
+          summary: item.parsedSummary,
+          text: buildCopilotIndividualAnalysisMessage(item.file.name, item.parsedSummary),
+        },
+      ])
+    }
+  }, [copilotSupportingDocumentInsightItems, mode])
+
+  useEffect(() => {
+    if (mode !== 'ai') return
+    if (completedCopilotSupportingDocumentInputs.length <= 1) {
+      shownCopilotCumulativeSummaryScopeRef.current = null
+      return
+    }
+
+    if (
+      copilotSupportingDocumentCumulativeAnalysis.status === 'analyzing' &&
+      copilotSupportingDocumentCumulativeAnalysis.scopeKey &&
+      shownCopilotCumulativeSummaryScopeRef.current !== copilotSupportingDocumentCumulativeAnalysis.scopeKey
+    ) {
+      shownCopilotCumulativeSummaryScopeRef.current = `loading:${copilotSupportingDocumentCumulativeAnalysis.scopeKey}`
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          from: 'ai',
+          kind: 'status',
+          title: 'Cumulative Analysis In Progress',
+          detail: `Combining ${completedCopilotSupportingDocumentInputs.length} analyzed files into one project-wide evidence view.`,
+          text: `## Cumulative Analysis In Progress\nCombining ${completedCopilotSupportingDocumentInputs.length} analyzed files into one project-wide evidence view.`,
+        },
+      ])
+      return
+    }
+
+    if (
+      copilotSupportingDocumentCumulativeAnalysis.status === 'complete' &&
+      copilotSupportingDocumentCumulativeAnalysis.parsedSummary &&
+      copilotSupportingDocumentCumulativeAnalysis.scopeKey &&
+      shownCopilotCumulativeSummaryScopeRef.current !== copilotSupportingDocumentCumulativeAnalysis.scopeKey
+    ) {
+      shownCopilotCumulativeSummaryScopeRef.current = copilotSupportingDocumentCumulativeAnalysis.scopeKey
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        const message: CopilotChatMessage = {
+          from: 'ai',
+          kind: 'cumulative-analysis',
+          summary: copilotSupportingDocumentCumulativeAnalysis.parsedSummary,
+          text: buildCopilotCumulativeAnalysisMessage(copilotSupportingDocumentCumulativeAnalysis.parsedSummary),
+        }
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+          next[lastIndex] = message
+          return next
+        }
+        return [...prev, message]
+      })
+      return
+    }
+
+    if (
+      copilotSupportingDocumentCumulativeAnalysis.status === 'error' &&
+      copilotSupportingDocumentCumulativeAnalysis.scopeKey &&
+      shownCopilotCumulativeSummaryScopeRef.current !== copilotSupportingDocumentCumulativeAnalysis.scopeKey
+    ) {
+      shownCopilotCumulativeSummaryScopeRef.current = copilotSupportingDocumentCumulativeAnalysis.scopeKey
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        const message: CopilotChatMessage = {
+          from: 'ai',
+          kind: 'text',
+          text: `## Cumulative Analysis Failed\n${copilotSupportingDocumentCumulativeAnalysis.error ?? 'I could not combine the uploaded documents into one cumulative summary.'}`,
+        }
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+          next[lastIndex] = message
+          return next
+        }
+        return [...prev, message]
+      })
+    }
+  }, [
+    completedCopilotSupportingDocumentInputs.length,
+    copilotSupportingDocumentCumulativeAnalysis.error,
+    copilotSupportingDocumentCumulativeAnalysis.parsedSummary,
+    copilotSupportingDocumentCumulativeAnalysis.scopeKey,
+    copilotSupportingDocumentCumulativeAnalysis.status,
+    mode,
+  ])
   const actionSummary = activeSupportingDocumentSummary.parsedSummary
   const latestCompletedSupportingDocument = completedSupportingDocumentInputs[completedSupportingDocumentInputs.length - 1] ?? null
   const actionSummarySourceLabel =
@@ -1890,6 +2770,20 @@ export default function NewProject() {
   const copilotActionDocumentSummary = copilotActionSummary?.file_summary ?? null
   const copilotActionEvidenceAssessment = copilotActionSummary?.evidence_assessment ?? null
   const copilotActionBudgetTotal = getDocumentSummaryBudgetTotal(copilotActionSummary ?? null)
+  const copilotSuggestedFieldCount = copilotPendingSuggestion
+    ? Object.keys(copilotPendingSuggestion.fields).length
+    : 0
+
+  const copilotFileEvidenceScores = useMemo<Record<string, number | null>>(() => {
+    const result: Record<string, number | null> = {}
+    for (const file of copilotUploadedFiles) {
+      const dropzoneKey = `${file.name}::${file.size}::${file.lastModified}`
+      const sig = getUploadedFileSignature(file)
+      const score = copilotSupportingDocumentAnalyses[sig]?.parsedSummary?.evidence_assessment?.evidence_score ?? null
+      result[dropzoneKey] = typeof score === 'number' ? score : null
+    }
+    return result
+  }, [copilotUploadedFiles, copilotSupportingDocumentAnalyses])
 
   const persistSupportingDocumentAiRecordsForBudget = async (
     budgetId: string,
@@ -2134,8 +3028,18 @@ export default function NewProject() {
   }
 
   const refreshCopilotAiSuggestions = async (nameOverride?: string, descriptionOverride?: string) => {
-    const projectName = (nameOverride ?? copilotFormValues.initiativeName).trim()
-    const projectDescription = (descriptionOverride ?? copilotFormValues.summary).trim()
+    const projectName = (
+      nameOverride ??
+      (copilotFormValues.initiativeName ||
+        (typeof copilotPendingSuggestion?.fields?.initiativeName === 'string'
+          ? copilotPendingSuggestion.fields.initiativeName : ''))
+    ).trim()
+    const projectDescription = (
+      descriptionOverride ??
+      (copilotFormValues.summary ||
+        (typeof copilotPendingSuggestion?.fields?.summary === 'string'
+          ? copilotPendingSuggestion.fields.summary : ''))
+    ).trim()
 
     if (!projectName || !projectDescription) {
       return
@@ -2180,8 +3084,18 @@ export default function NewProject() {
     nameOverride?: string,
     descriptionOverride?: string
   ) => {
-    const projectName = (nameOverride ?? copilotFormValues.initiativeName).trim()
-    const projectDescription = (descriptionOverride ?? copilotFormValues.summary).trim()
+    const projectName = (
+      nameOverride ??
+      (copilotFormValues.initiativeName ||
+        (typeof copilotPendingSuggestion?.fields?.initiativeName === 'string'
+          ? copilotPendingSuggestion.fields.initiativeName : ''))
+    ).trim()
+    const projectDescription = (
+      descriptionOverride ??
+      (copilotFormValues.summary ||
+        (typeof copilotPendingSuggestion?.fields?.summary === 'string'
+          ? copilotPendingSuggestion.fields.summary : ''))
+    ).trim()
 
     if (!projectName || !projectDescription) {
       showErrorToast(
@@ -2193,6 +3107,17 @@ export default function NewProject() {
 
     setCopilotBudgetConsiderationLoading(true)
     setCopilotBudgetConsiderationError(null)
+    setCopilotWorkspaceView('chat')
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        from: 'ai',
+        kind: 'status',
+        title: 'Checking DGE Budget Considerations',
+        detail: 'Reviewing the current project context against the budget consideration policies.',
+        text: 'Checking DGE Budget Considerations...',
+      },
+    ])
 
     try {
       const response = await evaluateIctBudgetConsiderations({
@@ -2201,13 +3126,41 @@ export default function NewProject() {
         projectDescription,
       })
       setCopilotBudgetConsiderationResult(response)
-    } catch (error) {
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+          next[lastIndex] = {
+            from: 'ai',
+            kind: 'policy-analysis',
+            policyResult: response,
+            text: buildCopilotBudgetConsiderationMessage(response),
+          }
+          return next
+        }
+        return [
+          ...prev,
+          {
+            from: 'ai',
+            kind: 'policy-analysis',
+            policyResult: response,
+            text: buildCopilotBudgetConsiderationMessage(response),
+          },
+        ]
+      })
+    } catch {
       setCopilotBudgetConsiderationResult(null)
-      setCopilotBudgetConsiderationError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to retrieve ICT Budget Considerations evaluation.'
-      )
+      setCopilotBudgetConsiderationError('Unable to retrieve ICT Budget Considerations evaluation.')
+      setChatMessages((prev) => {
+        const next = [...prev]
+        const lastIndex = next.length - 1
+        const errorText = 'The DGE Budget Considerations check could not be completed right now. This is usually a temporary service issue — please try again in a moment.'
+        if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+          next[lastIndex] = { from: 'ai', kind: 'text', text: errorText }
+          return next
+        }
+        return [...prev, { from: 'ai', kind: 'text', text: errorText }]
+      })
     } finally {
       setCopilotBudgetConsiderationLoading(false)
     }
@@ -2238,7 +3191,15 @@ export default function NewProject() {
 
   const simulateCopilotAssistantMessage = async (targetText: string) => {
     setCopilotTyping(true)
-    setChatMessages((prev) => [...prev, { from: 'ai', text: '' }])
+    setChatMessages((prev) => {
+      const next = [...prev]
+      const lastIndex = next.length - 1
+      if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+        next[lastIndex] = { from: 'ai', kind: 'text', text: '' }
+        return next
+      }
+      return [...prev, { from: 'ai', kind: 'text', text: '' }]
+    })
 
     let current = ''
     while (current.length < targetText.length) {
@@ -2262,12 +3223,8 @@ export default function NewProject() {
   const clearCopilotWorkspace = () => {
     setChatInput('')
     setOptionSelected(false)
-    setChatMessages([
-      {
-        from: 'ai',
-        text: 'Welcome to the Budget Copilot.\n\nTell me what you are trying to budget, upload any supporting files, and I will stage suggestions for you to review before you apply them.',
-      },
-    ])
+    setCopilotWorkspaceView('chat')
+    setChatMessages([])
     setCopilotFormValues(INITIAL_FORM_VALUES)
     setCopilotFieldErrors({})
     setCopilotBudgetItems([])
@@ -2291,6 +3248,8 @@ export default function NewProject() {
     setCopilotAiSuggestionsNeedRefresh(false)
     setCopilotBudgetConsiderationResult(null)
     setCopilotBudgetConsiderationError(null)
+    shownCopilotDocumentSummaryRef.current.clear()
+    shownCopilotCumulativeSummaryScopeRef.current = null
   }
 
   // Types into the last existing AI message rather than appending a new one
@@ -2402,51 +3361,77 @@ export default function NewProject() {
     if (!trimmed || copilotBusy) return
 
     setCopilotBusy(true)
+    setCopilotWorkspaceView('chat')
     setOptionSelected(true)
-    setChatMessages((prev) => [...prev, { from: 'user', text: trimmed }])
+    setChatMessages((prev) => [
+      ...prev,
+      { from: 'user', text: trimmed },
+      {
+        from: 'ai',
+        kind: 'status',
+        title: 'Thinking',
+        detail: 'Understanding your request and preparing the next guided response.',
+        text: 'Thinking...',
+      },
+    ])
     setChatInput('')
 
     const nextMessages: Array<{ from: 'ai' | 'user'; text: string }> = [
       ...chatMessages,
       { from: 'user', text: trimmed },
     ]
+    let chatReplyText = ''
     try {
       const runtimeContext = buildCopilotRuntimeContext()
       const chatReply = await getBudgetCopilotChatReply({
         messages: toCopilotChatHistory(nextMessages),
         runtimeContext,
       })
+      chatReplyText = chatReply.text
 
       await simulateCopilotAssistantMessage(
         chatReply.text.trim() ||
           'I reviewed that and prepared draft guidance for the budget form. Review the staged suggestions before applying them.'
       )
 
-      const structured = await getBudgetCopilotStructuredAnalysis({
-        messages: toCopilotChatHistory([
-          ...nextMessages,
-          { from: 'ai', text: chatReply.text },
-        ]),
-        runtimeContext,
-      })
-
-      const parsedAnalysis = structured.parsed && typeof structured.parsed === 'object'
-        ? (structured.parsed as Record<string, unknown>)
-        : null
-
-      stageCopilotSuggestionFromAnalysis(parsedAnalysis, chatReply.text, 'chat')
-      void mergeStrategicPriorityIntoSuggestion(parsedAnalysis)
+      // Secondary extraction — silently ignored if it fails so the visible reply is never replaced
+      try {
+        const structured = await getBudgetCopilotStructuredAnalysis({
+          messages: toCopilotChatHistory([
+            ...nextMessages,
+            { from: 'ai', text: chatReply.text },
+          ]),
+          runtimeContext,
+        })
+        const parsedAnalysis = structured.parsed && typeof structured.parsed === 'object'
+          ? (structured.parsed as Record<string, unknown>)
+          : null
+        stageCopilotSuggestionFromAnalysis(parsedAnalysis, chatReply.text, 'chat')
+        void mergeStrategicPriorityIntoSuggestion(parsedAnalysis)
+      } catch {
+        // Structured extraction failure — does not affect the visible reply
+      }
     } catch (error) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          from: 'ai',
-          text:
-            error instanceof Error
-              ? `I ran into a problem while preparing the reply: ${error.message}`
-              : 'I ran into a problem while preparing the reply.',
-        },
-      ])
+      // Only show an error when the primary reply call itself fails (e.g. network/timeout)
+      const isServiceError =
+        error instanceof Error &&
+        (error.message.includes('504') ||
+          error.message.includes('timeout') ||
+          error.message.includes('Timeout') ||
+          error.message.includes('network') ||
+          error.message.includes('Failed to fetch'))
+      if (isServiceError || !chatReplyText) {
+        setChatMessages((prev) => {
+          const next = [...prev]
+          const lastIndex = next.length - 1
+          const errorText = 'Something went wrong while preparing a reply. Please try again — your previous message is still saved.'
+          if (lastIndex >= 0 && next[lastIndex].from === 'ai' && next[lastIndex].kind === 'status') {
+            next[lastIndex] = { from: 'ai', kind: 'text', text: errorText }
+            return next
+          }
+          return [...prev, { from: 'ai', kind: 'text', text: errorText }]
+        })
+      }
     } finally {
       setCopilotBusy(false)
       setCopilotTyping(false)
@@ -2470,10 +3455,11 @@ export default function NewProject() {
 
     const signature = getUploadedFileSignature(file)
     const userText = text?.trim()
-      ? `${text.trim()}\n\n📎 Attached: **${file.name}**`
-      : `📎 Attached: **${file.name}**`
+      ? `${text.trim()}\n\nAttached file: ${file.name}`
+      : `Attached file: ${file.name}`
 
     setCopilotBusy(true)
+    setCopilotWorkspaceView('chat')
     setOptionSelected(true)
     setChatInput('')
     setChatStagedFile(null)
@@ -2493,7 +3479,16 @@ export default function NewProject() {
     setChatMessages((prev) => [...prev, { from: 'user', text: userText }])
 
     // Placeholder "analyzing" message
-    setChatMessages((prev) => [...prev, { from: 'ai', text: `Analyzing **${file.name}**...` }])
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        from: 'ai',
+        kind: 'status',
+        title: 'File Analysis In Progress',
+        detail: `${file.name} is being read and mapped into project evidence. This may take a few minutes.`,
+        text: `## File Analysis In Progress\n### ${file.name}\nReading the file and extracting evidence for the draft.`,
+      },
+    ])
 
     try {
       const analysisResponse = await evaluateSupportingDocument({ file })
@@ -2508,76 +3503,34 @@ export default function NewProject() {
           : 'The response did not contain a usable structured summary.',
       }
       setCopilotSupportingDocumentAnalyses((current) => ({ ...current, [signature]: analysisEntry }))
-
-      // Build runtime context with the just-completed analysis already included
-      const completedForContext = analysisResponse.parsedSummary
-        ? [{ fileName: file.name, summary: analysisResponse.parsedSummary }]
-        : []
-      const runtimeContext: BudgetCopilotRuntimeContext = {
-        current_form_state: copilotFormValues,
-        uploaded_documents: [
-          ...copilotUploadedFiles.map((f) => ({
-            name: f.name,
-            size: f.size,
-            signature: getUploadedFileSignature(f),
-          })),
-          { name: file.name, size: file.size, signature },
-        ],
-        file_analyses: [
-          ...completedCopilotSupportingDocumentInputs.map((item) => ({
-            fileName: item.file.name,
-            summary: item.parsedSummary,
-          })),
-          ...completedForContext,
-        ],
-        cumulative_analysis: activeCopilotSupportingDocumentSummary.parsedSummary,
-        budget_rows: copilotBudgetItems,
-        pending_suggestions: copilotPendingSuggestion,
-        entity_name: getStoredInstanceDetail()?.name?.trim() || '',
+      const parsedSummaryRecord = analysisResponse.parsedSummary as unknown as Record<string, unknown> | null
+      if (parsedSummaryRecord) {
+        stageCopilotSuggestionFromAnalysis(
+          parsedSummaryRecord,
+          buildCopilotIndividualAnalysisMessage(file.name, analysisResponse.parsedSummary),
+          'document'
+        )
+        void mergeStrategicPriorityIntoSuggestion(parsedSummaryRecord)
       }
 
-      const historyForChat = toCopilotChatHistory([
-        ...chatMessages,
-        { from: 'user', text: userText },
-      ])
+      const analysisMessage = buildCopilotIndividualAnalysisMessage(file.name, analysisResponse.parsedSummary)
 
-      // Get the actual copilot reply so the response is conversational, not raw analysis output
-      const chatReply = await getBudgetCopilotChatReply({
-        messages: historyForChat,
-        runtimeContext,
-      })
-
-      const copilotReplyText = chatReply.text.trim() ||
-        `I've reviewed **${file.name}**. Check the suggestions below and apply what looks right.`
-
-      // Replace "Analyzing..." placeholder with the copilot's reply via typing simulation
       setChatMessages((prev) => {
         const next = [...prev]
         const lastIndex = next.length - 1
         if (lastIndex >= 0 && next[lastIndex].from === 'ai') {
-          next[lastIndex] = { ...next[lastIndex], text: '' }
+          next[lastIndex] = {
+            from: 'ai',
+            kind: 'document-analysis',
+            fileName: file.name,
+            summary: analysisResponse.parsedSummary,
+            text: analysisMessage,
+          }
         }
         return next
       })
-      await simulateCopilotAssistantMessageInPlace(copilotReplyText)
-
-      // Structured extraction uses the copilot reply as part of transcript
-      const structured = await getBudgetCopilotStructuredAnalysis({
-        messages: toCopilotChatHistory([
-          ...chatMessages,
-          { from: 'user', text: userText },
-          { from: 'ai', text: copilotReplyText },
-        ]),
-        runtimeContext,
-      })
-
-      const parsedAnalysis = structured.parsed && typeof structured.parsed === 'object'
-        ? (structured.parsed as Record<string, unknown>)
-        : null
-
-      stageCopilotSuggestionFromAnalysis(parsedAnalysis, copilotReplyText, 'document')
-      void mergeStrategicPriorityIntoSuggestion(parsedAnalysis)
-    } catch (error) {
+      shownCopilotDocumentSummaryRef.current.add(signature)
+    } catch {
       setCopilotSupportingDocumentAnalyses((current) => ({
         ...current,
         [signature]: {
@@ -2585,7 +3538,7 @@ export default function NewProject() {
           parsedSummary: null,
           rawSummary: '',
           responseTimeMs: null,
-          error: error instanceof Error ? error.message : 'Document analysis failed.',
+          error: 'Document analysis failed.',
         },
       }))
       setChatMessages((prev) => {
@@ -2593,10 +3546,9 @@ export default function NewProject() {
         const lastIndex = next.length - 1
         if (lastIndex >= 0 && next[lastIndex].from === 'ai') {
           next[lastIndex] = {
-            ...next[lastIndex],
-            text: error instanceof Error
-              ? `Analysis failed for **${file.name}**: ${error.message}`
-              : `Analysis failed for **${file.name}**.`,
+            from: 'ai',
+            kind: 'text',
+            text: `We weren't able to analyse **${file.name}** right now. This can happen due to a temporary service issue. Please try uploading the file again.`,
           }
         }
         return next
@@ -3159,74 +4111,87 @@ export default function NewProject() {
     field: SupportingDocumentSuggestedProjectField,
     suppressRefresh = false,
   ): { appliedName?: string; appliedDescription?: string } => {
-    const mapping = resolveAiFieldMapping(field)
-    if (!mapping) return {}
+    const result = resolveManualAiFieldSuggestion(field, technologyCompanies)
 
-    const rawValue = Array.isArray(field.suggested_value)
-      ? field.suggested_value.join(', ')
-      : (field.suggested_value ?? '')
-
-    if (mapping === 'initiativeName') {
-      updateField('initiativeName', rawValue)
-      if (!suppressRefresh) {
-        const desc = formValues.summary.trim()
-        if (rawValue.trim() && desc) void refreshAiSuggestions(rawValue.trim(), desc)
-      }
-      return { appliedName: rawValue }
-    }
-
-    if (mapping === 'summary') {
-      updateField('summary', rawValue)
-      if (!suppressRefresh) {
-        const name = formValues.initiativeName.trim()
-        if (name && rawValue.trim()) void refreshAiSuggestions(name, rawValue.trim())
-      }
-      return { appliedDescription: rawValue }
-    }
-
-    if (mapping === 'category') {
-      const matched = CATEGORY_OPTIONS.find(
-        (opt) => opt.label.toLowerCase() === rawValue.toLowerCase()
-      )
-      if (matched) {
-        updateField('category', matched.value)
-      } else {
-        showErrorToast('Category not matched', `"${rawValue}" does not match any available category option.`)
-      }
+    if (result.error) {
+      showErrorToast('Suggestion not applied', result.error)
       return {}
     }
 
-    if (mapping === 'technologyCompany') {
-      const normalized = rawValue.toLowerCase()
-      const matched = technologyCompanies.find(
-        (company) =>
-          company.name.toLowerCase() === normalized ||
-          company.name.toLowerCase().includes(normalized) ||
-          normalized.includes(company.name.toLowerCase())
-      )
-      if (matched) {
-        handleTechnologyCompanyChange(matched.id)
-      } else {
-        showErrorToast('Company not matched', `"${rawValue}" does not match any available Technology Company.`)
-      }
+    if (result.patch.initiativeName !== undefined) {
+      updateField('initiativeName', result.patch.initiativeName)
     }
 
-    return {}
+    if (result.patch.summary !== undefined) {
+      updateField('summary', result.patch.summary)
+    }
+
+    if (result.patch.category !== undefined) {
+      updateField('category', result.patch.category)
+    }
+
+    if (result.patch.technologyCompanyId !== undefined) {
+      handleTechnologyCompanyChange(result.patch.technologyCompanyId)
+    }
+
+    if (!suppressRefresh) {
+      const name = (result.appliedName ?? formValues.initiativeName).trim()
+      const desc = (result.appliedDescription ?? formValues.summary).trim()
+      if (name && desc) void refreshAiSuggestions(name, desc)
+    }
+
+    return {
+      appliedName: result.appliedName,
+      appliedDescription: result.appliedDescription,
+    }
   }
 
   const applyAllAiFieldSuggestions = () => {
     let appliedName: string | undefined
     let appliedDescription: string | undefined
+    const aggregatedPatch: Partial<FormValues> = {}
+    const failedMessages: string[] = []
 
     for (const field of actionSuggestedFields) {
-      const result = applyAiFieldSuggestion(field, true)
+      const result = resolveManualAiFieldSuggestion(field, technologyCompanies)
+      if (result.error) {
+        failedMessages.push(result.error)
+        continue
+      }
+
+      Object.assign(aggregatedPatch, result.patch)
       if (result.appliedName !== undefined) appliedName = result.appliedName
       if (result.appliedDescription !== undefined) appliedDescription = result.appliedDescription
+    }
+
+    if (Object.keys(aggregatedPatch).length > 0) {
+      setFormValues((prev) => ({
+        ...prev,
+        ...aggregatedPatch,
+      }))
+
+      setFieldErrors((prev) => {
+        const nextErrors = { ...prev }
+        Object.keys(aggregatedPatch).forEach((key) => {
+          delete nextErrors[key as keyof FieldErrorMap]
+        })
+        if (aggregatedPatch.technologyCompanyId !== undefined) {
+          delete nextErrors.technologyProductIds
+        }
+        return nextErrors
+      })
     }
 
     const name = (appliedName ?? formValues.initiativeName).trim()
     const desc = (appliedDescription ?? formValues.summary).trim()
     if (name && desc) void refreshAiSuggestions(name, desc)
+
+    if (failedMessages.length > 0) {
+      showErrorToast(
+        'Some suggestions could not be applied',
+        failedMessages.join('\n')
+      )
+    }
   }
 
   const applyAiAccountCodeSuggestion = async () => {
@@ -3564,35 +4529,26 @@ export default function NewProject() {
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto xl:items-center">
-            <div className="grid w-full grid-cols-1 gap-2 rounded-2xl border border-[#DDEBFF] bg-white p-2 text-center shadow-sm dark:border-white/10 dark:bg-white/5 sm:grid-cols-3 lg:min-w-[360px] xl:w-auto">
-              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-xs font-semibold text-[#64748B]">Cycle</p>
-                <p className="text-sm font-bold text-[#0F172A] dark:text-white">2026</p>
-              </div>
-              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-xs font-semibold text-[#64748B]">Status</p>
-                <p className="text-sm font-bold text-[#0F172A] dark:text-white">Draft</p>
-              </div>
-              <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-                <p className="text-xs font-semibold text-[#64748B]">Line Item Total</p>
-                <CurrencyAmount amount={totalRequested} full className="mt-1 text-sm font-bold text-[#286CFF]" />
-              </div>
-            </div>
-
-            <div className="flex w-full flex-wrap items-center justify-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/5 sm:flex-nowrap lg:w-auto">
-              <User className={cn('h-4 w-4', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
-              <span className={cn('text-sm font-bold', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
+          <div className="flex shrink-0 flex-col gap-3 lg:flex-row xl:items-center">
+            <div className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/5">
+              <User className={cn('h-5 w-5 shrink-0', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+              <span className={cn('shrink-0 text-sm font-bold', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
               <button
                 onClick={() => setMode(mode === 'manual' ? 'ai' : 'manual')}
-                className={cn('relative h-6 w-12 overflow-hidden rounded-full p-1 transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
+                className={cn('relative h-6 w-12 shrink-0 overflow-hidden rounded-full p-1 transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
                 aria-label="Toggle input mode"
               >
                 <div className={cn('h-4 w-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-6' : 'translate-x-0')} />
               </button>
-              <span className={cn('text-sm font-bold', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>AI Copilot</span>
-              <Bot className={cn('h-4 w-4', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+              <span className={cn('shrink-0 text-sm font-bold', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Budget Assistant</span>
+              <Bot className={cn('h-5 w-5 shrink-0', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
             </div>
+            <Button
+              className="h-11 shrink-0 rounded-xl bg-[var(--primary)] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8]"
+              onClick={() => mode === 'manual' ? void handleSaveDraft() : void handleCopilotSaveDraft()}
+            >
+              Save Draft
+            </Button>
           </div>
         </div>
       </div>
@@ -3619,14 +4575,7 @@ export default function NewProject() {
                   {policyEvaluationError}
                 </div>
               ) : policyEvaluationResult ? (
-                <div
-                  className={cn(
-                    'relative overflow-hidden rounded-2xl border border-[#E9D5FF] shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10',
-                    policyEvaluationExpanded
-                      ? 'bg-white dark:bg-[#1E293B]'
-                      : 'bg-gradient-to-b from-[#FDF7FF] to-white dark:bg-[linear-gradient(180deg,#241735_0%,#1E293B_100%)]'
-                  )}
-                >
+                <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF8FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
                   <button
                     type="button"
                     onClick={() => {
@@ -3636,33 +4585,15 @@ export default function NewProject() {
                     }}
                     className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
                   >
-                    <div className="flex items-start gap-4">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#A855F7_0%,#C084FC_100%)] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
-                        <Bot className="h-5 w-5" />
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 shrink-0 text-[#A855F7]">
+                        <Sparkles className="h-6 w-6" />
                       </div>
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
-                            AI Budget Considerations
-                          </h2>
-                          <span
-                            className={cn(
-                              'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
-                              policyEvaluationResult.overallAssessment.hasPotentialConflict
-                                ? policyPanelTheme.pill
-                                : policyEvaluationResult.overallAssessment.hasPolicyMatch
-                                  ? policyPanelTheme.pill
-                                  : policyPanelTheme.pill
-                            )}
-                          >
-                            {policyEvaluationResult.overallAssessment.hasPotentialConflict
-                              ? 'Potential Conflict Detected'
-                              : policyEvaluationResult.overallAssessment.hasPolicyMatch
-                                ? 'Policy Match Found'
-                                : 'No Policy Match'}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
+                        <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
+                          AI Budget Considerations
+                        </h2>
+                        <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
                           {policyEvaluationResult.overallAssessment.hasPolicyMatch
                             ? 'AI screened this project against DGE ICT Budget Considerations and highlighted the policies that need attention.'
                             : policyEvaluationResult.overallAssessment.summary}
@@ -3671,28 +4602,29 @@ export default function NewProject() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-3">
                       {policyEvaluationResult.overallAssessment.hasPolicyMatch ? (
-                        <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
                           {policyEvaluationResult.overallAssessment.hasPotentialConflict && (
-                            <span className="rounded-full bg-[#FFF1F2] px-2.5 py-1 text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
-                              {policyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0}{' '}
-                              <span className="text-[#64748B] dark:text-slate-100">conflicts</span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#FECACA] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:text-[#FCA5A5]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#DC2626]" />
+                              {policyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0} conflict
                             </span>
                           )}
                           {policyEvaluationResult.overallAssessment.hasCoordinationRequirement && (
-                            <span className="rounded-full bg-[#FFF1CF] px-2.5 py-1 text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]">
-                              {policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0}{' '}
-                              <span className="text-[#64748B] dark:text-slate-100">coordination</span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] px-2.5 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:text-[#F6D28A]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
+                              {policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0} coordination
                             </span>
                           )}
                           {policyEvaluationResult.overallAssessment.hasAllowedWithConditions && (
-                            <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-[#16A34A] dark:bg-[#16A34A]/15 dark:text-[#BBF7D0]">
-                              {policyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0}{' '}
-                              <span className="text-[#64748B] dark:text-slate-100">conditional</span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-[#BBF7D0] px-2.5 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:text-[#86EFAC]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
+                              {policyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0} conditional
                             </span>
                           )}
                         </div>
                       ) : (
-                        <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-sm font-semibold text-[#027A48] dark:bg-[#027A48]/15 dark:text-[#A6F4C5]">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[#BBF7D0] px-2.5 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:text-[#86EFAC]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
                           Cleared by AI
                         </span>
                       )}
@@ -3726,34 +4658,30 @@ export default function NewProject() {
                                   const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
                                   const showFullReason = expandedPolicyTextSections[reasonKey] === true
                                   const showFullAction = expandedPolicyTextSections[actionKey] === true
-                                  const hasEvidence = item.evidenceFromProject.length > 0
-
                                   return (
                                     <article
                                       key={`${item.policyNumber}-${item.policyName}-detail`}
-                                      className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-r from-[#FDF7FF] to-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:from-[#241735] dark:to-[#1A1329]"
+                                      className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
                                     >
-                                      <div className="border-b border-black/5 px-4 py-3.5 dark:border-white/10">
-                                        <div className="flex items-center gap-3">
-                                          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', accent.icon)}>
+                                      <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
+                                        <div className="flex items-start gap-3">
+                                          <div className={cn('mt-0.5 shrink-0', accent.text)}>
                                             {group.matchType === 'Potential Conflict' ? (
-                                              <AlertTriangle className="h-4 w-4" />
+                                              <AlertTriangle className="h-5 w-5" />
                                             ) : group.matchType === 'Coordination Required' ? (
-                                              <Layers className="h-4 w-4" />
+                                              <Layers className="h-5 w-5" />
                                             ) : (
-                                              <Lightbulb className="h-4 w-4" />
+                                              <Lightbulb className="h-5 w-5" />
                                             )}
                                           </div>
                                           <div className="min-w-0 flex-1">
-                                            <div className="mb-1 flex flex-wrap items-center gap-2">
-                                              <span className="rounded-full border border-[#E9D5FF] bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                                                Prediction
-                                              </span>
-                                              <span className={cn('rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.badge)}>
+                                            <div className="mb-1">
+                                              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
+                                                <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
                                                 {item.matchType}
                                               </span>
                                             </div>
-                                            <h3 className="text-sm font-semibold leading-5 text-slate-800 dark:text-white">
+                                            <h3 className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
                                               {item.policyName}
                                             </h3>
                                             <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
@@ -3764,7 +4692,7 @@ export default function NewProject() {
                                             <p className="text-xl font-bold text-[#A855F7]">
                                               {item.relevanceScore}
                                             </p>
-                                            <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400 dark:text-slate-300">
+                                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
                                               Probability
                                             </p>
                                           </div>
@@ -3772,7 +4700,7 @@ export default function NewProject() {
                                       </div>
 
                                       <div className="px-4 py-3.5">
-                                        <p className="mb-3 text-xs leading-relaxed text-slate-600 dark:text-slate-200">
+                                        <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
                                           {showFullReason ? item.reason : truncatedReason.text}
                                           {truncatedReason.truncated && (
                                             <button
@@ -3786,18 +4714,18 @@ export default function NewProject() {
                                         </p>
 
                                         <div className="mb-3 flex items-center gap-2">
-                                          <Clock3 className="h-4 w-4 text-slate-400" />
-                                          <span className="text-xs text-slate-500 dark:text-slate-300">Policy Area:</span>
-                                          <span className="text-xs font-semibold text-slate-700 dark:text-white">
+                                          <Clock3 className="h-4 w-4 text-[#94A3B8]" />
+                                          <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
+                                          <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
                                             {item.strategicArea}
                                           </span>
                                         </div>
 
-                                        <div className="mb-3 rounded-xl border border-[#DCE8F6] bg-white/75 p-3 dark:border-white/10 dark:bg-white/5">
+                                        <div className="mb-3 rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
                                           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
                                             Recommended Action
                                           </p>
-                                          <p className="text-xs text-slate-700 dark:text-slate-100">
+                                          <p className="text-xs leading-relaxed text-[#475569] dark:text-slate-200">
                                             {showFullAction ? item.requiredAction : truncatedAction.text}
                                             {truncatedAction.truncated && (
                                               <button
@@ -3818,7 +4746,7 @@ export default function NewProject() {
                               })}
                             </div>
                           ) : (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                               {policyMatchGroups
                                 .flatMap((group) =>
                                   group.items.map((item) => ({ group, item }))
@@ -3829,28 +4757,29 @@ export default function NewProject() {
                                   return (
                                     <div
                                       key={`${item.policyNumber}-${item.policyName}-preview`}
-                                      className="relative overflow-hidden rounded-[18px] border border-[#DDEBFF] bg-white px-3 py-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#0F172A]/70"
+                                      className="rounded-2xl border border-[#E9D5FF] bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
                                     >
-                                      <div className="flex items-center gap-2.5">
-                                        <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', accent.icon)}>
+                                      <div className="flex items-start gap-2.5">
+                                        <div className={cn('mt-0.5 shrink-0', accent.text)}>
                                           {group.matchType === 'Potential Conflict' ? (
-                                            <AlertTriangle className="h-3.5 w-3.5" />
+                                            <AlertTriangle className="h-4 w-4" />
                                           ) : group.matchType === 'Coordination Required' ? (
-                                            <Layers className="h-3.5 w-3.5" />
+                                            <Layers className="h-4 w-4" />
                                           ) : (
-                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                            <CheckCircle2 className="h-4 w-4" />
                                           )}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                          <div className="flex items-center justify-between gap-3">
-                                            <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.badge)}>
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
+                                              <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
                                               {item.matchType}
                                             </span>
                                             <span className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]">
                                               {item.relevanceScore}
                                             </span>
                                           </div>
-                                          <p className="mt-1.5 line-clamp-2 text-sm font-bold leading-5 text-[#0F172A] dark:text-white">
+                                          <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
                                             {item.policyName}
                                           </p>
                                           <p className="mt-1 text-[11px] text-[#64748B] dark:text-slate-300">
@@ -3898,6 +4827,7 @@ export default function NewProject() {
               title="Project Details"
               description="Define the initiative, strategic alignment, work stream, technology, and item type using live Dataverse lookups."
               icon={ClipboardList}
+              noIconBg
               action={
                 lookupLoading ? (
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#DDEBFF] bg-[#F8FBFF] px-3 py-2 text-xs font-semibold text-[#286CFF]">
@@ -3980,7 +4910,7 @@ export default function NewProject() {
                       )}
 
                       {topAiSuggestion && (
-                        <div className="relative overflow-hidden rounded-2xl border border-dashed border-[#E9D5FF] bg-[linear-gradient(90deg,#FDF7FF_0%,#F6EDFF_100%)] shadow-sm dark:border-white/10 dark:bg-[linear-gradient(90deg,#2A123D_0%,#1E293B_100%)]">
+                        <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
                           <div className="pointer-events-none absolute inset-0 overflow-hidden">
                             <Sparkles className="absolute left-5 top-3 h-4 w-4 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
                             <Bot className="absolute left-16 bottom-3 h-5 w-5 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
@@ -3993,8 +4923,8 @@ export default function NewProject() {
                           <div className="flex w-full flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                             <div className="min-w-0 flex-1">
                               <div className="mb-2 flex items-center gap-2">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#A855F7]/12 text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
-                                  <Sparkles className="h-3.5 w-3.5" />
+                                <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                                  <Sparkles className="h-4 w-4" />
                                 </div>
                                 <h4 className="text-sm font-medium text-[#0F172A] dark:text-white">
                                   AI Recommendation
@@ -4002,13 +4932,13 @@ export default function NewProject() {
                               </div>
 
                               <div className="flex flex-col gap-2 xl:flex-row xl:flex-wrap xl:items-center xl:gap-3">
-                                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
+                                <div className="min-w-0 rounded-xl border border-[#F0D9FF] bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
                                   <p className="truncate text-sm text-[#475569] dark:text-slate-300">
                                     <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority:</span>{' '}
                                     <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topAiSuggestion.strategicPriority}</span>
                                   </p>
                                 </div>
-                                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
+                                <div className="min-w-0 rounded-xl border border-[#F0D9FF] bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
                                   <p className="truncate text-sm text-[#475569] dark:text-slate-300">
                                     <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority Classification:</span>{' '}
                                     <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topAiSuggestion.strategicPriorityClassification}</span>
@@ -4030,7 +4960,7 @@ export default function NewProject() {
                               <button
                                 type="button"
                                 onClick={() => setAiSuggestionExpanded((current) => !current)}
-                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-[#E9D5FF] bg-white/90 px-4 text-sm font-medium text-[#A855F7] transition-colors hover:bg-[#FAF5FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
+                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-[#E9D5FF] bg-white px-4 text-sm font-medium text-[#A855F7] transition-colors hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
                               >
                                 <span>{aiSuggestionExpanded ? 'Hide Details' : 'View Details'}</span>
                                 <ChevronDown className={cn('h-4 w-4 transition-transform', aiSuggestionExpanded && 'rotate-180')} />
@@ -4039,7 +4969,7 @@ export default function NewProject() {
                           </div>
 
                           {aiSuggestionExpanded && (
-                            <div className="border-t border-[#E9D5FF] bg-white/80 px-3 py-3 dark:border-white/10 dark:bg-[#0F172A]/20">
+                            <div className="border-t border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
                               <div className="grid gap-3 xl:grid-cols-2">
                                 {matchedAiSuggestions.map((suggestion) => {
                                   const isApplied =
@@ -4058,7 +4988,7 @@ export default function NewProject() {
                                     >
                                       <div className="mb-3 flex items-start justify-between gap-3">
                                           <div>
-                                          <div className="inline-flex items-center rounded-full bg-[#FAF5FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                                          <div className="inline-flex items-center rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
                                             Option {suggestion.rank}
                                           </div>
                                           <div className="mt-2 space-y-2">
@@ -4080,7 +5010,7 @@ export default function NewProject() {
                                             </div>
                                           </div>
                                         </div>
-                                        <div className="rounded-xl bg-[#FAF5FF] px-3 py-2 text-center dark:bg-white/10">
+                                        <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-2 text-center dark:border-white/10 dark:bg-white/10">
                                           <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">
                                             Score
                                           </p>
@@ -4208,6 +5138,7 @@ export default function NewProject() {
               title="Project Timeline"
               description="Set planned delivery dates so reviewers can understand the funding window."
               icon={CalendarDays}
+              noIconBg
             >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormField
@@ -4239,6 +5170,7 @@ export default function NewProject() {
               title="Project Summary"
               description="Explain the business need, expected outcome, beneficiaries, and delivery approach."
               icon={FileText}
+              noIconBg
             >
               <FormField
                 label="Summary / Description"
@@ -4263,6 +5195,7 @@ export default function NewProject() {
               title="Project Budget Type"
               description="Select the budget type. The required budget fields below will adapt to your selection."
               icon={CircleDollarSign}
+              noIconBg
             >
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -4280,13 +5213,8 @@ export default function NewProject() {
                             : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
                         )}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
-                            <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">
-                              {option.description}
-                            </p>
-                          </div>
+                        <div className="flex w-full items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
                           <div
                             className={cn(
                               'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
@@ -4298,6 +5226,9 @@ export default function NewProject() {
                             <Check className="h-3.5 w-3.5" />
                           </div>
                         </div>
+                        <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                          {option.description}
+                        </p>
                       </button>
                     )
                   })}
@@ -4331,6 +5262,7 @@ export default function NewProject() {
               title="Budget Account Codes"
               description="Add account-level amounts and GL classifications for the requested budget."
               icon={CircleDollarSign}
+              noIconBg
             >
               <BudgetItemsBuilder
                 items={budgetItems}
@@ -4354,8 +5286,8 @@ export default function NewProject() {
 
           <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
             <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5">
+              <div className="flex items-start gap-4">
+                <div className="mt-1 shrink-0 text-[var(--primary)]">
                   <Upload className="h-6 w-6" />
                 </div>
                 <div>
@@ -4381,8 +5313,17 @@ export default function NewProject() {
                   <span>Save Draft validates required fields, creates the ICT budget, associates technology products, and creates budget line items.</span>
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-                  <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
-                  <Button variant="outline" className="w-full rounded-xl sm:w-auto" onClick={() => void handleSaveDraft()}>
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="h-11 w-full rounded-xl border-[#CBD5E1] px-5 font-semibold text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:w-auto"
+                  >
+                    <Link to="/respondent/projects">Cancel</Link>
+                  </Button>
+                  <Button
+                    className="h-11 w-full rounded-xl bg-[var(--primary)] px-5 font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8] sm:w-auto"
+                    onClick={() => void handleSaveDraft()}
+                  >
                     Save Draft
                   </Button>
                 </div>
@@ -4393,9 +5334,9 @@ export default function NewProject() {
             <aside className="space-y-4">
               <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_10px_24px_rgba(168,85,247,0.24)]">
-                      <Sparkles className="h-5 w-5" />
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 shrink-0 text-[#A855F7]">
+                      <Sparkles className="h-6 w-6" />
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-[#0F172A] dark:text-white">AI Action Cards</h3>
@@ -4406,7 +5347,7 @@ export default function NewProject() {
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-[#E9D5FF] bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                  <span className="rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
                     {activeSupportingDocumentSummary.type === 'cumulative' && activeSupportingDocumentSummary.fileCount > 1 ? 'Combined' : 'Single'}
                   </span>
                 </div>
@@ -4415,7 +5356,7 @@ export default function NewProject() {
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
                           <Layers className="h-5 w-5" />
                         </div>
                         <div>
@@ -4450,7 +5391,7 @@ export default function NewProject() {
                         {actionSuggestedFields.slice(0, 4).map((field) => {
                           const canApply = resolveAiFieldMapping(field) !== null
                           return (
-                            <div key={field.field_key ?? field.field_label} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <div key={field.field_key ?? field.field_label} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">
@@ -4462,7 +5403,7 @@ export default function NewProject() {
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                                   {typeof field.confidence === 'number' && (
-                                    <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                                    <span className="rounded-full border border-[#BFCFFF] bg-white px-2 py-1 text-[11px] font-bold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#93C5FD]">
                                       {field.confidence}%
                                     </span>
                                   )}
@@ -4493,7 +5434,7 @@ export default function NewProject() {
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
                           <CircleDollarSign className="h-5 w-5" />
                         </div>
                         <div>
@@ -4511,7 +5452,7 @@ export default function NewProject() {
                     ) : actionBudgetLines.length > 0 ? (
                       <div className="space-y-2">
                         {actionBudgetLines.slice(0, 3).map((line, index) => (
-                          <div key={`${line.line_number ?? index}-${line.description ?? 'budget-line'}`} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                          <div key={`${line.line_number ?? index}-${line.description ?? 'budget-line'}`} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{line.description ?? 'Budget line'}</p>
@@ -4519,7 +5460,7 @@ export default function NewProject() {
                                   {line.amount_period ?? 'One-time'}{line.vat_treatment ? ` • VAT ${line.vat_treatment}` : ''}
                                 </p>
                               </div>
-                              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                              <span className="rounded-full border border-[#BFCFFF] bg-white px-2.5 py-1 text-xs font-bold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#93C5FD]">
                                 {line.currency ? `${line.currency} ` : ''}{(line.amount ?? 0).toLocaleString('en-AE')}
                               </span>
                             </div>
@@ -4541,7 +5482,7 @@ export default function NewProject() {
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
                           <CheckCircle2 className="h-5 w-5" />
                         </div>
                         <div>
@@ -4558,7 +5499,7 @@ export default function NewProject() {
                       </div>
                     ) : actionAccountCode ? (
                       <div className="space-y-3">
-                        <div className="rounded-xl border border-[#E9D5FF] bg-[linear-gradient(135deg,#FDF7FF_0%,#FAF5FF_100%)] px-3 py-3 dark:border-white/10 dark:bg-[linear-gradient(135deg,#2A123D_0%,#1E293B_100%)]">
+                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Primary Account Code</p>
@@ -4571,7 +5512,7 @@ export default function NewProject() {
                               )}
                             </div>
                             {typeof actionAccountCode.account_code_confidence === 'number' && (
-                              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                              <span className="rounded-full border border-[#BFCFFF] bg-white px-2 py-1 text-[11px] font-bold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#93C5FD]">
                                 {actionAccountCode.account_code_confidence}%
                               </span>
                             )}
@@ -4579,7 +5520,7 @@ export default function NewProject() {
                         </div>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {(['l1', 'l2', 'l3'] as const).map((level) => (
-                            <div key={level} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                            <div key={level} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{level.replace(/^l/i, 'L')}</p>
                               <p className="mt-1 text-xs font-semibold text-[#0F172A] dark:text-white">
                                 {actionAccountCode.classification_path?.[level] ?? '-'}
@@ -4587,7 +5528,7 @@ export default function NewProject() {
                             </div>
                           ))}
                         </div>
-                        <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
                           {truncateAiText(actionAccountCode.reason, 180) || 'AI account-code rationale will appear here.'}
                         </div>
                         <button
@@ -4620,7 +5561,7 @@ export default function NewProject() {
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
                           <FileText className="h-5 w-5" />
                         </div>
                         <div>
@@ -4637,7 +5578,7 @@ export default function NewProject() {
                       </div>
                     ) : actionDocumentSummary || actionEvidenceAssessment ? (
                       <div className="space-y-3">
-                        <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                           <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
                             {actionDocumentSummary?.short_summary
                               ?? actionDocumentSummary?.detailed_summary
@@ -4650,7 +5591,7 @@ export default function NewProject() {
                             <div className="flex items-center justify-between gap-3">
                               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Snapshot</p>
                               {typeof actionEvidenceAssessment?.evidence_score === 'number' && (
-                                <span className="rounded-full bg-[#FAF5FF] px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                                <span className="rounded-full border border-[#E9D5FF] bg-white px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                                   {actionEvidenceAssessment.evidence_score}
                                 </span>
                               )}
@@ -4674,77 +5615,73 @@ export default function NewProject() {
           </div>
         </>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-          <div className="space-y-6">
-            <section className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_14px_36px_rgba(15,23,42,0.08)] dark:border-white/10 dark:from-[#241735] dark:to-[#1E293B]">
-              <div className="flex items-center justify-between border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_10px_24px_rgba(168,85,247,0.24)]">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-[#0F172A] dark:text-white">Budget Copilot Workspace</h3>
-                    <p className="text-xs text-[#64748B] dark:text-slate-300">
-                      Guided draft creation using chat, AI suggestions, and supporting documents.
-                    </p>
-                  </div>
-                </div>
-                <Button variant="ghost" className="rounded-xl text-[#A855F7] hover:bg-[#F6EBFF] hover:text-[#9333EA]" onClick={clearCopilotWorkspace}>
-                  <RefreshCw className="h-4 w-4" />
-                  Clear
-                </Button>
-              </div>
-
-              <div className="space-y-4 px-5 py-5">
-                <div ref={chatScrollRef} className="max-h-[420px] space-y-4 overflow-y-auto pr-1">
-                  {chatMessages.map((msg, i) => (
-                    <div key={i} className={cn('flex gap-3', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
-                      {msg.from === 'ai' && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#A855F7_0%,#C084FC_100%)] text-white shadow-sm">
-                          <Bot className="h-4 w-4" />
-                        </div>
-                      )}
-                      <div
-                        className={cn(
-                          'max-w-[90%] rounded-2xl px-4 py-3 text-sm shadow-sm',
-                          msg.from === 'ai'
-                            ? 'rounded-tl-none border border-[#F0D9FF] bg-white text-[#334155] dark:border-white/10 dark:bg-[#1E293B] dark:text-white'
-                            : 'rounded-tr-none bg-[#A855F7] text-white'
-                        )}
-                      >
-                        <p className="leading-6">{renderCopilotMessage(msg.text)}</p>
-                      </div>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+          <div className="space-y-6 xl:sticky xl:top-20 xl:self-start">
+            <div className="relative h-[680px] xl:h-[calc(100vh-6rem)]">
+              <section
+                className={cn(
+                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]',
+                  copilotWorkspaceView === 'chat'
+                    ? 'translate-y-0 opacity-100 pointer-events-auto'
+                    : '-translate-y-2 opacity-0 pointer-events-none'
+                )}
+              >
+                <div className="flex items-start justify-between gap-4 border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className="shrink-0 text-[#A855F7]">
+                      <Sparkles className="h-6 w-6" />
                     </div>
-                  ))}
+                    <div>
+                      <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Budget Assistant</h3>
+                      <p className="text-xs text-[#64748B] dark:text-slate-300">
+                        Guided draft creation using chat, AI suggestions, and supporting documents.
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="ghost" className="rounded-xl text-[#A855F7] hover:bg-[#F6EBFF] hover:text-[#9333EA]" onClick={clearCopilotWorkspace}>
+                    <RefreshCw className="h-4 w-4" />
+                    Clear
+                  </Button>
+                </div>
 
-                  {!optionSelected && (
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {COPILOT_OPTIONS.map((opt) => {
-                        const Icon = opt.icon
-                        return (
-                          <button
-                            key={opt.label}
-                            type="button"
-                            onClick={() => handleOptionSelect(opt.label)}
-                            className="group rounded-2xl border border-[#F0D9FF] bg-white p-4 text-left transition-colors hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
-                                <Icon className="h-5 w-5" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{opt.label}</p>
-                                <p className="text-xs text-[#64748B] dark:text-slate-300">{opt.sub}</p>
-                              </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-4 px-5 py-5">
+                  <div
+                    ref={chatScrollRef}
+                    className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[#F0D9FF] bg-white p-6 dark:border-white/10 dark:bg-[#140E21]/60"
+                  >
+                    <div className="space-y-4 pr-1">
+                      {chatMessages.map((msg, i) => (
+                        <div key={i} className={cn('flex gap-3', msg.from === 'user' ? 'justify-end' : 'justify-start')}>
+                          {msg.from === 'ai' && (
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(135deg,#A855F7_0%,#C084FC_100%)] text-white shadow-sm">
+                              <Bot className="h-4 w-4" />
                             </div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+                          )}
+                          <div
+                            className={cn(
+                              'max-w-[92%] rounded-2xl px-4 py-3 text-sm shadow-sm',
+                              msg.from === 'ai'
+                                ? msg.kind && msg.kind !== 'text'
+                                  ? 'rounded-tl-none bg-transparent p-0 shadow-none'
+                                  : 'rounded-tl-none border border-[#F0D9FF] bg-white text-[#334155] dark:border-white/10 dark:bg-[#1E293B] dark:text-white'
+                                : 'rounded-tr-none bg-[#A855F7] text-white'
+                            )}
+                          >
+                            {msg.from === 'ai'
+                              ? renderCopilotChatMessageContent(msg)
+                              : <p className="whitespace-pre-line leading-6">{msg.text}</p>}
+                          </div>
+                        </div>
+                      ))}
 
-                {chatStagedFile && (
+                      {!optionSelected && chatMessages.length === 0 && (
+                        <BudgetAssistantWelcomeCard onPromptSelect={handleOptionSelect} />
+                      )}
+
+                    </div>
+                  </div>
+
+                  {chatStagedFile && (
                   <div className="flex items-center gap-2 rounded-xl border border-[#E9D5FF] bg-[#FDF7FF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
                     <FileText className="h-4 w-4 shrink-0 text-[#A855F7]" />
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#334155] dark:text-white">{chatStagedFile.name}</span>
@@ -4763,72 +5700,262 @@ export default function NewProject() {
                   ref={chatFileInputRef}
                   type="file"
                   className="hidden"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg"
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null
-                    setChatStagedFile(file)
+                    if (file) {
+                      setCopilotWorkspaceView('chat')
+                      if (!copilotBusy) {
+                        void sendCopilotPromptWithFile(file, chatInput)
+                      } else {
+                        setChatStagedFile(file)
+                      }
+                    }
                     event.target.value = ''
                   }}
                 />
 
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => chatFileInputRef.current?.click()}
-                    disabled={copilotBusy}
-                    title="Attach a supporting document"
-                    className={cn(
-                      'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#E9D5FF] bg-white shadow-sm transition-colors hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#1E293B] dark:hover:bg-white/5',
-                      chatStagedFile && 'border-[#A855F7] bg-[#FDF7FF] text-[#A855F7] dark:bg-[#A855F7]/10',
-                      copilotBusy && 'cursor-not-allowed opacity-50'
-                    )}
-                  >
-                    <Paperclip className={cn('h-4 w-4', chatStagedFile ? 'text-[#A855F7]' : 'text-[#94A3B8]')} />
-                  </button>
-
-                  <Input
-                    value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault()
-                        handleSend()
-                      }
-                    }}
-                    placeholder={chatStagedFile ? 'Add a note about this file (optional)...' : 'Describe the project, ask for help, or provide additional details...'}
-                    className="h-11 rounded-xl border-[#E9D5FF] bg-white shadow-sm focus-visible:ring-[#A855F7] dark:border-white/10 dark:bg-[#1E293B]"
-                  />
-
+                <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
-                    className="h-11 rounded-xl bg-[#A855F7] px-4 text-white hover:bg-[#9333EA]"
-                    onClick={handleSend}
-                    disabled={copilotBusy || (!chatInput.trim() && !chatStagedFile)}
+                    variant="outline"
+                    onClick={() => chatFileInputRef.current?.click()}
+                    disabled={copilotBusy}
+                    className={cn(
+                      'h-10 rounded-xl border-[#E9D5FF] text-[#A855F7] hover:bg-[#FDF7FF]',
+                      chatStagedFile && 'bg-[#FDF7FF]'
+                    )}
                   >
-                    {copilotBusy || copilotTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    <Paperclip className="h-4 w-4" />
+                    Upload File
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void runCopilotBudgetConsiderationCheck()}
+                    disabled={copilotBusy}
+                    className="h-10 rounded-xl border-[#E9D5FF] text-[#A855F7] hover:bg-[#FDF7FF]"
+                  >
+                    <Bot className="h-4 w-4" />
+                    Check Policies
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCopilotWorkspaceView((prev) => (prev === 'chat' ? 'suggestions' : 'chat'))}
+                    onAnimationEnd={() => setSuggestionFlashOn(false)}
+                    className={cn(
+                      'h-9 rounded-xl border border-[#E9D5FF] px-3 text-sm text-[#A855F7] hover:bg-[#FDF7FF]',
+                      suggestionFlashOn && 'suggestion-blink'
+                    )}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Project Field Suggestions ({copilotSuggestedFieldCount})
                   </Button>
                 </div>
-              </div>
-            </section>
 
-            {copilotPendingSuggestion && (
+                  <div className="flex gap-2">
+                    <Input
+                      value={chatInput}
+                      onChange={(event) => setChatInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault()
+                          handleSend()
+                        }
+                      }}
+                      placeholder={chatStagedFile ? 'Add a note about this file (optional)...' : 'Describe the project, ask for help, or provide additional details...'}
+                      className="h-11 rounded-xl border-[#E9D5FF] bg-white shadow-sm focus-visible:ring-[#A855F7] dark:border-white/10 dark:bg-[#1E293B]"
+                    />
+
+                    <Button
+                      type="button"
+                      className="h-11 rounded-xl bg-[#A855F7] px-4 text-white hover:bg-[#9333EA]"
+                      onClick={handleSend}
+                      disabled={copilotBusy || (!chatInput.trim() && !chatStagedFile)}
+                    >
+                      {copilotBusy || copilotTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+
+              <section
+                className={cn(
+                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]',
+                  copilotWorkspaceView === 'suggestions'
+                    ? 'translate-y-0 opacity-100 pointer-events-auto'
+                    : 'translate-y-full opacity-0 pointer-events-none'
+                )}
+              >
+                <div className="shrink-0 border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                  <div className="flex items-center gap-2.5">
+                    <div className="shrink-0 text-[#A855F7]">
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Project Field Suggestions</h3>
+                  </div>
+                  <div className="mt-2 flex justify-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-8 rounded-xl px-3 text-sm text-[#A855F7] hover:bg-[#F6EBFF] hover:text-[#9333EA]"
+                      onClick={() => setCopilotWorkspaceView('chat')}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Back to Budget Assistant
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                  <div className="space-y-4 pr-1">
+                    {Object.entries(copilotPendingSuggestion?.fields ?? {}).length > 0 ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {Object.entries(copilotPendingSuggestion?.fields ?? {}).map(([key, value]) => (
+                          <div key={key} className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
+                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-[#E9D5FF] bg-white px-4 py-6 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                        Start the conversation, upload a document, or ask for help to generate suggested fields.
+                      </div>
+                    )}
+
+                    {(copilotPendingSuggestion?.budgetRows?.length ?? 0) > 0 && (
+                      <div className="rounded-xl border border-[#E9D5FF] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                        <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Rows Preview</p>
+                        <div className="mt-2 space-y-2">
+                          {(copilotPendingSuggestion?.budgetRows ?? []).map((row) => (
+                            <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{row.accountName}</p>
+                                <p className="text-xs text-[#64748B] dark:text-slate-300">{row.l1} - {row.l2} - {row.l3}</p>
+                              </div>
+                              <CurrencyAmount amount={row.budgetRequested} full className="text-sm font-bold text-[#A855F7]" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {copilotAiSuggestionLoading && (
+                      <div className="flex items-center gap-2 text-sm text-[#A855F7]">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Preparing strategic-priority matches...
+                      </div>
+                    )}
+                    {copilotAiSuggestionError && (
+                      <div className="rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-[#B42318] dark:border-white/10 dark:bg-white/5">{copilotAiSuggestionError}</div>
+                    )}
+
+                    {matchedCopilotAiSuggestions.length > 1 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">Alternative Strategic Priority</p>
+                          <Button
+                            className="h-7 rounded-xl bg-[#A855F7] px-3 text-xs text-white hover:bg-[#9333EA]"
+                            onClick={() => applyCopilotAiSuggestion(matchedCopilotAiSuggestions[1], 'both')}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Apply
+                          </Button>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Strategic Priority</p>
+                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[1].strategicPriority}</p>
+                          </div>
+                          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Classification</p>
+                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[1].strategicPriorityClassification}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-t border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                  <Button
+                    type="button"
+                    className="h-11 w-full rounded-xl bg-[#A855F7] text-sm text-white hover:bg-[#9333EA]"
+                    onClick={() => void applyCopilotPendingSuggestion()}
+                    disabled={!copilotPendingSuggestion}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Apply Suggestions
+                  </Button>
+                </div>
+              </section>
+            </div>
+
+            {false && (copilotPendingSuggestion || copilotAiSuggestionLoading || copilotAiSuggestionError || matchedCopilotAiSuggestions.length > 0) && (
               <section className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#241735] dark:to-[#1E293B]">
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-base font-bold text-[#A855F7] dark:text-[#E9D5FF]">{copilotPendingSuggestion.title}</h3>
+                    <h3 className="text-base font-bold text-[#A855F7] dark:text-[#E9D5FF]">{copilotPendingSuggestion?.title ?? 'Suggested Project Fields'}</h3>
                     <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
                       Suggestions are staged first. Review them, then apply them into the draft when you are ready.
                     </p>
                   </div>
-                  <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => void applyCopilotPendingSuggestion()}>
+                  <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => void applyCopilotPendingSuggestion()} disabled={!copilotPendingSuggestion}>
                     <Check className="h-4 w-4" />
                     Apply Suggestions
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  {Object.entries(copilotPendingSuggestion.fields).length > 0 && (
+                  {(copilotAiSuggestionLoading || copilotAiSuggestionError || matchedCopilotAiSuggestions.length > 0) && (
+                    <div className="rounded-xl border border-[#F0D9FF] bg-white px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Strategic Priority And Classification Recommendations</p>
+                          <p className="text-xs text-[#64748B] dark:text-slate-300">{copilotAiPromptUsecase ?? 'AI-matched against strategic priorities'}</p>
+                        </div>
+                        <Button variant="outline" className="rounded-xl border-[#E9D5FF] text-[#A855F7]" onClick={() => void refreshCopilotAiSuggestions()}>
+                          <RefreshCw className="h-4 w-4" />
+                          Refresh
+                        </Button>
+                      </div>
+                      {copilotAiSuggestionLoading ? (
+                        <div className="flex items-center gap-2 text-sm text-[#A855F7]"><Loader2 className="h-4 w-4 animate-spin" />Preparing strategic-priority matches...</div>
+                      ) : copilotAiSuggestionError ? (
+                        <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-3 py-3 text-sm text-[#B42318]">{copilotAiSuggestionError}</div>
+                      ) : (
+                        <div className="space-y-3">
+                          {matchedCopilotAiSuggestions.slice(0, 2).map((suggestion, index) => (
+                            <div key={`${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#A855F7] dark:text-[#E9D5FF]">Option {index + 1}</p>
+                                <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => applyCopilotAiSuggestion(suggestion, 'both')}>
+                                  <Check className="h-4 w-4" />
+                                  Apply
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Strategic Priority</p>
+                                  <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{suggestion.strategicPriority}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Strategic Priority Classification</p>
+                                  <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{suggestion.strategicPriorityClassification}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {Object.entries(copilotPendingSuggestion?.fields ?? {}).length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {Object.entries(copilotPendingSuggestion.fields).map(([key, value]) => (
+                      {Object.entries(copilotPendingSuggestion?.fields ?? {}).map(([key, value]) => (
                         <div key={key} className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
                           <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
                           <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
@@ -4836,11 +5963,11 @@ export default function NewProject() {
                       ))}
                     </div>
                   )}
-                  {copilotPendingSuggestion.budgetRows.length > 0 && (
+                  {(copilotPendingSuggestion?.budgetRows?.length ?? 0) > 0 && (
                     <div className="rounded-xl border border-[#F0D9FF] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
                       <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Rows Preview</p>
                       <div className="mt-2 space-y-2">
-                        {copilotPendingSuggestion.budgetRows.map((row) => (
+                        {(copilotPendingSuggestion?.budgetRows ?? []).map((row) => (
                           <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#FDF7FF] px-3 py-2 dark:bg-white/5">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{row.accountName}</p>
@@ -4855,80 +5982,14 @@ export default function NewProject() {
                 </div>
               </section>
             )}
-
-            <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
-              <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-white/10 dark:bg-white/5">
-                    <Upload className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents Preview</h3>
-                    <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
-                      Files are analyzed immediately for AI guidance, but they are uploaded only when you save the draft.
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-5 p-4 sm:p-6">
-                <FileUploadDropzone files={copilotUploadedFiles} onChange={setCopilotUploadedFiles} />
-              </div>
-            </section>
           </div>
 
           <div className="space-y-6">
-            {(copilotBudgetConsiderationLoading || copilotBudgetConsiderationError || copilotBudgetConsiderationResult) && (
-              <section className="rounded-2xl border border-[#E9D5FF] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
-                {copilotBudgetConsiderationLoading ? (
-                  <div className="flex items-center gap-3 text-sm text-[#A855F7]">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Evaluating ICT Budget Considerations policies...
-                  </div>
-                ) : copilotBudgetConsiderationError ? (
-                  <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318]">
-                    {copilotBudgetConsiderationError}
-                  </div>
-                ) : copilotBudgetConsiderationResult ? (
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Budget Considerations</h3>
-                        <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
-                          {copilotBudgetConsiderationResult.overallAssessment.summary}
-                        </p>
-                      </div>
-                      {(() => {
-                        const overall = copilotBudgetConsiderationResult.overallAssessment
-                        const matchLabel = overall.hasPotentialConflict
-                          ? 'Potential Conflict'
-                          : overall.hasCoordinationRequirement
-                            ? 'Coordination Required'
-                            : overall.hasAllowedWithConditions
-                              ? 'Allowed With Conditions'
-                              : 'No Policy Match'
-
-                        return (
-                          <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', getPolicyPanelTheme(matchLabel).pill)}>
-                            {matchLabel}
-                          </span>
-                        )
-                      })()}
-                    </div>
-                  </div>
-                ) : null}
-              </section>
-            )}
-
             <FormSection
-              title="Copilot Draft"
-              description="Review and refine the project details prepared with Budget Copilot. Nothing is final until you save the draft."
+              title="Project Details"
+              description="Review and refine the project details prepared with Budget Assistant. Nothing is final until you save the draft."
               icon={ClipboardList}
-              action={
-                <Button variant="outline" className="rounded-xl border-[#E9D5FF] text-[#A855F7]" onClick={() => void runCopilotBudgetConsiderationCheck()}>
-                  <Bot className="h-4 w-4" />
-                  Check Policies
-                </Button>
-              }
+              noIconBg
             >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormField label="Initiative / Budget Item Name" required error={copilotFieldErrors.initiativeName}>
@@ -4956,46 +6017,9 @@ export default function NewProject() {
                   <ProductMultiSelect products={selectedCopilotTechnologyCompany?.products ?? []} selectedIds={copilotFormValues.technologyProductIds} disabled={!selectedCopilotTechnologyCompany || lookupLoading} onToggle={toggleCopilotTechnologyProduct} invalid={Boolean(copilotFieldErrors.technologyProductIds)} />
                 </FormField>
               </div>
-
-              {(copilotAiSuggestionLoading || copilotAiSuggestionError || matchedCopilotAiSuggestions.length > 0) && (
-                <div className="mt-5 rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Suggested Strategic Priority</p>
-                      <p className="text-xs text-[#64748B] dark:text-slate-300">{copilotAiPromptUsecase ?? 'AI-matched against strategic priorities'}</p>
-                    </div>
-                    <Button variant="outline" className="rounded-xl border-[#E9D5FF] text-[#A855F7]" onClick={() => void refreshCopilotAiSuggestions()}>
-                      <RefreshCw className="h-4 w-4" />
-                      Refresh
-                    </Button>
-                  </div>
-                  {copilotAiSuggestionLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-[#A855F7]"><Loader2 className="h-4 w-4 animate-spin" />Preparing strategic-priority matches...</div>
-                  ) : copilotAiSuggestionError ? (
-                    <div className="rounded-xl border border-[#FFD4D1] bg-[#FFF5F5] px-3 py-3 text-sm text-[#B42318]">{copilotAiSuggestionError}</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {matchedCopilotAiSuggestions.slice(0, 2).map((suggestion) => (
-                        <div key={`${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`} className="rounded-xl border border-[#F0D9FF] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{suggestion.strategicPriority}</p>
-                              <p className="mt-1 text-sm text-[#0F172A] dark:text-white">{suggestion.strategicPriorityClassification}</p>
-                            </div>
-                            <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => applyCopilotAiSuggestion(suggestion, 'both')}>
-                              <Check className="h-4 w-4" />
-                              Apply
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </FormSection>
 
-            <FormSection title="Project Timeline" description="Set the expected delivery window for this budget request." icon={CalendarDays}>
+            <FormSection title="Project Timeline" description="Set the expected delivery window for this budget request." icon={CalendarDays} noIconBg>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <FormField label="Planned Start Date" required error={copilotFieldErrors.plannedStartDate}>
                   <DatePickerField value={copilotFormValues.plannedStartDate} onChange={(value) => updateCopilotField('plannedStartDate', value)} invalid={Boolean(copilotFieldErrors.plannedStartDate)} />
@@ -5006,28 +6030,26 @@ export default function NewProject() {
               </div>
             </FormSection>
 
-            <FormSection title="Project Summary" description="Capture the business need, scope, beneficiaries, and expected outcome." icon={FileText}>
+            <FormSection title="Project Summary" description="Capture the business need, scope, beneficiaries, and expected outcome." icon={FileText} noIconBg>
               <FormField label="Summary / Description" required error={copilotFieldErrors.summary}>
                 <Textarea value={copilotFormValues.summary} onChange={(event) => updateCopilotField('summary', event.target.value)} rows={6} className={cn('rounded-xl bg-white shadow-sm focus-visible:ring-[#A855F7]', copilotFieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
               </FormField>
             </FormSection>
 
-            <FormSection title="Project Budget Type" description="Select the budget type. The required financial fields below will adapt accordingly." icon={CircleDollarSign}>
+            <FormSection title="Project Budget Type" description="Select the budget type. The required financial fields below will adapt accordingly." icon={CircleDollarSign} noIconBg>
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {ACTIVITY_TYPE_OPTIONS.map((option) => {
                     const selected = copilotFormValues.activityType === option.value
                     return (
                       <button key={option.value} type="button" onClick={() => handleCopilotActivityTypeChange(option.value)} className={cn('rounded-2xl border p-4 text-left transition-colors', selected ? 'border-[#A855F7] bg-[#FDF7FF]' : 'border-[#DDEBFF] bg-white hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5')}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
-                            <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{option.description}</p>
-                          </div>
+                        <div className="flex w-full items-center justify-between gap-3">
+                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
                           <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', selected ? 'border-[#A855F7] bg-[#A855F7] text-white' : 'border-[#CBD5E1] text-transparent')}>
                             <Check className="h-3.5 w-3.5" />
                           </div>
                         </div>
+                        <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">{option.description}</p>
                       </button>
                     )
                   })}
@@ -5045,7 +6067,7 @@ export default function NewProject() {
               </div>
             </FormSection>
 
-            <FormSection title="Budget Account Codes" description="Review the GL lines the copilot or documents suggested, and add or adjust them before saving." icon={CircleDollarSign}>
+            <FormSection title="Budget Account Codes" description="Review the GL lines the copilot or documents suggested, and add or adjust them before saving." icon={CircleDollarSign} noIconBg>
               <BudgetItemsBuilder
                 items={copilotBudgetItems}
                 onChange={(items) => {
@@ -5064,6 +6086,25 @@ export default function NewProject() {
               {copilotBudgetItemsError && <p className="mt-3 text-xs font-medium text-[#B42318]">{copilotBudgetItemsError}</p>}
             </FormSection>
 
+            <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
+                <div className="flex items-start gap-2.5">
+                  <div className="mt-1 shrink-0 text-[var(--primary)]">
+                    <Upload className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents Preview</h3>
+                    <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
+                      Files are analyzed immediately for AI guidance, but they are uploaded only when you save the draft.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-5 p-4 sm:p-6">
+                <FileUploadDropzone files={copilotUploadedFiles} onChange={setCopilotUploadedFiles} fileScores={copilotFileEvidenceScores} />
+              </div>
+            </section>
+
             <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B] sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
@@ -5071,8 +6112,17 @@ export default function NewProject() {
                   <span>Save Draft uses the same safe create flow as manual mode, including file upload and AI-summary persistence after the budget record is created.</span>
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
-                  <Button variant="ghost" asChild className="w-full sm:w-auto"><Link to="/respondent/projects">Cancel</Link></Button>
-                  <Button variant="outline" className="w-full rounded-xl border-[#E9D5FF] text-[#A855F7] sm:w-auto" onClick={() => void handleCopilotSaveDraft()}>
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="h-11 w-full rounded-xl border-[#CBD5E1] px-5 font-semibold text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:w-auto"
+                  >
+                    <Link to="/respondent/projects">Cancel</Link>
+                  </Button>
+                  <Button
+                    className="h-11 w-full rounded-xl bg-[var(--primary)] px-5 font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8] sm:w-auto"
+                    onClick={() => void handleCopilotSaveDraft()}
+                  >
                     Save Draft
                   </Button>
                 </div>

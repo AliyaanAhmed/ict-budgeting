@@ -10,6 +10,7 @@ interface FileUploadDropzoneProps {
   maxSizeMB?: number
   compact?: boolean
   fileStatuses?: Record<string, 'uploading' | 'analyzing' | 'error'>
+  fileScores?: Record<string, number | null>
 }
 
 const RESTRICTED_FILE_EXTENSIONS = new Set([
@@ -126,10 +127,11 @@ function getAcceptedExtensions(accept: string) {
 export function FileUploadDropzone({
   files,
   onChange,
-  accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.ppt,.pptx,.txt,.csv',
+  accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg',
   maxSizeMB = 20,
   compact = false,
   fileStatuses,
+  fileScores,
 }: FileUploadDropzoneProps) {
   const { showErrorToast } = useToast()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -284,7 +286,7 @@ export function FileUploadDropzone({
               {dragging ? 'Release to upload' : 'Drop files here or click to browse'}
             </p>
             <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-              PDF, DOCX, XLSX, PNG, JPG, PPT supported · Max {maxSizeMB} MB per file
+              PDF, DOCX, XLSX, JPG, TXT, CSV supported · Max {maxSizeMB} MB per file
             </p>
           </>
         ) : (
@@ -336,7 +338,9 @@ export function FileUploadDropzone({
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {files.map((file, index) => {
             const extension = file.name.split('.').pop() ?? ''
-            const fileStatus = fileStatuses?.[getFileKey(file)]
+            const fileKey = getFileKey(file)
+            const fileStatus = fileStatuses?.[fileKey]
+            const fileScore = fileScores?.[fileKey] ?? null
 
             return (
               <div
@@ -394,6 +398,26 @@ export function FileUploadDropzone({
                           ? 'AI analyzing'
                         : 'Needs attention'}
                     </span>
+                  </div>
+                )}
+                {fileScore != null && fileStatus !== 'uploading' && fileStatus !== 'analyzing' && (
+                  <div className="mt-2">
+                    <div className="mb-1 flex items-center justify-between">
+                      <p className="text-[10px] font-semibold text-[#64748B] dark:text-slate-400">Evidence Score</p>
+                      <p className={cn(
+                        'text-[10px] font-bold',
+                        fileScore >= 80 ? 'text-[#16A34A]' : fileScore >= 60 ? 'text-[#B45309]' : 'text-[#DC2626]'
+                      )}>{fileScore}/100</p>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-[#F1F5F9] dark:bg-white/10">
+                      <div
+                        className={cn(
+                          'h-1.5 rounded-full transition-all duration-500',
+                          fileScore >= 80 ? 'bg-[#22C55E]' : fileScore >= 60 ? 'bg-[#F59E0B]' : 'bg-[#EF4444]'
+                        )}
+                        style={{ width: `${fileScore}%` }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>

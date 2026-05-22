@@ -1,5 +1,16 @@
 export const dashboardPalette = {
   techBlue: '#286CFF',
+  primary: '#286CFE',
+  primaryDark: '#0C65F5',
+  primaryDeep: '#0C65F5',
+  primaryInk: '#1E3A8A',
+  primarySoft: '#5B87FF',
+  primarySoftAlt: '#6E9FFF',
+  primaryMuted: '#4F80FF',
+  primaryPale: '#286CFE',
+  primaryLight: '#E7F5FF',
+  primarySurface: '#F8FBFF',
+  primaryBorder: '#D7E4F4',
   techBlueLight: '#E7F5FF',
   seaBlue: '#00ABEB',
   aeGreen: '#4A9D5C',
@@ -27,6 +38,7 @@ export const dashboardPalette = {
   chartOrange: '#C9733D',
   chartPink: '#B660C5',
   chartSlate: '#64748B',
+  primarySeries: ['#286CFE', '#5B87FF', '#0C65F5', '#4F80FF'],
 } as const
 
 export const dashboardStatusColors = {

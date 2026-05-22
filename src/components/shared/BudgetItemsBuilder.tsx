@@ -48,24 +48,18 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
     <>
       <div className="space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Line Items</p>
               <p className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white">{items.length}</p>
             </div>
             <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">CapEx / OpEx Tags</p>
-              <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">
-                {items.length === 0 ? 'Not set' : Array.from(new Set(items.map((item) => item.expenseTypeLabel ?? 'Unspecified'))).join(', ')}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[#B0DBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Total Requested</p>
-              <CurrencyAmount amount={totalRequested} full className="mt-1 text-lg font-bold text-[#286CFF]" iconSize={16} />
+              <CurrencyAmount amount={totalRequested} full className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white" iconSize={16} />
             </div>
           </div>
 
-          <Button size="sm" className="h-10 rounded-xl shadow-sm" onClick={() => setModalOpen(true)}>
+          <Button size="sm" className="h-10 rounded-xl text-sm shadow-sm" onClick={() => setModalOpen(true)}>
             <Plus className="h-4 w-4" />
             Add Budget Account Code
           </Button>
@@ -109,7 +103,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                       </div>
                     </td>
                     <td className="block py-2 md:table-cell md:px-4 md:py-4">
-                      <div className="text-xs font-semibold text-[#286CFF]">EBS {item.ebsCode}</div>
+                      <div className="text-xs text-[#64748B] dark:text-slate-300">EBS {item.ebsCode}</div>
                       <div className="mt-1 text-xs text-[#64748B] dark:text-slate-300">Fusion {item.fusionCode}</div>
                       <div className="mt-2 inline-flex rounded-full bg-[#E7F5FF] px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:bg-[#286CFF]/15">
                         {item.expenseTypeLabel ?? 'Expense Type Pending'}

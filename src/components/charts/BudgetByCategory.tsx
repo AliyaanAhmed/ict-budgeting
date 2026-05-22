@@ -1,27 +1,28 @@
+import { useState } from 'react'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { dashboardPalette } from '@/lib/dashboardPalette'
 import type { BudgetByCategoryChartItem } from '@/hooks/useDashboardBudgetCharts'
 
 const BAR_COLORS = [
-  dashboardPalette.chartBlue,
-  dashboardPalette.chartCyan,
-  dashboardPalette.chartYellow,
-  dashboardPalette.chartOrange,
-  dashboardPalette.chartPink,
-  dashboardPalette.chartSlate,
+  ...dashboardPalette.primarySeries,
 ]
+const PAGE_SIZE = 5
 
 interface BudgetByCategoryProps {
   data: BudgetByCategoryChartItem[]
 }
 
 export function BudgetByCategory({ data }: BudgetByCategoryProps) {
+  const [page, setPage] = useState(0)
   const total = data.reduce((sum, item) => sum + item.value, 0)
   const chartData = data.map((item, index) => ({
     ...item,
     pct: total > 0 ? Math.round((item.value / total) * 100) : 0,
     color: BAR_COLORS[index % BAR_COLORS.length],
   }))
+  const totalPages = Math.max(1, Math.ceil(chartData.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const visibleData = chartData.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   if (!chartData.length) {
     return (
@@ -33,12 +34,11 @@ export function BudgetByCategory({ data }: BudgetByCategoryProps) {
 
   return (
     <div className="space-y-4">
-      {chartData.map((item) => (
+      {visibleData.map((item) => (
         <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
           <div className="flex items-center gap-3">
             <span
-              className="inline-flex min-w-[44px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
-              style={{ backgroundColor: `${item.color}18`, color: item.color }}
+              className="inline-flex min-w-[44px] items-center justify-center rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]"
             >
               {item.pct}%
             </span>
@@ -52,12 +52,37 @@ export function BudgetByCategory({ data }: BudgetByCategoryProps) {
               className="h-full rounded-full"
               style={{
                 width: `${item.pct}%`,
-                background: `linear-gradient(90deg, ${item.color}, ${item.color}BB)`,
+                backgroundColor: item.color,
               }}
             />
           </div>
         </div>
       ))}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1B2A41]">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-200">
+            Category page {safePage + 1} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={safePage === 0}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-[#DCE8F6] px-3 text-xs font-semibold text-[#286CFF] transition-colors hover:bg-[#EEF5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-[#BFDBFE] dark:hover:bg-white/5"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-[#DCE8F6] px-3 text-xs font-semibold text-[#286CFF] transition-colors hover:bg-[#EEF5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-[#BFDBFE] dark:hover:bg-white/5"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

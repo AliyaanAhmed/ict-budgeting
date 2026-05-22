@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { dashboardPalette } from '@/lib/dashboardPalette'
 import type { AccountCodesBreakdownItem } from '@/hooks/useDashboardBudgetCharts'
 
-const BREAKDOWN_COLORS = ['#8B5CF6', '#22C55E', '#286CFF', '#F59E0B', '#EC4899']
+const BREAKDOWN_COLORS = [...dashboardPalette.primarySeries]
+const PAGE_SIZE = 5
 
 interface AccountCodesBreakdownProps {
   items: AccountCodesBreakdownItem[]
@@ -14,6 +17,7 @@ export function AccountCodesBreakdown({
   loading = false,
   error = null,
 }: AccountCodesBreakdownProps) {
+  const [page, setPage] = useState(0)
   if (loading) {
     return (
       <div className="space-y-4">
@@ -43,17 +47,26 @@ export function AccountCodesBreakdown({
     )
   }
 
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const visibleItems = items.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+
   return (
     <div className="space-y-4">
-      {items.map((item, index) => {
-        const color = BREAKDOWN_COLORS[index % BREAKDOWN_COLORS.length]
+      {visibleItems.map((item, index) => {
+        const actualIndex = safePage * PAGE_SIZE + index
+        const color = BREAKDOWN_COLORS[actualIndex % BREAKDOWN_COLORS.length]
+        const isCapex = item.type.toLowerCase().includes('cap')
 
         return (
           <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
             <div className="flex items-center gap-3">
               <span
-                className="inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                style={{ backgroundColor: `${color}16`, color }}
+                className={`inline-flex min-w-[64px] items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold ${
+                  isCapex
+                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                    : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                }`}
               >
                 {item.type}
               </span>
@@ -67,13 +80,38 @@ export function AccountCodesBreakdown({
                 className="h-full rounded-full"
                 style={{
                   width: `${item.pct}%`,
-                  background: `linear-gradient(90deg, ${color}, ${color}BB)`,
+                  backgroundColor: color,
                 }}
               />
             </div>
           </div>
         )
       })}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1B2A41]">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-200">
+            Account page {safePage + 1} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              disabled={safePage === 0}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-[#DCE8F6] px-3 text-xs font-semibold text-[#286CFF] transition-colors hover:bg-[#EEF5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-[#BFDBFE] dark:hover:bg-white/5"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
+              disabled={safePage >= totalPages - 1}
+              className="inline-flex h-9 items-center justify-center rounded-full border border-[#DCE8F6] px-3 text-xs font-semibold text-[#286CFF] transition-colors hover:bg-[#EEF5FF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-[#BFDBFE] dark:hover:bg-white/5"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

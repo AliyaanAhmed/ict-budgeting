@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
-import { CurrencyAmount } from './CurrencyAmount'
+import { DirhamIcon } from './DirhamIcon'
 import { UserHoverCard } from './UserHoverCard'
 import {
   DropdownMenu,
@@ -56,6 +56,10 @@ function AiScore({ score }: { score: number }) {
 
 function normalize(value: string | number | null | undefined) {
   return String(value ?? '').trim().toLowerCase()
+}
+
+function formatBudgetValue(amount: number) {
+  return amount.toLocaleString('en-AE')
 }
 
 function compareValues(a: string | number | null | undefined, b: string | number | null | undefined, type: ColumnType) {
@@ -349,6 +353,11 @@ export function ProjectTable({
         type: 'option',
         accessor: (project) => project.strategicPriority,
         options: Array.from(new Set(projects.map((project) => project.strategicPriority))).sort(),
+        render: (project) => (
+          <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">
+            {project.strategicPriority || '-'}
+          </span>
+        ),
         className: 'hidden md:table-cell',
         headerClassName: 'hidden md:table-cell',
       },
@@ -358,6 +367,11 @@ export function ProjectTable({
         type: 'option',
         accessor: (project) => project.classification,
         options: Array.from(new Set(projects.map((project) => project.classification))).sort(),
+        render: (project) => (
+          <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">
+            {project.classification || '-'}
+          </span>
+        ),
         className: 'hidden lg:table-cell',
         headerClassName: 'hidden lg:table-cell',
       },
@@ -367,7 +381,9 @@ export function ProjectTable({
         type: 'number',
         accessor: (project) => project.requestedBudget,
         render: (project) => (
-          <CurrencyAmount amount={project.requestedBudget} className="text-[14px] font-semibold text-[#0F172A] dark:text-white" />
+          <span className="text-[14px] font-semibold text-[#0F172A] dark:text-white">
+            {formatBudgetValue(project.requestedBudget)}
+          </span>
         ),
       },
       {
@@ -386,7 +402,7 @@ export function ProjectTable({
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <span className="text-[14px] font-medium text-[#475569] dark:text-slate-200">{project.pendingWith}</span>
+            <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">{project.pendingWith}</span>
           ) : (
             <span className="text-[14px] text-[#94A3B8]">-</span>
           ),
@@ -407,6 +423,7 @@ export function ProjectTable({
             name={project.submittedBy}
             userId={project.submittedById}
             subtitle="Project Creator"
+            className="rounded-lg bg-[#E7F5FF] px-2.5 py-1.5 text-[14px] font-normal text-[var(--primary)] transition-colors hover:bg-[#D3EDFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE] dark:hover:bg-[#286CFF]/25"
           />
         ),
         className: 'hidden xl:table-cell',
@@ -477,12 +494,19 @@ export function ProjectTable({
               <th
                 key={column.id}
                 className={cn(
-                  'whitespace-nowrap px-4 py-3 text-start text-[14px] font-semibold text-[#475569] dark:text-slate-200',
+                  'whitespace-nowrap px-4 py-3 text-start text-[14px] font-semibold text-[#0F172A] dark:text-white',
                   column.headerClassName
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <span>{column.header}</span>
+                  {column.id === 'budget' ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{column.header}</span>
+                      <DirhamIcon width={14} height={14} color="currentColor" className="shrink-0" />
+                    </span>
+                  ) : (
+                    <span>{column.header}</span>
+                  )}
                   {column.filterable !== false && (
                     <>
                       <SortButton

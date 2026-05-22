@@ -62,10 +62,10 @@ function InsightSection({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-[#E9D5FF] bg-white/90 p-4 dark:border-white/10 dark:bg-white/5">
+    <div className="rounded-2xl border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-white/5">
       <div className="mb-3 flex items-center gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#FAF5FF] text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
-          <Icon className="h-4 w-4" />
+        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+          <Icon className="h-5 w-5" />
         </div>
         <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{title}</p>
       </div>
@@ -190,9 +190,9 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-r from-[#FAF5FF] to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+        <div className="rounded-2xl border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-[#1E293B]">
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_10px_24px_rgba(168,85,247,0.24)]">
+            <div className="mt-0.5 shrink-0 text-[#A855F7]">
               <Sparkles className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -212,24 +212,24 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
       <div className="grid gap-4 xl:grid-cols-2">
         <InsightSection title="Document Profile" icon={Building2}>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Type</p>
               <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{profile?.document_type ?? '-'}</p>
             </div>
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Date</p>
               <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{profile?.document_date ?? '-'}</p>
             </div>
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Vendor / Issuer</p>
               <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{profile?.issuer_or_vendor ?? '-'}</p>
             </div>
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Recipient / Entity</p>
               <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{profile?.recipient_or_entity ?? '-'}</p>
             </div>
           </div>
-          <div className="mt-3 rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <div className="mt-3 rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Purpose</p>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">{profile?.document_purpose ?? '-'}</p>
           </div>
@@ -237,7 +237,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
 
         <InsightSection title="File Summary" icon={FileText}>
           {fileSummary?.short_summary && (
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Short Summary</p>
               <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">{fileSummary.short_summary}</p>
             </div>
@@ -249,16 +249,16 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
       <div className="grid gap-4 xl:grid-cols-2">
         <InsightSection title="Evidence Assessment" icon={ShieldCheck}>
           <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Supports Project</p>
               <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{evidence?.supports_project ?? '-'}</p>
             </div>
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Quality</p>
               <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{evidence?.evidence_quality ?? '-'}</p>
             </div>
           </div>
-          <div className="mt-3 rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <div className="mt-3 rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Recommended Action</p>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">{evidence?.recommended_user_action ?? evidence?.reason ?? '-'}</p>
           </div>
@@ -278,7 +278,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">No review flags were detected for this document.</p>
             </div>
           )}
@@ -373,11 +373,11 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
   const analyzingCount = items.filter((item) => item.status === 'analyzing' || item.status === 'queued').length
 
   return (
-    <div className="mt-5 rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] via-white to-white p-4 shadow-[0_16px_38px_rgba(15,23,42,0.08)] dark:border-white/10 dark:from-[#2A123D] dark:via-[#231735] dark:to-[#1E293B] sm:p-5">
+    <div className="mt-5 rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] via-white to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:via-[#231735] dark:to-[#1E293B] sm:p-5">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#A855F7] to-[#C084FC] text-white shadow-[0_10px_24px_rgba(168,85,247,0.24)]">
-            <Bot className="h-5 w-5" />
+        <div className="flex items-start gap-3">
+          <div className="mt-1 shrink-0 text-[#A855F7]">
+            <Sparkles className="h-6 w-6" />
           </div>
           <div>
             <h4 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Document Analyzer</h4>
@@ -385,14 +385,14 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border border-[#E9D5FF] bg-white/80 px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+          <span className="rounded-full border border-[#E9D5FF] bg-white px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
             {items.length} file{items.length === 1 ? '' : 's'}
           </span>
           <span className="rounded-full border border-[#CFE9D9] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16794B] dark:border-[#16794B]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
             {completedCount} analyzed
           </span>
           {analyzingCount > 0 && (
-            <span className="rounded-full border border-[#E9D5FF] bg-[#FAF5FF] px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+            <span className="rounded-full border border-[#E9D5FF] bg-white px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
               {analyzingCount} in progress
             </span>
           )}
@@ -401,7 +401,8 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
 
       <div className="space-y-3">
         {orderedItems.map((item) => {
-          const expanded = expandedId === item.id
+          const isActive = item.status === 'queued' || item.status === 'analyzing'
+          const expanded = expandedId === item.id || isActive
           const evidenceScore = item.parsedSummary?.evidence_assessment?.evidence_score
           const collapsedHeadings = [
             item.parsedSummary?.document_profile ? 'Document Profile' : null,
@@ -411,13 +412,13 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
           ].filter(Boolean) as string[]
 
           return (
-            <div key={item.id} className="overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white/85 dark:border-white/10 dark:bg-[#21162F]/85">
-              <div className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-[#FDF7FF] dark:hover:bg-white/5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#E9D5FF] bg-[#FAF5FF] text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+            <div key={item.id} className="overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+              <div className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-[#FAFAFA] dark:hover:bg-white/5">
+                <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
                   {item.status === 'complete' ? (
                     <CheckCircle2 className="h-5 w-5" />
                   ) : item.status === 'error' ? (
-                    <AlertTriangle className="h-5 w-5" />
+                    <AlertTriangle className="h-5 w-5 text-[#B42318] dark:text-[#FCA5A5]" />
                   ) : (
                     <Loader2 className="h-5 w-5 animate-spin" />
                   )}
@@ -445,7 +446,7 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
 
                 <div className="flex items-center gap-2">
                   {typeof evidenceScore === 'number' && item.status === 'complete' && (
-                    <span className="hidden rounded-full bg-[#FAF5FF] px-2.5 py-1 text-xs font-bold text-[#A855F7] sm:inline-flex dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                    <span className="hidden rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-bold text-[#A855F7] sm:inline-flex dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                       {evidenceScore} score
                     </span>
                   )}
@@ -467,13 +468,13 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
                 </div>
               )}
 
-              {!expanded && item.status === 'complete' && (
+              {!isActive && !expanded && item.status === 'complete' && (
                 <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">
                   <div className="flex flex-wrap gap-2">
                     {collapsedHeadings.map((heading) => (
                       <span
                         key={heading}
-                        className="rounded-full border border-[#E9D5FF] bg-[#FAF5FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
+                        className="rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
                       >
                         {heading}
                       </span>
