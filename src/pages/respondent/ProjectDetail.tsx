@@ -247,8 +247,21 @@ function AiFieldAssistTrigger({
   onApply,
   helperText,
 }: AiFieldAssistProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleMouseDown = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        onToggle()
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [isOpen, onToggle])
+
   return (
-    <div className="relative shrink-0">
+    <div ref={wrapperRef} className="relative shrink-0">
       <button
         type="button"
         onClick={onToggle}
@@ -269,9 +282,9 @@ function AiFieldAssistTrigger({
               <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
             </div>
           </div>
-          <div className="mt-3 rounded-xl border border-[#E9D5FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <div className="mt-3">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Value</p>
-            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{suggestedValue}</p>
+            <p className="mt-1 text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
           </div>
           {canApply ? (
             <button
@@ -1835,6 +1848,79 @@ function InteractiveBudgetOverviewCard({
     }))
   }
 
+  const renderPolicyCards = () => (
+    <div className="grid gap-4 lg:grid-cols-3">
+      {policyMatchGroups.flatMap((group) => {
+        const accent = toMatchTypeAccent(group.matchType)
+
+        return group.items.map((item) => (
+          <article
+            key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
+            className="flex h-full flex-col rounded-2xl border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FDF8FF_100%)] p-4 shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[linear-gradient(180deg,#241735_0%,#1E293B_100%)]"
+          >
+            <div className="flex items-start gap-3">
+              <div className={cn('mt-0.5 shrink-0', accent.text)}>
+                {group.matchType === 'Potential Conflict' ? (
+                  <AlertTriangle className="h-5 w-5" />
+                ) : group.matchType === 'Coordination Required' ? (
+                  <Layers className="h-5 w-5" />
+                ) : (
+                  <Lightbulb className="h-5 w-5" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
+                    {item.matchType}
+                  </span>
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
+                      {item.policyName}
+                    </h3>
+                    <p className="mt-2 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                      Policy Area: <span className="font-medium text-[#475569] dark:text-slate-200">{item.strategicArea}</span>
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xl font-bold text-[#A855F7]">
+                      {item.relevanceScore}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
+                      Probability
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-1 flex-col gap-3">
+              <div className="rounded-xl border border-[#F0D9FF] bg-white/85 p-3 dark:border-white/10 dark:bg-white/5">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
+                  Reason
+                </p>
+                <p className="text-xs leading-relaxed text-[#475569] dark:text-slate-200">
+                  {item.reason}
+                </p>
+              </div>
+
+              <div className="mt-auto rounded-xl border border-[#F0D9FF] bg-white/85 p-3 dark:border-white/10 dark:bg-white/5">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
+                  Recommended Action
+                </p>
+                <p className="text-xs leading-relaxed text-[#475569] dark:text-slate-100">
+                  {item.requiredAction}
+                </p>
+              </div>
+            </div>
+          </article>
+        ))
+      })}
+    </div>
+  )
+
   function fileEvidenceTone(score: number | null, status: SupportingDocumentAiInsightItem['status']) {
     if (status === 'analyzing' || status === 'queued') {
       return {
@@ -1866,6 +1952,210 @@ function InteractiveBudgetOverviewCard({
     }
   }
 
+  const overviewMetricCards = (
+    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+      {typeof scores?.document_evidence?.evidence_score === 'number' && (
+        <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Document Evidence</p>
+          <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
+        </div>
+      )}
+      {pfTotal > 0 && (
+        <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
+          <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+        </div>
+      )}
+      {baLabel && (
+        <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Account</p>
+          <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{baLabel}</p>
+        </div>
+      )}
+      {scores?.strategic_alignment?.match_type && (
+        <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Strategic Fit</p>
+          <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.strategic_alignment.match_type}</p>
+        </div>
+      )}
+    </div>
+  )
+
+  const collapsedPolicySummary = (
+    <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+            <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+            {policyLoading
+              ? 'Refreshing policy alignment for this budget.'
+              : policyError
+                ? 'Policy results are temporarily unavailable.'
+                : hasPolicyMatch
+                  ? 'Policy counts are shown here. Expand to review the matched policies.'
+                  : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {policyLoading ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Evaluating
+            </span>
+          ) : policyError ? (
+            <span className="rounded-full border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-1 text-xs font-semibold text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+              Unavailable
+            </span>
+          ) : hasPolicyMatch ? (
+            <>
+              {policyConflictCount > 0 && (
+                <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
+                  {policyConflictCount} conflicts
+                </span>
+              )}
+              {policyCoordinationCount > 0 && (
+                <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
+                  {policyCoordinationCount} coordination
+                </span>
+              )}
+              {policyConditionalCount > 0 && (
+                <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
+                  {policyConditionalCount} conditional
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="rounded-full border border-[#BBF7D0] bg-[#ECFDF3] px-3 py-1 text-xs font-semibold text-[#027A48] dark:border-[#027A48]/30 dark:bg-[#027A48]/12 dark:text-[#A6F4C5]">
+              Cleared by AI
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  const fileEvidenceSummary = fileEvidenceItems.length > 0 ? (
+    <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+      <div className="mb-3 flex items-center gap-2.5">
+        <FileText className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+        <p className="text-base font-bold text-[#0F172A] dark:text-white">File Evidence Scores</p>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {fileEvidenceItems.map((item) => (
+          <div
+            key={item.id}
+            className={cn(
+              'rounded-xl border px-3 py-3 transition-colors',
+              fileEvidenceTone(item.score, item.status).card
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{item.name}</p>
+                <p className="mt-1 text-[11px] opacity-80">
+                  {item.status === 'complete'
+                    ? item.quality ?? 'Evidence scored'
+                    : item.status === 'error'
+                      ? 'Analysis unavailable'
+                      : 'Analysis in progress'}
+                </p>
+              </div>
+              <span className={cn('shrink-0 text-base font-bold', fileEvidenceTone(item.score, item.status).score)}>
+                {item.status === 'complete' && typeof item.score === 'number'
+                  ? `${item.score}`
+                  : item.status === 'error'
+                    ? 'Err'
+                    : '...'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null
+
+  const expandedPolicySection = (
+    <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+            <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+            {policyLoading
+              ? 'Refreshing policy alignment for this budget.'
+              : policyError
+                ? 'Policy results are temporarily unavailable.'
+                : hasPolicyMatch
+                  ? 'Matched policy guidance is shown below for review.'
+                  : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
+          </p>
+        </div>
+
+        {!policyLoading && !policyError ? (
+          <div className="flex flex-wrap gap-2">
+            {hasPolicyMatch ? (
+              <>
+                {policyConflictCount > 0 && (
+                  <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
+                    {policyConflictCount} conflicts
+                  </span>
+                )}
+                {policyCoordinationCount > 0 && (
+                  <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
+                    {policyCoordinationCount} coordination
+                  </span>
+                )}
+                {policyConditionalCount > 0 && (
+                  <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
+                    {policyConditionalCount} conditional
+                  </span>
+                )}
+              </>
+            ) : policyResult ? (
+              <span className="rounded-full border border-[#BBF7D0] bg-[#ECFDF3] px-3 py-1 text-xs font-semibold text-[#027A48] dark:border-[#027A48]/30 dark:bg-[#027A48]/12 dark:text-[#A6F4C5]">
+                Cleared by AI
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {policyLoading ? (
+        <div className="w-full rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin text-current" />
+            Evaluating ICT Budget Considerations policies...
+          </div>
+        </div>
+      ) : policyError ? (
+        <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+          {policyError}
+        </div>
+      ) : hasPolicyMatch ? (
+        renderPolicyCards()
+      ) : policyResult ? (
+        <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                {policyResult.overallAssessment.summary}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF8FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
       <button
@@ -1873,169 +2163,57 @@ function InteractiveBudgetOverviewCard({
         onClick={() => canExpand && setExpanded((value) => !value)}
         className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
       >
-        <div className="flex items-start gap-3">
+        <div className="flex flex-1 items-start gap-3">
           <div className="mt-1 shrink-0 text-[#A855F7]">
             <Sparkles className="h-6 w-6" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
               Budget Overview
             </h2>
-            <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
-              {roleSummary || assessment?.one_line_summary || 'AI-generated budget readiness assessment'}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {assessment?.readiness_status && (
+            {data && roleSummary ? (
+              <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
+                {roleSummary}
+              </p>
+            ) : null}
+            {data && (assessment?.readiness_status || isRefreshing || record?.modifiedOn) ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {assessment?.readiness_status && (
                 <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${readiness.badge}`}>
                   <span className={`h-2 w-2 rounded-full ${readiness.dot}`} />
                   {assessment.readiness_status}
                 </span>
-              )}
-              {isRefreshing && (
-                <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Refreshing
-                </span>
-              )}
-            {record?.modifiedOn && (
-                <span className="text-[11px] text-[#94A3B8] dark:text-slate-500">
-                  Updated {new Date(record.modifiedOn).toLocaleString('en-AE', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </span>
-              )}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-              {typeof scores?.document_evidence?.evidence_score === 'number' && (
-                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Document Evidence</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
-                </div>
-              )}
-              {pfTotal > 0 && (
-                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
-                </div>
-              )}
-              {baLabel && (
-                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Account</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{baLabel}</p>
-                </div>
-              )}
-              {scores?.strategic_alignment?.match_type && (
-                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Strategic Fit</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.strategic_alignment.match_type}</p>
-                </div>
-              )}
-            </div>
+                )}
+                {isRefreshing && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Refreshing
+                  </span>
+                )}
+                {record?.modifiedOn && (
+                  <span className="text-[11px] text-[#94A3B8] dark:text-slate-500">
+                    Updated {new Date(record.modifiedOn).toLocaleString('en-AE', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                )}
+              </div>
+            ) : null}
+            {!expanded && data ? overviewMetricCards : null}
             {!data ? (
-              <div className="mt-4">
+              <div className="mt-4 w-full">
                 <EmptyAiActionCard
                   description="Budget overview will appear here once an AI readiness assessment has been generated for this budget."
                   icon={Sparkles}
                 />
               </div>
             ) : null}
-            <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2.5">
-                    <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-                    <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                    {policyLoading
-                      ? 'Refreshing policy alignment for this budget.'
-                      : policyError
-                        ? 'Policy results are temporarily unavailable.'
-                        : hasPolicyMatch
-                          ? 'Policy counts are shown here. Expand to review the matched policies.'
-                          : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {policyLoading ? (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Evaluating
-                    </span>
-                  ) : policyError ? (
-                    <span className="rounded-full border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-1 text-xs font-semibold text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
-                      Unavailable
-                    </span>
-                  ) : hasPolicyMatch ? (
-                    <>
-                      {policyConflictCount > 0 && (
-                        <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
-                          {policyConflictCount} conflicts
-                        </span>
-                      )}
-                      {policyCoordinationCount > 0 && (
-                        <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
-                          {policyCoordinationCount} coordination
-                        </span>
-                      )}
-                      {policyConditionalCount > 0 && (
-                        <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
-                          {policyConditionalCount} conditional
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="rounded-full border border-[#BBF7D0] bg-[#ECFDF3] px-3 py-1 text-xs font-semibold text-[#027A48] dark:border-[#027A48]/30 dark:bg-[#027A48]/12 dark:text-[#A6F4C5]">
-                      Cleared by AI
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {fileEvidenceItems.length > 0 && (
-              <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
-                <div className="mb-3 flex items-center gap-2.5">
-                  <FileText className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-                  <p className="text-base font-bold text-[#0F172A] dark:text-white">File Evidence Scores</p>
-                </div>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {fileEvidenceItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        'rounded-xl border px-3 py-3 transition-colors',
-                        fileEvidenceTone(item.score, item.status).card
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{item.name}</p>
-                          <p className="mt-1 text-[11px] opacity-80">
-                            {item.status === 'complete'
-                              ? item.quality ?? 'Evidence scored'
-                              : item.status === 'error'
-                                ? 'Analysis unavailable'
-                                : 'Analysis in progress'}
-                          </p>
-                        </div>
-                        <span className={cn('shrink-0 text-base font-bold', fileEvidenceTone(item.score, item.status).score)}>
-                          {item.status === 'complete' && typeof item.score === 'number'
-                            ? `${item.score}`
-                            : item.status === 'error'
-                              ? 'Err'
-                              : '...'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {!expanded ? collapsedPolicySummary : null}
+            {!expanded ? fileEvidenceSummary : null}
           </div>
         </div>
         {canExpand ? (
@@ -2062,145 +2240,8 @@ function InteractiveBudgetOverviewCard({
           {canExpand ? (
             <div className={cn('grid transition-all duration-300 ease-out', expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
               <div className="overflow-hidden">
-                <div className="space-y-5 border-t border-[#F3E8FF] px-6 py-5 dark:border-white/10">
-                  {policyLoading ? (
-                    <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-current" />
-                        Evaluating ICT Budget Considerations policies...
-                      </div>
-                    </div>
-                  ) : policyError ? (
-                    <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
-                      {policyError}
-                    </div>
-                  ) : policyResult ? (
-                    policyResult.overallAssessment.hasPolicyMatch ? (
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex items-center gap-2.5">
-                            <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-                            <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
-                          </div>
-                          <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
-                            Policy guidance is available even while the budget overview is still being generated.
-                          </p>
-                        </div>
-                        <div className="grid gap-4 lg:grid-cols-3">
-                          {policyMatchGroups.flatMap((group) => {
-                            const accent = toMatchTypeAccent(group.matchType)
-
-                            return group.items.map((item) => {
-                              const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
-                              const actionKey = `${item.policyNumber}-${item.policyName}-action`
-                              const truncatedReason = truncatePolicyCopy(item.reason, 100)
-                              const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
-                              const showFullReason = expandedPolicyTextSections[reasonKey] === true
-                              const showFullAction = expandedPolicyTextSections[actionKey] === true
-
-                              return (
-                                <article
-                                  key={`${item.policyNumber}-${item.policyName}-detail`}
-                                  className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
-                                >
-                                  <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
-                                    <div className="flex items-start gap-3">
-                                      <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                        {group.matchType === 'Potential Conflict' ? (
-                                          <AlertTriangle className="h-5 w-5" />
-                                        ) : group.matchType === 'Coordination Required' ? (
-                                          <Layers className="h-5 w-5" />
-                                        ) : (
-                                          <Lightbulb className="h-5 w-5" />
-                                        )}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <div className="mb-1 flex flex-wrap items-center gap-2">
-                                          <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                            <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                            {item.matchType}
-                                          </span>
-                                        </div>
-                                        <h3 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                          {item.policyName}
-                                        </h3>
-                                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                                          Policy {item.policyNumber}
-                                        </p>
-                                      </div>
-                                      <div className="shrink-0 text-right">
-                                        <p className="text-xl font-bold text-[#A855F7]">
-                                          {item.relevanceScore}
-                                        </p>
-                                        <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
-                                          Probability
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-1 flex-col px-4 py-3.5">
-                                    <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
-                                      {showFullReason ? item.reason : truncatedReason.text}
-                                      {truncatedReason.truncated && (
-                                        <button
-                                          type="button"
-                                          onClick={() => togglePolicyTextSection(reasonKey)}
-                                          className="ml-2 font-semibold text-[#A855F7] hover:underline"
-                                        >
-                                          {showFullReason ? 'Less' : 'More'}
-                                        </button>
-                                      )}
-                                    </p>
-
-                                    <div className="mb-3 flex items-center gap-2">
-                                      <Clock3 className="h-4 w-4 text-[#94A3B8]" />
-                                      <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
-                                      <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
-                                        {item.strategicArea}
-                                      </span>
-                                    </div>
-
-                                    <div className="mt-auto rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
-                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
-                                        Recommended Action
-                                      </p>
-                                      <p className="text-xs text-[#475569] dark:text-slate-100">
-                                        {showFullAction ? item.requiredAction : truncatedAction.text}
-                                        {truncatedAction.truncated && (
-                                          <button
-                                            type="button"
-                                            onClick={() => togglePolicyTextSection(actionKey)}
-                                            className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
-                                          >
-                                            {showFullAction ? 'Less' : 'More'}
-                                          </button>
-                                        )}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </article>
-                              )
-                            })
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
-                            <CheckCircle2 className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
-                            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                              {policyResult.overallAssessment.summary}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  ) : null}
+                <div className="space-y-5 pl-[3.75rem] pr-6 pb-5">
+                  {expandedPolicySection}
                 </div>
               </div>
             </div>
@@ -2209,7 +2250,7 @@ function InteractiveBudgetOverviewCard({
       ) : (
         <div className={cn('grid transition-all duration-300 ease-out', expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
           <div className="overflow-hidden">
-            <div className="space-y-5 border-t border-[#F3E8FF] px-6 py-5 dark:border-white/10">
+            <div className="space-y-5 pl-[3.75rem] pr-6 pb-5">
               {(roleSummary || roleBullets.length > 0) && (
                 <div className="rounded-2xl border border-[#EAF0F6] bg-white px-4 py-4 dark:border-white/10 dark:bg-white/5">
                   <div className="mb-3 flex items-center gap-2">
@@ -2217,12 +2258,6 @@ function InteractiveBudgetOverviewCard({
                     <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{currentRole} View</p>
                   </div>
                   <ul className="space-y-2">
-                    {roleSummary ? (
-                      <li className="flex items-start gap-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
-                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#A855F7] dark:bg-[#E9D5FF]" />
-                        <span>{roleSummary}</span>
-                      </li>
-                    ) : null}
                     {roleBullets.slice(0, 6).map((message, index) => (
                       <li key={`${currentRole}-view-${index}`} className="flex items-start gap-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
                         <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#A855F7] dark:bg-[#E9D5FF]" />
@@ -2232,6 +2267,10 @@ function InteractiveBudgetOverviewCard({
                   </ul>
                 </div>
               )}
+
+              {overviewMetricCards}
+
+              {expandedPolicySection}
 
               {(strengths.length > 0 || risks.length > 0) && (
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -2295,145 +2334,6 @@ function InteractiveBudgetOverviewCard({
                   )}
                 </div>
               )}
-
-              {policyLoading ? (
-                <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-current" />
-                    Evaluating ICT Budget Considerations policies...
-                  </div>
-                </div>
-              ) : policyError ? (
-                <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
-                  {policyError}
-                </div>
-              ) : policyResult ? (
-                policyResult.overallAssessment.hasPolicyMatch ? (
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-                        <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
-                      </div>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
-                        Expandable policy guidance is now part of the budget overview.
-                      </p>
-                    </div>
-                    <div className="grid gap-4 lg:grid-cols-3">
-                      {policyMatchGroups.flatMap((group) => {
-                        const accent = toMatchTypeAccent(group.matchType)
-
-                        return group.items.map((item) => {
-                          const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
-                          const actionKey = `${item.policyNumber}-${item.policyName}-action`
-                          const truncatedReason = truncatePolicyCopy(item.reason, 100)
-                          const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
-                          const showFullReason = expandedPolicyTextSections[reasonKey] === true
-                          const showFullAction = expandedPolicyTextSections[actionKey] === true
-
-                          return (
-                            <article
-                              key={`${item.policyNumber}-${item.policyName}-detail`}
-                              className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
-                            >
-                              <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
-                                <div className="flex items-start gap-3">
-                                  <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                    {group.matchType === 'Potential Conflict' ? (
-                                      <AlertTriangle className="h-5 w-5" />
-                                    ) : group.matchType === 'Coordination Required' ? (
-                                      <Layers className="h-5 w-5" />
-                                    ) : (
-                                      <Lightbulb className="h-5 w-5" />
-                                    )}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                        <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                        {item.matchType}
-                                      </span>
-                                    </div>
-                                    <h3 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                      {item.policyName}
-                                    </h3>
-                                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                                      Policy {item.policyNumber}
-                                    </p>
-                                  </div>
-                                  <div className="shrink-0 text-right">
-                                    <p className="text-xl font-bold text-[#A855F7]">
-                                      {item.relevanceScore}
-                                    </p>
-                                    <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
-                                      Probability
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-1 flex-col px-4 py-3.5">
-                                <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
-                                  {showFullReason ? item.reason : truncatedReason.text}
-                                  {truncatedReason.truncated && (
-                                    <button
-                                      type="button"
-                                      onClick={() => togglePolicyTextSection(reasonKey)}
-                                      className="ml-2 font-semibold text-[#A855F7] hover:underline"
-                                    >
-                                      {showFullReason ? 'Less' : 'More'}
-                                    </button>
-                                  )}
-                                </p>
-
-                                <div className="mb-3 flex items-center gap-2">
-                                  <Clock3 className="h-4 w-4 text-[#94A3B8]" />
-                                  <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
-                                  <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
-                                    {item.strategicArea}
-                                  </span>
-                                </div>
-
-                                <div className="mt-auto rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
-                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
-                                    Recommended Action
-                                  </p>
-                                  <p className="text-xs text-[#475569] dark:text-slate-100">
-                                    {showFullAction ? item.requiredAction : truncatedAction.text}
-                                    {truncatedAction.truncated && (
-                                      <button
-                                        type="button"
-                                        onClick={() => togglePolicyTextSection(actionKey)}
-                                        className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
-                                      >
-                                        {showFullAction ? 'Less' : 'More'}
-                                      </button>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                            </article>
-                          )
-                        })
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
-                        <CheckCircle2 className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
-                        <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                          {policyResult.overallAssessment.summary}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ) : null}
             </div>
           </div>
         </div>

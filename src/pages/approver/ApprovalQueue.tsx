@@ -101,18 +101,16 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
 
 function AiPanel({ expanded, onToggle, children }: { expanded: boolean; onToggle: () => void; children: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
-      <button onClick={onToggle} className="flex w-full items-center gap-3 bg-gradient-to-r from-[#286CFF]/5 to-transparent px-4 py-3 text-left">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-sm">
-          <Sparkles className="h-5 w-5" />
-        </span>
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+      <button onClick={onToggle} className="flex w-full items-center gap-3 bg-gradient-to-r from-[#A855F7]/5 to-transparent px-4 py-3 text-left">
+        <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
         <div>
           <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</p>
           <p className="text-xs text-[#64748B] dark:text-slate-200">High-value approvals, risk concentration, and readiness signals</p>
         </div>
-        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#286CFF] transition-transform', expanded && 'rotate-180')} />
+        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', expanded && 'rotate-180')} />
       </button>
-      {expanded && <div className="border-t border-[#B0DBFF]/70 px-4 py-4 dark:border-white/10">{children}</div>}
+      {expanded && <div className="border-t border-[#E9D5FF] px-4 py-4 dark:border-white/10">{children}</div>}
     </div>
   )
 }
@@ -432,11 +430,9 @@ export default function ApprovalQueue() {
               Review reviewer-cleared submissions, decide final approvals, and return items that need clarification.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
+          <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white shadow-sm">
-                <Sparkles className="h-5 w-5" />
-              </div>
+              <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
               <div>
                 <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Approval Summary</p>
                 <p className="text-xs text-[#64748B] dark:text-slate-200">
@@ -735,20 +731,20 @@ export default function ApprovalQueue() {
                   </div>
 
                   {/* AI insight row */}
-                  <div className="mt-4 rounded-xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B] sm:ml-10">
+                  <div className="mt-4 rounded-xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B] sm:ml-10">
                     <button
                       onClick={() => setExpandedAiId(aiExpanded ? null : proj.id)}
                       className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
                     >
-                      <Sparkles className="h-4 w-4 text-[#286CFF]" />
+                      <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7]" />
                       <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Approval Insight</span>
                       {proj.aiConfidence > 0 && (
                         <span className="text-xs text-[#64748B] dark:text-slate-200">{proj.aiConfidence}% confidence</span>
                       )}
-                      <ChevronDown className={cn('ml-auto h-4 w-4 text-[#286CFF] transition-transform', aiExpanded && 'rotate-180')} />
+                      <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', aiExpanded && 'rotate-180')} />
                     </button>
                     {aiExpanded && (
-                      <div className="border-t border-[#B0DBFF]/70 px-4 py-3 text-xs leading-5 text-[#475569] dark:border-white/10 dark:text-slate-200">
+                      <div className="border-t border-[#E9D5FF] px-4 py-3 text-xs leading-5 text-[#475569] dark:border-white/10 dark:text-slate-200">
                         {proj.summary || 'AI approval analysis will appear here once configured. Review budget assumptions, evidence, and strategic alignment before approving.'}
                       </div>
                     )}
