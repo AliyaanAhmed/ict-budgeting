@@ -173,7 +173,7 @@ function ActionMetricCard({
             <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
           </div>
           <div className="mt-3 flex items-end gap-3">
-            <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+            <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ backgroundColor: `${accent}14`, color: accent }}
@@ -682,9 +682,6 @@ export default function ApproverDashboard() {
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Approval Snapshot</h3>
                   <InfoHint text="Consolidated approver view of total requested budget, approved value, and portfolio confidence." />
                 </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Informational metrics for requested portfolio value, approved budget, and AI confidence signal
-                </p>
               </div>
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-white">
                 <BadgeDollarSign className="h-5 w-5" />
@@ -814,9 +811,7 @@ export default function ApproverDashboard() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_14px_26px_rgba(168,85,247,0.22)]">
-                    <Sparkles className="h-6 w-6" />
-                  </div>
+                  <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Risk &amp; Priority Insights</h3>
                   <InfoHint text="AI surfaces the themes that most often block final approval and DGE readiness." />
                 </div>

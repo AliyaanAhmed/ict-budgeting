@@ -19,6 +19,8 @@ These entries are not guaranteed to survive regeneration and must be checked aft
   - used by existing AI services such as Strategic Suggestion and ICT Budget Considerations
 - `dga_webapiforportal`
   - used by SharePoint document retrieval, relationship associate/disassociate, and sharing flows
+- `audits`
+  - used by project change-log retrieval in the Edit/View project screen
 
 ## Required post-add checklist
 
@@ -29,6 +31,7 @@ After adding any new flow or datasource:
 3. Verify these manual entries still exist:
    - `dga_customwebapi`
    - `dga_webapiforportal`
+   - `audits`
 4. If either manual entry is missing, restore it before continuing
 5. Run `npm run build`
 

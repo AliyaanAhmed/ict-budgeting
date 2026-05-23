@@ -1,75 +1,94 @@
 # AI Services Detailed Guide
 
 ## Purpose
-This document explains how AI is integrated into the app today, with special focus on the supporting-document pipeline.
+This guide documents the AI implementation currently present in the app.
 
-It covers:
-- what AI capabilities exist
-- which services call Power Automate
-- which services call Dataverse custom APIs
-- which services persist AI output into Dataverse tables
-- how the flow behaves in Create Form
-- how the flow behaves in Edit/View Form
+It focuses on:
+- which AI features exist today
+- which services call Dataverse Custom APIs
+- which services call Power Automate flows
+- how AI output is stored in Dataverse
+- how Create Form behaves in both Manual and Budget Assistant modes
+- how Edit/View behaves across Respondent, Reviewer, and Approver
+- how `Budget Overview`, `Cumulative Document Summary`, and file summaries work together
+- how to safely add new flows to the Code App without losing manual datasources
 
-This guide is implementation-oriented. It reflects the current codebase, not just the intended design.
-
----
-
-## High-Level AI Architecture
-
-The app uses three integration patterns for AI-related behavior:
-
-1. `Dataverse Custom API`
-- used for text-prompt AI services
-- current custom API:
-  - data source: `dga_customwebapi`
-  - operation: `dga_CustomWebApi`
-- current endpoint used behind the custom API:
-  - `https://api.core42.ai/v1/responses`
-
-2. `Power Automate v2 Flows`
-- used for file-based AI services and SharePoint upload/delete flows
-- this includes:
-  - individual document summary generation
-  - cumulative document summary generation
-  - SharePoint upload
-  - SharePoint delete
-
-3. `Dataverse Table Persistence`
-- used to store AI outputs so they can be reloaded later
-- current AI persistence tables:
-  - `dga_ict_document_summary`
-  - `dga_ict_ai_summary`
+This is an implementation guide, not a future-state design note.
 
 ---
 
-## AI Features In Scope
+## Current AI Features
 
-Current AI-enabled areas:
+The app currently uses AI in these main areas:
 
 1. `Strategic Priority Suggestion`
-- suggests strategic priority
-- suggests strategic priority classification
+- suggests Strategic Priority
+- suggests Strategic Priority Classification
 
-2. `AI Budget Considerations`
-- evaluates the project against policy considerations
-- returns policy matches and overall assessment
+2. `ICT Budget Considerations`
+- evaluates project text against policy / budget consideration logic
+- returns match groups and overall assessment
 
-3. `AI Document Analyzer`
-- evaluates each supporting document separately
-- returns structured document-level insight
+3. `Document Analyzer`
+- analyzes each uploaded supporting document individually
+- extracts summary, evidence score, suggested fields, budget lines, account-code hints, and review flags
 
 4. `Cumulative Document Summary`
-- combines multiple document summaries into one action-oriented summary
-- drives the document-related cards shown in the UI
+- combines multiple individual document summaries into one combined document-evidence summary
+
+5. `Budget Overview`
+- AI readiness assessment stored per budget
+- includes role-specific summaries, readiness status, issues, actions, and strategic/budget/document scoring
+
+6. `Budget Assistant`
+- AI-first project creation experience in `NewProject.tsx`
+- chat-driven suggestion staging
+- document analysis during create flow
 
 ---
 
-## Core Service Map
+## High-Level Architecture
 
-### Prompt-Based AI Services
+The app uses three integration patterns for AI behavior:
 
-#### `src/services/aiPromptService.ts`
+### 1. Dataverse Custom APIs
+Used for prompt-based AI calls.
+
+Current manually preserved datasource:
+- `dga_customwebapi`
+
+Current generated operation:
+- `dga_CustomWebApi`
+
+Used by:
+- Strategic Priority suggestion
+- ICT Budget Considerations
+- Budget Assistant text-chat services
+
+### 2. Power Automate v2 Flows
+Used for file-based AI and some side-effect workflows.
+
+Current AI/file-related flows include:
+- individual document summary
+- cumulative document summary
+- ICT Budget AI Overview trigger
+- SharePoint upload
+- SharePoint delete
+
+### 3. Dataverse Persistence
+Used so AI results can be reloaded on later visits.
+
+Main persistence tables:
+- `dga_ict_document_summary`
+- `dga_ict_ai_summary`
+
+---
+
+## Core Files And Services
+
+## Prompt-Based AI
+
+### `src/services/aiPromptService.ts`
 Purpose:
 - loads AI prompt templates from Dataverse table `dga_ai_prompts`
 - filters prompts by use case
@@ -78,19 +97,12 @@ Used by:
 - `aiStrategicSuggestionService.ts`
 - `aiBudgetConsiderationsService.ts`
 
-#### `src/services/aiStrategicSuggestionService.ts`
+### `src/services/aiStrategicSuggestionService.ts`
 Purpose:
-- generates strategic priority recommendations
+- generates strategic-priority recommendations
 
-Integration type:
-- Dataverse custom API
-
-Uses:
-- data source: `dga_customwebapi`
-- operation: `dga_CustomWebApi`
-
-Prompt use case:
-- `Strategic Priority & Classification Suggestion`
+Integration:
+- Dataverse Custom API
 
 Inputs:
 - `entityName`
@@ -98,21 +110,14 @@ Inputs:
 - `projectDescription`
 
 Output:
-- structured array of recommendations
+- structured recommendations
 
-#### `src/services/aiBudgetConsiderationsService.ts`
+### `src/services/aiBudgetConsiderationsService.ts`
 Purpose:
-- evaluates project details against ICT budget considerations / policy logic
+- evaluates project details against ICT Budget Considerations / policy logic
 
-Integration type:
-- Dataverse custom API
-
-Uses:
-- data source: `dga_customwebapi`
-- operation: `dga_CustomWebApi`
-
-Prompt use case:
-- `ICT Budget Considerations Evaluation Prompt`
+Integration:
+- Dataverse Custom API
 
 Inputs:
 - `entityName`
@@ -123,27 +128,29 @@ Output:
 - `assessmentItems`
 - `overallAssessment`
 
+### `src/services/aiBudgetCopilotChatService.ts`
+Purpose:
+- powers the Budget Assistant chat experience in create flow
+
+Used for:
+- free-form chat reply generation
+- structured extraction of suggested fields / staged budget guidance
+
 ---
 
-### Document AI Services
+## Document AI
 
-#### `src/services/aiSupportingDocumentEvaluationService.ts`
+### `src/services/aiSupportingDocumentEvaluationService.ts`
 Purpose:
-- handles document AI calls
-- parses nested Automate/OpenAI responses
+- handles file-based AI calls
+- parses nested Power Automate / OpenAI response structures
 
-This service contains:
+Main functions:
+- `evaluateSupportingDocument(...)`
+- `evaluateCumulativeSupportingDocuments(...)`
+- `parseSupportingDocumentEvaluationSummary(...)`
 
-1. `evaluateSupportingDocument(...)`
-- sends one file to the individual summary flow
-
-2. `evaluateCumulativeSupportingDocuments(...)`
-- sends multiple file summaries to the cumulative flow
-
-3. `parseSupportingDocumentEvaluationSummary(...)`
-- parses the returned raw response into usable sections
-
-Important parsed sections:
+Parsed sections commonly used by UI:
 - `document_profile`
 - `file_summary`
 - `evidence_assessment`
@@ -152,86 +159,92 @@ Important parsed sections:
 - `account_code_suggestions`
 - `review_flags`
 
----
-
-### File Transport Services
-
-#### `src/services/fileUploadService.ts`
-Purpose:
-- uploads files to SharePoint through Power Automate
-
-Integration type:
-- Power Automate flow
-
-Flow service:
-- `PowerAppV2_CallUploadFileFlowService`
-
-Behavior:
-- converts browser `File` to base64
-- builds upload payload
-- sends payload through generated flow service
-- extracts uploaded file URL from the response
-
-#### `src/services/fileDeleteService.ts`
-Purpose:
-- deletes files from SharePoint through Power Automate
-
-Integration type:
-- Power Automate flow
-
-Flow service:
-- `ICTBudget_Clarificaitons_DeleteFileFromSharePointService`
-
-Behavior:
-- sends only `relativelocation` string as payload
-- used when deleting supporting documents from Edit/View flow
-
-#### `src/services/webApiForPortalService.ts`
-Purpose:
-- retrieves SharePoint documents already attached to a budget
-
-Integration type:
-- Dataverse custom API
-
-Uses:
-- data source: `dga_webapiforportal`
-- operation: `dga_WebApiForPortal`
-
-Important function:
-- `retrieveSharePointDocumentsByBudget(...)`
-
-This is not an AI service itself, but it is critical to the document-AI experience because it provides the file list used to bind persisted AI summaries back to visible uploaded files.
+Important error handling:
+- Power Automate responses like
+  - `{"summary":"An unexpected Error Occured. Summary request failed."}`
+  are treated as failure states, not valid analysis.
 
 ---
 
-### AI Persistence Services
+## AI Persistence
 
-#### `src/services/documentAiSummaryStoreService.ts`
+### `src/services/documentAiSummaryStoreService.ts`
 Purpose:
-- persists and retrieves document AI outputs from Dataverse
+- stores and retrieves AI output from Dataverse
 
-Main responsibilities:
-- create individual summary records
-- retrieve individual summary records
-- delete individual summary records when files are deleted
-- upsert one cumulative summary record per budget
-- clear cumulative summary record when no files remain
+Key responsibilities:
+- create one record per individual document summary
+- retrieve stored file summaries by budget
+- delete stored file summaries when files are deleted
+- upsert or retrieve stored cumulative summary
+- retrieve stored budget overview
+- invalidate cumulative summary when supporting files change
+- invalidate budget overview when form fields change and are saved
+- parse nested `dga_response_json` for budget overview payloads
 
 Important functions:
 - `createDocumentSummaryRecords(...)`
 - `getDocumentSummaryRecordsByBudgetId(...)`
 - `deleteDocumentSummaryRecordsByDocumentName(...)`
-- `getLatestCumulativeSummaryByBudgetId(...)`
 - `upsertCumulativeSummaryRecord(...)`
-- `clearCumulativeSummaryRecord(...)`
+- `getLatestBudgetAiSummaryRecordsByBudgetId(...)`
+- `invalidateCumulativeSummaryRecord(...)`
+- `invalidateBudgetOverviewRecord(...)`
+- `parseBudgetOverviewData(...)`
+
+### `src/services/ictBudgetAiOverviewService.ts`
+Purpose:
+- triggers the background AI Overview flow after create-draft completion
+
+Function:
+- `triggerIctBudgetAiOverview(budgetId)`
+
+Generated flow service:
+- `PowerAppV2_GetICTBudgetAIOverviewService`
+
+Current request contract:
+```json
+{
+  "text": "<ICT Budget ID>"
+}
+```
+
+This flow is fire-and-forget from the app perspective. It is triggered after the create workflow completes successfully.
 
 ---
 
-## AI-Related Dataverse Tables
+## File Transport
 
-### `dga_ict_document_summary`
+### `src/services/fileUploadService.ts`
 Purpose:
-- stores one record per file summary
+- uploads browser `File` objects to SharePoint through Power Automate
+
+Generated flow service:
+- `PowerAppV2_CallUploadFileFlowService`
+
+### `src/services/fileDeleteService.ts`
+Purpose:
+- deletes SharePoint files through Power Automate
+
+Generated flow service:
+- `ICTBudget_Clarificaitons_DeleteFileFromSharePointService`
+
+### `src/services/webApiForPortalService.ts`
+Purpose:
+- retrieves SharePoint files already attached to a budget
+
+Manually preserved datasource:
+- `dga_webapiforportal`
+
+This service is not an AI generator, but it is critical for Edit/View because AI summaries are matched back onto the retrieved file list.
+
+---
+
+## Dataverse Tables Used For AI
+
+## `dga_ict_document_summary`
+Purpose:
+- stores one AI record per uploaded supporting document
 
 Fields used:
 - `dga_ict_budget@odata.bind`
@@ -240,42 +253,35 @@ Fields used:
 
 Stored content:
 - file name
-- raw individual AI summary response for that file
+- raw AI response string for that file
 
----
-
-### `dga_ict_ai_summary`
+## `dga_ict_ai_summary`
 Purpose:
-- stores cumulative document summary for one budget
+- stores budget-level AI summaries
+
+Current categories used:
+- `1` = `Budget Overview`
+- `8` = `Cumulative Document Summary`
 
 Fields used:
 - `dga_ReferenceRecordId_dga_ict_budget@odata.bind`
+- `dga_summary_category`
 - `dga_role_context`
 - `dga_summary_stage`
 - `dga_summary_type`
-- `dga_summary_category`
 - `dga_is_valid`
 - `dga_response_time`
 - `dga_response_json`
+- `modifiedon`
 
-Current static values used:
-- `dga_role_context = 1`
-- `dga_summary_stage = 1`
-- `dga_summary_type = 1`
-- `dga_summary_category = 8`
-
-Persistence rule:
-- one reusable cumulative summary record per budget context
-- when files change, this record is updated instead of creating a new one
-
-Special case:
-- if only one file exists, that file’s raw summary is also written into this cumulative table
+Important note:
+- Edit/View now retrieves all AI summary records for the budget and then separates them in JavaScript by `dga_summary_category`
 
 ---
 
 ## Power Automate Flows Used
 
-### 1. Individual Document Summary Flow
+## 1. Individual Document Summary
 Flow name:
 - `PowerAppV2 - Get Document Summary from Compass`
 
@@ -285,25 +291,7 @@ Generated service:
 Called by:
 - `evaluateSupportingDocument(...)`
 
-Input shape:
-```json
-{
-  "fileContent": {
-    "name": "document.pdf",
-    "contentBytes": "<base64>",
-    "mimeType": "application/pdf"
-  }
-}
-```
-
-Output:
-- raw flow response
-- nested summary payload
-- parsed document summary object
-
----
-
-### 2. Cumulative Document Summary Flow
+## 2. Cumulative Document Summary
 Flow name:
 - `PowerAppV2 - Get Cumulative Document Summary from Compass`
 
@@ -313,408 +301,433 @@ Generated service:
 Called by:
 - `evaluateCumulativeSupportingDocuments(...)`
 
-Current request contract from app code:
+Current request contract:
 ```json
 {
   "text": "{\"fileInputs\":[{\"filename\":\"a.pdf\",\"fileResponse\":\"...\"}]}"
 }
 ```
 
-Logical payload inside that serialized `text` field:
+## 3. ICT Budget AI Overview
+Flow name:
+- `PowerAppV2 - Get ICT Budget AI Overview`
+
+Generated service:
+- `src/generated/services/PowerAppV2_GetICTBudgetAIOverviewService.ts`
+
+Called by:
+- `triggerIctBudgetAiOverview(...)`
+
+Current request contract:
 ```json
 {
-  "fileInputs": [
-    {
-      "filename": "a.pdf",
-      "fileResponse": "raw individual summary"
-    }
-  ]
+  "text": "<ICT Budget ID>"
 }
 ```
 
-Output:
-- cumulative raw response
-- parsed cumulative summary object
-
----
-
-### 3. SharePoint Upload Flow
+## 4. SharePoint Upload
 Generated service:
 - `src/generated/services/PowerAppV2_CallUploadFileFlowService.ts`
 
-Called by:
-- `uploadFilesToRecord(...)`
-
-Purpose:
-- uploads browser-selected files to SharePoint
-
----
-
-### 4. SharePoint Delete Flow
+## 5. SharePoint Delete
 Generated service:
 - `src/generated/services/ICTBudget_Clarificaitons_DeleteFileFromSharePointService.ts`
 
-Called by:
-- `deleteSharePointDocument(...)`
-
-Purpose:
-- deletes a file from SharePoint using `relativelocation`
-
 ---
 
-## Create Form Integration
+## Create Form: Current Behavior
 
 Main page:
 - `src/pages/respondent/NewProject.tsx`
 
-### Create Form AI Areas
+Create currently has two experiences:
 
-1. `Strategic Priority AI`
-- triggered from project name / summary context
-- uses `getStrategicPrioritySuggestions(...)`
-- shown inline in form
+1. `Manual`
+2. `Budget Assistant`
 
-2. `AI Budget Considerations`
-- triggered from project name / summary context
-- uses `evaluateIctBudgetConsiderations(...)`
-- shown inline in form
+### Default mode
+Current default:
+- page opens in `Budget Assistant` mode by default
 
-3. `AI Document Analyzer`
-- per-file UI
-- uses `evaluateSupportingDocument(...)`
+### Budget Assistant landing behavior
+Before the first chat interaction:
+- the full create header is hidden
+- the AI landing section is shown instead
+- user can still switch between `Manual` and `Budget Assistant` from the landing panel itself
 
-4. `Right-Side Document AI Cards`
-- uses individual summary for one file
-- uses cumulative summary for multiple files
+After the first chat / file interaction:
+- the right-side working form appears
+- the chat workspace compacts into the left panel
 
-### Create Form Supporting Document Flow
+### AI in Create Form
 
-When user attaches a file:
+Create uses these AI features:
+- strategic priority suggestions
+- ICT Budget Considerations
+- per-file document AI
+- cumulative document AI
+- Budget Assistant chat and staged field suggestions
 
-1. file is selected in browser
-2. local upload card is created
-3. `evaluateSupportingDocument(...)` is called for that file
-4. file-level analyzer UI shows:
-- queued
-- analyzing
-- complete
-- error
-5. parsed result is shown in `SupportingDocumentAiInsights.tsx`
+### Supporting-document behavior before Save Draft
+When a file is attached in create flow:
 
-At this stage, before draft save:
-- AI is preview-only
-- no Dataverse summary records are created yet
+1. file is held locally in browser state
+2. individual AI summary runs immediately
+3. analyzer UI shows queued / analyzing / complete / error
+4. if multiple completed file summaries exist, cumulative AI runs
+5. the UI preview uses the latest individual summary or cumulative summary
 
-### Create Form Single File Behavior
+At this stage:
+- preview is live in UI
+- no Dataverse AI summary records are created yet
+- no SharePoint file upload happens yet
 
-If only one file exists:
-- only individual flow is called
-- right-side cards are populated from that same single-file summary
-- that same raw response is later stored both as:
-  - one `dga_ict_document_summary` record
-  - one `dga_ict_ai_summary` cumulative record
+### Save Draft blocking rule
+Create Save Draft is blocked while document AI is still pending.
 
-### Create Form Multi File Behavior
+This applies to:
+- Manual create
+- Budget Assistant create
 
-If more than one file exists:
+Blocked states include:
+- queued file analysis
+- analyzing file analysis
+- document-analysis error
+- missing cumulative analysis when multiple files exist
 
-For each file:
-1. individual file summary is generated first
+Reason:
+- create flow needs valid individual and cumulative outputs before persistence
 
-After all available individual responses exist:
-2. cumulative flow is called with all file summaries
-3. right-side cards switch to cumulative result
+### Manual Save Draft flow
+High-level order:
 
-### Create Form Save As Draft Flow
+1. create budget draft in Dataverse
+2. upload files to SharePoint
+3. create `dga_ict_document_summary` records for each file
+4. store cumulative summary in `dga_ict_ai_summary`
+5. trigger `PowerAppV2 - Get ICT Budget AI Overview`
 
-When user clicks `Save as Draft`:
+Important rule:
+- if only one file exists, the app can reuse that single summary as the cumulative payload written to `dga_ict_ai_summary`
 
-1. budget draft is created
-2. normal form persistence runs
-3. files are uploaded to SharePoint using `uploadFilesToRecord(...)`
-4. after upload succeeds:
-- individual file summaries are persisted into `dga_ict_document_summary`
-5. cumulative summary is persisted into `dga_ict_ai_summary`
+### Budget Assistant Save Draft flow
+High-level order:
 
-If only one file exists:
-- no separate cumulative automate call is needed
-- the same single-file raw summary is written into cumulative storage
+1. apply staged form values / budget items already present in assistant state
+2. create budget draft in Dataverse
+3. upload files to SharePoint
+4. create `dga_ict_document_summary` records
+5. upsert cumulative summary into `dga_ict_ai_summary`
+6. trigger `PowerAppV2 - Get ICT Budget AI Overview`
 
-If multiple files exist:
-- cumulative flow output is written into cumulative storage
-
-### Create Form Right-Side Cards
-
-Shown on create form:
-- `Suggested Project Fields`
-- `Budget Lines`
-- `Account Code Suggestion`
-- `Summary`
-
-Population logic:
-- one file -> single-file summary drives cards
-- multiple files -> cumulative summary drives cards
-
-Apply behavior currently present:
-- suggested field `Apply`
-- suggested field `Apply All`
-- account code `Add to Budget Line Items`
+### Budget Assistant suggestion behavior
+Current create assistant supports:
+- staged field suggestions
+- staged budget-line suggestions
+- strategic priority recommendation apply
+- document-based field apply
+- account-code resolution into real classification IDs
 
 ---
 
-## Edit/View Form Integration
+## Edit/View Form: Current Behavior
 
 Main page:
 - `src/pages/respondent/ProjectDetail.tsx`
 
-### Edit/View Form AI Areas
+This page is shared across:
+- Respondent
+- Reviewer
+- Approver
 
-1. `Strategic Priority AI`
-- same conceptual AI as create form
-- shown inline in form area, not only on side rail
+The same AI sections therefore apply across all three roles, with role-specific rendering where needed.
 
-2. `AI Budget Considerations`
-- same conceptual AI as create form
-- shown inline in form area
+## Main AI sections in Edit/View
+
+1. `AI Recommendation`
+- strategic priority / classification recommendation card
+
+2. `Budget Overview`
+- primary AI summary block in the main content area
+- includes merged policy guidance
 
 3. `Supporting Documents`
-- existing SharePoint files are retrieved
-- stored individual AI summaries are retrieved
-- analyzer UI is rebuilt from persisted records
+- file list + per-file analyzer insights
 
-4. `Right-Side Document AI Cards`
-- driven by stored cumulative summary when available
-- fallback to single latest individual summary if needed
+4. `Action / evidence cards`
+- driven from stored cumulative / individual summaries
 
-### Initial Load In Edit/View
+## What happens on initial page load
 
-When budget detail page opens:
+When Edit/View opens:
 
 1. budget detail is loaded
-2. SharePoint files are retrieved using:
-- `retrieveSharePointDocumentsByBudget(...)`
-3. individual summary records are retrieved using:
-- `getDocumentSummaryRecordsByBudgetId(...)`
-4. cumulative summary record is retrieved using:
-- `getLatestCumulativeSummaryByBudgetId(...)`
+2. SharePoint documents are retrieved
+3. stored `dga_ict_document_summary` rows are retrieved
+4. stored `dga_ict_ai_summary` rows are retrieved for the budget
+5. JavaScript splits AI summary rows by `dga_summary_category`
+   - category `8` => `Cumulative Document Summary`
+   - category `1` => `Budget Overview`
+6. the UI binds:
+   - visible file list from SharePoint
+   - file-level AI from `dga_ict_document_summary`
+   - cumulative summary from `dga_ict_ai_summary`
+   - budget overview from `dga_ict_ai_summary`
 
-The UI then binds:
-- file list from SharePoint
-- file-level AI summary from `dga_ict_document_summary`
-- right-side action cards from `dga_ict_ai_summary`
+## Clarification-file rule
+Clarification files are excluded from document-analyzer logic.
 
-### Edit Mode File Add Flow
+They may still appear in document UI, but they are not used for:
+- analyzer matching
+- individual summary loading
+- cumulative AI inputs
 
-When user adds a file in edit mode:
+## Current file-add behavior in Edit/View
 
-1. file appears in the local compact upload grid
-2. status begins as upload-related
-3. file uploads immediately to SharePoint through `uploadFilesToRecord(...)`
-4. once upload is confirmed:
-- local upload card transitions out
-- uploaded file becomes part of retrieved SharePoint file list
-5. `evaluateSupportingDocument(...)` runs for the newly added file
-6. analyzer shows analyzing state
-7. individual file summary is persisted into `dga_ict_document_summary`
-8. cumulative summary is recalculated using current document summaries
-9. `dga_ict_ai_summary` is updated, not recreated
-10. right-side cards refresh from the updated cumulative result
+When a new supporting file is added:
 
-### Edit Mode File Delete Flow
+1. file uploads to SharePoint
+2. individual AI analysis is generated for the new file
+3. a `dga_ict_document_summary` row is created for that file
+4. the app does **not** call cumulative AI directly anymore
+5. instead, the existing cumulative AI summary row for that budget is invalidated:
+   - `dga_is_valid = false`
+6. after invalidation, the app re-fetches AI summary records and stores the current `modifiedon`
+7. polling begins every 5 seconds
+8. polling stops when the cumulative record’s `modifiedon` changes
+9. updated cumulative JSON is rendered from the refreshed Dataverse record
 
-When user deletes a file in edit/view form:
+## Current file-delete behavior in Edit/View
 
-1. file is deleted from SharePoint using `deleteSharePointDocument(...)`
-2. matching individual summary record is deleted from `dga_ict_document_summary`
-3. remaining document summary records are re-read
-4. cumulative summary is recalculated
-5. `dga_ict_ai_summary` is updated
-6. right-side cards refresh to reflect remaining files
+When a supporting file is deleted:
 
-Delete edge cases:
+1. SharePoint file is deleted
+2. matching `dga_ict_document_summary` row is deleted
+3. cumulative AI record for the budget is invalidated
+4. the app polls every 5 seconds
+5. polling stops once cumulative record `modifiedon` changes
 
-If one file remains after delete:
-- cumulative record is updated using that single file’s summary
+## Current field-save behavior in Edit/View
 
-If no files remain after delete:
-- cumulative record is cleared using `clearCumulativeSummaryRecord(...)`
-- right-side cards become empty / placeholder state
+When project fields are edited and `Save Changes` succeeds:
 
-### Edit/View Role Differences
+1. budget row is updated
+2. if there was a real saved change affecting the form payload, the Budget Overview record is invalidated
+3. app immediately re-fetches AI summary records
+4. current Budget Overview `modifiedon` is stored as the pending baseline
+5. polling begins every 5 seconds
+6. polling stops once Budget Overview `modifiedon` changes
+7. refreshed `dga_response_json` is parsed and re-rendered
 
-Supporting document analyzer:
-- visible for all roles
+Important rule:
+- Edit/View no longer waits for `dga_is_valid` to become true
+- it uses `modifiedon` change detection
 
-Right-side document cards:
-- Respondent:
-  - `Suggested Project Fields`
-  - `Budget Lines`
-  - `Account Code Suggestion`
-  - `Summary`
-- Reviewer / Approver:
-  - `Budget Lines`
-  - `Summary`
+## Polling model
 
-### Edit/View Analyzer Behavior
+Current polling trigger:
+- pending cumulative refresh baseline exists
+- or pending budget overview refresh baseline exists
 
-`SupportingDocumentAiInsights.tsx` is shared between create and detail flows.
+Current poll frequency:
+- every 5 seconds
 
-Behavior:
-- active analyzing file opens automatically
-- after analysis completes, item returns to collapsed state
-- collapsed state shows:
-  - file name
-  - trimmed short summary
-  - evidence score
-  - section chips
-- expanded state shows:
-  - `Document Profile`
-  - `File Summary`
-  - `Evidence Assessment`
-  - `Review Flags`
+Current stop condition:
+- relevant record `modifiedon` changes from the stored post-invalidation value
 
 ---
 
-## Parsing Strategy For Document AI
+## Budget Overview: Current UI Contract
 
-Why the parser is complex:
-- Automate responses may return:
-  - direct JSON
-  - JSON inside strings
-  - OpenAI response envelope
-  - nested `output -> content -> text`
-  - escaped JSON text
+The app parses the stored `Budget Overview` record from `dga_ict_ai_summary.dga_response_json`.
 
-Current parser behavior in `aiSupportingDocumentEvaluationService.ts`:
-- unwraps serialized JSON layers
-- normalizes escaped strings
-- recursively walks arrays and objects
-- returns the first object containing key headings such as:
-  - `document_profile`
-  - `file_summary`
-  - `evidence_assessment`
-  - `suggested_project_fields`
-  - `budget_lines`
-  - `account_code_suggestions`
+The parser supports nested OpenAI response wrappers and extracts the actual readiness object from:
+- direct JSON
+- nested `output[0].content[0].text`
+- recursively nested JSON objects
 
-This same parsing logic is used:
-- immediately after flow response
-- later while rehydrating stored `dga_document_summary`
-- later while rehydrating stored `dga_response_json`
+Primary parsed sections currently used:
+- `overall_assessment`
+- `score_inputs`
+- `ai_review_flags`
+- `role_views`
+- `strategic_alignment`
+- `issues`
+- `clarifications`
+- `recommended_next_actions`
+- `validated_items`
 
----
+### Current merged behavior
+`Budget Overview` now includes `AI Budget Consideration` inside it.
 
-## UI Components Involved
+Collapsed state uses:
+- role-specific short summary
+- document evidence
+- project fields
+- budget account
+- strategic fit
+- compact AI Budget Consideration
+- file evidence scores
 
-### `src/components/shared/SupportingDocumentAiInsights.tsx`
-Purpose:
-- renders file-level analyzer experience
+Expanded state uses:
+- role-specific bullet actions
+- strengths
+- risks
+- key issues
+- recommended next actions
+- full policy cards
 
-Handles:
-- queued state
-- analyzing state
-- complete state
-- error state
-- collapsed / expanded transitions
-
-### `src/components/shared/FileUploadDropzone.tsx`
-Purpose:
-- handles browser file selection UI
-
-Used for:
-- create form uploads
-- edit-mode local upload staging
-
-### `src/components/shared/SupportingDocuments.tsx`
-Purpose:
-- renders existing SharePoint document list
-
-This component is not the AI renderer, but it is the visual file list that works alongside the AI analyzer in detail/edit flows.
+If no Budget Overview record exists yet:
+- the empty-state message appears first
+- `AI Budget Consideration` can still be expanded underneath if policy data exists
 
 ---
 
-## Custom API vs Power Automate Summary
+## AI Recommendation / Suggested Fields in Edit/View
 
-### Uses Dataverse Custom API
+The Edit/View form supports field-level AI assist for mapped fields.
 
-1. `aiStrategicSuggestionService.ts`
-- AI strategic priority recommendation
+Current behavior:
+- if a stored or suggested AI field differs from the current form field, a small `Sparkles` trigger appears on the field label
+- clicking it opens a small suggestion popup
+- in view mode, popup explains user must switch to edit mode first
+- in edit mode, popup can apply the suggestion directly
 
-2. `aiBudgetConsiderationsService.ts`
-- AI policy / budget consideration evaluation
-
-3. `webApiForPortalService.ts`
-- SharePoint document retrieval by budget
-- also technology association operations
-
-### Uses Power Automate
-
-1. `fileUploadService.ts`
-- upload file to SharePoint
-
-2. `fileDeleteService.ts`
-- delete file from SharePoint
-
-3. `aiSupportingDocumentEvaluationService.ts`
-- individual document summary
-- cumulative document summary
-
-### Uses Dataverse Table Persistence
-
-1. `documentAiSummaryStoreService.ts`
-- stores file summaries
-- stores cumulative summary
-- retrieves stored summaries
-- deletes matching individual summary records
+Current exclusions:
+- Strategic Priority and Strategic Priority Classification field-level helper icons were intentionally removed from the form labels
+- strategic recommendation still exists in the dedicated AI Recommendation card
 
 ---
 
-## Create Form vs Edit/View Form Summary
+## Budget Overview Debug Logging
 
-### Create Form
+Current debug logs were intentionally added to help inspect stored overview payloads.
 
-Main idea:
-- AI runs early for preview
-- persistence happens after draft save + file upload success
+In `documentAiSummaryStoreService.ts`, when overview records load, console output includes:
 
-Document AI summary source:
-- live in-browser state first
-- Dataverse persistence second
+- `[BudgetOverview] Dataverse Budget Overview record:`
+- `[BudgetOverview] Raw dga_response_json:`
+- `[BudgetOverview] Top-level parsed payload:`
+- `[BudgetOverview] Extracted OpenAI output_text:`
+- `[BudgetOverview] Final parsed BudgetOverviewData:`
 
-### Edit/View Form
-
-Main idea:
-- existing files and AI summaries are rehydrated from backend
-- new uploads update SharePoint first, then AI, then Dataverse storage
-- deletes remove SharePoint file, remove individual summary record, then recalculate cumulative
-
-Document AI summary source:
-- persisted Dataverse records
-- plus temporary in-session state for newly added files
+These logs are useful when validating:
+- actual stored JSON shape
+- whether the record is wrapped in an OpenAI response object
+- what the parser finally renders
 
 ---
 
-## Operational Notes
+## How To Add A New Power Automate Flow
 
-1. `dga_customwebapi` and `dga_webapiforportal` are protected manual datasource entries.
-- always verify `.power/schemas/appschemas/dataSourcesInfo.ts`
-- reference:
-  - `MANUAL_DATASOURCE_PROTECTION.md`
+Before adding any flow, read:
+- `MANUAL_DATASOURCE_PROTECTION.md`
 
-2. Document AI persistence is intentionally separated from core budget save logic.
-- budget creation / update should still work even if AI recommendation flows fail
-- AI should enhance the form, not block the main budgeting workflow
+Why:
+- adding a flow can regenerate `.power/schemas/appschemas/dataSourcesInfo.ts`
+- manual datasource entries can disappear if not restored
 
-3. Current logs are intentionally verbose.
-- this is useful because document AI involves browser files, Power Automate, parsing, persistence, and rehydration
+### Step 1. List flows from solution
+Use:
+```bash
+npx power-apps list-flows
+```
+
+Find the exact flow you want, then copy its flow ID.
+
+### Step 2. Add the flow by ID
+Use:
+```bash
+npx power-apps add-flow --flow-id <FLOW_ID>
+```
+
+This generates:
+- connector entry in `.power/schemas/appschemas/dataSourcesInfo.ts`
+- generated models/services under `src/generated`
+
+### Step 3. Re-check manual datasources
+After `add-flow`, open:
+- `.power/schemas/appschemas/dataSourcesInfo.ts`
+
+Verify these still exist:
+- `dga_customwebapi`
+- `dga_webapiforportal`
+- `audits`
+
+If any are missing, restore them manually before continuing.
+
+### Step 4. Find the generated service name
+Look in:
+- `src/generated/services/`
+
+Example:
+- `PowerAppV2_GetICTBudgetAIOverviewService.ts`
+
+Then wrap that generated service in a small app-facing service if needed.
+
+Example pattern:
+```ts
+import { SomeGeneratedFlowService } from '@/generated/services/SomeGeneratedFlowService'
+
+export async function triggerSomething(id: string) {
+  const result = await SomeGeneratedFlowService.Run({ text: id })
+  if (result.error) {
+    throw new Error(result.error.message?.trim() || 'Flow failed.')
+  }
+}
+```
+
+### Step 5. Build
+Always run:
+```bash
+npm run build
+```
 
 ---
 
-## Recommended Reading
+## How To Add A New Dataverse Datasource
 
-For related implementation context:
-- [AIServicesFlow.md](./AIServicesFlow.md)
-- [AI_COMPONENT_THEME.md](./AI_COMPONENT_THEME.md)
-- [CUSTOM_API_GUIDE.md](./CUSTOM_API_GUIDE.md)
-- [MANUAL_DATASOURCE_PROTECTION.md](./MANUAL_DATASOURCE_PROTECTION.md)
-- [Workflow.md](./Workflow.md)
+Example:
+```bash
+npx power-apps add-data-source --api-id dataverse --resource-name <table_name> --org-url "https://<org>.crm.dynamics.com"
+```
+
+Then:
+1. verify the generated datasource exists
+2. restore any missing manual entries in `dataSourcesInfo.ts`
+3. run `npm run build`
+
+---
+
+## Safe Maintenance Rules
+
+1. Treat `dataSourcesInfo.ts` as sensitive after every flow or datasource add.
+2. Do not assume generator output preserves manual entries.
+3. In Edit/View, do not directly regenerate cumulative AI from the UI anymore.
+4. In Edit/View, use invalidation + `modifiedon` polling for Budget Overview and Cumulative Summary.
+5. In Create, do not allow save while required document analysis is still incomplete.
+6. In Create, always trigger the ICT Budget AI Overview flow after the draft-save pipeline completes.
+
+---
+
+## Related Files
+
+Main pages:
+- `src/pages/respondent/NewProject.tsx`
+- `src/pages/respondent/ProjectDetail.tsx`
+
+Main services:
+- `src/services/aiStrategicSuggestionService.ts`
+- `src/services/aiBudgetConsiderationsService.ts`
+- `src/services/aiSupportingDocumentEvaluationService.ts`
+- `src/services/aiBudgetCopilotChatService.ts`
+- `src/services/documentAiSummaryStoreService.ts`
+- `src/services/ictBudgetAiOverviewService.ts`
+- `src/services/fileUploadService.ts`
+- `src/services/fileDeleteService.ts`
+- `src/services/webApiForPortalService.ts`
+
+Protection / flow context:
+- `MANUAL_DATASOURCE_PROTECTION.md`
+- `.power/schemas/appschemas/dataSourcesInfo.ts`
+

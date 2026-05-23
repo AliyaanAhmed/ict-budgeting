@@ -42,6 +42,7 @@ const ICT_BUDGET_SELECT_FIELDS = [
   '_dga_strategic_priority_value',
   '_dga_strategic_priority_classification_value',
   'dga_total_budget_requested',
+  'dga_ai_confidence_score',
   'createdon',
   'modifiedon',
 ] as const
@@ -366,7 +367,7 @@ function mapBudgetRecordToProject(
     summary: toPlainTextSummary(record.dga_summary),
     documents: [],
     clarifications: [],
-    aiScore: 84,
+    aiScore: typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : 0,
     riskLevel: 'Low',
     capex: 0,
     opex: 0,

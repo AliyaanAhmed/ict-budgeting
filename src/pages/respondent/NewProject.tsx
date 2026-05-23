@@ -128,6 +128,7 @@ import {
   type BudgetCopilotChatMessage,
   type BudgetCopilotRuntimeContext,
 } from '@/services/aiBudgetCopilotChatService'
+import { triggerIctBudgetAiOverview } from '@/services/ictBudgetAiOverviewService'
 
 type ActivityType = Dga_ict_budgetsdga_activity_type
 type BudgetItemType = Dga_ict_budgetsdga_budget_item_type
@@ -639,6 +640,33 @@ function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSumm
   return (summary?.budget_lines ?? []).reduce((sum, line) => sum + (line.amount ?? 0), 0)
 }
 
+function hasPendingSupportingDocumentAnalysis(
+  files: File[],
+  analyses: Record<string, UploadedSupportingDocumentAnalysis>,
+  completedInputs: CompletedSupportingDocumentInput[],
+  cumulativeAnalysis: UploadedSupportingDocumentCumulativeAnalysis
+) {
+  if (files.length === 0) return false
+
+  for (const file of files) {
+    const signature = getUploadedFileSignature(file)
+    const status = analyses[signature]?.status ?? 'queued'
+    if (status === 'queued' || status === 'analyzing' || status === 'error') {
+      return true
+    }
+  }
+
+  if (completedInputs.length !== files.length) {
+    return true
+  }
+
+  if (completedInputs.length > 1 && cumulativeAnalysis.status !== 'complete') {
+    return true
+  }
+
+  return false
+}
+
 function CopilotStatusMessage({
   title,
   detail,
@@ -718,7 +746,7 @@ function BudgetAssistantWelcomeCard({
       <div>
         <div className="mb-2.5 flex items-center gap-2">
           <Zap className="h-3.5 w-3.5 text-[#A855F7]" />
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B] dark:text-slate-400">
+          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
             Try asking
           </p>
         </div>
@@ -739,6 +767,167 @@ function BudgetAssistantWelcomeCard({
         </div>
       </div>
     </div>
+  )
+}
+
+function BudgetAssistantLandingHero({
+  chatInput,
+  chatStagedFile,
+  copilotBusy,
+  copilotTyping,
+  mode,
+  onInputChange,
+  onSend,
+  onPromptSelect,
+  onUploadClick,
+  onCheckBudgetConsideration,
+  onRemoveStagedFile,
+  onToggleMode,
+}: {
+  chatInput: string
+  chatStagedFile: File | null
+  copilotBusy: boolean
+  copilotTyping: boolean
+  mode: 'manual' | 'ai'
+  onInputChange: (value: string) => void
+  onSend: () => void
+  onPromptSelect: (prompt: string) => void
+  onUploadClick: () => void
+  onCheckBudgetConsideration: () => void
+  onRemoveStagedFile: () => void
+  onToggleMode: () => void
+}) {
+  return (
+    <section
+      className="relative overflow-hidden rounded-[32px] border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF8FF_28%,#F9FBFF_58%,#FFFFFF_100%)] px-6 py-4 shadow-[0_22px_56px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(180deg,#1E1630_0%,#171125_40%,#1E293B_100%)] sm:px-8 sm:py-4 lg:px-10 lg:py-4"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#D8B4FE_0.7px,transparent_0.7px)] [background-size:18px_18px] opacity-24 dark:opacity-12" />
+      <div className="pointer-events-none absolute -left-24 top-14 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(168,85,247,0.14),transparent_70%)] blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 bottom-8 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18),transparent_72%)] blur-3xl" />
+      <div className="absolute right-6 top-4 z-[2] sm:right-8 lg:right-10">
+        <div className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white/88 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
+          <User className={cn('h-5 w-5 shrink-0', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+          <span className={cn('shrink-0 text-sm font-bold', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
+          <button
+            onClick={onToggleMode}
+            className={cn('relative h-6 w-12 shrink-0 overflow-hidden rounded-full p-1 transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
+            aria-label="Toggle input mode"
+          >
+            <div className={cn('h-4 w-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-6' : 'translate-x-0')} />
+          </button>
+          <span className={cn('shrink-0 text-sm font-bold', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Budget Assistant</span>
+          <Bot className={cn('h-5 w-5 shrink-0', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
+        </div>
+      </div>
+
+      <div className="relative z-[1] mx-auto max-w-6xl">
+        <div className="relative mx-auto flex max-w-5xl items-center justify-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2 text-sm font-semibold text-[#A855F7] shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+            <Sparkles className="h-4 w-4" />
+            Budget Assistant
+          </div>
+        </div>
+        <div className="relative mx-auto max-w-4xl text-center">
+          <div className="pointer-events-none absolute left-[calc(100%+3rem)] top-2 hidden opacity-40 dark:opacity-20 xl:block">
+            <div className="relative h-28 w-40">
+              <Sparkles className="absolute right-0 top-0 h-8 w-8 text-[#A855F7]" />
+              <Bot className="absolute right-10 top-10 h-10 w-10 text-[#C084FC]" />
+              <Layers className="absolute right-24 top-4 h-7 w-7 text-[#D8B4FE]" />
+              <FileText className="absolute right-20 top-16 h-6 w-6 text-[#E9D5FF]" />
+            </div>
+          </div>
+          <h2 className="mt-6 text-4xl font-bold tracking-tight text-[#0F172A] [text-wrap:balance] dark:text-white sm:text-5xl lg:text-[64px]">
+            Start your ICT budget with AI.
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-[#475569] dark:text-slate-300 sm:text-lg">
+            Describe the initiative, attach supporting evidence, or ask about any field. Once the conversation begins, the working draft form will appear for you to refine.
+          </p>
+        </div>
+
+        <div className="mx-auto mt-10 max-w-5xl">
+          <div className="copilot-snake-shell rounded-[30px] p-[2px]">
+            <div className="rounded-[29px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(253,247,255,0.94))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur dark:bg-[linear-gradient(180deg,rgba(20,14,33,0.98),rgba(30,41,59,0.96))] sm:p-5">
+              {chatStagedFile ? (
+                <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                  <FileText className="h-4 w-4 shrink-0 text-[#A855F7]" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#334155] dark:text-white">{chatStagedFile.name}</span>
+                  <button
+                    type="button"
+                    onClick={onRemoveStagedFile}
+                    className="shrink-0 rounded-full p-0.5 text-[#94A3B8] hover:text-[#A855F7] dark:hover:text-[#E9D5FF]"
+                    aria-label="Remove attached file"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
+
+              <Textarea
+                value={chatInput}
+                onChange={(event) => onInputChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    onSend()
+                  }
+                }}
+                rows={5}
+                placeholder={chatStagedFile ? 'Add a note about this file (optional)...' : 'Describe the ICT budget you want to create...'}
+                className="min-h-[220px] resize-none border-0 bg-transparent px-3 py-3 text-base leading-7 text-[#0F172A] shadow-none focus-visible:ring-0 dark:bg-transparent dark:text-white dark:placeholder:text-slate-500 sm:min-h-[260px] sm:text-lg"
+              />
+
+              <div className="mt-4 flex flex-col gap-3 border-t border-[#F0D9FF] pt-4 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onUploadClick}
+                    disabled={copilotBusy}
+                    className="h-11 rounded-2xl border-[#E9D5FF] bg-white/80 px-4 text-[#A855F7] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    Upload Document
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCheckBudgetConsideration}
+                    disabled={copilotBusy}
+                    className="h-11 rounded-2xl border-[#E9D5FF] bg-white/80 px-4 text-[#A855F7] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Check Budget Consideration
+                  </Button>
+                </div>
+
+                <Button
+                  type="button"
+                  className="h-11 rounded-2xl bg-[#A855F7] px-5 text-white shadow-[0_14px_30px_rgba(168,85,247,0.22)] hover:bg-[#9333EA]"
+                  onClick={onSend}
+                  disabled={copilotBusy || (!chatInput.trim() && !chatStagedFile)}
+                >
+                  {copilotBusy || copilotTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Start Draft
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            {BUDGET_ASSISTANT_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                onClick={() => onPromptSelect(prompt)}
+                className="rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#475569] shadow-sm transition-colors hover:border-[#D8B4FE] hover:bg-[#FAF5FF] hover:text-[#0F172A] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -772,9 +961,9 @@ function CopilotDocumentAnalysisMessage({
         </div>
       </div>
       <div className="space-y-3 px-4 py-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Document Profile</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Document Profile</p>
             <div className="mt-2 space-y-1.5 text-sm text-[#334155] dark:text-slate-200">
               <p><span className="font-semibold">Type:</span> {profile?.document_type ?? 'Not identified'}</p>
               <p><span className="font-semibold">Vendor:</span> {profile?.issuer_or_vendor ?? 'Not identified'}</p>
@@ -782,7 +971,7 @@ function CopilotDocumentAnalysisMessage({
             </div>
           </div>
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                 Supports Project: {evidence?.supports_project ?? 'Unclear'}
@@ -797,10 +986,10 @@ function CopilotDocumentAnalysisMessage({
           </div>
         </div>
         {(budgetLines.length > 0 || reviewFlags.length > 0) && (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             {budgetLines.length > 0 && (
               <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Budget Lines</p>
+                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Budget Lines</p>
                 <div className="mt-2 space-y-2">
                   {budgetLines.slice(0, 2).map((line, index) => (
                     <div key={`${fileName}-line-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
@@ -813,7 +1002,7 @@ function CopilotDocumentAnalysisMessage({
             )}
             {reviewFlags.length > 0 && (
               <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Review Flags</p>
+                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Review Flags</p>
                 <div className="mt-2 space-y-2">
                   {reviewFlags.slice(0, 2).map((flag, index) => (
                     <div key={`${fileName}-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
@@ -864,7 +1053,7 @@ function CopilotCumulativeAnalysisMessage({
       <div className="space-y-3 px-4 py-4">
         {sourceFiles.length > 0 && (
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Source Files</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Source Files</p>
             <div className="mt-2 space-y-2">
               {sourceFiles.slice(0, 3).map((file, index) => (
                 <div key={`source-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
@@ -880,7 +1069,7 @@ function CopilotCumulativeAnalysisMessage({
         )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                 Supports Project: {evidence?.supports_project ?? 'Unclear'}
@@ -894,7 +1083,7 @@ function CopilotCumulativeAnalysisMessage({
             </p>
           </div>
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Recommended Actions</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Recommended Actions</p>
             <div className="mt-2 space-y-2">
               {(recommendedActions.length > 0 ? recommendedActions.slice(0, 3) : ['Review the combined suggestions card before applying fields into the draft.']).map((action, index) => (
                 <div key={`action-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-[#334155] dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
@@ -906,7 +1095,7 @@ function CopilotCumulativeAnalysisMessage({
         </div>
         {reviewFlags.length > 0 && (
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Review Flags</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Review Flags</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {reviewFlags.slice(0, 4).map((flag, index) => (
                 <div key={`cumulative-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
@@ -1885,7 +2074,7 @@ function ProductMultiSelect({
 }
 
 export default function NewProject() {
-  const [mode, setMode] = useState<'manual' | 'ai'>('manual')
+  const [mode, setMode] = useState<'manual' | 'ai'>('ai')
   const [budgetItems, setBudgetItems] = useState<BudgetItemDraft[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState<CopilotChatMessage[]>([])
@@ -1951,8 +2140,10 @@ export default function NewProject() {
   const [copilotBudgetConsiderationLoading, setCopilotBudgetConsiderationLoading] = useState(false)
   const [copilotBudgetConsiderationError, setCopilotBudgetConsiderationError] = useState<string | null>(null)
   const [copilotWorkspaceView, setCopilotWorkspaceView] = useState<'chat' | 'suggestions'>('chat')
+  const [copilotFormRevealed, setCopilotFormRevealed] = useState(false)
   const [chatStagedFile, setChatStagedFile] = useState<File | null>(null)
   const [suggestionFlashOn, setSuggestionFlashOn] = useState(false)
+  const [copilotAltSuggestionApplied, setCopilotAltSuggestionApplied] = useState(false)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const shownCopilotDocumentSummaryRef = useRef<Set<string>>(new Set())
@@ -2773,6 +2964,18 @@ export default function NewProject() {
   const copilotSuggestedFieldCount = copilotPendingSuggestion
     ? Object.keys(copilotPendingSuggestion.fields).length
     : 0
+  const isManualSaveBlockedByAiAnalysis = hasPendingSupportingDocumentAnalysis(
+    uploadedFiles,
+    supportingDocumentAnalyses,
+    completedSupportingDocumentInputs,
+    supportingDocumentCumulativeAnalysis
+  )
+  const isCopilotSaveBlockedByAiAnalysis = hasPendingSupportingDocumentAnalysis(
+    copilotUploadedFiles,
+    copilotSupportingDocumentAnalyses,
+    completedCopilotSupportingDocumentInputs,
+    copilotSupportingDocumentCumulativeAnalysis
+  )
 
   const copilotFileEvidenceScores = useMemo<Record<string, number | null>>(() => {
     const result: Record<string, number | null> = {}
@@ -3224,6 +3427,7 @@ export default function NewProject() {
     setChatInput('')
     setOptionSelected(false)
     setCopilotWorkspaceView('chat')
+    setCopilotFormRevealed(false)
     setChatMessages([])
     setCopilotFormValues(INITIAL_FORM_VALUES)
     setCopilotFieldErrors({})
@@ -3362,6 +3566,7 @@ export default function NewProject() {
 
     setCopilotBusy(true)
     setCopilotWorkspaceView('chat')
+    setCopilotFormRevealed(true)
     setOptionSelected(true)
     setChatMessages((prev) => [
       ...prev,
@@ -3460,6 +3665,7 @@ export default function NewProject() {
 
     setCopilotBusy(true)
     setCopilotWorkspaceView('chat')
+    setCopilotFormRevealed(true)
     setOptionSelected(true)
     setChatInput('')
     setChatStagedFile(null)
@@ -3655,6 +3861,12 @@ export default function NewProject() {
       delete nextErrors.strategicPriorityClassificationId
       return nextErrors
     })
+  }
+
+  const handleApplyAlternateCopilotAiSuggestion = (suggestion: MatchedAiSuggestion) => {
+    applyCopilotAiSuggestion(suggestion, 'both')
+    setCopilotAltSuggestionApplied(true)
+    window.setTimeout(() => setCopilotAltSuggestionApplied(false), 1400)
   }
 
   const handleCopilotStrategicPriorityChange = (value: string) => {
@@ -3915,6 +4127,14 @@ export default function NewProject() {
   }
 
   const handleSaveDraft = async () => {
+    if (isManualSaveBlockedByAiAnalysis) {
+      showErrorToast(
+        'AI document analysis still running',
+        'Wait for all uploaded documents to finish individual and cumulative AI analysis before saving the draft.'
+      )
+      return
+    }
+
     if (!validateForm()) {
       return
     }
@@ -4007,6 +4227,16 @@ export default function NewProject() {
       }
     }
 
+    try {
+      await triggerIctBudgetAiOverview(createdBudget.id)
+    } catch (error) {
+      console.error('[NewProject] AI overview flow trigger failed after draft save.', error)
+      showErrorToast(
+        'AI overview trigger failed',
+        'The draft was saved, but the AI Budget Overview flow could not be triggered.'
+      )
+    }
+
     navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
   }
 
@@ -4026,6 +4256,21 @@ export default function NewProject() {
     completedInputs: CompletedSupportingDocumentInput[]
     cumulativeAnalysis: UploadedSupportingDocumentCumulativeAnalysis
   }) => {
+    if (
+      hasPendingSupportingDocumentAnalysis(
+        input.files,
+        copilotSupportingDocumentAnalyses,
+        input.completedInputs,
+        input.cumulativeAnalysis
+      )
+    ) {
+      showErrorToast(
+        'AI document analysis still running',
+        'Wait for all uploaded documents to finish individual and cumulative AI analysis before saving the draft.'
+      )
+      return
+    }
+
     const createdBudget = await runActionToast(
       async () => {
         const budget = await createIctBudgetDraft(buildCreateDraftPayload(input.values))
@@ -4090,6 +4335,16 @@ export default function NewProject() {
           )
         }
       }
+    }
+
+    try {
+      await triggerIctBudgetAiOverview(createdBudget.id)
+    } catch (error) {
+      console.error('[NewProject] AI overview flow trigger failed after draft save.', error)
+      showErrorToast(
+        'AI overview trigger failed',
+        'The draft was saved, but the AI Budget Overview flow could not be triggered.'
+      )
     }
 
     navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
@@ -4277,6 +4532,7 @@ export default function NewProject() {
 
   const applyCopilotFieldPatch = (patch: Partial<Record<keyof FormValues, string | string[]>>) => {
     const nextValues = { ...copilotFormValues }
+    let pendingTechnologyProductValue: string | string[] | undefined
 
     for (const [key, value] of Object.entries(patch) as Array<[keyof FormValues, string | string[]]>) {
       if (value === undefined || value === null) continue
@@ -4323,21 +4579,7 @@ export default function NewProject() {
       }
 
       if (key === 'technologyProductIds') {
-        const rawValues = Array.isArray(value) ? value : [value]
-        const selectedCompany =
-          technologyCompanies.find((company) => company.id === nextValues.technologyCompanyId) ?? null
-        if (selectedCompany) {
-          nextValues.technologyProductIds = selectedCompany.products
-            .filter((product) =>
-              rawValues.some(
-                (raw) =>
-                  product.name.toLowerCase() === raw.toLowerCase() ||
-                  product.name.toLowerCase().includes(raw.toLowerCase()) ||
-                  raw.toLowerCase().includes(product.name.toLowerCase())
-              )
-            )
-            .map((product) => product.id)
-        }
+        pendingTechnologyProductValue = value
         continue
       }
 
@@ -4372,6 +4614,27 @@ export default function NewProject() {
             nextValues.strategicPriorityId = matched.parentId
           }
         }
+      }
+    }
+
+    if (pendingTechnologyProductValue !== undefined) {
+      const rawValues = Array.isArray(pendingTechnologyProductValue)
+        ? pendingTechnologyProductValue
+        : [pendingTechnologyProductValue]
+      const selectedCompany =
+        technologyCompanies.find((company) => company.id === nextValues.technologyCompanyId) ?? null
+
+      if (selectedCompany) {
+        nextValues.technologyProductIds = selectedCompany.products
+          .filter((product) =>
+            rawValues.some(
+              (raw) =>
+                product.name.toLowerCase() === raw.toLowerCase() ||
+                product.name.toLowerCase().includes(raw.toLowerCase()) ||
+                raw.toLowerCase().includes(product.name.toLowerCase())
+            )
+          )
+          .map((product) => product.id)
       }
     }
 
@@ -4510,8 +4773,11 @@ export default function NewProject() {
     }
   }
 
+  const showCreateHeader = !(mode === 'ai' && !copilotFormRevealed)
+
   return (
     <div className="w-full space-y-6">
+      {showCreateHeader ? (
       <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-5 shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1E293B] sm:px-6">
         <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-[#64748B]">
           <Link to="/respondent/dashboard" className="hover:text-[var(--primary)]">Home</Link>
@@ -4546,12 +4812,14 @@ export default function NewProject() {
             <Button
               className="h-11 shrink-0 rounded-xl bg-[var(--primary)] px-5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8]"
               onClick={() => mode === 'manual' ? void handleSaveDraft() : void handleCopilotSaveDraft()}
+              disabled={mode === 'manual' ? isManualSaveBlockedByAiAnalysis : isCopilotSaveBlockedByAiAnalysis}
             >
               Save Draft
             </Button>
           </div>
         </div>
       </div>
+      ) : null}
 
       {mode === 'manual' ? (
         <>
@@ -4564,9 +4832,9 @@ export default function NewProject() {
           {(policyEvaluationLoading || policyEvaluationError || policyEvaluationResult) && (
             <section>
               {policyEvaluationLoading ? (
-                <div className="rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 text-sm text-[#A855F7] shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#241735] dark:text-[#E9D5FF] sm:px-6">
-                  <div className="flex items-center gap-3">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-current" />
                     Evaluating ICT Budget Considerations policies...
                   </div>
                 </div>
@@ -4960,9 +5228,10 @@ export default function NewProject() {
                               <button
                                 type="button"
                                 onClick={() => setAiSuggestionExpanded((current) => !current)}
-                                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-[#E9D5FF] bg-white px-4 text-sm font-medium text-[#A855F7] transition-colors hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[#E9D5FF] bg-white text-[#A855F7] transition-colors hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
+                                aria-label={aiSuggestionExpanded ? 'Hide details' : 'View details'}
+                                title={aiSuggestionExpanded ? 'Hide details' : 'View details'}
                               >
-                                <span>{aiSuggestionExpanded ? 'Hide Details' : 'View Details'}</span>
                                 <ChevronDown className={cn('h-4 w-4 transition-transform', aiSuggestionExpanded && 'rotate-180')} />
                               </button>
                             </div>
@@ -5284,7 +5553,7 @@ export default function NewProject() {
               )}
             </FormSection>
 
-          <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B]">
+          <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-none dark:border-white/10 dark:bg-[#1E293B]">
             <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
               <div className="flex items-start gap-4">
                 <div className="mt-1 shrink-0 text-[var(--primary)]">
@@ -5323,6 +5592,7 @@ export default function NewProject() {
                   <Button
                     className="h-11 w-full rounded-xl bg-[var(--primary)] px-5 font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8] sm:w-auto"
                     onClick={() => void handleSaveDraft()}
+                    disabled={isManualSaveBlockedByAiAnalysis}
                   >
                     Save Draft
                   </Button>
@@ -5373,9 +5643,7 @@ export default function NewProject() {
                           <Check className="h-3 w-3" />
                           Apply All
                         </button>
-                      ) : (
-                        <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-                      )}
+                      ) : null}
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
                       <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -5442,7 +5710,6 @@ export default function NewProject() {
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Extracted financial evidence</p>
                         </div>
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
                       <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -5490,7 +5757,6 @@ export default function NewProject() {
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Best-fit GL recommendation</p>
                         </div>
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
                       <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -5569,7 +5835,6 @@ export default function NewProject() {
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Cross-document AI readout</p>
                         </div>
                       </div>
-                      <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
                       <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -5614,9 +5879,46 @@ export default function NewProject() {
             </aside>
           </div>
         </>
+      ) : !copilotFormRevealed ? (
+        <div>
+          <input
+            ref={chatFileInputRef}
+            type="file"
+            className="hidden"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null
+              if (file) {
+                setCopilotWorkspaceView('chat')
+                if (!copilotBusy) {
+                  void sendCopilotPromptWithFile(file, chatInput)
+                } else {
+                  setChatStagedFile(file)
+                }
+              }
+              event.target.value = ''
+            }}
+          />
+          <BudgetAssistantLandingHero
+            chatInput={chatInput}
+            chatStagedFile={chatStagedFile}
+            copilotBusy={copilotBusy}
+            copilotTyping={copilotTyping}
+            mode={mode}
+            onInputChange={setChatInput}
+            onSend={handleSend}
+            onPromptSelect={handleOptionSelect}
+            onUploadClick={() => chatFileInputRef.current?.click()}
+            onCheckBudgetConsideration={() => void runCopilotBudgetConsiderationCheck()}
+            onRemoveStagedFile={() => setChatStagedFile(null)}
+            onToggleMode={() => setMode('manual')}
+          />
+        </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-          <div className="space-y-6 xl:sticky xl:top-20 xl:self-start">
+        <div className="grid gap-6 transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+          <div
+            className="space-y-6 animate-copilotChatCompact xl:sticky xl:top-20 xl:self-start"
+          >
             <div className="relative h-[680px] xl:h-[calc(100vh-6rem)]">
               <section
                 className={cn(
@@ -5737,7 +6039,7 @@ export default function NewProject() {
                     className="h-10 rounded-xl border-[#E9D5FF] text-[#A855F7] hover:bg-[#FDF7FF]"
                   >
                     <Bot className="h-4 w-4" />
-                    Check Policies
+                    Check Budget Consideration
                   </Button>
                   <Button
                     type="button"
@@ -5749,7 +6051,11 @@ export default function NewProject() {
                       suggestionFlashOn && 'suggestion-blink'
                     )}
                   >
-                    <Sparkles className="h-4 w-4" />
+                    {copilotAiSuggestionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
                     Project Field Suggestions ({copilotSuggestedFieldCount})
                   </Button>
                 </div>
@@ -5789,22 +6095,22 @@ export default function NewProject() {
                 )}
               >
                 <div className="shrink-0 border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
-                  <div className="flex items-center gap-2.5">
-                    <div className="shrink-0 text-[#A855F7]">
-                      <Sparkles className="h-6 w-6" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Project Field Suggestions</h3>
-                  </div>
-                  <div className="mt-2 flex justify-center">
+                  <div className="flex justify-center">
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-8 rounded-xl px-3 text-sm text-[#A855F7] hover:bg-[#F6EBFF] hover:text-[#9333EA]"
+                      className="h-8 rounded-xl border border-[#ac5cf757] bg-white px-3 text-sm text-[#A855F7] hover:bg-[#A855F7] hover:text-white dark:border-[#ac5cf757] dark:bg-white/5 dark:text-[#E9D5FF] dark:hover:bg-[#A855F7] dark:hover:text-white"
                       onClick={() => setCopilotWorkspaceView('chat')}
                     >
                       <ChevronLeft className="h-4 w-4" />
                       Back to Budget Assistant
                     </Button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2.5">
+                    <div className="shrink-0 text-[#A855F7]">
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Project Field Suggestions</h3>
                   </div>
                 </div>
 
@@ -5814,7 +6120,7 @@ export default function NewProject() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         {Object.entries(copilotPendingSuggestion?.fields ?? {}).map(([key, value]) => (
                           <div key={key} className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
+                            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
                             <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
                           </div>
                         ))}
@@ -5853,26 +6159,26 @@ export default function NewProject() {
                     )}
 
                     {matchedCopilotAiSuggestions.length > 1 && (
-                      <div className="space-y-2">
+                      <div className="rounded-xl border border-[#E9D5FF]/70 bg-[#FDF7FF]/70 px-3 py-3 dark:border-white/10 dark:bg-white/5">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-400">Alternative Strategic Priority</p>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Alternate Strategic Priority</p>
+                            <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                              {matchedCopilotAiSuggestions[1].strategicPriority} · {matchedCopilotAiSuggestions[1].strategicPriorityClassification}
+                            </p>
+                          </div>
                           <Button
-                            className="h-7 rounded-xl bg-[#A855F7] px-3 text-xs text-white hover:bg-[#9333EA]"
-                            onClick={() => applyCopilotAiSuggestion(matchedCopilotAiSuggestions[1], 'both')}
+                            className={cn(
+                              'h-8 rounded-xl border px-3 text-xs font-semibold transition-all duration-300',
+                              copilotAltSuggestionApplied
+                                ? 'scale-[1.03] border-[#A855F7] bg-[#A855F7] text-white shadow-[0_10px_24px_rgba(168,85,247,0.18)]'
+                                : 'border-[#E9D5FF] bg-white text-[#A855F7] hover:bg-[#A855F7] hover:text-white dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-[#A855F7] dark:hover:text-white'
+                            )}
+                            onClick={() => handleApplyAlternateCopilotAiSuggestion(matchedCopilotAiSuggestions[1])}
                           >
                             <Check className="h-3.5 w-3.5" />
-                            Apply
+                            {copilotAltSuggestionApplied ? 'Applied' : 'Apply'}
                           </Button>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Strategic Priority</p>
-                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[1].strategicPriority}</p>
-                          </div>
-                          <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">Classification</p>
-                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[1].strategicPriorityClassification}</p>
-                          </div>
                         </div>
                       </div>
                     )}
@@ -5930,7 +6236,7 @@ export default function NewProject() {
                           {matchedCopilotAiSuggestions.slice(0, 2).map((suggestion, index) => (
                             <div key={`${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                               <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#A855F7] dark:text-[#E9D5FF]">Option {index + 1}</p>
+                                <p className="text-xs font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Option {index + 1}</p>
                                 <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => applyCopilotAiSuggestion(suggestion, 'both')}>
                                   <Check className="h-4 w-4" />
                                   Apply
@@ -5984,7 +6290,7 @@ export default function NewProject() {
             )}
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-6 animate-copilotFormReveal">
             <FormSection
               title="Project Details"
               description="Review and refine the project details prepared with Budget Assistant. Nothing is final until you save the draft."
@@ -6117,11 +6423,12 @@ export default function NewProject() {
                     asChild
                     className="h-11 w-full rounded-xl border-[#CBD5E1] px-5 font-semibold text-[#334155] hover:bg-[#F8FAFC] hover:text-[#0F172A] sm:w-auto"
                   >
-                    <Link to="/respondent/projects">Cancel</Link>
-                  </Button>
+                  <Link to="/respondent/projects">Cancel</Link>
+                </Button>
                   <Button
                     className="h-11 w-full rounded-xl bg-[var(--primary)] px-5 font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8] sm:w-auto"
                     onClick={() => void handleCopilotSaveDraft()}
+                    disabled={isCopilotSaveBlockedByAiAnalysis}
                   >
                     Save Draft
                   </Button>

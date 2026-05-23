@@ -69,6 +69,18 @@
         "workflowDisplayName": "PowerAppV2 - Get Cumulative Document Summary from Compass",
         "workflowName": "de9d862f-12e1-396c-66bb-23d91293c9a9"
       }
+    },
+    "059ef65e-a038-4f40-9400-4b1699725bae": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_getictbudgetaioverview"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "52c30433-0b55-f111-bec6-7ced8dac4c24",
+        "workflowDisplayName": "PowerAppV2 - Get ICT Budget AI Overview",
+        "workflowName": "6874f7eb-4d97-ca55-88ff-0c708bf65493"
+      }
     }
   },
   "databaseReferences": {

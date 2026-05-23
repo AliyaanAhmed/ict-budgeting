@@ -1,4 +1,5 @@
 import type {
+  Dga_ict_ai_summaries,
   Dga_ict_ai_summariesBase,
   Dga_ict_ai_summariesdga_role_context,
   Dga_ict_ai_summariesdga_summary_category,
@@ -12,6 +13,154 @@ import {
   parseSupportingDocumentEvaluationSummary,
   type SupportingDocumentEvaluationSummary,
 } from '@/services/aiSupportingDocumentEvaluationService'
+
+export interface BudgetOverviewOverallAssessment {
+  readiness_status?: string
+  one_line_summary?: string
+  executive_summary?: string
+  primary_strengths?: string[]
+  primary_risks?: string[]
+}
+
+export interface BudgetOverviewDocumentEvidence {
+  evidence_score?: number
+  supports_project?: boolean
+  applicability?: string
+  readiness_gap_count?: number
+}
+
+export interface BudgetOverviewProjectFieldsScore {
+  evaluated_count?: number
+  match_count?: number
+  close_match_count?: number
+  mismatch_count?: number
+  not_evaluated_count?: number
+}
+
+export interface BudgetOverviewBudgetAccountScore {
+  line_item_count?: number
+  account_code_match_count?: number
+  amount_match_count?: number
+  currency_match?: boolean
+  expense_type_match?: boolean
+}
+
+export interface BudgetOverviewStrategicAlignmentScore {
+  match_type?: string
+  requires_review?: boolean
+  severity?: string
+}
+
+export interface BudgetOverviewScoreInputs {
+  document_evidence?: BudgetOverviewDocumentEvidence
+  project_fields?: BudgetOverviewProjectFieldsScore
+  budget_account?: BudgetOverviewBudgetAccountScore
+  strategic_alignment?: BudgetOverviewStrategicAlignmentScore
+}
+
+export interface BudgetOverviewReviewFlag {
+  flag?: boolean
+  label?: string
+  severity?: string
+  reason?: string
+}
+
+export interface BudgetOverviewReviewFlags {
+  evidence_risk?: BudgetOverviewReviewFlag
+  strategic_alignment_risk?: BudgetOverviewReviewFlag
+  budget_accuracy_risk?: BudgetOverviewReviewFlag
+  clarification_required?: BudgetOverviewReviewFlag
+  dge_budget_consideration_risk?: BudgetOverviewReviewFlag
+}
+
+export interface BudgetOverviewRoleAction {
+  action_id?: string
+  severity?: string
+  message?: string
+  linked_issue_id?: string
+}
+
+export interface BudgetOverviewRoleViewRespondent {
+  summary?: string
+  must_fix?: BudgetOverviewRoleAction[]
+  should_review?: BudgetOverviewRoleAction[]
+}
+
+export interface BudgetOverviewRoleViewReviewer {
+  summary?: string
+  review_focus?: Array<{ focus_id?: string; priority?: string; message?: string; linked_issue_id?: string }>
+  validated_items?: Array<{ category?: string; item?: string; evidence?: string[] }>
+  questions_for_respondent?: Array<{ question_id?: string; priority?: string; message?: string }>
+}
+
+export interface BudgetOverviewRoleViewApprover {
+  executive_summary?: string
+  decision_recommendation?: string
+  approval_conditions?: BudgetOverviewRoleAction[]
+  material_risks?: Array<{ risk_id?: string; severity?: string; message?: string }>
+}
+
+export interface BudgetOverviewRoleViews {
+  respondent?: BudgetOverviewRoleViewRespondent
+  reviewer?: BudgetOverviewRoleViewReviewer
+  approver?: BudgetOverviewRoleViewApprover
+}
+
+export interface BudgetOverviewRecommendedOption {
+  rank?: number
+  strategic_priority?: string
+  strategic_priority_classification?: string
+  relevance_score?: number
+  reason?: string
+}
+
+export interface BudgetOverviewStrategicAlignment {
+  submitted_priority?: string
+  submitted_classification?: string
+  recommended_options?: BudgetOverviewRecommendedOption[]
+  selected_match?: string
+  recommended_change?: {
+    strategic_priority?: string
+    strategic_priority_classification?: string
+    reason?: string
+  }
+}
+
+export interface BudgetOverviewIssue {
+  issue_id?: string
+  severity?: string
+  category?: string
+  title?: string
+  description?: string
+  recommended_action?: string
+  affects_score?: boolean
+}
+
+export interface BudgetOverviewData {
+  evaluation_version?: string
+  overall_assessment?: BudgetOverviewOverallAssessment
+  score_inputs?: BudgetOverviewScoreInputs
+  ai_review_flags?: BudgetOverviewReviewFlags
+  role_views?: BudgetOverviewRoleViews
+  strategic_alignment?: BudgetOverviewStrategicAlignment
+  issues?: BudgetOverviewIssue[]
+  clarifications?: {
+    has_clarifications?: boolean
+    summary_message?: string
+  }
+  recommended_next_actions?: Array<{ priority?: number; role?: string; action?: string }>
+  validated_items?: Array<{ category?: string; item?: string }>
+}
+
+export interface StoredBudgetOverviewRecord {
+  id: string
+  budgetId: string | null
+  isValid: boolean
+  responseJson: string
+  responseTime: number | null
+  modifiedOn: string | null
+  parsedData: BudgetOverviewData | null
+}
 
 export interface StoredDocumentSummaryRecord {
   id: string
@@ -27,6 +176,7 @@ export interface StoredBudgetAiSummaryRecord {
   isValid: boolean
   responseJson: string
   responseTime: number | null
+  modifiedOn: string | null
   parsedSummary: SupportingDocumentEvaluationSummary | null
 }
 
@@ -47,6 +197,122 @@ const CUMULATIVE_ROLE_CONTEXT: Dga_ict_ai_summariesdga_role_context = 1
 const CUMULATIVE_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 8
 const CUMULATIVE_SUMMARY_STAGE: Dga_ict_ai_summariesdga_summary_stage = 1
 const CUMULATIVE_SUMMARY_TYPE: Dga_ict_ai_summariesdga_summary_type = 1
+const BUDGET_OVERVIEW_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 1
+
+function hasBudgetOverviewFields(value: unknown): value is BudgetOverviewData {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  return 'overall_assessment' in record || 'score_inputs' in record
+}
+
+function extractOpenAiTextPayload(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  const output = record['output']
+  if (!Array.isArray(output) || output.length === 0) return null
+  const firstOutput = output[0] as Record<string, unknown>
+  const content = firstOutput?.['content']
+  if (!Array.isArray(content) || content.length === 0) return null
+  const firstContent = content[0] as Record<string, unknown>
+  const text = firstContent?.['text']
+  return typeof text === 'string' ? text : null
+}
+
+function findBudgetOverviewData(value: unknown, visited = new Set<unknown>()): BudgetOverviewData | null {
+  if (!value) return null
+
+  let current: unknown = value
+  if (typeof current === 'string') {
+    try {
+      current = JSON.parse(current)
+    } catch {
+      return null
+    }
+  }
+
+  if (hasBudgetOverviewFields(current)) return current as BudgetOverviewData
+  if (!current || typeof current !== 'object') return null
+  if (visited.has(current)) return null
+  visited.add(current)
+
+  const openAiText = extractOpenAiTextPayload(current)
+  if (openAiText) {
+    const result = findBudgetOverviewData(openAiText, visited)
+    if (result) return result
+  }
+
+  if (Array.isArray(current)) {
+    for (const item of current) {
+      const result = findBudgetOverviewData(item, visited)
+      if (result) return result
+    }
+    return null
+  }
+
+  for (const nestedValue of Object.values(current as Record<string, unknown>)) {
+    const result = findBudgetOverviewData(nestedValue, visited)
+    if (result) return result
+  }
+
+  return null
+}
+
+export function parseBudgetOverviewData(value: unknown): BudgetOverviewData | null {
+  if (!value) return null
+  try {
+    const rawResponse = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+    console.log('[BudgetOverview] Raw dga_response_json:', rawResponse)
+
+    const topLevelParsed =
+      typeof value === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(value)
+            } catch {
+              return null
+            }
+          })()
+        : value
+
+    console.log('[BudgetOverview] Top-level parsed payload:', topLevelParsed)
+
+    const extractedOpenAiText = extractOpenAiTextPayload(topLevelParsed)
+    if (extractedOpenAiText) {
+      console.log('[BudgetOverview] Extracted OpenAI output_text:', extractedOpenAiText)
+    }
+
+    const parsedBudgetOverview = findBudgetOverviewData(value)
+    console.log('[BudgetOverview] Final parsed BudgetOverviewData:', parsedBudgetOverview)
+    return parsedBudgetOverview
+  } catch (error) {
+    console.warn('[DocumentAiSummaryStore] Failed to parse budget overview data:', error)
+    return null
+  }
+}
+
+function mapStoredBudgetOverviewRecord(record: Dga_ict_ai_summaries | undefined): StoredBudgetOverviewRecord | null {
+  if (!record || !record.dga_ict_ai_summaryid) return null
+
+  const responseJson = typeof record.dga_response_json === 'string' ? record.dga_response_json : ''
+  console.log('[BudgetOverview] Dataverse Budget Overview record:', {
+    id: record.dga_ict_ai_summaryid,
+    budgetId: record._dga_referencerecordid_value ?? null,
+    summaryCategory: record.dga_summary_category ?? null,
+    isValid: record.dga_is_valid ?? false,
+    modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
+    responseTime: typeof record.dga_response_time === 'number' ? record.dga_response_time : null,
+  })
+
+  return {
+    id: record.dga_ict_ai_summaryid,
+    budgetId: record._dga_referencerecordid_value ?? null,
+    isValid: record.dga_is_valid ?? false,
+    responseJson,
+    responseTime: typeof record.dga_response_time === 'number' ? record.dga_response_time : null,
+    modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
+    parsedData: responseJson ? parseBudgetOverviewData(responseJson) : null,
+  }
+}
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -123,6 +389,7 @@ function mapStoredCumulativeSummaryRecord(
     isValid: record.dga_is_valid ?? false,
     responseJson,
     responseTime: typeof record.dga_response_time === 'number' ? record.dga_response_time : null,
+    modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     parsedSummary: responseJson ? parseSupportingDocumentEvaluationSummary(responseJson) : null,
   }
 }
@@ -180,6 +447,7 @@ export async function getLatestCumulativeSummaryByBudgetId(budgetId: string) {
       'dga_summary_stage',
       'dga_summary_type',
       'createdon',
+      'modifiedon',
     ],
     filter: `_dga_referencerecordid_value eq ${budgetId} and dga_summary_category eq ${CUMULATIVE_SUMMARY_CATEGORY} and dga_summary_stage eq ${CUMULATIVE_SUMMARY_STAGE} and dga_summary_type eq ${CUMULATIVE_SUMMARY_TYPE}`,
     orderBy: ['createdon desc'],
@@ -240,6 +508,78 @@ export async function upsertCumulativeSummaryRecord(input: UpsertCumulativeSumma
     throw error instanceof Error
       ? error
       : new Error('Failed to create cumulative AI summary.')
+  }
+}
+
+export async function getAllAiSummaryRecordsByBudgetId(budgetId: string): Promise<{
+  cumulativeRecord: StoredBudgetAiSummaryRecord | null
+  budgetOverviewRecord: StoredBudgetOverviewRecord | null
+}> {
+  const result = await Dga_ict_ai_summariesService.getAll({
+    select: [
+      'dga_ict_ai_summaryid',
+      'dga_is_valid',
+      'dga_response_json',
+      'dga_response_time',
+      '_dga_referencerecordid_value',
+      'dga_summary_category',
+      'dga_summary_stage',
+      'dga_summary_type',
+      'createdon',
+      'modifiedon',
+    ],
+    filter: `_dga_referencerecordid_value eq ${budgetId}`,
+    orderBy: ['createdon desc'],
+  })
+
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to retrieve AI summary records.')
+  }
+
+  const records = result.data ?? []
+  const cumulativeRecords = records.filter((r) => r.dga_summary_category === CUMULATIVE_SUMMARY_CATEGORY)
+  const overviewRecords = records.filter((r) => r.dga_summary_category === BUDGET_OVERVIEW_SUMMARY_CATEGORY)
+
+  return {
+    cumulativeRecord: mapStoredCumulativeSummaryRecord(cumulativeRecords[0]),
+    budgetOverviewRecord: mapStoredBudgetOverviewRecord(overviewRecords[0]),
+  }
+}
+
+export async function invalidateCumulativeSummaryRecord(budgetId: string) {
+  const existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
+  if (!existing) return
+
+  const result = await Dga_ict_ai_summariesService.update(existing.id, {
+    dga_is_valid: false,
+  } as Partial<Omit<Dga_ict_ai_summariesBase, 'dga_ict_ai_summaryid'>>)
+
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to invalidate cumulative AI summary.')
+  }
+}
+
+export async function invalidateBudgetOverviewRecord(budgetId: string) {
+  const result = await Dga_ict_ai_summariesService.getAll({
+    select: ['dga_ict_ai_summaryid'],
+    filter: `_dga_referencerecordid_value eq ${budgetId} and dga_summary_category eq ${BUDGET_OVERVIEW_SUMMARY_CATEGORY}`,
+    orderBy: ['createdon desc'],
+    top: 1,
+  })
+
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to find budget overview AI summary.')
+  }
+
+  const existing = result.data?.[0]
+  if (!existing?.dga_ict_ai_summaryid) return
+
+  const update = await Dga_ict_ai_summariesService.update(existing.dga_ict_ai_summaryid, {
+    dga_is_valid: false,
+  } as Partial<Omit<Dga_ict_ai_summariesBase, 'dga_ict_ai_summaryid'>>)
+
+  if (!update.success) {
+    throw new Error(update.error?.message?.trim() || 'Failed to invalidate budget overview AI summary.')
   }
 }
 

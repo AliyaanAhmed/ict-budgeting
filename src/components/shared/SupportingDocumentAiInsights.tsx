@@ -99,7 +99,7 @@ function AnalyzingState({ fileName }: { fileName: string }) {
           <div className="pointer-events-none absolute inset-y-0 left-0 w-40 bg-[linear-gradient(90deg,rgba(168,85,247,0.09),rgba(168,85,247,0))]" />
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A855F7] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/80 px-3 py-1 text-[11px] font-semibold text-[#A855F7] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
                 <Bot className="h-3.5 w-3.5 animate-pulse" />
                 AI Analysis Running
               </div>
@@ -203,7 +203,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
         </div>
 
         <div className={cn('rounded-2xl border p-4', getEvidenceTone(evidence?.evidence_score))}>
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">Evidence Score</p>
+          <p className="text-xs font-semibold opacity-80">Evidence Score</p>
           <p className="mt-2 text-3xl font-bold">{evidence?.evidence_score ?? '-'}</p>
           <p className="mt-1 text-sm font-semibold">{evidence?.evidence_quality ?? 'Pending review'}</p>
         </div>

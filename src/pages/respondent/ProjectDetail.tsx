@@ -148,7 +148,6 @@ import {
   type SupportingDocumentAiInsightItem,
 } from '@/components/shared/SupportingDocumentAiInsights'
 import {
-  evaluateCumulativeSupportingDocuments,
   evaluateSupportingDocument,
   parseSupportingDocumentEvaluationSummary,
   type SupportingDocumentBudgetLine,
@@ -156,12 +155,14 @@ import {
   type SupportingDocumentSuggestedProjectField,
 } from '@/services/aiSupportingDocumentEvaluationService'
 import {
-  clearCumulativeSummaryRecord,
   createDocumentSummaryRecords,
   deleteDocumentSummaryRecordsByDocumentName,
+  getAllAiSummaryRecordsByBudgetId,
   getDocumentSummaryRecordsByBudgetId,
-  getLatestCumulativeSummaryByBudgetId,
-  upsertCumulativeSummaryRecord,
+  invalidateBudgetOverviewRecord,
+  invalidateCumulativeSummaryRecord,
+  type StoredBudgetAiSummaryRecord,
+  type StoredBudgetOverviewRecord,
   type StoredDocumentSummaryRecord,
 } from '@/services/documentAiSummaryStoreService'
 import {
@@ -227,10 +228,95 @@ function truncatePolicyCopy(text: string, maxCharacters: number) {
   }
 }
 
-function Field({ label, value }: { label: string; value?: string | null }) {
+type AiFieldAssistProps = {
+  fieldLabel: string
+  suggestedValue: string
+  isOpen: boolean
+  canApply: boolean
+  onToggle: () => void
+  onApply: () => void
+  helperText?: string
+}
+
+function AiFieldAssistTrigger({
+  fieldLabel,
+  suggestedValue,
+  isOpen,
+  canApply,
+  onToggle,
+  onApply,
+  helperText,
+}: AiFieldAssistProps) {
   return (
-    <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-      <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-all hover:border-[#D8B4FE] hover:bg-[#FAF5FF] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]"
+        aria-label={`${fieldLabel} suggested by AI`}
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+      </button>
+
+      {isOpen ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-2xl border border-[#E9D5FF] bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#1E293B]">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI suggested this field</p>
+              <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
+            </div>
+          </div>
+          <div className="mt-3 rounded-xl border border-[#E9D5FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Value</p>
+            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{suggestedValue}</p>
+          </div>
+          {canApply ? (
+            <button
+              type="button"
+              onClick={onApply}
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-[#A855F7] px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#9333EA] active:bg-[#7E22CE]"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Apply Suggestion
+            </button>
+          ) : (
+            <p className="mt-3 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+              {helperText ?? 'Switch the form to Edit mode to apply this AI suggestion.'}
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function Field({
+  label,
+  value,
+  aiAssist,
+  highlighted = false,
+}: {
+  label: string
+  value?: string | null
+  aiAssist?: React.ReactNode
+  highlighted?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5'
+      )}
+    >
+      {highlighted ? (
+        <div className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(90deg,rgba(168,85,247,0)_0%,rgba(168,85,247,0.06)_28%,rgba(216,180,254,0.12)_50%,rgba(168,85,247,0.06)_72%,rgba(168,85,247,0)_100%)] animate-aiMagicSweep" />
+      ) : null}
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+        {aiAssist}
+      </div>
       <p className="text-sm font-medium text-[#0F172A] dark:text-white">{value || '-'}</p>
     </div>
   )
@@ -251,6 +337,7 @@ function DetailSection({
   icon,
   children,
   action,
+  noShadow = false,
 }: {
   id?: string
   title: string
@@ -258,9 +345,16 @@ function DetailSection({
   icon: React.ElementType
   children: React.ReactNode
   action?: React.ReactNode
+  noShadow?: boolean
 }) {
   return (
-    <section id={id} className="scroll-mt-6 rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#1E293B] sm:p-6">
+    <section
+      id={id}
+      className={cn(
+        'scroll-mt-6 rounded-2xl border border-[#DDEBFF] bg-white p-4 dark:border-white/10 dark:bg-[#1E293B] sm:p-6',
+        noShadow ? 'shadow-none' : 'shadow-[0_12px_30px_rgba(15,23,42,0.06)]'
+      )}
+    >
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-2.5">
           <SectionIcon icon={icon} />
@@ -281,17 +375,24 @@ function EditField({
   required,
   error,
   children,
+  aiAssist,
+  highlighted = false,
 }: {
   label: string
   required?: boolean
   error?: string
   children: React.ReactNode
+  aiAssist?: React.ReactNode
+  highlighted?: boolean
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium text-[#0F172A] dark:text-white">
-        {label}{required && <span className="ml-1 text-red-500">*</span>}
-      </label>
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-sm font-medium text-[#0F172A] dark:text-white">
+          {label}{required && <span className="ml-1 text-red-500">*</span>}
+        </label>
+        {aiAssist}
+      </div>
       {children}
       {error && <p className="text-xs font-medium text-[#B42318]">{error}</p>}
     </div>
@@ -1276,8 +1377,58 @@ function resolveManualAiFieldSuggestion(
   return { patch: {} }
 }
 
+function resolveStrategicSuggestionSelection(
+  suggestion: Pick<
+    MatchedAiSuggestion,
+    'priorityId' | 'classificationId' | 'classificationParentId' | 'strategicPriority' | 'strategicPriorityClassification'
+  >,
+  strategicPriorities: StrategicPriorityOption[]
+) {
+  const resolvedPriority =
+    (suggestion.priorityId
+      ? strategicPriorities.find((option) => option.id === suggestion.priorityId && !option.parentId)
+      : undefined) ??
+    strategicPriorities.find(
+      (option) => !option.parentId && labelsMatch(option.name, suggestion.strategicPriority)
+    ) ??
+    null
+
+  const resolvedClassification =
+    (suggestion.classificationId
+      ? strategicPriorities.find((option) => option.id === suggestion.classificationId && Boolean(option.parentId))
+      : undefined) ??
+    strategicPriorities.find((option) => {
+      if (!option.parentId) return false
+      if (!labelsMatch(option.name, suggestion.strategicPriorityClassification)) return false
+      if (!resolvedPriority) return true
+      return option.parentId === resolvedPriority.id
+    }) ??
+    null
+
+  return {
+    priorityId: resolvedPriority?.id ?? null,
+    classificationId: resolvedClassification?.id ?? null,
+    classificationParentId: resolvedClassification?.parentId ?? resolvedPriority?.id ?? null,
+  }
+}
+
 function labelsMatch(left: string, right: string) {
-  return left.trim().toLowerCase() === right.trim().toLowerCase()
+  const normalize = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+
+  const normalizedLeft = normalize(left)
+  const normalizedRight = normalize(right)
+
+  return (
+    normalizedLeft === normalizedRight ||
+    normalizedLeft.includes(normalizedRight) ||
+    normalizedRight.includes(normalizedLeft)
+  )
 }
 
 function ScrollSpySectionRail({
@@ -1407,6 +1558,890 @@ function ChangeLogTable({
   )
 }
 
+function BudgetOverviewCard({
+  record,
+  loading,
+  error,
+}: {
+  record: StoredBudgetOverviewRecord | null
+  loading: boolean
+  error: string | null
+}) {
+  const data = record?.parsedData ?? null
+
+  const assessment = data?.overall_assessment
+  const scores = data?.score_inputs
+  const technicalScore = data?.strategic_alignment?.recommended_options?.[0]?.relevance_score ?? null
+  const strengths = assessment?.primary_strengths ?? []
+  const risks = assessment?.primary_risks ?? []
+
+  const pf = scores?.project_fields
+  const pfTotal = (pf?.evaluated_count ?? 0)
+  const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
+
+  const ba = scores?.budget_account
+  const baLabel = !ba
+    ? null
+    : (ba.account_code_match_count ?? 0) >= (ba.line_item_count ?? 1) && (ba.amount_match_count ?? 0) >= (ba.line_item_count ?? 1)
+      ? 'Full'
+      : (ba.account_code_match_count ?? 0) > 0 || (ba.amount_match_count ?? 0) > 0
+        ? 'Partial'
+        : 'Missing'
+
+  function readinessAccent(status?: string) {
+    if (!status) return { dot: 'bg-[#94A3B8]', badge: 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300' }
+    const lower = status.toLowerCase()
+    if (lower.includes('ready') && !lower.includes('condition') && !lower.includes('not')) {
+      return { dot: 'bg-[#10B981]', badge: 'border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46] dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300' }
+    }
+    if (lower.includes('condition') || lower.includes('partial')) {
+      return { dot: 'bg-[#F59E0B]', badge: 'border-[#FDE68A] bg-[#FFFBEB] text-[#92400E] dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300' }
+    }
+    return { dot: 'bg-[#EF4444]', badge: 'border-[#FECACA] bg-[#FEF2F2] text-[#991B1B] dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300' }
+  }
+
+  const readiness = readinessAccent(assessment?.readiness_status)
+
+  return (
+    <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Overview</p>
+          <p className="text-xs text-[#64748B] dark:text-slate-300">AI-generated budget readiness assessment</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF8FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading budget overview...
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-3 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+          {error}
+        </div>
+      ) : !record || !data ? (
+        <EmptyAiActionCard
+          description="Budget overview will appear here once an AI readiness assessment has been generated for this budget."
+          icon={Sparkles}
+        />
+      ) : (
+        <div className="space-y-3">
+          {assessment?.readiness_status && (
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-2 text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Readiness Status</p>
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 shrink-0 rounded-full ${readiness.dot}`} />
+                <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${readiness.badge}`}>
+                  {assessment.readiness_status}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2">
+            {typeof scores?.document_evidence?.evidence_score === 'number' && (
+              <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Doc Evidence</p>
+                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
+              </div>
+            )}
+            {pfTotal > 0 && (
+              <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
+                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+              </div>
+            )}
+            {baLabel && (
+              <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Account</p>
+                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{baLabel}</p>
+              </div>
+            )}
+            {scores?.strategic_alignment?.match_type && (
+              <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Strategic Fit</p>
+                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{scores.strategic_alignment.match_type}</p>
+              </div>
+            )}
+          </div>
+
+          {technicalScore !== null && (
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Technical Score</p>
+                <span className="text-sm font-bold text-[#A855F7] dark:text-[#E9D5FF]">{technicalScore}</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#E9D5FF] dark:bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#A855F7] transition-all"
+                  style={{ width: `${Math.min(100, technicalScore)}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {assessment?.executive_summary && (
+            <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-1.5 text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Executive Summary</p>
+              <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">{assessment.executive_summary}</p>
+            </div>
+          )}
+
+          {(strengths.length > 0 || risks.length > 0) && (
+            <div className="grid grid-cols-2 gap-2">
+              {strengths.length > 0 && (
+                <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-3 dark:border-emerald-500/20 dark:bg-emerald-900/10">
+                  <p className="mb-1.5 text-[11px] font-semibold text-[#065F46] dark:text-emerald-300">Strengths</p>
+                  <ul className="space-y-1">
+                    {strengths.slice(0, 3).map((s, i) => (
+                      <li key={i} className="text-[11px] leading-4 text-[#047857] dark:text-emerald-200">· {s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {risks.length > 0 && (
+                <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-3 dark:border-red-500/20 dark:bg-red-900/10">
+                  <p className="mb-1.5 text-[11px] font-semibold text-[#991B1B] dark:text-red-300">Risks</p>
+                  <ul className="space-y-1">
+                    {risks.slice(0, 3).map((r, i) => (
+                      <li key={i} className="text-[11px] leading-4 text-[#DC2626] dark:text-red-200">· {r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {record.modifiedOn && (
+            <p className="text-[11px] text-[#94A3B8] dark:text-slate-500">
+              Last updated {new Date(record.modifiedOn).toLocaleDateString('en-AE', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InteractiveBudgetOverviewCard({
+  record,
+  loading,
+  error,
+  currentRole,
+  isRefreshing,
+  policyLoading,
+  policyError,
+  policyResult,
+  policyMatchGroups,
+  fileInsightItems,
+}: {
+  record: StoredBudgetOverviewRecord | null
+  loading: boolean
+  error: string | null
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  isRefreshing: boolean
+  policyLoading: boolean
+  policyError: string | null
+  policyResult: IctBudgetConsiderationsEvaluationResult | null
+  policyMatchGroups: PolicyMatchGroup[]
+  fileInsightItems: SupportingDocumentAiInsightItem[]
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [expandedPolicyTextSections, setExpandedPolicyTextSections] = useState<Record<string, boolean>>({})
+  const data = record?.parsedData ?? null
+  const assessment = data?.overall_assessment
+  const scores = data?.score_inputs
+  const strengths = assessment?.primary_strengths ?? []
+  const risks = assessment?.primary_risks ?? []
+  const issues = data?.issues ?? []
+  const nextActions = data?.recommended_next_actions ?? []
+
+  const roleSummary =
+    currentRole === 'Reviewer'
+      ? data?.role_views?.reviewer?.summary
+      : currentRole === 'Approver'
+        ? data?.role_views?.approver?.executive_summary
+        : data?.role_views?.respondent?.summary
+
+  const roleBullets =
+    currentRole === 'Respondent'
+      ? [
+          ...(data?.role_views?.respondent?.must_fix ?? []).map((item) => item.message).filter(Boolean),
+          ...(data?.role_views?.respondent?.should_review ?? []).map((item) => item.message).filter(Boolean),
+        ]
+      : currentRole === 'Reviewer'
+        ? [
+            ...(data?.role_views?.reviewer?.review_focus ?? []).map((item) => item.message).filter(Boolean),
+            ...(data?.role_views?.reviewer?.questions_for_respondent ?? []).map((item) => item.message).filter(Boolean),
+          ]
+        : [
+            ...(data?.role_views?.approver?.approval_conditions ?? []).map((item) => item.message).filter(Boolean),
+            ...(data?.role_views?.approver?.material_risks ?? []).map((item) => item.message).filter(Boolean),
+          ]
+
+  const pf = scores?.project_fields
+  const pfTotal = pf?.evaluated_count ?? 0
+  const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
+
+  const ba = scores?.budget_account
+  const baLabel = !ba
+    ? null
+    : (ba.account_code_match_count ?? 0) >= (ba.line_item_count ?? 1) && (ba.amount_match_count ?? 0) >= (ba.line_item_count ?? 1)
+      ? 'Full'
+      : (ba.account_code_match_count ?? 0) > 0 || (ba.amount_match_count ?? 0) > 0
+        ? 'Partial'
+        : 'Missing'
+
+  function readinessAccent(status?: string) {
+    if (!status) return { dot: 'bg-[#94A3B8]', badge: 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300' }
+    const lower = status.toLowerCase()
+    if (lower.includes('ready') && !lower.includes('condition') && !lower.includes('not')) {
+      return { dot: 'bg-[#10B981]', badge: 'border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46] dark:border-emerald-500/30 dark:bg-emerald-900/20 dark:text-emerald-300' }
+    }
+    if (lower.includes('condition') || lower.includes('partial')) {
+      return { dot: 'bg-[#F59E0B]', badge: 'border-[#FDE68A] bg-[#FFFBEB] text-[#92400E] dark:border-amber-500/30 dark:bg-amber-900/20 dark:text-amber-300' }
+    }
+    return { dot: 'bg-[#EF4444]', badge: 'border-[#FECACA] bg-[#FEF2F2] text-[#991B1B] dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300' }
+  }
+
+  const readiness = readinessAccent(assessment?.readiness_status)
+  const hasPolicyMatch = policyResult?.overallAssessment.hasPolicyMatch ?? false
+  const hasExpandablePolicyContent = policyLoading || Boolean(policyError) || Boolean(policyResult)
+  const canExpand = Boolean(data) || hasExpandablePolicyContent
+  const policyConflictCount =
+    policyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0
+  const policyCoordinationCount =
+    policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0
+  const policyConditionalCount =
+    policyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0
+  const fileEvidenceItems = fileInsightItems
+    .map((item) => ({
+      id: item.id,
+      name: item.file.name,
+      score: item.parsedSummary?.evidence_assessment?.evidence_score ?? null,
+      quality: item.parsedSummary?.evidence_assessment?.evidence_quality ?? null,
+      status: item.status,
+    }))
+    .filter((item) => item.name.trim())
+
+  const togglePolicyTextSection = (sectionKey: string) => {
+    setExpandedPolicyTextSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }))
+  }
+
+  function fileEvidenceTone(score: number | null, status: SupportingDocumentAiInsightItem['status']) {
+    if (status === 'analyzing' || status === 'queued') {
+      return {
+        card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
+        score: 'text-[#A855F7] dark:text-[#E9D5FF]',
+      }
+    }
+    if (status === 'error') {
+      return {
+        card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
+        score: 'text-[#B42318] dark:text-[#FCA5A5]',
+      }
+    }
+    if ((score ?? 0) >= 80) {
+      return {
+        card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
+        score: 'text-[#16794B] dark:text-[#86EFAC]',
+      }
+    }
+    if ((score ?? 0) >= 60) {
+      return {
+        card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
+        score: 'text-[#286CFF] dark:text-[#AFC9FF]',
+      }
+    }
+    return {
+      card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
+      score: 'text-[#B7791F] dark:text-[#F6D28A]',
+    }
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF8FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+      <button
+        type="button"
+        onClick={() => canExpand && setExpanded((value) => !value)}
+        className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-1 shrink-0 text-[#A855F7]">
+            <Sparkles className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
+              Budget Overview
+            </h2>
+            <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
+              {roleSummary || assessment?.one_line_summary || 'AI-generated budget readiness assessment'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {assessment?.readiness_status && (
+                <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${readiness.badge}`}>
+                  <span className={`h-2 w-2 rounded-full ${readiness.dot}`} />
+                  {assessment.readiness_status}
+                </span>
+              )}
+              {isRefreshing && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Refreshing
+                </span>
+              )}
+            {record?.modifiedOn && (
+                <span className="text-[11px] text-[#94A3B8] dark:text-slate-500">
+                  Updated {new Date(record.modifiedOn).toLocaleString('en-AE', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </span>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+              {typeof scores?.document_evidence?.evidence_score === 'number' && (
+                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Document Evidence</p>
+                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
+                </div>
+              )}
+              {pfTotal > 0 && (
+                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
+                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+                </div>
+              )}
+              {baLabel && (
+                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Account</p>
+                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{baLabel}</p>
+                </div>
+              )}
+              {scores?.strategic_alignment?.match_type && (
+                <div className="rounded-xl border border-[#F0D9FF] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Strategic Fit</p>
+                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{scores.strategic_alignment.match_type}</p>
+                </div>
+              )}
+            </div>
+            {!data ? (
+              <div className="mt-4">
+                <EmptyAiActionCard
+                  description="Budget overview will appear here once an AI readiness assessment has been generated for this budget."
+                  icon={Sparkles}
+                />
+              </div>
+            ) : null}
+            <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                    <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                    {policyLoading
+                      ? 'Refreshing policy alignment for this budget.'
+                      : policyError
+                        ? 'Policy results are temporarily unavailable.'
+                        : hasPolicyMatch
+                          ? 'Policy counts are shown here. Expand to review the matched policies.'
+                          : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {policyLoading ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-3 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Evaluating
+                    </span>
+                  ) : policyError ? (
+                    <span className="rounded-full border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-1 text-xs font-semibold text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+                      Unavailable
+                    </span>
+                  ) : hasPolicyMatch ? (
+                    <>
+                      {policyConflictCount > 0 && (
+                        <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
+                          {policyConflictCount} conflicts
+                        </span>
+                      )}
+                      {policyCoordinationCount > 0 && (
+                        <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
+                          {policyCoordinationCount} coordination
+                        </span>
+                      )}
+                      {policyConditionalCount > 0 && (
+                        <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
+                          {policyConditionalCount} conditional
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="rounded-full border border-[#BBF7D0] bg-[#ECFDF3] px-3 py-1 text-xs font-semibold text-[#027A48] dark:border-[#027A48]/30 dark:bg-[#027A48]/12 dark:text-[#A6F4C5]">
+                      Cleared by AI
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {fileEvidenceItems.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                <div className="mb-3 flex items-center gap-2.5">
+                  <FileText className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                  <p className="text-base font-bold text-[#0F172A] dark:text-white">File Evidence Scores</p>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {fileEvidenceItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'rounded-xl border px-3 py-3 transition-colors',
+                        fileEvidenceTone(item.score, item.status).card
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{item.name}</p>
+                          <p className="mt-1 text-[11px] opacity-80">
+                            {item.status === 'complete'
+                              ? item.quality ?? 'Evidence scored'
+                              : item.status === 'error'
+                                ? 'Analysis unavailable'
+                                : 'Analysis in progress'}
+                          </p>
+                        </div>
+                        <span className={cn('shrink-0 text-base font-bold', fileEvidenceTone(item.score, item.status).score)}>
+                          {item.status === 'complete' && typeof item.score === 'number'
+                            ? `${item.score}`
+                            : item.status === 'error'
+                              ? 'Err'
+                              : '...'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {canExpand ? (
+          <ChevronDown
+            className={cn(
+              'mt-1 h-5 w-5 shrink-0 text-[#A855F7] transition-transform dark:text-[#E9D5FF]',
+              expanded && 'rotate-180'
+            )}
+          />
+        ) : null}
+      </button>
+
+      {loading ? (
+        <div className="mx-6 mb-5 flex items-center gap-2 rounded-2xl border border-dashed border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading budget overview...
+        </div>
+      ) : error ? (
+        <div className="mx-6 mb-5 rounded-2xl border border-[#F5C2C7] bg-[#FFF1F3] px-4 py-4 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+          {error}
+        </div>
+      ) : !record || !data ? (
+        <>
+          {canExpand ? (
+            <div className={cn('grid transition-all duration-300 ease-out', expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+              <div className="overflow-hidden">
+                <div className="space-y-5 border-t border-[#F3E8FF] px-6 py-5 dark:border-white/10">
+                  {policyLoading ? (
+                    <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-current" />
+                        Evaluating ICT Budget Considerations policies...
+                      </div>
+                    </div>
+                  ) : policyError ? (
+                    <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+                      {policyError}
+                    </div>
+                  ) : policyResult ? (
+                    policyResult.overallAssessment.hasPolicyMatch ? (
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                            <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+                          </div>
+                          <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                            Policy guidance is available even while the budget overview is still being generated.
+                          </p>
+                        </div>
+                        <div className="grid gap-4 lg:grid-cols-3">
+                          {policyMatchGroups.flatMap((group) => {
+                            const accent = toMatchTypeAccent(group.matchType)
+
+                            return group.items.map((item) => {
+                              const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
+                              const actionKey = `${item.policyNumber}-${item.policyName}-action`
+                              const truncatedReason = truncatePolicyCopy(item.reason, 100)
+                              const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
+                              const showFullReason = expandedPolicyTextSections[reasonKey] === true
+                              const showFullAction = expandedPolicyTextSections[actionKey] === true
+
+                              return (
+                                <article
+                                  key={`${item.policyNumber}-${item.policyName}-detail`}
+                                  className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+                                >
+                                  <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
+                                    <div className="flex items-start gap-3">
+                                      <div className={cn('mt-0.5 shrink-0', accent.text)}>
+                                        {group.matchType === 'Potential Conflict' ? (
+                                          <AlertTriangle className="h-5 w-5" />
+                                        ) : group.matchType === 'Coordination Required' ? (
+                                          <Layers className="h-5 w-5" />
+                                        ) : (
+                                          <Lightbulb className="h-5 w-5" />
+                                        )}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                                          <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
+                                            <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
+                                            {item.matchType}
+                                          </span>
+                                        </div>
+                                        <h3 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
+                                          {item.policyName}
+                                        </h3>
+                                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                                          Policy {item.policyNumber}
+                                        </p>
+                                      </div>
+                                      <div className="shrink-0 text-right">
+                                        <p className="text-xl font-bold text-[#A855F7]">
+                                          {item.relevanceScore}
+                                        </p>
+                                        <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
+                                          Probability
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-1 flex-col px-4 py-3.5">
+                                    <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
+                                      {showFullReason ? item.reason : truncatedReason.text}
+                                      {truncatedReason.truncated && (
+                                        <button
+                                          type="button"
+                                          onClick={() => togglePolicyTextSection(reasonKey)}
+                                          className="ml-2 font-semibold text-[#A855F7] hover:underline"
+                                        >
+                                          {showFullReason ? 'Less' : 'More'}
+                                        </button>
+                                      )}
+                                    </p>
+
+                                    <div className="mb-3 flex items-center gap-2">
+                                      <Clock3 className="h-4 w-4 text-[#94A3B8]" />
+                                      <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
+                                      <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
+                                        {item.strategicArea}
+                                      </span>
+                                    </div>
+
+                                    <div className="mt-auto rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
+                                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
+                                        Recommended Action
+                                      </p>
+                                      <p className="text-xs text-[#475569] dark:text-slate-100">
+                                        {showFullAction ? item.requiredAction : truncatedAction.text}
+                                        {truncatedAction.truncated && (
+                                          <button
+                                            type="button"
+                                            onClick={() => togglePolicyTextSection(actionKey)}
+                                            className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
+                                          >
+                                            {showFullAction ? 'Less' : 'More'}
+                                          </button>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </article>
+                              )
+                            })
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
+                            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                              {policyResult.overallAssessment.summary}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className={cn('grid transition-all duration-300 ease-out', expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0')}>
+          <div className="overflow-hidden">
+            <div className="space-y-5 border-t border-[#F3E8FF] px-6 py-5 dark:border-white/10">
+              {(roleSummary || roleBullets.length > 0) && (
+                <div className="rounded-2xl border border-[#EAF0F6] bg-white px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="mb-3 flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4 text-[#A855F7] dark:text-[#E9D5FF]" />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{currentRole} View</p>
+                  </div>
+                  <ul className="space-y-2">
+                    {roleSummary ? (
+                      <li className="flex items-start gap-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#A855F7] dark:bg-[#E9D5FF]" />
+                        <span>{roleSummary}</span>
+                      </li>
+                    ) : null}
+                    {roleBullets.slice(0, 6).map((message, index) => (
+                      <li key={`${currentRole}-view-${index}`} className="flex items-start gap-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#A855F7] dark:bg-[#E9D5FF]" />
+                        <span>{message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {(strengths.length > 0 || risks.length > 0) && (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {strengths.length > 0 && (
+                    <div className="rounded-2xl border border-[#DCFCE7] bg-[#F6FEF9] px-4 py-4 dark:border-emerald-500/20 dark:bg-emerald-900/10">
+                      <p className="mb-2 text-sm font-semibold text-[#166534] dark:text-emerald-300">Strengths</p>
+                      <ul className="space-y-2">
+                        {strengths.slice(0, 4).map((strength, index) => (
+                          <li key={index} className="flex items-start gap-2 text-sm leading-5 text-[#166534] dark:text-emerald-200">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#16A34A] dark:bg-emerald-300" />
+                            <span>{strength}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {risks.length > 0 && (
+                    <div className="rounded-2xl border border-[#FCE7F3] bg-[#FFF7FB] px-4 py-4 dark:border-pink-500/20 dark:bg-pink-900/10">
+                      <p className="mb-2 text-sm font-semibold text-[#9D174D] dark:text-pink-300">Risks</p>
+                      <ul className="space-y-2">
+                        {risks.slice(0, 4).map((risk, index) => (
+                          <li key={index} className="flex items-start gap-2 text-sm leading-5 text-[#9D174D] dark:text-pink-200">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#DB2777] dark:bg-pink-300" />
+                            <span>{risk}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(issues.length > 0 || nextActions.length > 0) && (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {issues.length > 0 && (
+                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                      <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Key Issues</p>
+                      <ul className="space-y-2">
+                        {issues.slice(0, 4).map((issue) => (
+                          <li key={issue.issue_id ?? issue.title} className="flex items-start gap-2 text-sm font-medium leading-6 text-[#334155] dark:text-slate-100">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0F172A] dark:bg-white" />
+                            <span>{issue.title}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {nextActions.length > 0 && (
+                    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                      <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Recommended Next Actions</p>
+                      <ul className="space-y-2">
+                        {nextActions.slice(0, 4).map((action) => (
+                          <li key={`${action.priority ?? 'p'}-${action.action ?? 'action'}`} className="flex items-start gap-2 text-sm font-medium leading-6 text-[#334155] dark:text-slate-100">
+                            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0F172A] dark:bg-white" />
+                            <span>{action.action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {policyLoading ? (
+                <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-current" />
+                    Evaluating ICT Budget Considerations policies...
+                  </div>
+                </div>
+              ) : policyError ? (
+                <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+                  {policyError}
+                </div>
+              ) : policyResult ? (
+                policyResult.overallAssessment.hasPolicyMatch ? (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                        <p className="text-base font-bold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+                      </div>
+                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                        Expandable policy guidance is now part of the budget overview.
+                      </p>
+                    </div>
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      {policyMatchGroups.flatMap((group) => {
+                        const accent = toMatchTypeAccent(group.matchType)
+
+                        return group.items.map((item) => {
+                          const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
+                          const actionKey = `${item.policyNumber}-${item.policyName}-action`
+                          const truncatedReason = truncatePolicyCopy(item.reason, 100)
+                          const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
+                          const showFullReason = expandedPolicyTextSections[reasonKey] === true
+                          const showFullAction = expandedPolicyTextSections[actionKey] === true
+
+                          return (
+                            <article
+                              key={`${item.policyNumber}-${item.policyName}-detail`}
+                              className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+                            >
+                              <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
+                                <div className="flex items-start gap-3">
+                                  <div className={cn('mt-0.5 shrink-0', accent.text)}>
+                                    {group.matchType === 'Potential Conflict' ? (
+                                      <AlertTriangle className="h-5 w-5" />
+                                    ) : group.matchType === 'Coordination Required' ? (
+                                      <Layers className="h-5 w-5" />
+                                    ) : (
+                                      <Lightbulb className="h-5 w-5" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
+                                        <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
+                                        {item.matchType}
+                                      </span>
+                                    </div>
+                                    <h3 className="min-h-[2.5rem] text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
+                                      {item.policyName}
+                                    </h3>
+                                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                                      Policy {item.policyNumber}
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p className="text-xl font-bold text-[#A855F7]">
+                                      {item.relevanceScore}
+                                    </p>
+                                    <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
+                                      Probability
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-1 flex-col px-4 py-3.5">
+                                <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
+                                  {showFullReason ? item.reason : truncatedReason.text}
+                                  {truncatedReason.truncated && (
+                                    <button
+                                      type="button"
+                                      onClick={() => togglePolicyTextSection(reasonKey)}
+                                      className="ml-2 font-semibold text-[#A855F7] hover:underline"
+                                    >
+                                      {showFullReason ? 'Less' : 'More'}
+                                    </button>
+                                  )}
+                                </p>
+
+                                <div className="mb-3 flex items-center gap-2">
+                                  <Clock3 className="h-4 w-4 text-[#94A3B8]" />
+                                  <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
+                                  <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
+                                    {item.strategicArea}
+                                  </span>
+                                </div>
+
+                                <div className="mt-auto rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
+                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
+                                    Recommended Action
+                                  </p>
+                                  <p className="text-xs text-[#475569] dark:text-slate-100">
+                                    {showFullAction ? item.requiredAction : truncatedAction.text}
+                                    {truncatedAction.truncated && (
+                                      <button
+                                        type="button"
+                                        onClick={() => togglePolicyTextSection(actionKey)}
+                                        className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
+                                      >
+                                        {showFullAction ? 'Less' : 'More'}
+                                      </button>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                            </article>
+                          )
+                        })
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
+                        <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                          {policyResult.overallAssessment.summary}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -1439,7 +2474,7 @@ export default function ProjectDetail() {
       summary: '',
       documents: [],
       clarifications: [],
-      aiScore: 84,
+      aiScore: 0,
       riskLevel: 'Low',
       capex: 0,
       opex: 0,
@@ -1469,7 +2504,7 @@ export default function ProjectDetail() {
   const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
   const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
   const pageTitle = project.name
-  const confidence = project.aiScore || 84
+  const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
   const riskTone = project.riskLevel === 'High' ? 'red' : project.riskLevel === 'Medium' ? 'amber' : 'green'
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
@@ -1633,7 +2668,10 @@ export default function ProjectDetail() {
     scopeKey: null,
   })
   const supportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
-  const [storedCumulativeSummaryId, setStoredCumulativeSummaryId] = useState<string | null>(null)
+  const [storedCumulativeSummaryRecord, setStoredCumulativeSummaryRecord] = useState<StoredBudgetAiSummaryRecord | null>(null)
+  const [budgetOverviewRecord, setBudgetOverviewRecord] = useState<StoredBudgetOverviewRecord | null>(null)
+  const [pendingBudgetOverviewRefreshModifiedOn, setPendingBudgetOverviewRefreshModifiedOn] = useState<string | null>(null)
+  const [pendingCumulativeRefreshModifiedOn, setPendingCumulativeRefreshModifiedOn] = useState<string | null>(null)
   const [detailAiSuggestionLoading, setDetailAiSuggestionLoading] = useState(false)
   const [detailAiSuggestionError, setDetailAiSuggestionError] = useState<string | null>(null)
   const [detailAiSuggestions, setDetailAiSuggestions] = useState<StrategicPrioritySuggestion[]>([])
@@ -1642,9 +2680,9 @@ export default function ProjectDetail() {
   const [detailPolicyEvaluationLoading, setDetailPolicyEvaluationLoading] = useState(false)
   const [detailPolicyEvaluationError, setDetailPolicyEvaluationError] = useState<string | null>(null)
   const [detailPolicyEvaluationResult, setDetailPolicyEvaluationResult] = useState<IctBudgetConsiderationsEvaluationResult | null>(null)
-  const [detailPolicyEvaluationExpanded, setDetailPolicyEvaluationExpanded] = useState(false)
-  const [detailExpandedPolicyTextSections, setDetailExpandedPolicyTextSections] = useState<Record<string, boolean>>({})
   const [aiApplyingAccountCode, setAiApplyingAccountCode] = useState(false)
+  const [openAiAssistField, setOpenAiAssistField] = useState<string | null>(null)
+  const [animatedAiFields, setAnimatedAiFields] = useState<string[]>([])
   const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
   const [clarificationsLoading, setClarificationsLoading] = useState(false)
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
@@ -1719,6 +2757,26 @@ export default function ProjectDetail() {
 
     return merged
   }, [clarificationFileUrls, sharepointDocs])
+  const aiSupportingDocuments = useMemo(
+    () =>
+      supportingDocuments.filter((doc) => {
+        const normalizedUrl = normalizeDocumentUrl(doc.absoluteurl)
+        return !normalizedUrl || !clarificationFileUrls.has(normalizedUrl)
+      }),
+    [clarificationFileUrls, supportingDocuments]
+  )
+  const clarificationDocumentNames = useMemo(
+    () =>
+      new Set(
+        supportingDocuments
+          .filter((doc) => {
+            const normalizedUrl = normalizeDocumentUrl(doc.absoluteurl)
+            return Boolean(normalizedUrl && clarificationFileUrls.has(normalizedUrl))
+          })
+          .map((doc) => (doc.fullname || doc.title || 'Document').trim().toLowerCase())
+      ),
+    [clarificationFileUrls, supportingDocuments]
+  )
   const hasSupportingDocuments =
       supportingDocuments.length > 0 || (!hasDataverseBudgetProject && project.documents.length > 0)
   const documentStatus = sharepointDocsLoading ? 'Loading' : hasSupportingDocuments ? 'Complete' : 'Missing'
@@ -1727,31 +2785,59 @@ export default function ProjectDetail() {
   const canDeleteDocuments = currentRole === 'Respondent' && isEditMode
   const detailEntityName = getStoredInstanceDetail()?.name?.trim() || currentUser.entity
 
-  const refreshPersistedDocumentSummaries = async () => {
+  const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean }) => {
     if (!ictBudgetId) return
 
-    setPersistedDocumentSummariesLoading(true)
+    if (!options?.quiet) {
+      setPersistedDocumentSummariesLoading(true)
+    }
     setPersistedDocumentSummariesError(null)
     try {
-      const [documentSummaries, cumulativeSummary] = await Promise.all([
+      const [documentSummaries, { cumulativeRecord, budgetOverviewRecord: overviewRecord }] = await Promise.all([
         getDocumentSummaryRecordsByBudgetId(ictBudgetId),
-        getLatestCumulativeSummaryByBudgetId(ictBudgetId),
+        getAllAiSummaryRecordsByBudgetId(ictBudgetId),
       ])
 
+      const nextBudgetOverviewModifiedOn = overviewRecord?.modifiedOn ?? null
+      const nextCumulativeModifiedOn = cumulativeRecord?.modifiedOn ?? null
+
+      if (
+        pendingBudgetOverviewRefreshModifiedOn !== null &&
+        nextBudgetOverviewModifiedOn !== null &&
+        nextBudgetOverviewModifiedOn !== pendingBudgetOverviewRefreshModifiedOn
+      ) {
+        setPendingBudgetOverviewRefreshModifiedOn(null)
+      }
+
+      if (
+        pendingCumulativeRefreshModifiedOn !== null &&
+        nextCumulativeModifiedOn !== null &&
+        nextCumulativeModifiedOn !== pendingCumulativeRefreshModifiedOn
+      ) {
+        setPendingCumulativeRefreshModifiedOn(null)
+      }
+
       setPersistedDocumentSummaries(documentSummaries)
-      setStoredCumulativeSummaryId(cumulativeSummary?.id ?? null)
+      setBudgetOverviewRecord(overviewRecord)
+      setStoredCumulativeSummaryRecord(cumulativeRecord)
       setSupportingDocumentCumulativeAnalysis((current) => {
-        const rawSummary = cumulativeSummary?.responseJson ?? ''
+        const rawSummary = cumulativeRecord?.responseJson ?? ''
         const parsedSummary =
-          cumulativeSummary?.parsedSummary ??
+          cumulativeRecord?.parsedSummary ??
           parseSupportingDocumentEvaluationSummary(rawSummary) ??
           (current.rawSummary === rawSummary ? current.parsedSummary : null)
 
         return {
-          status: rawSummary ? (parsedSummary ? 'complete' : 'error') : 'idle',
+          status: pendingCumulativeRefreshModifiedOn !== null
+            ? 'analyzing'
+            : !cumulativeRecord
+            ? 'idle'
+            : rawSummary
+                ? (parsedSummary ? 'complete' : 'error')
+                : 'idle',
           parsedSummary,
           rawSummary,
-          responseTimeMs: cumulativeSummary?.responseTime ?? null,
+          responseTimeMs: cumulativeRecord?.responseTime ?? null,
           error: rawSummary && !parsedSummary
             ? 'The stored cumulative summary could not be parsed into action cards.'
             : null,
@@ -1759,14 +2845,22 @@ export default function ProjectDetail() {
           scopeKey: documentSummaries.map((item) => `${item.id}:${item.documentSummary.length}`).join('|') || null,
         }
       })
+
+      return {
+        documentSummaries,
+        cumulativeRecord,
+        budgetOverviewRecord: overviewRecord,
+      }
     } catch (error) {
       setPersistedDocumentSummariesError(
         error instanceof Error ? error.message : 'Unable to load stored AI document summaries.'
       )
     } finally {
-      setPersistedDocumentSummariesLoading(false)
+      if (!options?.quiet) {
+        setPersistedDocumentSummariesLoading(false)
+      }
     }
-  }
+  }, [ictBudgetId, pendingBudgetOverviewRefreshModifiedOn, pendingCumulativeRefreshModifiedOn])
 
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -1806,6 +2900,7 @@ export default function ProjectDetail() {
       technologyCompanies.find((company) => company.id === formValues.technologyCompanyId) ?? null,
     [formValues.technologyCompanyId, technologyCompanies]
   )
+
   const visibleBudgetFields = useMemo(
     () => getVisibleBudgetFields(formValues.activityType),
     [formValues.activityType]
@@ -1836,24 +2931,21 @@ export default function ProjectDetail() {
   const detailMatchedAiSuggestions = useMemo<MatchedAiSuggestion[]>(
     () =>
       detailAiSuggestions.map((suggestion) => {
-        const priorityRecord =
-          strategicPriorities.find(
-            (option) =>
-              !option.parentId && labelsMatch(option.name, suggestion.strategicPriority)
-          ) ?? null
-        const classificationRecord =
-          strategicPriorities.find((option) => {
-            if (!option.parentId) return false
-            if (!labelsMatch(option.name, suggestion.strategicPriorityClassification)) return false
-            if (!priorityRecord) return true
-            return option.parentId === priorityRecord.id
-          }) ?? null
+        const resolved = resolveStrategicSuggestionSelection(
+          {
+            ...suggestion,
+            priorityId: null,
+            classificationId: null,
+            classificationParentId: null,
+          },
+          strategicPriorities
+        )
 
         return {
           ...suggestion,
-          priorityId: priorityRecord?.id ?? null,
-          classificationId: classificationRecord?.id ?? null,
-          classificationParentId: classificationRecord?.parentId ?? null,
+          priorityId: resolved.priorityId,
+          classificationId: resolved.classificationId,
+          classificationParentId: resolved.classificationParentId,
         }
       }),
     [detailAiSuggestions, strategicPriorities]
@@ -1876,7 +2968,7 @@ export default function ProjectDetail() {
       ])
     )
 
-    const items: SupportingDocumentAiInsightItem[] = supportingDocuments.map((doc) => {
+    const items: SupportingDocumentAiInsightItem[] = aiSupportingDocuments.map((doc) => {
       const name = (doc.fullname || doc.title || 'Document').trim()
       const stored = persistedDocumentSummaryByName.get(name.toLowerCase()) ?? null
       const localAnalysis = localAnalysisByName.get(name.toLowerCase()) ?? null
@@ -1919,7 +3011,7 @@ export default function ProjectDetail() {
     }
 
     return items
-  }, [persistedDocumentSummaryByName, supportingDocumentAnalyses, supportingDocuments])
+  }, [aiSupportingDocuments, persistedDocumentSummaryByName, supportingDocumentAnalyses])
 
   const detailUploadedFileStatuses = useMemo<Record<string, 'uploading' | 'analyzing' | 'error'>>(
     () =>
@@ -1951,13 +3043,17 @@ export default function ProjectDetail() {
   const completedPersistedDocumentInputs = useMemo(
     () =>
       persistedDocumentSummaries
-        .filter((item) => item.documentSummary.trim())
+        .filter(
+          (item) =>
+            item.documentSummary.trim() &&
+            !clarificationDocumentNames.has(item.documentName.trim().toLowerCase())
+        )
         .map((item) => ({
           id: item.id,
           filename: item.documentName,
           rawSummary: item.documentSummary,
         })),
-    [persistedDocumentSummaries]
+    [clarificationDocumentNames, persistedDocumentSummaries]
   )
 
   const resolvedCumulativeParsedSummary = useMemo(
@@ -2029,6 +3125,84 @@ export default function ProjectDetail() {
       ? 'Single file summary'
       : 'Upload or persist documents to activate AI guidance'
 
+  useEffect(() => {
+    if (animatedAiFields.length === 0) return
+    const timeout = window.setTimeout(() => {
+      setAnimatedAiFields([])
+    }, 1600)
+
+    return () => window.clearTimeout(timeout)
+  }, [animatedAiFields])
+
+  const aiSuggestedFieldByMapping = useMemo(() => {
+    const lookup = new Map<string, SupportingDocumentSuggestedProjectField>()
+    for (const field of actionSuggestedFields) {
+      const mapping = resolveAiFieldMapping(field)
+      if (mapping && !lookup.has(mapping)) {
+        lookup.set(mapping, field)
+      }
+    }
+    return lookup
+  }, [actionSuggestedFields])
+
+  function isAiSuggestionApplied(mapping: string, field: SupportingDocumentSuggestedProjectField) {
+    const rawValue = Array.isArray(field.suggested_value)
+      ? field.suggested_value.join(', ')
+      : String(field.suggested_value ?? '')
+    const normalized = rawValue.trim().toLowerCase()
+
+    if (mapping === 'initiativeName') {
+      return formValues.initiativeName.trim().toLowerCase() === normalized
+    }
+
+    if (mapping === 'summary') {
+      return formValues.summary.trim().toLowerCase() === normalized
+    }
+
+    if (mapping === 'category') {
+      const selectedCategory = CATEGORY_OPTIONS.find((option) => option.value === formValues.category)
+      return (selectedCategory?.label.trim().toLowerCase() ?? '') === normalized
+    }
+
+    if (mapping === 'technologyCompany') {
+      const selectedName = selectedTechnologyCompany?.name.trim().toLowerCase() ?? ''
+      return selectedName === normalized || selectedName.includes(normalized) || normalized.includes(selectedName)
+    }
+
+    return false
+  }
+
+  function animateAiFieldUpdate(fieldKey: string) {
+    setAnimatedAiFields((current) => Array.from(new Set([...current, fieldKey])))
+  }
+
+  function applyAiAssistField(fieldKey: string, field: SupportingDocumentSuggestedProjectField) {
+    if (!isEditMode) {
+      return
+    }
+
+    applyAiFieldSuggestion(field)
+    animateAiFieldUpdate(fieldKey)
+    setOpenAiAssistField(null)
+  }
+
+  function buildAiAssist(fieldKey: string, fieldLabel: string) {
+    const field = aiSuggestedFieldByMapping.get(fieldKey)
+    if (!field) return null
+    if (isAiSuggestionApplied(fieldKey, field)) return null
+
+    return (
+      <AiFieldAssistTrigger
+        fieldLabel={fieldLabel}
+        suggestedValue={formatAiFieldValue(field.suggested_value)}
+        isOpen={openAiAssistField === fieldKey}
+        canApply={isEditMode}
+        onToggle={() => setOpenAiAssistField((current) => (current === fieldKey ? null : fieldKey))}
+        onApply={() => applyAiAssistField(fieldKey, field)}
+      />
+    )
+  }
+
   const detailPolicyMatchGroups = useMemo<PolicyMatchGroup[]>(() => {
     const assessmentItems = detailPolicyEvaluationResult?.assessmentItems ?? []
     const order: PolicyMatchType[] = ['Potential Conflict', 'Coordination Required', 'Allowed With Conditions']
@@ -2039,13 +3213,6 @@ export default function ProjectDetail() {
       }))
       .filter((group) => group.items.length > 0)
   }, [detailPolicyEvaluationResult])
-
-  const toggleDetailPolicyTextSection = (sectionKey: string) => {
-    setDetailExpandedPolicyTextSections((current) => ({
-      ...current,
-      [sectionKey]: !current[sectionKey],
-    }))
-  }
 
   const detailAiSuggestionCard = detailAiSuggestionError ? (
     <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
@@ -2071,52 +3238,59 @@ export default function ProjectDetail() {
             <Bot className="absolute right-36 bottom-3 h-6 w-6 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
             <Sparkles className="absolute right-8 bottom-4 h-4 w-4 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
           </div>
-          <div className="flex w-full flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#A855F7]/12 text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
-                  <Sparkles className="h-3.5 w-3.5" />
+          <div className="px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#A855F7]/12 text-[#A855F7] dark:bg-[#A855F7]/12 dark:text-[#E9D5FF]">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </div>
+                  <h4 className="text-sm font-medium text-[#0F172A] dark:text-white">AI Recommendation</h4>
                 </div>
-                <h4 className="text-sm font-medium text-[#0F172A] dark:text-white">AI Recommendation</h4>
+
+                <div className="flex flex-col gap-2 xl:flex-row xl:flex-wrap xl:items-center xl:gap-3">
+                  <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
+                    <p className="truncate text-sm text-[#475569] dark:text-slate-300">
+                      <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority:</span>{' '}
+                      <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topDetailAiSuggestion.strategicPriority}</span>
+                    </p>
+                  </div>
+                  <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
+                    <p className="truncate text-sm text-[#475569] dark:text-slate-300">
+                      <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority Classification:</span>{' '}
+                      <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topDetailAiSuggestion.strategicPriorityClassification}</span>
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex flex-col gap-2 xl:flex-row xl:flex-wrap xl:items-center xl:gap-3">
-                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
-                  <p className="truncate text-sm text-[#475569] dark:text-slate-300">
-                    <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority:</span>{' '}
-                    <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topDetailAiSuggestion.strategicPriority}</span>
-                  </p>
-                </div>
-                <div className="min-w-0 rounded-xl bg-white/80 px-3 py-2 dark:bg-white/5">
-                  <p className="truncate text-sm text-[#475569] dark:text-slate-300">
-                    <span className="font-medium text-[#64748B] dark:text-slate-400">Suggested Strategic Priority Classification:</span>{' '}
-                    <span className="font-semibold text-[#A855F7] dark:text-[#E9D5FF]">{topDetailAiSuggestion.strategicPriorityClassification}</span>
-                  </p>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setDetailAiSuggestionExpanded((current) => !current)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#E9D5FF] bg-white/90 text-[#A855F7] transition-colors hover:bg-[#FAF5FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
+                aria-label={detailAiSuggestionExpanded ? 'Hide details' : 'View details'}
+                title={detailAiSuggestionExpanded ? 'Hide details' : 'View details'}
+              >
+                <ChevronDown className={cn('h-4 w-4 transition-transform', detailAiSuggestionExpanded && 'rotate-180')} />
+              </button>
             </div>
 
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              {canApplyDetailAi && (
+            {canApplyDetailAi && (
+              <div className="mt-3 flex justify-start">
                 <Button
                   type="button"
                   className="h-9 rounded-xl bg-[#A855F7] px-4 text-sm text-white hover:bg-[#9333EA]"
                   onClick={() => applyAiSuggestion(topDetailAiSuggestion, 'both')}
-                  disabled={!topDetailAiSuggestion.priorityId || !topDetailAiSuggestion.classificationId}
+                  disabled={
+                    !resolveStrategicSuggestionSelection(topDetailAiSuggestion, strategicPriorities).priorityId ||
+                    !resolveStrategicSuggestionSelection(topDetailAiSuggestion, strategicPriorities).classificationId
+                  }
                 >
                   <Sparkles className="h-4 w-4" />
                   Apply
                 </Button>
-              )}
-              <button
-                type="button"
-                onClick={() => setDetailAiSuggestionExpanded((current) => !current)}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-[#E9D5FF] bg-white/90 px-4 text-sm font-medium text-[#A855F7] transition-colors hover:bg-[#FAF5FF] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF] dark:hover:bg-white/15"
-              >
-                <span>{detailAiSuggestionExpanded ? 'Hide Details' : 'View Details'}</span>
-                <ChevronDown className={cn('h-4 w-4 transition-transform', detailAiSuggestionExpanded && 'rotate-180')} />
-              </button>
-            </div>
+              </div>
+            )}
           </div>
 
           {detailAiSuggestionExpanded && (
@@ -2176,264 +3350,20 @@ export default function ProjectDetail() {
     </div>
   )
 
-  const detailBudgetConsiderationsCard = (detailPolicyEvaluationLoading || detailPolicyEvaluationError || detailPolicyEvaluationResult) ? (
-    <section>
-      {detailPolicyEvaluationLoading ? (
-        <div className="rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 text-sm text-[#A855F7] shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#241735] dark:text-[#E9D5FF] sm:px-6">
-          <div className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Evaluating ICT Budget Considerations policies...
-          </div>
-        </div>
-      ) : detailPolicyEvaluationError ? (
-        <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-4 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10 sm:px-6">
-          {detailPolicyEvaluationError}
-        </div>
-      ) : detailPolicyEvaluationResult ? (
-        <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF8FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-          <button
-            type="button"
-            onClick={() => {
-              if (detailPolicyEvaluationResult.overallAssessment.hasPolicyMatch) {
-                setDetailPolicyEvaluationExpanded((value) => !value)
-              }
-            }}
-            className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
-          >
-              <div className="flex items-start gap-3">
-                <div className="mt-1 shrink-0 text-[#A855F7]">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
-                  AI Budget Considerations
-                </h2>
-                <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
-                  {detailPolicyEvaluationResult.overallAssessment.hasPolicyMatch
-                    ? 'AI screened this project against DGE ICT Budget Considerations and highlighted the policies that need attention.'
-                    : detailPolicyEvaluationResult.overallAssessment.summary}
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 flex-col items-end gap-3">
-              {detailPolicyEvaluationResult.overallAssessment.hasPolicyMatch ? (
-                <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
-                  {detailPolicyEvaluationResult.overallAssessment.hasPotentialConflict && (
-                    <span className="rounded-full bg-[#FFF1F2] px-2.5 py-1 text-[#DC2626] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]">
-                      {detailPolicyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0}{' '}
-                      <span className="text-[#64748B] dark:text-slate-100">conflicts</span>
-                    </span>
-                  )}
-                  {detailPolicyEvaluationResult.overallAssessment.hasCoordinationRequirement && (
-                    <span className="rounded-full bg-[#FFF1CF] px-2.5 py-1 text-[#B7791F] dark:bg-[#B7791F]/15 dark:text-[#F6D28A]">
-                      {detailPolicyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0}{' '}
-                      <span className="text-[#64748B] dark:text-slate-100">coordination</span>
-                    </span>
-                  )}
-                  {detailPolicyEvaluationResult.overallAssessment.hasAllowedWithConditions && (
-                    <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-[#16A34A] dark:bg-[#16A34A]/15 dark:text-[#BBF7D0]">
-                      {detailPolicyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0}{' '}
-                      <span className="text-[#64748B] dark:text-slate-100">conditional</span>
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <span className="rounded-full bg-[#ECFDF3] px-2.5 py-1 text-sm font-semibold text-[#027A48] dark:bg-[#027A48]/15 dark:text-[#A6F4C5]">
-                  Cleared by AI
-                </span>
-              )}
-              {detailPolicyEvaluationResult.overallAssessment.hasPolicyMatch && (
-                <div className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-sm font-semibold text-[#A855F7] shadow-sm dark:bg-white/10 dark:text-[#E9D5FF]">
-                  <span>{detailPolicyEvaluationExpanded ? 'Collapse' : 'Expand'}</span>
-                  <ChevronDown
-                    className={cn(
-                      'h-4 w-4 transition-transform',
-                      detailPolicyEvaluationExpanded && 'rotate-180'
-                    )}
-                  />
-                </div>
-              )}
-            </div>
-          </button>
-
-          <div className="px-6 pb-5">
-            {detailPolicyEvaluationResult.overallAssessment.hasPolicyMatch ? (
-              <>
-                <div className="p-0">
-                  {detailPolicyEvaluationExpanded ? (
-                    <div className="grid gap-4 lg:grid-cols-3">
-                      {detailPolicyMatchGroups.flatMap((group) => {
-                        const accent = toMatchTypeAccent(group.matchType)
-
-                        return group.items.map((item) => {
-                          const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
-                          const actionKey = `${item.policyNumber}-${item.policyName}-action`
-                          const truncatedReason = truncatePolicyCopy(item.reason, 100)
-                          const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
-                          const showFullReason = detailExpandedPolicyTextSections[reasonKey] === true
-                          const showFullAction = detailExpandedPolicyTextSections[actionKey] === true
-
-                          return (
-                            <article
-                              key={`${item.policyNumber}-${item.policyName}-detail`}
-                              className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
-                            >
-                              <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
-                                <div className="flex items-start gap-3">
-                                  <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                    {group.matchType === 'Potential Conflict' ? (
-                                      <AlertTriangle className="h-5 w-5" />
-                                    ) : group.matchType === 'Coordination Required' ? (
-                                      <Layers className="h-5 w-5" />
-                                    ) : (
-                                      <Lightbulb className="h-5 w-5" />
-                                    )}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                        <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                        {item.matchType}
-                                      </span>
-                                    </div>
-                                    <h3 className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                      {item.policyName}
-                                    </h3>
-                                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                                      Policy {item.policyNumber}
-                                    </p>
-                                  </div>
-                                  <div className="shrink-0 text-right">
-                                    <p className="text-xl font-bold text-[#A855F7]">
-                                      {item.relevanceScore}
-                                    </p>
-                                    <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
-                                      Probability
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="px-4 py-3.5">
-                                <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
-                                  {showFullReason ? item.reason : truncatedReason.text}
-                                  {truncatedReason.truncated && (
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleDetailPolicyTextSection(reasonKey)}
-                                      className="ml-2 font-semibold text-[#A855F7] hover:underline"
-                                    >
-                                      {showFullReason ? 'Less' : 'More'}
-                                    </button>
-                                  )}
-                                </p>
-
-                                <div className="mb-3 flex items-center gap-2">
-                                  <Clock3 className="h-4 w-4 text-[#94A3B8]" />
-                                  <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
-                                  <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
-                                    {item.strategicArea}
-                                  </span>
-                                </div>
-
-                                <div className="mb-3 rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
-                                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
-                                    Recommended Action
-                                  </p>
-                                  <p className="text-xs text-[#475569] dark:text-slate-100">
-                                    {showFullAction ? item.requiredAction : truncatedAction.text}
-                                    {truncatedAction.truncated && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleDetailPolicyTextSection(actionKey)}
-                                        className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
-                                      >
-                                        {showFullAction ? 'Less' : 'More'}
-                                      </button>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                            </article>
-                          )
-                        })
-                      })}
-                    </div>
-                  ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                      {detailPolicyMatchGroups
-                        .flatMap((group) =>
-                          group.items.map((item) => ({ group, item }))
-                        )
-                        .map(({ group, item }) => {
-                          const accent = toMatchTypeAccent(group.matchType)
-
-                          return (
-                            <div
-                              key={`${item.policyNumber}-${item.policyName}-preview`}
-                              className="rounded-2xl border border-[#E9D5FF] bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
-                            >
-                              <div className="flex items-start gap-2.5">
-                                <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                  {group.matchType === 'Potential Conflict' ? (
-                                    <AlertTriangle className="h-4 w-4" />
-                                  ) : group.matchType === 'Coordination Required' ? (
-                                    <Layers className="h-4 w-4" />
-                                  ) : (
-                                    <CheckCircle2 className="h-4 w-4" />
-                                  )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                      <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                      {item.matchType}
-                                    </span>
-                                    <span className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]">
-                                      {item.relevanceScore}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                    {item.policyName}
-                                  </p>
-                                  <p className="mt-1 text-[11px] text-[#64748B] dark:text-slate-300">
-                                    Policy {item.policyNumber}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  )}
-                </div>
-
-                {!detailPolicyEvaluationExpanded && (
-                  <p className="mt-3 text-sm text-[#64748B] dark:text-slate-200">
-                    Expand to review all matched policies with their reason, evidence, and required action.
-                  </p>
-                )}
-              </>
-            ) : (
-              <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
-                    <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                      {detailPolicyEvaluationResult.overallAssessment.summary}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-    </section>
-  ) : null
+  const detailBudgetOverviewCard = (
+    <InteractiveBudgetOverviewCard
+      record={budgetOverviewRecord}
+      loading={persistedDocumentSummariesLoading}
+      error={persistedDocumentSummariesError}
+      currentRole={currentRole}
+      isRefreshing={pendingBudgetOverviewRefreshModifiedOn !== null}
+      policyLoading={detailPolicyEvaluationLoading}
+      policyError={detailPolicyEvaluationError}
+      policyResult={detailPolicyEvaluationResult}
+      policyMatchGroups={detailPolicyMatchGroups}
+      fileInsightItems={detailSupportingDocumentInsightItems}
+    />
+  )
 
   const detailDocumentActionCards = (
       <div className="space-y-4">
@@ -2458,9 +3388,7 @@ export default function ProjectDetail() {
                   <Check className="h-3 w-3" />
                   Apply All
                 </button>
-              ) : (
-                <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              )}
+              ) : null}
             </div>
             {actionSupportingDocumentSummary.loading ? (
               <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -2529,7 +3457,6 @@ export default function ProjectDetail() {
                 <p className="text-xs text-[#64748B] dark:text-slate-300">Extracted financial evidence</p>
               </div>
             </div>
-            <ArrowUpRight className="h-4 w-4 text-[#D8B4FE] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
           </div>
           {actionSupportingDocumentSummary.loading ? (
             <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
@@ -2892,7 +3819,28 @@ export default function ProjectDetail() {
   useEffect(() => {
     if (!ictBudgetId) return
     void refreshPersistedDocumentSummaries()
-  }, [ictBudgetId])
+  }, [ictBudgetId, refreshPersistedDocumentSummaries])
+
+  useEffect(() => {
+    if (!ictBudgetId) return
+
+    const shouldPoll =
+      pendingCumulativeRefreshModifiedOn !== null ||
+      pendingBudgetOverviewRefreshModifiedOn !== null
+
+    if (!shouldPoll) return
+
+    const intervalId = window.setInterval(() => {
+      void refreshPersistedDocumentSummaries({ quiet: true })
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [
+    ictBudgetId,
+    pendingBudgetOverviewRefreshModifiedOn,
+    pendingCumulativeRefreshModifiedOn,
+    refreshPersistedDocumentSummaries,
+  ])
 
   useEffect(() => {
     if (!isEditMode) return
@@ -3005,7 +3953,13 @@ export default function ProjectDetail() {
               },
             ])
             await syncCumulativeSummaryForBudget(ictBudgetId)
-            await Promise.all([refreshPersistedDocumentSummaries(), refreshSharepointDocs()])
+            const [refreshed] = await Promise.all([
+              refreshPersistedDocumentSummaries({ quiet: true }),
+              refreshSharepointDocs(),
+            ])
+            setPendingCumulativeRefreshModifiedOn(
+              refreshed?.cumulativeRecord?.modifiedOn ?? storedCumulativeSummaryRecord?.modifiedOn ?? null
+            )
           }
 
           setUploadedFiles((current) =>
@@ -3194,11 +4148,17 @@ export default function ProjectDetail() {
       return false
     }
 
+    const shouldInvalidateBudgetOverview =
+      hasUnsavedFormFieldChanges || hasUnsavedBudgetAccountCodeChanges
+
     setSavingIctBudget(true)
     try {
       await runActionToast(
         async () => {
           await updateIctBudgetDraft(ictBudgetId, formValues)
+          if (shouldInvalidateBudgetOverview) {
+            await invalidateBudgetOverviewRecord(ictBudgetId)
+          }
 
           const originalProductIds = new Set(savedFormValues.technologyProductIds)
           const updatedProductIds = new Set(formValues.technologyProductIds)
@@ -3242,6 +4202,13 @@ export default function ProjectDetail() {
           minDurationMs: 1800,
         }
       )
+
+      if (shouldInvalidateBudgetOverview) {
+        const refreshed = await refreshPersistedDocumentSummaries({ quiet: true })
+        setPendingBudgetOverviewRefreshModifiedOn(
+          refreshed?.budgetOverviewRecord?.modifiedOn ?? budgetOverviewRecord?.modifiedOn ?? null
+        )
+      }
 
       if (options?.exitEditMode !== false) {
         setIsEditMode(false)
@@ -3662,14 +4629,15 @@ export default function ProjectDetail() {
     suggestion: MatchedAiSuggestion,
     mode: 'both' | 'priority' | 'classification'
   ) {
+    const resolved = resolveStrategicSuggestionSelection(suggestion, strategicPriorities)
     const nextPriorityId =
       mode === 'priority' || mode === 'both'
-        ? suggestion.priorityId
-        : suggestion.classificationParentId ?? formValues.strategicPriorityId
+        ? resolved.priorityId
+        : resolved.classificationParentId ?? formValues.strategicPriorityId
     const nextClassificationId =
       mode === 'priority'
         ? ''
-        : suggestion.classificationId ?? ''
+        : resolved.classificationId ?? ''
 
     if (!nextPriorityId) {
       showErrorToast(
@@ -3826,76 +4794,7 @@ export default function ProjectDetail() {
   }
 
   const syncCumulativeSummaryForBudget = async (budgetId: string) => {
-    const allSummaries = await getDocumentSummaryRecordsByBudgetId(budgetId)
-    const scopeKey = allSummaries
-      .map((item) => `${item.documentName}:${item.id}`)
-      .sort()
-      .join('|')
-
-    if (allSummaries.length === 0) {
-      await clearCumulativeSummaryRecord(budgetId)
-      setSupportingDocumentCumulativeAnalysis({
-        status: 'idle',
-        parsedSummary: null,
-        rawSummary: '',
-        responseTimeMs: null,
-        error: null,
-        sourceFileCount: 0,
-        scopeKey: null,
-      })
-      return
-    }
-
-    if (allSummaries.length === 1) {
-      await upsertCumulativeSummaryRecord({
-        budgetId,
-        responseJson: allSummaries[0].documentSummary,
-        responseTime: null,
-      })
-      setSupportingDocumentCumulativeAnalysis({
-        status: 'complete',
-        parsedSummary: allSummaries[0].parsedSummary,
-        rawSummary: allSummaries[0].documentSummary,
-        responseTimeMs: null,
-        error: null,
-        sourceFileCount: 1,
-        scopeKey,
-      })
-      return
-    }
-
-    setSupportingDocumentCumulativeAnalysis((current) => ({
-      ...current,
-      status: 'analyzing',
-      error: null,
-      sourceFileCount: allSummaries.length,
-      scopeKey,
-    }))
-
-    const cumulativeResponse = await evaluateCumulativeSupportingDocuments({
-      fileInputs: allSummaries.map((item) => ({
-        filename: item.documentName,
-        fileResponse: item.documentSummary,
-      })),
-    })
-
-    await upsertCumulativeSummaryRecord({
-      budgetId,
-      responseJson: cumulativeResponse.summary,
-      responseTime: cumulativeResponse.responseTimeMs,
-    })
-
-    setSupportingDocumentCumulativeAnalysis({
-      status: cumulativeResponse.parsedSummary ? 'complete' : 'error',
-      parsedSummary: cumulativeResponse.parsedSummary,
-      rawSummary: cumulativeResponse.summary,
-      responseTimeMs: cumulativeResponse.responseTimeMs,
-      error: cumulativeResponse.parsedSummary
-        ? null
-        : 'The cumulative automate response did not contain a usable structured summary.',
-      sourceFileCount: allSummaries.length,
-      scopeKey,
-    })
+    await invalidateCumulativeSummaryRecord(budgetId)
   }
 
   // ── Clarification State ──────────────────────────────────────────────────────
@@ -3953,7 +4852,10 @@ export default function ProjectDetail() {
     if (ictBudgetId && doc.fullname) {
       await deleteDocumentSummaryRecordsByDocumentName(ictBudgetId, doc.fullname)
       await syncCumulativeSummaryForBudget(ictBudgetId)
-      await refreshPersistedDocumentSummaries()
+      const refreshed = await refreshPersistedDocumentSummaries({ quiet: true })
+      setPendingCumulativeRefreshModifiedOn(
+        refreshed?.cumulativeRecord?.modifiedOn ?? storedCumulativeSummaryRecord?.modifiedOn ?? null
+      )
     }
     setSharepointDocs((prev) => prev.filter((d) => d.sharepointdocumentid !== doc.sharepointdocumentid))
   }
@@ -4565,9 +5467,29 @@ export default function ProjectDetail() {
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
-              <div className="rounded-xl bg-[#EFF6FF] px-3 py-3 text-center dark:bg-white/5">
+              <div
+                className={cn(
+                  'rounded-xl px-3 py-3 text-center dark:bg-white/5',
+                  confidenceTone === 'green'
+                    ? 'bg-[#ECFDF3]'
+                    : confidenceTone === 'amber'
+                      ? 'bg-[#FFF8E8]'
+                      : 'bg-[#FFF1F3]'
+                )}
+              >
                 <p className="text-xs font-semibold text-[#64748B]">AI Confidence</p>
-                <p className="text-lg font-bold text-[#286CFF]">{confidence}%</p>
+                <p
+                  className={cn(
+                    'text-lg font-bold',
+                    confidenceTone === 'green'
+                      ? 'text-[#16794B]'
+                      : confidenceTone === 'amber'
+                        ? 'text-[#B7791F]'
+                        : 'text-[#B42318]'
+                  )}
+                >
+                  {confidence}%
+                </p>
               </div>
               <div className="rounded-xl bg-[#EFF6FF] px-3 py-3 text-center dark:bg-white/5">
                 <p className="text-xs font-semibold text-[#64748B]">Documents</p>
@@ -4716,7 +5638,7 @@ export default function ProjectDetail() {
         />
       )}
 
-      {!showLogs && detailBudgetConsiderationsCard}
+      {!showLogs && detailBudgetOverviewCard}
 
       {/* Main grid */}
       <div className={cn('grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_390px]', showLogs && 'hidden')}>
@@ -4733,7 +5655,13 @@ export default function ProjectDetail() {
               <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                  <EditField label="Initiative / Budget Item Name" required error={fieldErrors.initiativeName}>
+                  <EditField
+                    label="Initiative / Budget Item Name"
+                    required
+                    error={fieldErrors.initiativeName}
+                    aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
+                    highlighted={animatedAiFields.includes('initiativeName')}
+                  >
                       <Input
                         value={formValues.initiativeName}
                         onChange={(e) => updateField('initiativeName', e.target.value)}
@@ -4745,7 +5673,11 @@ export default function ProjectDetail() {
                       />
                     </EditField>
                   </div>
-                  <EditField label="Strategic Priorities" required error={fieldErrors.strategicPriorityId}>
+                  <EditField
+                    label="Strategic Priorities"
+                    required
+                    error={fieldErrors.strategicPriorityId}
+                  >
                     <LookupSelect
                       value={formValues.strategicPriorityId}
                       onChange={handleStrategicPriorityChange}
@@ -4759,7 +5691,11 @@ export default function ProjectDetail() {
                       invalid={Boolean(fieldErrors.strategicPriorityId)}
                     />
                   </EditField>
-                  <EditField label="Strategic Priority Classifications" required error={fieldErrors.strategicPriorityClassificationId}>
+                  <EditField
+                    label="Strategic Priority Classifications"
+                    required
+                    error={fieldErrors.strategicPriorityClassificationId}
+                  >
                     <LookupSelect
                       value={formValues.strategicPriorityClassificationId}
                       onChange={(value) => updateField('strategicPriorityClassificationId', value)}
@@ -4819,7 +5755,11 @@ export default function ProjectDetail() {
                       invalid={Boolean(fieldErrors.budgetItemType)}
                     />
                   </EditField>
-                  <EditField label="Category">
+                  <EditField
+                    label="Category"
+                    aiAssist={buildAiAssist('category', 'Category')}
+                    highlighted={animatedAiFields.includes('category')}
+                  >
                     <LookupSelect
                       value={formValues.category ? String(formValues.category) : ''}
                       onChange={(value) => updateField('category', Number(value) as CategoryType)}
@@ -4832,7 +5772,12 @@ export default function ProjectDetail() {
                       disabled={lookupLoading || ictBudgetLoading}
                     />
                   </EditField>
-                  <EditField label="Technology (Company)" error={fieldErrors.technologyCompanyId}>
+                  <EditField
+                    label="Technology (Company)"
+                    error={fieldErrors.technologyCompanyId}
+                    aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
+                    highlighted={animatedAiFields.includes('technologyCompany')}
+                  >
                     <LookupSelect
                       value={formValues.technologyCompanyId}
                       onChange={handleTechnologyCompanyChange}
@@ -4889,7 +5834,13 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                <EditField label="Summary / Description" required error={fieldErrors.summary}>
+                <EditField
+                  label="Summary / Description"
+                  required
+                  error={fieldErrors.summary}
+                  aiAssist={buildAiAssist('summary', 'Summary / Description')}
+                  highlighted={animatedAiFields.includes('summary')}
+                >
                   <Textarea
                     rows={6}
                     value={formValues.summary}
@@ -4997,6 +5948,7 @@ export default function ProjectDetail() {
                 title="Supporting Documents"
                 description="Upload additional supporting files for this budget record."
                 icon={FileCheck2}
+                noShadow
               >
                 <div className="mb-4">
                   <SupportingDocuments
@@ -5112,13 +6064,34 @@ export default function ProjectDetail() {
             <>
               <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <Field label="Initiative / Budget Item Name" value={display.name} />
-                  <Field label="Strategic Priorities" value={display.strategicPriority} />
-                  <Field label="Strategic Priority Classifications" value={display.classification} />
+                  <Field
+                    label="Initiative / Budget Item Name"
+                    value={display.name}
+                    aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
+                    highlighted={animatedAiFields.includes('initiativeName')}
+                  />
+                  <Field
+                    label="Strategic Priorities"
+                    value={display.strategicPriority}
+                  />
+                  <Field
+                    label="Strategic Priority Classifications"
+                    value={display.classification}
+                  />
                   <Field label="Work Stream" value={display.workStream} />
                   <Field label="ICT Budget Item Type" value={display.budgetType} />
-                  <Field label="Category" value={display.category} />
-                  <Field label="Technology (Company)" value={display.technologyCompany} />
+                  <Field
+                    label="Category"
+                    value={display.category}
+                    aiAssist={buildAiAssist('category', 'Category')}
+                    highlighted={animatedAiFields.includes('category')}
+                  />
+                  <Field
+                    label="Technology (Company)"
+                    value={display.technologyCompany}
+                    aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
+                    highlighted={animatedAiFields.includes('technologyCompany')}
+                  />
                   <Field label="Technology (Product)" value={display.technologyProduct} />
                 </div>
                 <div className="mt-4">
@@ -5134,7 +6107,18 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                <p className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-4 text-sm leading-7 text-[#0F172A] dark:border-white/10 dark:bg-white/5 dark:text-white">{display.summary}</p>
+                <div
+                  className={cn(
+                    'rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-4 transition-all duration-500 dark:border-white/10 dark:bg-white/5',
+                    animatedAiFields.includes('summary') && 'border-[#D8B4FE] bg-[#FDF7FF] shadow-[0_0_0_4px_rgba(168,85,247,0.12)]'
+                  )}
+                >
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Summary / Description</p>
+                    {buildAiAssist('summary', 'Summary / Description')}
+                  </div>
+                  <p className="text-sm leading-7 text-[#0F172A] dark:text-white">{display.summary}</p>
+                </div>
               </DetailSection>
 
               <DetailSection
