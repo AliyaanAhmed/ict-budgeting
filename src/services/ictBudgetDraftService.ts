@@ -393,6 +393,8 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
     dga_summary: input.summary.trim(),
     dga_activity_type: input.activityType,
     dga_added_in_allocation: 1,
+    dga_status_for_adge: ICT_BUDGET_STATUS.draft,
+    statuscode: 1,
     dga_budget_item_type: input.budgetItemType,
     dga_category: input.category ?? undefined,
     dga_total_budget_paid_previous_year: input.totalBudgetPaidPreviousYear ?? undefined,

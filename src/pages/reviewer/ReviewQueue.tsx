@@ -98,16 +98,14 @@ function AiInsightRow({ expanded, onToggle, confidence, children }: {
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
+    <div className="rounded-xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
       <button onClick={onToggle} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-sm">
-          <Sparkles className="h-4 w-4" />
-        </span>
+        <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7]" />
         <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Review Insights</span>
         {confidence > 0 && <span className="text-xs text-[#64748B] dark:text-slate-200">{confidence}% confidence</span>}
-        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#286CFF] transition-transform', expanded && 'rotate-180')} />
+        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', expanded && 'rotate-180')} />
       </button>
-      {expanded && <div className="border-t border-[#B0DBFF]/70 px-4 py-3 dark:border-white/10">{children}</div>}
+      {expanded && <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">{children}</div>}
     </div>
   )
 }
@@ -190,7 +188,7 @@ export default function ReviewQueue() {
   const [search, setSearch] = useState('')
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
-  const [expandedAiId, setExpandedAiId] = useState<string | null>(null)
+  const [collapsedAiIds, setCollapsedAiIds] = useState<Set<string>>(new Set())
   const [clarificationProject, setClarificationProject] = useState<ReviewQueueProject | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -380,11 +378,9 @@ export default function ReviewQueue() {
               Review respondent submissions, complete reviewer assessment, raise clarifications, and then submit ready items to the approver.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
+          <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white shadow-sm">
-                <Sparkles className="h-5 w-5" />
-              </div>
+              <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
               <div>
                 <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Queue Summary</p>
                 <p className="text-xs text-[#64748B] dark:text-slate-200">
@@ -562,7 +558,7 @@ export default function ReviewQueue() {
             const isCompletable = !hasCycleDgeSubmission && proj.status === 'To Review' && isActionable
             const isSubmittable = (hasCycleDgeSubmission ? proj.status === 'To Review' : proj.status === 'Reviewed') && isActionable
             const canClarify = proj.status === 'To Review' && isActionable
-            const aiExpanded = expandedAiId === proj.id
+            const aiExpanded = !collapsedAiIds.has(proj.id)
 
             return (
               <article
@@ -639,16 +635,21 @@ export default function ReviewQueue() {
                     <div className="min-w-0 flex-1">
                       <AiInsightRow
                         expanded={aiExpanded}
-                        onToggle={() => setExpandedAiId(aiExpanded ? null : proj.id)}
+                        onToggle={() => setCollapsedAiIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(proj.id)) next.delete(proj.id)
+                          else next.add(proj.id)
+                          return next
+                        })}
                         confidence={proj.aiConfidence}
                       >
                         <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">
                           AI recommends validating budget assumptions, document evidence, and strategic alignment before forwarding this request.
                         </p>
                         <div className="mt-3 grid grid-cols-3 gap-2">
-                          <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Scope OK</span>
-                          <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Budget Check</span>
-                          <span className="rounded-lg bg-white px-2 py-2 text-center text-xs font-semibold text-[#286CFF] dark:bg-white/5">Docs Scan</span>
+                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Scope OK</span>
+                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Budget Check</span>
+                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Docs Scan</span>
                         </div>
                       </AiInsightRow>
                     </div>

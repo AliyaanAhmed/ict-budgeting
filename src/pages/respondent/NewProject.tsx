@@ -799,7 +799,7 @@ function BudgetAssistantLandingHero({
 }) {
   return (
     <section
-      className="relative overflow-hidden rounded-[32px] border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF8FF_28%,#F9FBFF_58%,#FFFFFF_100%)] px-6 py-4 shadow-[0_22px_56px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(180deg,#1E1630_0%,#171125_40%,#1E293B_100%)] sm:px-8 sm:py-4 lg:px-10 lg:py-4"
+      className="animate-landingHeroFadeIn relative overflow-hidden rounded-[32px] border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF8FF_28%,#F9FBFF_58%,#FFFFFF_100%)] px-6 py-4 shadow-[0_22px_56px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(180deg,#1E1630_0%,#171125_40%,#1E293B_100%)] sm:px-8 sm:py-4 lg:px-10 lg:py-4"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#D8B4FE_0.7px,transparent_0.7px)] [background-size:18px_18px] opacity-24 dark:opacity-12" />
       <div className="pointer-events-none absolute -left-24 top-14 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(168,85,247,0.14),transparent_70%)] blur-3xl" />
@@ -836,7 +836,7 @@ function BudgetAssistantLandingHero({
               <FileText className="absolute right-20 top-16 h-6 w-6 text-[#E9D5FF]" />
             </div>
           </div>
-          <h2 className="mt-6 text-4xl font-bold tracking-tight text-[#0F172A] [text-wrap:balance] dark:text-white sm:text-5xl lg:text-[64px]">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-[#0F172A] [text-wrap:balance] dark:text-white sm:text-4xl lg:text-5xl">
             Start your ICT budget with AI.
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-[#475569] dark:text-slate-300 sm:text-lg">
@@ -845,7 +845,7 @@ function BudgetAssistantLandingHero({
         </div>
 
         <div className="mx-auto mt-10 max-w-5xl">
-          <div className="copilot-snake-shell rounded-[30px] p-[2px]">
+          <div className="copilot-snake-shell rounded-[30px] p-[3px]">
             <div className="rounded-[29px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(253,247,255,0.94))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur dark:bg-[linear-gradient(180deg,rgba(20,14,33,0.98),rgba(30,41,59,0.96))] sm:p-5">
               {chatStagedFile ? (
                 <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
@@ -1681,6 +1681,14 @@ function labelsMatch(left: string, right: string) {
   )
 }
 
+// For strategic priority options whose Dataverse names may have trailing numbers or codes.
+// Checks one-directionally: does the Dataverse option name contain the AI-suggested term?
+function spNameMatch(optionName: string, term: string) {
+  const t = term.toLowerCase().trim()
+  if (!t) return false
+  return optionName.toLowerCase().includes(t) || labelsMatch(optionName, term)
+}
+
 function resolveAiFieldMapping(
   field: SupportingDocumentSuggestedProjectField,
 ): 'initiativeName' | 'summary' | 'category' | 'technologyCompany' | null {
@@ -2205,12 +2213,12 @@ export default function NewProject() {
         const priorityRecord =
           strategicPriorities.find(
             (option) =>
-              !option.parentId && labelsMatch(option.name, suggestion.strategicPriority)
+              !option.parentId && spNameMatch(option.name, suggestion.strategicPriority)
           ) ?? null
         const classificationRecord =
           strategicPriorities.find((option) => {
             if (!option.parentId) return false
-            if (!labelsMatch(option.name, suggestion.strategicPriorityClassification)) return false
+            if (!spNameMatch(option.name, suggestion.strategicPriorityClassification)) return false
             if (!priorityRecord) return true
             return option.parentId === priorityRecord.id
           }) ?? null
@@ -2230,12 +2238,12 @@ export default function NewProject() {
       copilotAiSuggestions.map((suggestion) => {
         const priorityRecord =
           strategicPriorities.find(
-            (option) => !option.parentId && labelsMatch(option.name, suggestion.strategicPriority)
+            (option) => !option.parentId && spNameMatch(option.name, suggestion.strategicPriority)
           ) ?? null
         const classificationRecord =
           strategicPriorities.find((option) => {
             if (!option.parentId) return false
-            if (!labelsMatch(option.name, suggestion.strategicPriorityClassification)) return false
+            if (!spNameMatch(option.name, suggestion.strategicPriorityClassification)) return false
             if (!priorityRecord) return true
             return option.parentId === priorityRecord.id
           }) ?? null
@@ -3082,8 +3090,6 @@ export default function NewProject() {
   )
 
   useEffect(() => {
-    if (mode !== 'manual') return
-
     let cancelled = false
 
     const loadLookups = async () => {
@@ -3117,7 +3123,7 @@ export default function NewProject() {
     return () => {
       cancelled = true
     }
-  }, [mode])
+  }, [])
 
   const updateField = <K extends keyof FormValues>(field: K, value: FormValues[K]) => {
     setFormValues((prev) => ({ ...prev, [field]: value }))
@@ -3533,11 +3539,11 @@ export default function NewProject() {
       setCopilotAiPromptUsecase(response.promptUsecase)
 
       const priorityRecord = strategicPriorities.find(
-        (opt) => !opt.parentId && labelsMatch(opt.name, top.strategicPriority)
+        (opt) => !opt.parentId && spNameMatch(opt.name, top.strategicPriority)
       ) ?? null
       const classificationRecord = priorityRecord
         ? strategicPriorities.find(
-            (opt) => opt.parentId === priorityRecord.id && labelsMatch(opt.name, top.strategicPriorityClassification)
+            (opt) => opt.parentId === priorityRecord.id && spNameMatch(opt.name, top.strategicPriorityClassification)
           ) ?? null
         : null
 
@@ -3830,10 +3836,14 @@ export default function NewProject() {
     const nextPriorityId =
       mode === 'priority' || mode === 'both'
         ? suggestion.priorityId
-        : suggestion.classificationParentId ?? copilotFormValues.strategicPriorityId
-    const nextClassificationId = mode === 'priority' ? '' : suggestion.classificationId ?? ''
+        : (suggestion.classificationParentId ?? copilotFormValues.strategicPriorityId) || null
 
-    if (!nextPriorityId) {
+    const nextClassificationId =
+      mode === 'classification' || mode === 'both'
+        ? suggestion.classificationId
+        : null
+
+    if ((mode === 'priority' || mode === 'both') && !nextPriorityId) {
       showErrorToast(
         'Suggestion could not be applied',
         'The recommended Strategic Priority could not be matched to a live Dataverse option.'
@@ -3849,11 +3859,17 @@ export default function NewProject() {
       return
     }
 
-    setCopilotFormValues((prev) => ({
-      ...prev,
-      strategicPriorityId: nextPriorityId,
-      strategicPriorityClassificationId: nextClassificationId,
-    }))
+    setCopilotFormValues((prev) => {
+      const next = { ...prev }
+      if (mode === 'priority' || mode === 'both') {
+        next.strategicPriorityId = nextPriorityId!
+        next.strategicPriorityClassificationId = ''
+      }
+      if ((mode === 'classification' || mode === 'both') && nextClassificationId) {
+        next.strategicPriorityClassificationId = nextClassificationId
+      }
+      return next
+    })
 
     setCopilotFieldErrors((prev) => {
       const nextErrors = { ...prev }
@@ -4592,7 +4608,7 @@ export default function NewProject() {
 
       if (key === 'strategicPriorityId') {
         const raw = Array.isArray(value) ? value[0] ?? '' : value
-        const matched = strategicPriorities.find((option) => !option.parentId && labelsMatch(option.name, raw))
+        const matched = strategicPriorities.find((option) => !option.parentId && spNameMatch(option.name, raw))
         if (matched) {
           nextValues.strategicPriorityId = matched.id
           nextValues.strategicPriorityClassificationId = ''
@@ -4605,7 +4621,7 @@ export default function NewProject() {
         const matched = strategicPriorities.find(
           (option) =>
             Boolean(option.parentId) &&
-            labelsMatch(option.name, raw) &&
+            spNameMatch(option.name, raw) &&
             (!nextValues.strategicPriorityId || option.parentId === nextValues.strategicPriorityId)
         )
         if (matched) {
@@ -4649,6 +4665,22 @@ export default function NewProject() {
   const applyCopilotPendingSuggestion = async () => {
     if (!copilotPendingSuggestion) return
     applyCopilotFieldPatch(copilotPendingSuggestion.fields)
+
+    // Apply AI-matched strategic priority using pre-resolved IDs for reliable resolution
+    const topAiSuggestion = matchedCopilotAiSuggestions[0]
+    if (topAiSuggestion?.priorityId) {
+      setCopilotFormValues((prev) => ({
+        ...prev,
+        strategicPriorityId: topAiSuggestion.priorityId!,
+        strategicPriorityClassificationId: topAiSuggestion.classificationId ?? '',
+      }))
+      setCopilotFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next.strategicPriorityId
+        delete next.strategicPriorityClassificationId
+        return next
+      })
+    }
 
     if (copilotPendingSuggestion.budgetRows.length > 0) {
       try {
@@ -6116,14 +6148,41 @@ export default function NewProject() {
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                   <div className="space-y-4 pr-1">
-                    {Object.entries(copilotPendingSuggestion?.fields ?? {}).length > 0 ? (
+                    {Object.entries(copilotPendingSuggestion?.fields ?? {}).length > 0 || copilotAiSuggestionLoading || matchedCopilotAiSuggestions.length > 0 ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {Object.entries(copilotPendingSuggestion?.fields ?? {}).map(([key, value]) => (
-                          <div key={key} className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
-                            <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
-                          </div>
-                        ))}
+                        {Object.entries(copilotPendingSuggestion?.fields ?? {})
+                          .filter(([key]) => !matchedCopilotAiSuggestions[0] || (key !== 'strategicPriorityId' && key !== 'strategicPriorityClassificationId'))
+                          .map(([key, value]) => (
+                            <div key={key} className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{VALIDATION_LABELS[key as keyof typeof VALIDATION_LABELS] ?? key}</p>
+                              <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{Array.isArray(value) ? value.join(', ') : value}</p>
+                            </div>
+                          ))}
+                        {copilotAiSuggestionLoading ? (
+                          <>
+                            <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priorities</p>
+                              <div className="mt-1 flex items-center gap-1.5 text-xs text-[#A855F7]"><Loader2 className="h-3 w-3 animate-spin" />Loading...</div>
+                            </div>
+                            <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priority Classifications</p>
+                              <div className="mt-1 flex items-center gap-1.5 text-xs text-[#A855F7]"><Loader2 className="h-3 w-3 animate-spin" />Loading...</div>
+                            </div>
+                          </>
+                        ) : matchedCopilotAiSuggestions[0] ? (
+                          <>
+                            <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priorities</p>
+                              <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[0].strategicPriority}</p>
+                            </div>
+                            <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priority Classifications</p>
+                              <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[0].strategicPriorityClassification}</p>
+                            </div>
+                          </>
+                        ) : copilotAiSuggestionError ? (
+                          <div className="col-span-2 rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-[#B42318] dark:border-white/10 dark:bg-white/5">{copilotAiSuggestionError}</div>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="rounded-xl border border-dashed border-[#E9D5FF] bg-white px-4 py-6 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
@@ -6146,16 +6205,6 @@ export default function NewProject() {
                           ))}
                         </div>
                       </div>
-                    )}
-
-                    {copilotAiSuggestionLoading && (
-                      <div className="flex items-center gap-2 text-sm text-[#A855F7]">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Preparing strategic-priority matches...
-                      </div>
-                    )}
-                    {copilotAiSuggestionError && (
-                      <div className="rounded-xl border border-red-100 bg-white px-3 py-3 text-sm text-[#B42318] dark:border-white/10 dark:bg-white/5">{copilotAiSuggestionError}</div>
                     )}
 
                     {matchedCopilotAiSuggestions.length > 1 && (
