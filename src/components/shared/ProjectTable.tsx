@@ -500,9 +500,9 @@ export function ProjectTable({
               >
                 <div className="flex items-center gap-2">
                   {column.id === 'budget' ? (
-                    <span className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 leading-none">
                       <span>{column.header}</span>
-                      <DirhamIcon width={14} height={14} color="currentColor" className="shrink-0" />
+                      <DirhamIcon width={14} height={14} color="currentColor" className="shrink-0 self-center" />
                     </span>
                   ) : (
                     <span>{column.header}</span>

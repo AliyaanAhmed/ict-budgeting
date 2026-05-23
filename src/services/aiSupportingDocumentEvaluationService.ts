@@ -105,6 +105,17 @@ function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, ' ')
 }
 
+function isFlowFailureSummary(value: unknown) {
+  if (typeof value !== 'string') return false
+
+  const normalized = value.trim().toLowerCase()
+  return (
+    normalized.includes('summary request failed') ||
+    normalized.includes('unexpected error occured') ||
+    normalized.includes('unexpected error occurred')
+  )
+}
+
 function extractJsonPayload(value: string) {
   const trimmed = value.trim()
   const firstBrace = trimmed.indexOf('{')
@@ -286,6 +297,10 @@ export async function evaluateSupportingDocument(input: {
     throw new Error(message)
   }
 
+  if (isFlowFailureSummary(result.data?.summary)) {
+    throw new Error('AI document analysis did not complete for this file. Please try again.')
+  }
+
   return {
     fileName: file.name,
     mimeType,
@@ -330,6 +345,10 @@ export async function evaluateCumulativeSupportingDocuments(input: {
         ? result.error.message
         : String(result.error?.message ?? result.error ?? 'Cumulative document summary flow request failed.')
     throw new Error(message)
+  }
+
+  if (isFlowFailureSummary(result.data?.summary)) {
+    throw new Error('AI cumulative document analysis did not complete. Please try again.')
   }
 
   return {

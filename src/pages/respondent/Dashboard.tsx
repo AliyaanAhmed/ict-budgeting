@@ -228,7 +228,7 @@ function ActionMetricCard({
         <div className="min-w-0">
           <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
           <div className="mt-4 flex items-end gap-3">
-            <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+            <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ backgroundColor: `${accent}14`, color: accent }}
@@ -553,9 +553,6 @@ export default function RespondentDashboard() {
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
                   <InfoHint text="Consolidated budget view for the current cycle, previous-year baseline, and AI-estimated approval outlook." />
                 </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Informational metrics for planning context and approval outlook
-                </p>
               </div>
             </div>
 

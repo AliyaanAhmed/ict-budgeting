@@ -178,7 +178,7 @@ function ActionMetricCard({
             <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
           </div>
           <div className="mt-3 flex items-end gap-3">
-            <span className="text-3xl font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+            <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ backgroundColor: `${accent}14`, color: accent }}
@@ -502,9 +502,6 @@ export default function ReviewerDashboard() {
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Review Snapshot</h3>
                   <InfoHint text="Consolidated reviewer view of queue budget, completed review value, and AI-estimated approval outlook." />
                 </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Informational metrics for queue size, reviewed value, and likely approval volume
-                </p>
               </div>
             </div>
 

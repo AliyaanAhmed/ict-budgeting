@@ -434,8 +434,8 @@ export default function ApprovalQueue() {
           </div>
           <div className="rounded-2xl border border-[#B0DBFF] bg-gradient-to-b from-[#E7F5FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#10213B] dark:to-[#1E293B]">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#286CFF] to-[#4F98FF] text-white shadow-sm">
-                <Bot className="h-5 w-5" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white shadow-sm">
+                <Sparkles className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Approval Summary</p>
