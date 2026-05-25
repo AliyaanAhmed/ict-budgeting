@@ -209,7 +209,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="space-y-4">
         <InsightSection title="Document Profile" icon={Building2}>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
@@ -246,7 +246,7 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
         </InsightSection>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="space-y-4">
         <InsightSection title="Evidence Assessment" icon={ShieldCheck}>
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">

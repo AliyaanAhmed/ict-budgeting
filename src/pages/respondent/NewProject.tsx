@@ -65,7 +65,7 @@ import {
   SupportingDocumentAiInsights,
   type SupportingDocumentAiInsightItem,
 } from '@/components/shared/SupportingDocumentAiInsights'
-import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
+import { FileUploadDropzone, validateFilesForUpload } from '@/components/shared/FileUploadDropzone'
 import { useToast } from '@/context/ToastContext'
 import type { BudgetItemDraft } from '@/domain/classification'
 import type {
@@ -112,6 +112,7 @@ import {
   type StrategicPriorityOption,
 } from '@/services/strategicPriorityService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { markCurrentInstancePlanningIfFirstProject } from '@/services/instanceService'
 import {
   createTechnologyProductForCompany,
   getTechnologyCompanies,
@@ -247,11 +248,19 @@ const CATEGORY_OPTIONS: Array<{ value: CategoryType; label: string }> = [
 ]
 
 const BUDGET_ASSISTANT_PROMPTS = [
-  'Azure data platform project for AED 600K starting December',
-  'Maintenance contract for out-of-warranty laptops',
-  'Cloud migration project for AED 2M starting Q1 2027',
-  'What is the Budget Type field?',
-]
+  {
+    text: 'Azure data platform project for AED 600K starting December',
+  },
+  {
+    text: 'Maintenance contract for out-of-warranty laptops',
+  },
+  {
+    text: 'Cloud migration project for AED 2M starting Q1 2027',
+  },
+  {
+    text: 'What is the Budget Type field?',
+  },
+] as const
 
 const INITIAL_FORM_VALUES: FormValues = {
   initiativeName: '',
@@ -751,15 +760,18 @@ function BudgetAssistantWelcomeCard({
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {BUDGET_ASSISTANT_PROMPTS.map((prompt) => (
+          {BUDGET_ASSISTANT_PROMPTS.map(({ text }) => (
             <button
-              key={prompt}
+              key={text}
               type="button"
-              onClick={() => onPromptSelect(prompt)}
+              onClick={() => onPromptSelect(text)}
               className="group rounded-xl border border-[#E9D5FF] px-3 py-2.5 text-left transition-all hover:border-[#D8B4FE] hover:bg-[#FAF5FF] dark:border-white/10 dark:hover:bg-white/10"
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm leading-5 text-[#334155] dark:text-slate-100">{prompt}</p>
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <Zap className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                  <p className="text-sm leading-5 text-[#334155] dark:text-slate-100">{text}</p>
+                </div>
                 <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-[#C084FC] transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-[#E9D5FF]" />
               </div>
             </button>
@@ -783,6 +795,8 @@ function BudgetAssistantLandingHero({
   onCheckBudgetConsideration,
   onRemoveStagedFile,
   onToggleMode,
+  canCheckBudgetConsideration,
+  projectFieldSuggestionsLoading,
 }: {
   chatInput: string
   chatStagedFile: File | null
@@ -796,12 +810,16 @@ function BudgetAssistantLandingHero({
   onCheckBudgetConsideration: () => void
   onRemoveStagedFile: () => void
   onToggleMode: () => void
+  canCheckBudgetConsideration: boolean
+  projectFieldSuggestionsLoading: boolean
 }) {
   return (
     <section
-      className="animate-landingHeroFadeIn relative overflow-hidden rounded-[32px] border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF8FF_28%,#F9FBFF_58%,#FFFFFF_100%)] px-6 py-4 shadow-[0_22px_56px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(180deg,#1E1630_0%,#171125_40%,#1E293B_100%)] sm:px-8 sm:py-4 lg:px-10 lg:py-4"
+      className="animate-landingHeroFadeIn relative flex flex-1 flex-col overflow-hidden rounded-[32px] border border-[#E9D5FF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FFF8FF_28%,#F9FBFF_58%,#FFFFFF_100%)] px-6 py-4 shadow-[0_22px_56px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[linear-gradient(180deg,#1E1630_0%,#171125_40%,#1E293B_100%)] sm:px-8 sm:py-4 lg:px-10 lg:py-4"
+      style={{ minHeight: '85vh' }}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#D8B4FE_0.7px,transparent_0.7px)] [background-size:18px_18px] opacity-24 dark:opacity-12" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.75] dark:opacity-[0.32]" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(168,85,247,0.18) 1px, transparent 1.2px)', backgroundSize: '16px 16px' }} />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.45] dark:opacity-[0.16]" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(216,180,254,0.3) 0.8px, transparent 1px)', backgroundSize: '24px 24px', backgroundPosition: '8px 8px' }} />
       <div className="pointer-events-none absolute -left-24 top-14 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(168,85,247,0.14),transparent_70%)] blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-8 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18),transparent_72%)] blur-3xl" />
       <div className="absolute right-6 top-4 z-[2] sm:right-8 lg:right-10">
@@ -820,7 +838,7 @@ function BudgetAssistantLandingHero({
         </div>
       </div>
 
-      <div className="relative z-[1] mx-auto max-w-6xl">
+      <div className="relative z-[1] mx-auto flex w-full max-w-6xl flex-1 flex-col">
         <div className="relative mx-auto flex max-w-5xl items-center justify-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2 text-sm font-semibold text-[#A855F7] shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
             <Sparkles className="h-4 w-4" />
@@ -846,7 +864,7 @@ function BudgetAssistantLandingHero({
 
         <div className="mx-auto mt-10 max-w-5xl">
           <div className="copilot-snake-shell rounded-[30px] p-[3px]">
-            <div className="rounded-[29px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(253,247,255,0.94))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur dark:bg-[linear-gradient(180deg,rgba(20,14,33,0.98),rgba(30,41,59,0.96))] sm:p-5">
+            <div className="rounded-[29px] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(253,247,255,0.94))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur dark:bg-[linear-gradient(180deg,rgba(20,14,33,0.98),rgba(30,41,59,0.96))] dark:shadow-[inset_0_1px_0_rgba(168,85,247,0.08)] sm:p-5">
               {chatStagedFile ? (
                 <div className="mb-4 flex items-center gap-2 rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                   <FileText className="h-4 w-4 shrink-0 text-[#A855F7]" />
@@ -892,7 +910,7 @@ function BudgetAssistantLandingHero({
                     type="button"
                     variant="outline"
                     onClick={onCheckBudgetConsideration}
-                    disabled={copilotBusy}
+                    disabled={copilotBusy || !canCheckBudgetConsideration}
                     className="h-11 rounded-2xl border-[#E9D5FF] bg-white/80 px-4 text-[#A855F7] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5"
                   >
                     <Sparkles className="h-4 w-4" />
@@ -900,10 +918,10 @@ function BudgetAssistantLandingHero({
                   </Button>
                 </div>
 
-                <Button
-                  type="button"
-                  className="h-11 rounded-2xl bg-[#A855F7] px-5 text-white shadow-[0_14px_30px_rgba(168,85,247,0.22)] hover:bg-[#9333EA]"
-                  onClick={onSend}
+                  <Button
+                    type="button"
+                    className="h-11 rounded-2xl bg-[#A855F7] px-5 text-white shadow-[0_14px_30px_rgba(168,85,247,0.22)] hover:bg-[#9333EA]"
+                    onClick={onSend}
                   disabled={copilotBusy || (!chatInput.trim() && !chatStagedFile)}
                 >
                   {copilotBusy || copilotTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -914,14 +932,15 @@ function BudgetAssistantLandingHero({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            {BUDGET_ASSISTANT_PROMPTS.map((prompt) => (
+            {BUDGET_ASSISTANT_PROMPTS.map(({ text }) => (
               <button
-                key={prompt}
+                key={text}
                 type="button"
-                onClick={() => onPromptSelect(prompt)}
-                className="rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#475569] shadow-sm transition-colors hover:border-[#D8B4FE] hover:bg-[#FAF5FF] hover:text-[#0F172A] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                onClick={() => onPromptSelect(text)}
+                className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2.5 text-sm font-medium text-[#475569] shadow-sm transition-colors hover:border-[#D8B4FE] hover:bg-[#FAF5FF] hover:text-[#0F172A] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
               >
-                {prompt}
+                <Zap className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                <span>{text}</span>
               </button>
             ))}
           </div>
@@ -2972,6 +2991,23 @@ export default function NewProject() {
   const copilotSuggestedFieldCount = copilotPendingSuggestion
     ? Object.keys(copilotPendingSuggestion.fields).length
     : 0
+  const copilotProjectNameForAi = (
+    copilotFormValues.initiativeName ||
+    (typeof copilotPendingSuggestion?.fields?.initiativeName === 'string'
+      ? copilotPendingSuggestion.fields.initiativeName
+      : '')
+  ).trim()
+  const copilotProjectDescriptionForAi = (
+    copilotFormValues.summary ||
+    (typeof copilotPendingSuggestion?.fields?.summary === 'string'
+      ? copilotPendingSuggestion.fields.summary
+      : '')
+  ).trim()
+  const canCheckCopilotBudgetConsideration = Boolean(
+    copilotProjectNameForAi && copilotProjectDescriptionForAi
+  )
+  const isCopilotProjectFieldSuggestionLoading =
+    copilotAiSuggestionLoading || (copilotBusy && optionSelected)
   const isManualSaveBlockedByAiAnalysis = hasPendingSupportingDocumentAnalysis(
     uploadedFiles,
     supportingDocumentAnalyses,
@@ -3460,6 +3496,62 @@ export default function NewProject() {
     setCopilotBudgetConsiderationError(null)
     shownCopilotDocumentSummaryRef.current.clear()
     shownCopilotCumulativeSummaryScopeRef.current = null
+  }
+
+  const handleCopilotChatFileSelection = (file: File | null) => {
+    if (!file) {
+      return
+    }
+
+    const {
+      validFiles,
+      rejectedZeroKb,
+      rejectedOversize,
+      rejectedRestrictedType,
+      rejectedUnsupportedType,
+    } = validateFilesForUpload({
+      incoming: [file],
+      existingFiles: copilotUploadedFiles,
+      accept: '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg',
+      maxSizeMB: 20,
+    })
+
+    if (rejectedZeroKb.length > 0) {
+      showErrorToast(
+        'Empty files are not allowed',
+        `${rejectedZeroKb.join(', ')} ${rejectedZeroKb.length === 1 ? 'is' : 'are'} 0 KB and cannot be uploaded.`
+      )
+    }
+    if (rejectedOversize.length > 0) {
+      showErrorToast(
+        'File size exceeded',
+        `${rejectedOversize.join(', ')} ${rejectedOversize.length === 1 ? 'is' : 'are'} larger than 20 MB and cannot be uploaded.`
+      )
+    }
+    if (rejectedRestrictedType.length > 0) {
+      showErrorToast(
+        'Restricted file type',
+        `${rejectedRestrictedType.join(', ')} ${rejectedRestrictedType.length === 1 ? 'is' : 'are'} not allowed for security reasons.`
+      )
+    }
+    if (rejectedUnsupportedType.length > 0) {
+      showErrorToast(
+        'Unsupported file type',
+        `${rejectedUnsupportedType.join(', ')} ${rejectedUnsupportedType.length === 1 ? 'is' : 'are'} not in the supported file types list.`
+      )
+    }
+
+    const validFile = validFiles[0] ?? null
+    if (!validFile) {
+      return
+    }
+
+    setCopilotWorkspaceView('chat')
+    if (!copilotBusy) {
+      void sendCopilotPromptWithFile(validFile, chatInput)
+    } else {
+      setChatStagedFile(validFile)
+    }
   }
 
   // Types into the last existing AI message rather than appending a new one
@@ -4253,6 +4345,16 @@ export default function NewProject() {
       )
     }
 
+    try {
+      await markCurrentInstancePlanningIfFirstProject()
+    } catch (error) {
+      console.error('[NewProject] ICT budget instance status update failed after first draft save.', error)
+      showErrorToast(
+        'Instance status update failed',
+        'The draft was saved, but the ICT budget instance could not be moved to Planning.'
+      )
+    }
+
     navigate(`/respondent/projects/${createdBudget.budgetRefId ?? createdBudget.id}`)
   }
 
@@ -4360,6 +4462,16 @@ export default function NewProject() {
       showErrorToast(
         'AI overview trigger failed',
         'The draft was saved, but the AI Budget Overview flow could not be triggered.'
+      )
+    }
+
+    try {
+      await markCurrentInstancePlanningIfFirstProject()
+    } catch (error) {
+      console.error('[NewProject] ICT budget instance status update failed after first draft save.', error)
+      showErrorToast(
+        'Instance status update failed',
+        'The draft was saved, but the ICT budget instance could not be moved to Planning.'
       )
     }
 
@@ -5912,7 +6024,7 @@ export default function NewProject() {
           </div>
         </>
       ) : !copilotFormRevealed ? (
-        <div>
+        <div className="flex flex-col">
           <input
             ref={chatFileInputRef}
             type="file"
@@ -5920,14 +6032,7 @@ export default function NewProject() {
             accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg"
             onChange={(event) => {
               const file = event.target.files?.[0] ?? null
-              if (file) {
-                setCopilotWorkspaceView('chat')
-                if (!copilotBusy) {
-                  void sendCopilotPromptWithFile(file, chatInput)
-                } else {
-                  setChatStagedFile(file)
-                }
-              }
+              handleCopilotChatFileSelection(file)
               event.target.value = ''
             }}
           />
@@ -5944,6 +6049,8 @@ export default function NewProject() {
             onCheckBudgetConsideration={() => void runCopilotBudgetConsiderationCheck()}
             onRemoveStagedFile={() => setChatStagedFile(null)}
             onToggleMode={() => setMode('manual')}
+            canCheckBudgetConsideration={canCheckCopilotBudgetConsideration}
+            projectFieldSuggestionsLoading={isCopilotProjectFieldSuggestionLoading}
           />
         </div>
       ) : (
@@ -6037,14 +6144,7 @@ export default function NewProject() {
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg"
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null
-                    if (file) {
-                      setCopilotWorkspaceView('chat')
-                      if (!copilotBusy) {
-                        void sendCopilotPromptWithFile(file, chatInput)
-                      } else {
-                        setChatStagedFile(file)
-                      }
-                    }
+                    handleCopilotChatFileSelection(file)
                     event.target.value = ''
                   }}
                 />
@@ -6067,7 +6167,7 @@ export default function NewProject() {
                     type="button"
                     variant="outline"
                     onClick={() => void runCopilotBudgetConsiderationCheck()}
-                    disabled={copilotBusy}
+                    disabled={copilotBusy || !canCheckCopilotBudgetConsideration}
                     className="h-10 rounded-xl border-[#E9D5FF] text-[#A855F7] hover:bg-[#FDF7FF]"
                   >
                     <Bot className="h-4 w-4" />
@@ -6083,7 +6183,7 @@ export default function NewProject() {
                       suggestionFlashOn && 'suggestion-blink'
                     )}
                   >
-                    {copilotAiSuggestionLoading ? (
+                    {isCopilotProjectFieldSuggestionLoading ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
                       <Sparkles className="h-4 w-4" />

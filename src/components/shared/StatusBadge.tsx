@@ -2,7 +2,11 @@ import type { ProjectStatus } from '@/data/db'
 import { cn } from '@/lib/utils'
 
 const statusConfig: Record<ProjectStatus, { label: string; className: string }> = {
-  Draft: { label: 'Draft', className: 'bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#BFDBFE]' },
+  Draft: {
+    label: 'Draft',
+    className:
+      'border border-[#CFE0FF] bg-[#E7F5FF] text-[#286CFF] dark:border-[#4D73B8] dark:bg-[#1E3A68] dark:text-[#DBEAFE]',
+  },
   'Needs Work': { label: 'Needs Work', className: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-100' },
   'Submitted to Reviewer': { label: 'Submitted to Reviewer', className: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
   'Reviewer Review Completed': { label: 'Reviewer Review Completed', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' },
@@ -26,7 +30,9 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
   )
 }
 
-export function RiskBadge({ risk }: { risk: string }) {
+export function RiskBadge({ risk }: { risk?: string | null }) {
+  if (!risk) return null
+
   const config = {
     Low: 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
     Medium: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',

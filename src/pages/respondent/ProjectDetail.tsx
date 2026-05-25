@@ -161,6 +161,7 @@ import {
   getDocumentSummaryRecordsByBudgetId,
   invalidateBudgetOverviewRecord,
   invalidateCumulativeSummaryRecord,
+  syncBudgetAiFlagsFromBudgetOverview,
   type StoredBudgetAiSummaryRecord,
   type StoredBudgetOverviewRecord,
   type StoredDocumentSummaryRecord,
@@ -183,6 +184,8 @@ interface PolicyMatchGroup {
   matchType: PolicyMatchType
   items: PolicyAssessmentItem[]
 }
+
+const PENDING_NEW_AI_RECORD = '__pending_new_ai_record__'
 
 function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Potential Conflict') {
@@ -1772,6 +1775,7 @@ function InteractiveBudgetOverviewCard({
   const risks = assessment?.primary_risks ?? []
   const issues = data?.issues ?? []
   const nextActions = data?.recommended_next_actions ?? []
+  const reviewFlags = data?.ai_review_flags
 
   const roleSummary =
     currentRole === 'Reviewer'
@@ -1840,6 +1844,55 @@ function InteractiveBudgetOverviewCard({
       status: item.status,
     }))
     .filter((item) => item.name.trim())
+
+  const activeAiFlags = [
+    reviewFlags?.evidence_risk?.flag
+      ? {
+          key: 'evidence_risk',
+          label: reviewFlags.evidence_risk.label || 'Evidence Risk',
+          severity: reviewFlags.evidence_risk.severity || 'Medium',
+        }
+      : null,
+    reviewFlags?.dge_budget_consideration_risk?.flag
+      ? {
+          key: 'dge_budget_consideration_risk',
+          label: reviewFlags.dge_budget_consideration_risk.label || 'DGE Budget Consideration Risk',
+          severity: reviewFlags.dge_budget_consideration_risk.severity || 'High',
+        }
+      : null,
+    reviewFlags?.strategic_alignment_risk?.flag
+      ? {
+          key: 'strategic_alignment_risk',
+          label: reviewFlags.strategic_alignment_risk.label || 'Strategic Alignment Risk',
+          severity: reviewFlags.strategic_alignment_risk.severity || 'Medium',
+        }
+      : null,
+    reviewFlags?.budget_accuracy_risk?.flag
+      ? {
+          key: 'budget_accuracy_risk',
+          label: reviewFlags.budget_accuracy_risk.label || 'Budget Accuracy Risk',
+          severity: reviewFlags.budget_accuracy_risk.severity || 'High',
+        }
+      : null,
+    reviewFlags?.clarification_required?.flag
+      ? {
+          key: 'clarification_required',
+          label: reviewFlags.clarification_required.label || 'Clarification Required',
+          severity: reviewFlags.clarification_required.severity || 'High',
+        }
+      : null,
+  ].filter((flag): flag is { key: string; label: string; severity: string } => Boolean(flag))
+
+  function aiFlagTone(severity?: string) {
+    const normalized = severity?.toLowerCase()
+    if (normalized === 'high') {
+      return 'border-[#FECACA] bg-[#FEF2F2] text-[#B42318] dark:border-[#7F1D1D]/50 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
+    }
+    if (normalized === 'medium') {
+      return 'border-[#FDE68A] bg-[#FFF8E8] text-[#B45309] dark:border-[#5C4717] dark:bg-[#35260F] dark:text-[#F6D28A]'
+    }
+    return 'border-[#D8E7FF] bg-[#EEF5FF] text-[#286CFF] dark:border-[#315389] dark:bg-[#1E3A68] dark:text-[#BFDBFE]'
+  }
 
   const togglePolicyTextSection = (sectionKey: string) => {
     setExpandedPolicyTextSections((current) => ({
@@ -2184,6 +2237,17 @@ function InteractiveBudgetOverviewCard({
                   {assessment.readiness_status}
                 </span>
                 )}
+                {activeAiFlags.map((flag) => (
+                  <span
+                    key={flag.key}
+                    className={cn(
+                      'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
+                      aiFlagTone(flag.severity)
+                    )}
+                  >
+                    {flag.label}
+                  </span>
+                ))}
                 {isRefreshing && (
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-[#FDF7FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2375,7 +2439,7 @@ export default function ProjectDetail() {
       documents: [],
       clarifications: [],
       aiScore: 0,
-      riskLevel: 'Low',
+      riskLevel: null,
       capex: 0,
       opex: 0,
     }),
@@ -2406,7 +2470,7 @@ export default function ProjectDetail() {
   const pageTitle = project.name
   const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
-  const riskTone = project.riskLevel === 'High' ? 'red' : project.riskLevel === 'Medium' ? 'amber' : 'green'
+  const riskTone = project.riskLevel === 'High' ? 'red' : project.riskLevel === 'Medium' ? 'amber' : project.riskLevel === 'Low' ? 'green' : 'slate'
   const budgetFit = project.riskLevel === 'High' || confidence < 60 ? 'Needs Review' : confidence < 80 ? 'Review' : 'Aligned'
   const budgetFitTone = budgetFit === 'Aligned' ? 'green' : budgetFit === 'Review' ? 'amber' : 'red'
   const actionContextLabel = isApproverView ? 'Approver decision controls' : 'Reviewer decision controls'
@@ -2570,6 +2634,7 @@ export default function ProjectDetail() {
   const supportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
   const [storedCumulativeSummaryRecord, setStoredCumulativeSummaryRecord] = useState<StoredBudgetAiSummaryRecord | null>(null)
   const [budgetOverviewRecord, setBudgetOverviewRecord] = useState<StoredBudgetOverviewRecord | null>(null)
+  const lastSyncedBudgetOverviewAiFlagsKeyRef = useRef<string | null>(null)
   const [pendingBudgetOverviewRefreshModifiedOn, setPendingBudgetOverviewRefreshModifiedOn] = useState<string | null>(null)
   const [pendingCumulativeRefreshModifiedOn, setPendingCumulativeRefreshModifiedOn] = useState<string | null>(null)
   const [detailAiSuggestionLoading, setDetailAiSuggestionLoading] = useState(false)
@@ -2698,13 +2763,33 @@ export default function ProjectDetail() {
         getAllAiSummaryRecordsByBudgetId(ictBudgetId),
       ])
 
+      const budgetOverviewSyncKey = overviewRecord?.id
+        ? `${overviewRecord.id}:${overviewRecord.modifiedOn ?? 'no-modified-on'}`
+        : null
+
+      if (
+        budgetOverviewSyncKey &&
+        overviewRecord?.parsedData &&
+        budgetOverviewSyncKey !== lastSyncedBudgetOverviewAiFlagsKeyRef.current
+      ) {
+        try {
+          await syncBudgetAiFlagsFromBudgetOverview(ictBudgetId, overviewRecord.parsedData)
+          lastSyncedBudgetOverviewAiFlagsKeyRef.current = budgetOverviewSyncKey
+        } catch (error) {
+          console.error('[ProjectDetail] Failed to sync dga_ai_flags from Budget Overview:', error)
+        }
+      }
+
       const nextBudgetOverviewModifiedOn = overviewRecord?.modifiedOn ?? null
       const nextCumulativeModifiedOn = cumulativeRecord?.modifiedOn ?? null
 
       if (
         pendingBudgetOverviewRefreshModifiedOn !== null &&
         nextBudgetOverviewModifiedOn !== null &&
-        nextBudgetOverviewModifiedOn !== pendingBudgetOverviewRefreshModifiedOn
+        (
+          pendingBudgetOverviewRefreshModifiedOn === PENDING_NEW_AI_RECORD ||
+          nextBudgetOverviewModifiedOn !== pendingBudgetOverviewRefreshModifiedOn
+        )
       ) {
         setPendingBudgetOverviewRefreshModifiedOn(null)
       }
@@ -3720,6 +3805,22 @@ export default function ProjectDetail() {
     if (!ictBudgetId) return
     void refreshPersistedDocumentSummaries()
   }, [ictBudgetId, refreshPersistedDocumentSummaries])
+
+  useEffect(() => {
+    if (!ictBudgetId) return
+    if (persistedDocumentSummariesLoading) return
+    if (budgetOverviewRecord) return
+    if (pendingBudgetOverviewRefreshModifiedOn !== null) return
+    if (persistedDocumentSummariesError) return
+
+    setPendingBudgetOverviewRefreshModifiedOn(PENDING_NEW_AI_RECORD)
+  }, [
+    budgetOverviewRecord,
+    ictBudgetId,
+    pendingBudgetOverviewRefreshModifiedOn,
+    persistedDocumentSummariesError,
+    persistedDocumentSummariesLoading,
+  ])
 
   useEffect(() => {
     if (!ictBudgetId) return
@@ -5250,6 +5351,7 @@ export default function ProjectDetail() {
   const resolvedStatusLabel = project.status
 
   const display = {
+    budgetRefId: project.id,
     name: savedFormValues.initiativeName || project.name,
     strategicPriority: savedStrategicPriority?.name || project.strategicPriority,
     classification: savedStrategicPriorityClassification?.name || project.classification,
@@ -5294,6 +5396,11 @@ export default function ProjectDetail() {
               <ArrowLeft className="h-4 w-4" />
               Back
             </Link>
+            {display.budgetRefId ? (
+              <p className="mb-1 text-xs font-medium text-[#475569] dark:text-slate-300">
+                {display.budgetRefId}
+              </p>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight text-[#0F172A] dark:text-white sm:text-3xl">
                 {display.name}
@@ -5850,15 +5957,17 @@ export default function ProjectDetail() {
                 icon={FileCheck2}
                 noShadow
               >
-                <div className="mb-4">
-                  <SupportingDocuments
-                    docs={supportingDocuments}
-                    loading={sharepointDocsLoading}
-                    clarificationFileUrls={clarificationFileUrls}
-                    alwaysShowDeleteButton={currentRole === 'Respondent'}
-                    onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                  />
-                </div>
+                {(sharepointDocsLoading || supportingDocuments.length > 0) && (
+                  <div className="mb-4">
+                    <SupportingDocuments
+                      docs={supportingDocuments}
+                      loading={sharepointDocsLoading}
+                      clarificationFileUrls={clarificationFileUrls}
+                      alwaysShowDeleteButton={currentRole === 'Respondent'}
+                      onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
+                    />
+                  </div>
+                )}
                 {currentRole === 'Respondent' && (
                   <FileUploadDropzone
                     files={uploadedFiles}

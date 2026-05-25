@@ -13,6 +13,11 @@ import {
 import { getBudgetLineItemsByBudgetIds } from '@/services/budgetLineItemService'
 import { shareIctBudgetWithRoleTeam } from '@/services/recordShareService'
 import { createNotificationForRole } from '@/services/appNotificationService'
+import {
+  getLatestPortfolioSummaryByCurrentInstance,
+  getLatestPlanningPortfolioSummaryByCurrentInstance,
+  getPortfolioProjectInsight,
+} from '@/services/portfolioSummaryService'
 import type {
   Project,
   ReviewQueueProject,
@@ -193,7 +198,35 @@ async function updateBudgetWorkflow(
   }
 
   if (targetOwner && notificationText?.trim()) {
-    await createNotificationForRole(targetOwner, notificationText.trim())
+    await createNotificationForRole(
+      targetOwner,
+      await buildBudgetNotificationText(projectId, notificationText.trim())
+    )
+  }
+}
+
+async function buildBudgetNotificationText(projectId: string, notificationText: string) {
+  try {
+    const result = await Dga_ict_budgetsService.get(projectId, {
+      select: ['dga_initiative_project_requirement_name', 'dga_budget_ref_id'],
+    })
+
+    const projectName =
+      result.data?.dga_initiative_project_requirement_name?.trim() ||
+      result.data?.dga_budget_ref_id?.trim() ||
+      ''
+
+    if (!projectName) {
+      return notificationText
+    }
+
+    return `${projectName}: ${notificationText}`
+  } catch (error) {
+    console.warn('[DataverseProjectsApi] Failed to resolve project name for notification text:', {
+      projectId,
+      error,
+    })
+    return notificationText
   }
 }
 
@@ -293,7 +326,8 @@ function toPlainTextSummary(value: string | null | undefined) {
 }
 
 function mapBudgetRecordToProject(
-  record: Awaited<ReturnType<typeof Dga_ict_budgetsService.getAll>>['data'][number]
+  record: Awaited<ReturnType<typeof Dga_ict_budgetsService.getAll>>['data'][number],
+  portfolioSummary = null as Awaited<ReturnType<typeof getLatestPlanningPortfolioSummaryByCurrentInstance>> | null
 ): Project {
   const statusLabel = getFormattedAnnotation(
     record,
@@ -304,6 +338,11 @@ function mapBudgetRecordToProject(
     (record as unknown as Record<string, string | undefined>)._ownerid_value ??
     record.ownerid ??
     null
+
+  const portfolioInsight = getPortfolioProjectInsight(
+    portfolioSummary?.parsedSummary,
+    record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || ''
+  )
 
   return {
     id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN-BUDGET',
@@ -368,7 +407,7 @@ function mapBudgetRecordToProject(
     documents: [],
     clarifications: [],
     aiScore: typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : 0,
-    riskLevel: 'Low',
+    riskLevel: portfolioInsight.riskLevel,
     capex: 0,
     opex: 0,
   }
@@ -389,13 +428,16 @@ function applyFilters(items: Project[], filters?: RoleProjectFilters) {
 }
 
 async function getAllBudgetProjects() {
+  const portfolioSummary =
+    (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
+    (await getLatestPortfolioSummaryByCurrentInstance())
   const result = await Dga_ict_budgetsService.getAll({
     select: [...ICT_BUDGET_SELECT_FIELDS],
     filter: getInstanceFilter(),
     orderBy: ['modifiedon desc'],
   })
 
-  return (result.data ?? []).map(mapBudgetRecordToProject)
+  return (result.data ?? []).map((record) => mapBudgetRecordToProject(record, portfolioSummary))
 }
 
 function escapeODataString(value: string) {
@@ -434,12 +476,18 @@ export const dataverseProjectsApi: ProjectsApi = {
       /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
     if (guidPattern.test(trimmedId)) {
+      const portfolioSummary =
+        (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
+        (await getLatestPortfolioSummaryByCurrentInstance())
       const directResult = await Dga_ict_budgetsService.get(trimmedId, {
         select: [...ICT_BUDGET_SELECT_FIELDS],
       })
-      return directResult.data ? mapBudgetRecordToProject(directResult.data) : null
+      return directResult.data ? mapBudgetRecordToProject(directResult.data, portfolioSummary) : null
     }
 
+    const portfolioSummary =
+      (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
+      (await getLatestPortfolioSummaryByCurrentInstance())
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: `dga_budget_ref_id eq '${escapeODataString(trimmedId)}'`,
@@ -447,10 +495,13 @@ export const dataverseProjectsApi: ProjectsApi = {
     })
 
     const record = result.data?.[0]
-    return record ? mapBudgetRecordToProject(record) : null
+    return record ? mapBudgetRecordToProject(record, portfolioSummary) : null
   },
 
   async getReviewQueue() {
+    const portfolioSummary =
+      (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
+      (await getLatestPortfolioSummaryByCurrentInstance())
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: combineFilters(
@@ -479,6 +530,10 @@ export const dataverseProjectsApi: ProjectsApi = {
         sv === 2 ? 'To Review' : sv === 5 ? 'Clarification Pending' : 'Reviewed'
       const isActionable = sv === 2 || sv === 12
       const budgetId = record.dga_ict_budgetid || ''
+      const portfolioInsight = getPortfolioProjectInsight(
+        portfolioSummary?.parsedSummary,
+        record.dga_budget_ref_id?.trim() || budgetId
+      )
       const projectLineItems = lineItemsByBudgetId.get(budgetId) ?? []
       const capex = projectLineItems
         .filter((item) => item.expenseTypeValue === 1)
@@ -493,8 +548,10 @@ export const dataverseProjectsApi: ProjectsApi = {
         name: record.dga_initiative_project_requirement_name?.trim() || 'Untitled Budget Item',
         entity: getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') || '-',
         status: queueStatus,
+        statusForAdgeLabel:
+          getFormattedAnnotation(record, 'dga_status_for_adge@OData.Community.Display.V1.FormattedValue') || queueStatus,
         isActionable,
-        riskLevel: 'Low',
+        riskLevel: portfolioInsight.riskLevel,
         hasMissingDocs: false,
         requestedBudget: record.dga_total_budget_requested ?? 0,
         capex,
@@ -512,6 +569,9 @@ export const dataverseProjectsApi: ProjectsApi = {
   },
 
   async getApprovalQueue() {
+    const portfolioSummary =
+      (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
+      (await getLatestPortfolioSummaryByCurrentInstance())
     const result = await Dga_ict_budgetsService.getAll({
       select: [...ICT_BUDGET_SELECT_FIELDS],
       filter: combineFilters(
@@ -530,6 +590,10 @@ export const dataverseProjectsApi: ProjectsApi = {
             : sv === 5
               ? 'Clarification Pending'
               : 'Submitted to DGE'
+      const portfolioInsight = getPortfolioProjectInsight(
+        portfolioSummary?.parsedSummary,
+        record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || ''
+      )
 
       return {
         id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN',
@@ -537,16 +601,19 @@ export const dataverseProjectsApi: ProjectsApi = {
         name: record.dga_initiative_project_requirement_name?.trim() || 'Untitled Budget Item',
         entity: getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') || '-',
         status: queueStatus,
+        statusForAdgeLabel:
+          getFormattedAnnotation(record, 'dga_status_for_adge@OData.Community.Display.V1.FormattedValue') || queueStatus,
         budgetType: mapActivityTypeLabel(record, record.dga_activity_type),
         budgetCategory: '-',
         requestedBudget: record.dga_total_budget_requested ?? 0,
-        riskLevel: 'Low',
+        riskLevel: portfolioInsight.riskLevel,
         aiConfidence: 0,
         summary: '',
         glCodeCount: 0,
         reviewedBy: getFormattedAnnotation(record, '_createdby_value@OData.Community.Display.V1.FormattedValue') || '-',
         submittedDate: formatDate(record, 'createdon@OData.Community.Display.V1.FormattedValue', record.createdon),
         submittedDateRaw: record.createdon ?? '',
+        updatedDate: formatDate(record, 'modifiedon@OData.Community.Display.V1.FormattedValue', record.modifiedon),
       }
     })
   },

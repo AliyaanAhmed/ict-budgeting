@@ -6,7 +6,12 @@ import type {
   Dga_ict_ai_summariesdga_summary_stage,
   Dga_ict_ai_summariesdga_summary_type,
 } from '@/generated/models/Dga_ict_ai_summariesModel'
+import type {
+  Dga_ict_budgetsBase,
+  Dga_ict_budgetsdga_ai_flags,
+} from '@/generated/models/Dga_ict_budgetsModel'
 import type { Dga_ict_document_summariesBase } from '@/generated/models/Dga_ict_document_summariesModel'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { Dga_ict_ai_summariesService } from '@/generated/services/Dga_ict_ai_summariesService'
 import { Dga_ict_document_summariesService } from '@/generated/services/Dga_ict_document_summariesService'
 import {
@@ -198,6 +203,13 @@ const CUMULATIVE_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 8
 const CUMULATIVE_SUMMARY_STAGE: Dga_ict_ai_summariesdga_summary_stage = 1
 const CUMULATIVE_SUMMARY_TYPE: Dga_ict_ai_summariesdga_summary_type = 1
 const BUDGET_OVERVIEW_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 1
+const BUDGET_OVERVIEW_AI_FLAG_MAP = {
+  evidence_risk: 1,
+  dge_budget_consideration_risk: 2,
+  strategic_alignment_risk: 3,
+  budget_accuracy_risk: 4,
+  clarification_required: 8,
+} as const satisfies Partial<Record<keyof BudgetOverviewReviewFlags, Dga_ict_budgetsdga_ai_flags>>
 
 function hasBudgetOverviewFields(value: unknown): value is BudgetOverviewData {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -287,6 +299,50 @@ export function parseBudgetOverviewData(value: unknown): BudgetOverviewData | nu
   } catch (error) {
     console.warn('[DocumentAiSummaryStore] Failed to parse budget overview data:', error)
     return null
+  }
+}
+
+export function getBudgetAiFlagsFromBudgetOverview(
+  parsedData: BudgetOverviewData | null | undefined
+): Dga_ict_budgetsdga_ai_flags[] {
+  if (!parsedData?.ai_review_flags) {
+    return []
+  }
+
+  const nextFlags = Object.entries(BUDGET_OVERVIEW_AI_FLAG_MAP).reduce<Dga_ict_budgetsdga_ai_flags[]>(
+    (flags, [key, optionValue]) => {
+      const reviewFlag = parsedData.ai_review_flags?.[key as keyof BudgetOverviewReviewFlags]
+      if (reviewFlag?.flag) {
+        flags.push(optionValue)
+      }
+      return flags
+    },
+    []
+  )
+
+  return Array.from(new Set(nextFlags)).sort((left, right) => Number(left) - Number(right))
+}
+
+export async function syncBudgetAiFlagsFromBudgetOverview(
+  budgetId: string,
+  parsedData: BudgetOverviewData | null | undefined
+) {
+  const aiFlags = getBudgetAiFlagsFromBudgetOverview(parsedData)
+  console.log('[BudgetOverview] Syncing dga_ai_flags from ai_review_flags:', {
+    budgetId,
+    aiFlags,
+    aiReviewFlags: parsedData?.ai_review_flags ?? null,
+  })
+
+  const result = await Dga_ict_budgetsService.update(
+    budgetId,
+    {
+      dga_ai_flags: aiFlags,
+    } as Partial<Omit<Dga_ict_budgetsBase, 'dga_ict_budgetid'>>
+  )
+
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to sync AI flags to the ICT budget.')
   }
 }
 

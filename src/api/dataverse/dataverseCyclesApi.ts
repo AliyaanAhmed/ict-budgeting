@@ -48,11 +48,17 @@ export async function getAllCycles(): Promise<CycleRecord[]> {
     select: SELECT_FIELDS,
     orderBy: ['dga_name asc'],
   })
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to load assessment cycles.')
+  }
   return (result.data ?? []).map(normalizeCycle).filter((r): r is CycleRecord => r !== null)
 }
 
 export async function getCycleById(id: string): Promise<CycleRecord | null> {
   const result = await Dga_cyclesService.get(id, { select: SELECT_FIELDS })
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to load assessment cycle.')
+  }
   if (!result.data) return null
   return normalizeCycle(result.data)
 }
@@ -63,17 +69,23 @@ export async function updateCycleFields(
   plannedStartDate: string,
   plannedEndDate: string,
 ): Promise<void> {
-  await Dga_cyclesService.update(id, {
+  const result = await Dga_cyclesService.update(id, {
     dga_name: name,
     dga_planned_start_date: plannedStartDate,
     dga_planned_end_date: plannedEndDate,
   } as Partial<Omit<Dga_cyclesBase, 'dga_cycleid'>>)
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to update assessment cycle.')
+  }
 }
 
 export async function updateCycleStatus(id: string, statuscode: number): Promise<void> {
-  await Dga_cyclesService.update(id, {
+  const result = await Dga_cyclesService.update(id, {
     statuscode,
   } as Partial<Omit<Dga_cyclesBase, 'dga_cycleid'>>)
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to update cycle status.')
+  }
 }
 
 export async function getModuleTypes(): Promise<ModuleTypeOption[]> {
@@ -81,6 +93,9 @@ export async function getModuleTypes(): Promise<ModuleTypeOption[]> {
     select: ['dga_module_typeid', 'dga_module_name'],
     orderBy: ['dga_module_name asc'],
   })
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to load module types.')
+  }
   return (result.data ?? [])
     .map((r: Dga_module_types) => {
       const id = typeof r.dga_module_typeid === 'string' && r.dga_module_typeid.trim() ? r.dga_module_typeid : null
@@ -103,6 +118,9 @@ export async function createCycle(
     dga_planned_end_date: plannedEndDate,
     'dga_module_type@odata.bind': `/dga_module_types(${moduleTypeId})`,
   } as Omit<Dga_cyclesBase, 'dga_cycleid'>)
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to create assessment cycle.')
+  }
   if (!result.data?.dga_cycleid) throw new Error('Cycle creation did not return an ID')
   return result.data.dga_cycleid
 }

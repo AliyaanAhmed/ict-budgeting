@@ -20,14 +20,19 @@ import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import { useToast } from '@/context/ToastContext'
+import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
+import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import { ProjectTable } from '@/components/shared/ProjectTable'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { StatusBadge, RiskBadge } from '@/components/shared/StatusBadge'
+import { StatusBadge } from '@/components/shared/StatusBadge'
+import { RiskLevelBadge } from '@/components/shared/AiPortfolioSummary'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 import { exportProjectsToExcel } from '@/services/projectExportService'
+import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
+import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
 
 type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -64,8 +69,11 @@ function AiScore({ score }: { score: number }) {
   )
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({ project, portfolioSummary }: { project: Project; portfolioSummary: PortfolioSummaryPayload | null }) {
   const pendingClarification = project.status === 'Clarification Required'
+  const dynamicRisk = portfolioSummary
+    ? getPortfolioProjectInsight(portfolioSummary, project.ictBudgetId ?? project.id, 'respondent').riskLevel
+    : null
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_18px_40px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
@@ -93,7 +101,7 @@ function ProjectCard({ project }: { project: Project }) {
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <StatusBadge status={project.status} />
-          <RiskBadge risk={project.riskLevel} />
+          {dynamicRisk && <RiskLevelBadge riskLevel={dynamicRisk} />}
         </div>
 
         <div className="mb-4 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
@@ -167,12 +175,12 @@ export default function RespondentProjects() {
   const { runActionToast } = useToast()
   const cycleName = selectedCycle?.name ?? 'ICT Budget Cycle'
   const { items: projects, loading, error } = useRoleProjects('respondent', instanceId)
+  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table')
   const [hasActiveTableFilters, setHasActiveTableFilters] = useState(false)
-  const [aiExpanded, setAiExpanded] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all-statuses')
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
   const [exporting, setExporting] = useState(false)
@@ -286,23 +294,15 @@ export default function RespondentProjects() {
         </div>
       )}
 
-      <div className="rounded-[10px] border border-dashed border-[#D946EF] bg-[#d946ef1a] overflow-hidden">
-        <button onClick={() => setAiExpanded(!aiExpanded)} className="ai-panel-trigger">
-          <Sparkles className="h-4 w-4 shrink-0 text-[var(--ai-accent)]" />
-          <span className="ai-panel-title">AI Portfolio Summary</span>
-          <span className="text-xs text-[#D946EF]">
-            - {projects.filter((project) => project.aiScore < 75 || project.riskLevel === 'High').length} projects need attention
-          </span>
-          <ChevronDown className={cn('ml-auto h-4 w-4 text-[var(--primary)] transition-transform', aiExpanded && 'rotate-180')} />
-        </button>
-        {aiExpanded && (
-          <div className="px-4 pb-4">
-            <p className="text-sm text-[#D946EF]">
-              AI analysis will appear here once configured - portfolio insights including risk scoring, budget anomalies, and strategic alignment gaps.
-            </p>
-          </div>
-        )}
-      </div>
+      <AiPortfolioSummary
+        role="respondent"
+        summary={portfolioSummary}
+        loading={portfolioLoading}
+        error={portfolioError}
+        projects={projects}
+        variant="projects"
+        projectHrefBuilder={(projectId) => `/respondent/projects/${projectId}`}
+      />
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-xs">
@@ -398,7 +398,7 @@ export default function RespondentProjects() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {filtered.map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard key={project.id} project={project} portfolioSummary={portfolioSummary} />
             ))}
           </div>
         )}

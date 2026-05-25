@@ -5,6 +5,7 @@ import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
 import { DirhamIcon } from './DirhamIcon'
+import { TeamHoverCard } from './TeamHoverCard'
 import { UserHoverCard } from './UserHoverCard'
 import {
   DropdownMenu,
@@ -257,7 +258,7 @@ function ColumnFilterMenu<T>({
 
           {column.type === 'option' && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">
+              <p className="text-[11px] font-semibold text-[#94A3B8]">
                 Options
               </p>
               <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
@@ -402,7 +403,15 @@ export function ProjectTable({
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">{project.pendingWith}</span>
+            project.ownerType?.toLowerCase().includes('team') && project.ownerId ? (
+              <TeamHoverCard
+                name={project.pendingWith}
+                teamId={project.ownerId}
+                className="rounded-lg bg-[#EEF5FF] px-2.5 py-1.5 text-[14px] font-normal text-[var(--primary)] transition-colors hover:bg-[#DCEEFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE] dark:hover:bg-[#286CFF]/25"
+              />
+            ) : (
+              <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">{project.pendingWith}</span>
+            )
           ) : (
             <span className="text-[14px] text-[#94A3B8]">-</span>
           ),
@@ -502,7 +511,7 @@ export function ProjectTable({
                   {column.id === 'budget' ? (
                     <span className="inline-flex items-center gap-1.5 leading-none">
                       <span>{column.header}</span>
-                      <DirhamIcon width={14} height={14} color="currentColor" className="shrink-0 self-center" />
+                      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
                     </span>
                   ) : (
                     <span>{column.header}</span>

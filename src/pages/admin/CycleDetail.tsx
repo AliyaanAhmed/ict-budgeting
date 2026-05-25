@@ -19,9 +19,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DatePickerField } from '@/components/shared/DatePickerField'
 import { useToast } from '@/context/ToastContext'
-import { getCycleById, updateCycleFields, updateCycleStatus } from '@/api/dataverse/dataverseCyclesApi'
+import { getCycleById, getModuleTypes, updateCycleFields, updateCycleStatus } from '@/api/dataverse/dataverseCyclesApi'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import {
   getInstancesByCycleId,
@@ -29,7 +30,7 @@ import {
   createInstance,
   getModuleConfigurations,
 } from '@/api/dataverse/dataverseInstancesApi'
-import type { CycleRecord, InstanceRecord, ModuleConfigOption } from '@/domain/cycle'
+import type { CycleRecord, InstanceRecord, ModuleConfigOption, ModuleTypeOption } from '@/domain/cycle'
 import { CYCLE_STATUS_DRAFT, CYCLE_STATUS_PUBLISHED, CYCLE_STATUS_COMPLETED } from '@/domain/cycle'
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -344,6 +345,7 @@ export default function CycleDetail() {
 
   const [cycle, setCycle] = useState<CycleRecord | null>(null)
   const [instances, setInstances] = useState<InstanceRecord[]>([])
+  const [moduleTypes, setModuleTypes] = useState<ModuleTypeOption[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [instancesLoading, setInstancesLoading] = useState(false)
@@ -397,10 +399,19 @@ export default function CycleDetail() {
     }
   }
 
+  async function loadModuleTypeOptions() {
+    try {
+      const data = await getModuleTypes()
+      setModuleTypes(data)
+    } catch {
+      setModuleTypes([])
+    }
+  }
+
   useEffect(() => {
     if (!id) return
     setLoading(true)
-    Promise.all([loadCycle(), loadInstances()]).finally(() => setLoading(false))
+    Promise.all([loadCycle(), loadInstances(), loadModuleTypeOptions()]).finally(() => setLoading(false))
   }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave() {
@@ -621,7 +632,18 @@ export default function CycleDetail() {
 
             <div>
               <FieldLabel>Module Type</FieldLabel>
-              <ReadonlyField value={cycle.moduleTypeLabel ?? '—'} />
+              <Select value={cycle.moduleTypeId ?? ''} disabled>
+                <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-[#F8FBFF] text-sm shadow-sm dark:border-white/10 dark:bg-white/5">
+                  <SelectValue placeholder="Select module type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {moduleTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="mt-1.5 text-xs text-[#94A3B8]">Set at cycle creation — cannot be changed</p>
             </div>
 

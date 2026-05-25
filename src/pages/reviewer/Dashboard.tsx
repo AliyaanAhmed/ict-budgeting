@@ -35,12 +35,14 @@ import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import {
   useAccountCodesBreakdown,
   useBudgetByCategoryChart,
 } from '@/hooks/useDashboardBudgetCharts'
+import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
@@ -243,6 +245,7 @@ export default function ReviewerDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
+  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
   const budgetByCategory = useBudgetByCategoryChart(liveProjects)
   const {
     items: accountBreakdown,
@@ -305,28 +308,28 @@ export default function ReviewerDashboard() {
       label: 'Operational Non-Recurring',
       accent: dashboardPalette.primary,
       bgClass: 'border-[#D8E7FF] dark:border-[#315389]',
-      badgeClass: 'bg-[#DCEAFE] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white',
+      badgeClass: 'bg-[#DCEAFE] text-[#286CFF] dark:border dark:border-[#4D73B8] dark:bg-[#1E3A68] dark:text-[#DBEAFE]',
     },
     {
       key: 'Operational Recurring',
       label: 'Operational Recurring',
       accent: dashboardPalette.primarySoft,
       bgClass: 'border-[#DDE8FF] dark:border-[#3E5F93]',
-      badgeClass: 'bg-[#EAF1FF] text-[#4F86FF] dark:bg-[#4F86FF]/18 dark:text-[#CFE0FF]',
+      badgeClass: 'bg-[#EAF1FF] text-[#4F86FF] dark:border dark:border-[#5477B5] dark:bg-[#243C66] dark:text-[#D7E5FF]',
     },
     {
       key: 'New Project',
       label: 'New Project',
       accent: dashboardPalette.primaryDeep,
       bgClass: 'border-[#D3E1FF] dark:border-[#284B86]',
-      badgeClass: 'bg-[#E0EAFF] text-[#1D4ED8] dark:bg-[#1D4ED8]/18 dark:text-[#D9E5FF]',
+      badgeClass: 'bg-[#E0EAFF] text-[#1D4ED8] dark:border dark:border-[#446BB0] dark:bg-[#1D3561] dark:text-[#DCE7FF]',
     },
     {
       key: 'Project Continuation',
       label: 'Project Continuation',
       accent: dashboardPalette.primaryMuted,
       bgClass: 'border-[#E3ECFF] dark:border-[#476596]',
-      badgeClass: 'bg-[#F1F6FF] text-[#6E9FFF] dark:bg-[#6E9FFF]/18 dark:text-[#E4EEFF]',
+      badgeClass: 'bg-[#F1F6FF] text-[#6E9FFF] dark:border dark:border-[#5E76A3] dark:bg-[#2A3D5F] dark:text-[#E4EEFF]',
     },
   ] as const
 
@@ -443,10 +446,6 @@ export default function ReviewerDashboard() {
                 <Radar className="h-4 w-4" />
                 {daysRemaining} days remaining
               </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#3B82F6] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#BFDBFE]">
-                <MessageSquareMore className="h-4 w-4" />
-                Clarifications go to Respondent only
-              </span>
             </div>
           </div>
         </div>
@@ -546,100 +545,15 @@ export default function ReviewerDashboard() {
         </Card>
       </section>
 
-      {/* ─── AI Portfolio Summary ─── */}
-      <section
-        title="AI summary of portfolio-wide risks, quality signals, and review priorities."
-        className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
-      >
-        <button
-          type="button"
-          onClick={() => setPortfolioExpanded((v) => !v)}
-          className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-white/30 dark:hover:bg-white/5"
-        >
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</h2>
-                <InfoHint text="AI scans all submitted projects for quality gaps, documentation issues, budget anomalies, duplicate scope, and strategic alignment concerns to guide review priorities." />
-                <span className="inline-flex items-center rounded-full bg-[#FDF8FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                  Action Required
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
-                Queue status: {attentionCount} submissions need attention before forwarding to Approver.
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-4">
-            <div className="hidden items-center gap-4 text-sm md:flex">
-              <span className="text-[#0F172A] dark:text-white">
-                {liveProjects.length} <span className="text-[#64748B] dark:text-slate-100">in queue</span>
-              </span>
-              <span className="text-[#A855F7] dark:text-[#E9D5FF]">
-                {avgConfidence}% <span className="text-[#64748B] dark:text-slate-100">avg confidence</span>
-              </span>
-              <span className="text-[#C084FC] dark:text-[#E9D5FF]">
-                {reviewed} <span className="text-[#64748B] dark:text-slate-100">sent onward</span>
-              </span>
-              <RefreshCcw className="h-4 w-4 text-[#64748B] dark:text-slate-100" />
-            </div>
-            <ChevronDown
-              className={cn('h-5 w-5 text-[#64748B] transition-transform dark:text-slate-100', portfolioExpanded && 'rotate-180')}
-            />
-          </div>
-        </button>
-
-        {portfolioExpanded && (
-          <div className="border-t border-[#E9D5FF] px-6 pb-6 pt-5 dark:border-white/10">
-            <div className="space-y-3">
-              {portfolioIssues.map((issue) => (
-                <div
-                  key={issue.title}
-                  className="flex items-start justify-between gap-4 rounded-[22px] border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 shrink-0 text-[#A855F7]">
-                      {issue.icon}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{issue.title}</p>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">{issue.detail}</p>
-                    </div>
-                  </div>
-                  <span
-                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: '#FDF8FF', color: '#A855F7' }}
-                  >
-                    {issue.badge}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 border-t border-[#F0D9FF] pt-5 dark:border-white/10">
-              <p className="text-xs font-semibold tracking-[0.06em] text-[#A855F7] dark:text-[#E9D5FF]">
-                Recommended Review Actions
-              </p>
-              <div className="mt-3 grid gap-2 text-sm text-[#475569] dark:text-slate-100">
-                {[
-                  'Raise clarification to respondents for missing cost breakdowns and incomplete documentation.',
-                  'Flag duplicate-scope projects before forwarding to Approver.',
-                  'Prioritise high-risk submissions for immediate review.',
-                  'Verify overdue clarifications and follow up with respondents.',
-                ].map((item) => (
-                  <div key={item} className="flex items-start gap-2">
-                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
+      <AiPortfolioSummary
+        role="reviewer"
+        summary={portfolioSummary}
+        loading={portfolioLoading}
+        error={portfolioError}
+        projects={liveProjects}
+        variant="dashboard"
+        projectHrefBuilder={(projectId) => `/reviewer/review-queue/${projectId}`}
+      />
 
       {/* ─── Projects Requiring Attention + Budget Mix ─── */}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -881,7 +795,7 @@ export default function ReviewerDashboard() {
 
             <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-[#315389] dark:bg-[#1B2A41]">
               <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#1E3A68] dark:text-[#BFDBFE]">
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div>
@@ -945,7 +859,7 @@ export default function ReviewerDashboard() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {budgetTypeBreakdown.map((item) => (
-                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
+                    <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
                     <div className="flex items-center gap-3">
                       <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
                         {item.count}
@@ -1014,11 +928,11 @@ export default function ReviewerDashboard() {
                     { label: 'Clarifications', value: clarificationPending },
                     { label: 'Sent onward', value: reviewed },
                   ].map((item) => (
-                    <div key={item.label} className="rounded-2xl bg-white/80 px-3 py-3 text-center dark:bg-white/5">
+                    <div key={item.label} className="rounded-2xl border border-[#E9D5FF] bg-white/80 px-3 py-3 text-center dark:border-[#51356F] dark:bg-[#241534]">
                       <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
                         {item.label}
                       </p>
-                      <p className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                      <p className="mt-1 text-base font-bold text-[#0F172A] dark:text-[#F3E8FF]">{item.value}</p>
                     </div>
                   ))}
                 </div>

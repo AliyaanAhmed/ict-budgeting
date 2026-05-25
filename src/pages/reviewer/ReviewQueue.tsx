@@ -53,18 +53,25 @@ const toneConfig = {
   red:   { accent: '#DC2626', border: '#FFD1D1', iconBg: '#FFF0F0', iconColor: '#DC2626', badge: 'Monitor' },
 } as const
 
-function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
+function QueueStat({ label, value, icon: Icon, tone = 'blue', sub, onClick, active = false }: {
   label: string
   value: React.ReactNode
   icon: React.ElementType
   tone?: keyof typeof toneConfig
   sub?: string
+  onClick?: () => void
+  active?: boolean
 }) {
   const c = toneConfig[tone]
+  const isClickable = Boolean(onClick)
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className="group overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
-      style={{ borderColor: c.border }}
+      style={{ borderColor: active ? '#286CFF' : c.border }}
+      disabled={!isClickable}
+      aria-pressed={active}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -87,7 +94,7 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
         </span>
         {sub ? <p className="text-xs text-[#64748B] dark:text-slate-200">{sub}</p> : null}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -394,9 +401,33 @@ export default function ReviewQueue() {
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat label="To Review" value={loading ? '—' : toReviewCount} icon={Clock} tone="amber" sub="Waiting for reviewer action" />
-        <QueueStat label="Reviewed" value={loading ? '—' : reviewedCount} icon={CheckCircle2} tone="green" sub="Ready for approver submission" />
-        <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={MessageSquare} tone="red" sub="Returned for respondent input" />
+        <QueueStat
+          label="To Review"
+          value={loading ? '—' : toReviewCount}
+          icon={Clock}
+          tone="amber"
+          sub="Waiting for reviewer action"
+          onClick={() => setActiveFilter('to-review')}
+          active={activeFilter === 'to-review'}
+        />
+        <QueueStat
+          label="Reviewed"
+          value={loading ? '—' : reviewedCount}
+          icon={CheckCircle2}
+          tone="green"
+          sub="Ready for approver submission"
+          onClick={() => setActiveFilter('reviewed')}
+          active={activeFilter === 'reviewed'}
+        />
+        <QueueStat
+          label="Clarification"
+          value={loading ? '—' : clarificationCount}
+          icon={MessageSquare}
+          tone="red"
+          sub="Returned for respondent input"
+          onClick={() => setActiveFilter('clarification')}
+          active={activeFilter === 'clarification'}
+        />
         <QueueStat
           label="Total Budget"
           value={loading ? '—' : <CurrencyAmount amount={totalBudget} className="text-3xl font-bold leading-none" iconSize={18} />}
@@ -590,11 +621,8 @@ export default function ReviewQueue() {
                         <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200">
                           {proj.budgetType && proj.budgetType !== '-' && <><span>{proj.budgetType}</span><span>/</span></>}
-                          <span>By {proj.submittedBy}</span>
-                          <span>/</span>
-                          <span>Submitted {proj.submittedDate}</span>
-                          <span>/</span>
-                          <span>Updated {proj.updatedDate}</span>
+                          {proj.statusForAdgeLabel && proj.statusForAdgeLabel !== '-' && <><span>{proj.statusForAdgeLabel}</span><span>/</span></>}
+                          <span>{proj.updatedDate && proj.updatedDate !== '-' ? `Updated ${proj.updatedDate}` : `Submitted ${proj.submittedDate}`}</span>
                         </div>
                       </div>
                     </div>

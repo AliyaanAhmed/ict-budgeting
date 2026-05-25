@@ -61,18 +61,25 @@ const toneConfig = {
   red:   { accent: '#DC2626', border: '#FFD1D1', iconBg: '#FFF0F0', iconColor: '#DC2626', badge: 'Returned' },
 } as const
 
-function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
+function QueueStat({ label, value, icon: Icon, tone = 'blue', sub, onClick, active = false }: {
   label: string
   value: React.ReactNode
   icon: React.ElementType
   tone?: keyof typeof toneConfig
   sub?: string
+  onClick?: () => void
+  active?: boolean
 }) {
   const c = toneConfig[tone]
+  const isClickable = Boolean(onClick)
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className="group overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
-      style={{ borderColor: c.border }}
+      style={{ borderColor: active ? '#286CFF' : c.border }}
+      disabled={!isClickable}
+      aria-pressed={active}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -95,7 +102,7 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
         </span>
         {sub ? <p className="text-xs text-[#64748B] dark:text-slate-200">{sub}</p> : null}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -453,9 +460,33 @@ export default function ApprovalQueue() {
           tone="blue"
           sub="Current value in approver scope"
         />
-        <QueueStat label="Pending Approval" value={loading ? '—' : pendingCount} icon={AlertTriangle} tone="amber" sub="Awaiting final decision" />
-        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" sub="Ready for DGE handoff" />
-        <QueueStat label="Submitted to DGE" value={loading ? '—' : submittedToDgeCount} icon={Sparkles} tone="red" sub="Already with strategy team" />
+        <QueueStat
+          label="Pending Approval"
+          value={loading ? '—' : pendingCount}
+          icon={AlertTriangle}
+          tone="amber"
+          sub="Awaiting final decision"
+          onClick={() => setActiveFilter('pending')}
+          active={activeFilter === 'pending'}
+        />
+        <QueueStat
+          label="Approved"
+          value={loading ? '—' : approvedCount}
+          icon={CheckCircle2}
+          tone="green"
+          sub="Ready for DGE handoff"
+          onClick={() => setActiveFilter('approved')}
+          active={activeFilter === 'approved'}
+        />
+        <QueueStat
+          label="Submitted to DGE"
+          value={loading ? '—' : submittedToDgeCount}
+          icon={Sparkles}
+          tone="red"
+          sub="Already with strategy team"
+          onClick={() => setActiveFilter('submitted-dge')}
+          active={activeFilter === 'submitted-dge'}
+        />
       </div>
 
       <div className="hidden grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -494,7 +525,7 @@ export default function ApprovalQueue() {
       <div className="rounded-[26px] border border-[#D9E6F5] bg-white p-5 shadow-none dark:border-white/10 dark:bg-[#162339]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_16px_30px_rgba(40,108,255,0.20)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white">
               <Send className="h-5 w-5" />
             </div>
             <div>
@@ -703,11 +734,8 @@ export default function ApprovalQueue() {
                         <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200">
                           {proj.budgetType && proj.budgetType !== '-' && <><span>{proj.budgetType}</span><span>/</span></>}
-                          {proj.glCodeCount > 0 && <><span>{proj.glCodeCount} budget codes</span><span>/</span></>}
-                          <span>Reviewed by {proj.reviewedBy}</span>
-                          {proj.submittedDate && proj.submittedDate !== '-' && (
-                            <><span>/</span><span>Submitted {proj.submittedDate}</span></>
-                          )}
+                          {proj.statusForAdgeLabel && proj.statusForAdgeLabel !== '-' && <><span>{proj.statusForAdgeLabel}</span><span>/</span></>}
+                          <span>{proj.updatedDate && proj.updatedDate !== '-' ? `Updated ${proj.updatedDate}` : `Submitted ${proj.submittedDate}`}</span>
                         </div>
                       </div>
                     </div>

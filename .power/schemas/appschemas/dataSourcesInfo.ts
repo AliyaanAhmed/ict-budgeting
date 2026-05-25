@@ -110,6 +110,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_module_types": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_module_typeid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "roles": {
     "tableId": "",
     "version": "",
