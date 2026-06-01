@@ -2243,7 +2243,7 @@ function BudgetConsiderationCompactCards({
         return group.items.map((item) => (
           <article
             key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
-            className="group relative overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+            className="relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -2281,13 +2281,13 @@ function BudgetConsiderationCompactCards({
               <div className="relative shrink-0">
                 <button
                   type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
+                  className="peer inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
                   aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
                 >
                   <Info className="h-4 w-4" />
                 </button>
 
-                <div className="pointer-events-none absolute bottom-full right-0 z-[120] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 group-hover:pointer-events-auto group-hover:-translate-y-1 group-hover:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
+                <div className="pointer-events-none absolute bottom-full right-0 z-[220] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 peer-hover:pointer-events-auto peer-hover:-translate-y-1 peer-hover:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:-translate-y-1 peer-focus-visible:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
                   <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
                     Reason
                   </p>
@@ -5628,7 +5628,7 @@ export default function NewProject() {
                         setPolicyEvaluationExpanded((value) => !value)
                       }
                     }}
-                    className="flex w-full items-start justify-between gap-4 bg-gradient-to-b from-[#FDF7FF] to-white px-6 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
+                    className="flex w-full items-start justify-between gap-4 rounded-[28px] bg-gradient-to-b from-[#FDF7FF] to-white px-6 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-1 shrink-0 text-[#A855F7]">

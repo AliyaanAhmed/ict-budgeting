@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
+import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
 
 type ColumnType = 'text' | 'number' | 'option'
 type TextOperator = 'contains' | 'equals'
@@ -133,7 +135,14 @@ function matchesFilter<T>(row: T, column: ColumnDefinition<T>, filter: ColumnFil
   const rawValue = column.accessor(row)
 
   if (column.type === 'option') {
-    return !filter.option || String(rawValue ?? '') === filter.option
+    if (!filter.option) return true
+    const optionValues = String(rawValue ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+    return optionValues.length > 0
+      ? optionValues.includes(filter.option)
+      : String(rawValue ?? '') === filter.option
   }
 
   if (!filter.value?.trim()) return true
@@ -362,7 +371,32 @@ interface ProjectTableProps {
   linkBase?: string
   showCreatedBy?: boolean
   showAiScore?: boolean
+  portfolioSummary?: PortfolioSummaryPayload | null
   onFilterStateChange?: (active: boolean) => void
+}
+
+function AiReviewFlagTags({
+  project,
+}: {
+  project: Project
+  portfolioSummary?: PortfolioSummaryPayload | null
+}) {
+  const flags = getProjectAiReviewFlags(project.aiReviewFlags).filter((flag) => flag.severity !== 'Low')
+
+  if (flags.length === 0) {
+    return <span className="text-[14px] text-[#94A3B8] dark:text-slate-400">-</span>
+  }
+
+  return (
+    <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">
+      {flags.map((flag, index) => (
+        <span key={`${project.id}-${flag.key}`}>
+          {flag.label}
+          {index < flags.length - 1 ? ', ' : ''}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 export function ProjectTable({
@@ -370,6 +404,7 @@ export function ProjectTable({
   linkBase = '/respondent/projects',
   showCreatedBy = false,
   showAiScore = true,
+  portfolioSummary,
   onFilterStateChange,
 }: ProjectTableProps) {
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({})
@@ -477,6 +512,30 @@ export function ProjectTable({
         ),
       },
       {
+        id: 'aiReviewFlags',
+        header: 'AI Review Flag',
+        type: 'option',
+        accessor: (project) =>
+          getProjectAiReviewFlags(project.aiReviewFlags)
+            .filter((flag) => flag.severity !== 'Low')
+            .map((flag) => flag.label)
+            .join(', '),
+        options: Array.from(
+          new Set(
+            projects.flatMap((project) =>
+              getProjectAiReviewFlags(project.aiReviewFlags)
+                .filter((flag) => flag.severity !== 'Low')
+                .map((flag) => flag.label)
+            )
+          )
+        ).sort(),
+        render: (project) => (
+          <AiReviewFlagTags project={project} portfolioSummary={portfolioSummary} />
+        ),
+        className: 'hidden xl:table-cell',
+        headerClassName: 'hidden xl:table-cell',
+      },
+      {
         id: 'pendingWith',
         header: 'Pending With',
         type: 'option',
@@ -539,7 +598,7 @@ export function ProjectTable({
     })
 
     return baseColumns
-  }, [linkBase, projects, showAiScore, showCreatedBy])
+  }, [linkBase, portfolioSummary, projects, showAiScore, showCreatedBy])
 
   const tableRows = useMemo(() => {
     const filteredRows = projects.filter((project) =>

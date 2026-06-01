@@ -9,6 +9,7 @@ import {
   FileText,
   Loader2,
   Sparkles,
+  Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SupportingDocumentEvaluationSummary } from '@/services/aiSupportingDocumentEvaluationService'
@@ -27,6 +28,7 @@ export interface SupportingDocumentAiInsightItem {
 
 interface SupportingDocumentAiInsightsProps {
   items: SupportingDocumentAiInsightItem[]
+  onDeleteItem?: (item: SupportingDocumentAiInsightItem) => Promise<void> | void
 }
 
 function toDisplayText(value: unknown): string {
@@ -145,41 +147,40 @@ function InsightSection({
 }
 
 function AnalyzingState({ fileName }: { fileName: string }) {
-  const { Icon, color, bg, label } = getFileTypeIcon(fileName)
+  const { Icon, color, bg } = getFileTypeIcon(fileName)
 
   return (
-    <div className="relative overflow-hidden rounded-[22px] border border-[#E9D5FF]/60 bg-[radial-gradient(circle_at_top_left,#FDF7FF_0%,#F8F2FF_40%,#FFFFFF_82%)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,#34124B_0%,#241735_42%,#1E293B_82%)]">
-      <div className="pointer-events-none absolute inset-0 rounded-[22px]">
-        <div className="absolute inset-0 rounded-[22px] bg-[conic-gradient(from_0deg_at_50%_50%,rgba(168,85,247,0)_0deg,rgba(168,85,247,0)_48deg,rgba(168,85,247,0.14)_68deg,rgba(168,85,247,0.88)_92deg,rgba(232,121,249,0.95)_118deg,rgba(216,180,254,0.85)_145deg,rgba(168,85,247,0.16)_172deg,rgba(168,85,247,0)_198deg,rgba(168,85,247,0)_360deg)] opacity-95 [filter:blur(0.4px)] animate-[spin_9s_linear_infinite]" />
-        <div className="absolute inset-[1.5px] rounded-[20px] bg-[radial-gradient(circle_at_top_left,#FDF7FF_0%,#F8F2FF_40%,#FFFFFF_82%)] dark:bg-[radial-gradient(circle_at_top_left,#34124B_0%,#241735_42%,#1E293B_82%)]" />
-      </div>
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-32 bg-[linear-gradient(90deg,rgba(168,85,247,0.08),rgba(168,85,247,0))]" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-44 bg-[linear-gradient(270deg,rgba(168,85,247,0.08),rgba(168,85,247,0))]" />
-      <div className="relative flex items-center justify-between gap-4 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-            style={{ backgroundColor: bg }}
-          >
-            <Icon className="h-5 w-5" style={{ color }} />
-          </div>
-          <div className="min-w-0">
-            <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              AI Analyzing
+    <div className="relative overflow-hidden rounded-[22px] p-[1.5px]">
+      <div className="pointer-events-none absolute inset-0 rounded-[22px] bg-[conic-gradient(from_0deg_at_50%_50%,rgba(168,85,247,0)_0deg,rgba(168,85,247,0)_52deg,rgba(168,85,247,0.14)_72deg,rgba(168,85,247,0.88)_96deg,rgba(232,121,249,0.95)_122deg,rgba(216,180,254,0.85)_148deg,rgba(168,85,247,0.16)_174deg,rgba(168,85,247,0)_202deg,rgba(168,85,247,0)_360deg)] animate-[spin_9s_linear_infinite]" />
+      <div className="relative overflow-hidden rounded-[20px] bg-[radial-gradient(circle_at_top_left,#FDF7FF_0%,#F8F2FF_40%,#FFFFFF_82%)] dark:bg-[radial-gradient(circle_at_top_left,#34124B_0%,#241735_42%,#1E293B_82%)]">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-32 bg-[linear-gradient(90deg,rgba(168,85,247,0.08),rgba(168,85,247,0))]" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-44 bg-[linear-gradient(270deg,rgba(168,85,247,0.08),rgba(168,85,247,0))]" />
+        <div className="relative flex items-center justify-between gap-4 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+              style={{ backgroundColor: bg }}
+            >
+              <Icon className="h-5 w-5" style={{ color }} />
             </div>
-            <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{fileName}</p>
+            <div className="min-w-0">
+              <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                AI Analyzing
+              </div>
+              <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{fileName}</p>
+            </div>
           </div>
-        </div>
-        <div className="hidden items-center gap-2 rounded-xl border border-[#F0D9FF] bg-white/80 px-3 py-2 text-xs font-medium text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF] sm:flex">
-          <Bot className="h-3.5 w-3.5 animate-pulse" />
-          Preparing insights
-        </div>
-        <div className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 opacity-[0.12] sm:block dark:opacity-[0.16]">
-          <div className="relative h-16 w-24">
-            <Sparkles className="absolute right-1 top-0 h-5 w-5 text-[#A855F7] animate-[pulse_4.2s_ease-in-out_infinite]" />
-            <Bot className="absolute right-10 top-5 h-7 w-7 text-[#C084FC] animate-[pulse_5s_ease-in-out_infinite]" />
-            <FileText className="absolute right-0 bottom-0 h-6 w-6 text-[#E879F9] animate-[pulse_4.6s_ease-in-out_infinite]" />
+          <div className="hidden items-center gap-2 rounded-xl border border-[#F0D9FF] bg-white/80 px-3 py-2 text-xs font-medium text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF] sm:flex">
+            <Bot className="h-3.5 w-3.5 animate-pulse" />
+            Preparing insights
+          </div>
+          <div className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 opacity-[0.12] sm:block dark:opacity-[0.16]">
+            <div className="relative h-16 w-24">
+              <Sparkles className="absolute right-1 top-0 h-5 w-5 text-[#A855F7] animate-[pulse_4.2s_ease-in-out_infinite]" />
+              <Bot className="absolute right-10 top-5 h-7 w-7 text-[#C084FC] animate-[pulse_5s_ease-in-out_infinite]" />
+              <FileText className="absolute right-0 bottom-0 h-6 w-6 text-[#E879F9] animate-[pulse_4.6s_ease-in-out_infinite]" />
+            </div>
           </div>
         </div>
       </div>
@@ -319,8 +320,9 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
   )
 }
 
-export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsightsProps) {
+export function SupportingDocumentAiInsights({ items, onDeleteItem }: SupportingDocumentAiInsightsProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const previousItemsRef = useRef<SupportingDocumentAiInsightItem[]>(items)
 
   const orderedItems = useMemo(() => {
@@ -403,6 +405,16 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
   const completedCount = items.filter((item) => item.status === 'complete').length
   const analyzingCount = items.filter((item) => item.status === 'analyzing' || item.status === 'queued').length
 
+  const handleDelete = async (item: SupportingDocumentAiInsightItem) => {
+    if (!onDeleteItem || deletingId) return
+    setDeletingId(item.id)
+    try {
+      await onDeleteItem(item)
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
     <div className="mt-5 rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] via-white to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:via-[#231735] dark:to-[#1E293B] sm:p-5">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -441,7 +453,18 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
 
           if (isActive) {
             return (
-              <div key={item.id} className="overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+              <div key={item.id} className="relative overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+                {onDeleteItem && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(item)}
+                    disabled={deletingId === item.id}
+                    className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 transition-all hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-red-50 disabled:text-red-300 dark:bg-red-900/20 dark:text-red-300"
+                    aria-label={`Delete ${item.file.name}`}
+                  >
+                    {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
+                )}
                 <InsightContent item={item} />
               </div>
             )
@@ -497,6 +520,17 @@ export function SupportingDocumentAiInsights({ items }: SupportingDocumentAiInsi
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {onDeleteItem && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(item)}
+                      disabled={deletingId === item.id}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-50 text-red-500 transition-all hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-red-50 disabled:text-red-300 dark:bg-red-900/20 dark:text-red-300"
+                      aria-label={`Delete ${item.file.name}`}
+                    >
+                      {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    </button>
+                  )}
                   {typeof evidenceScore === 'number' && item.status === 'complete' && (
                     <EvidenceRadial score={evidenceScore} />
                   )}

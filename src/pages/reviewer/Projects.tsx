@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Search, Download, LayoutList, LayoutGrid, ChevronDown, ListFilter, Eye, Sparkles, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Search, Download, LayoutList, LayoutGrid, ListFilter, Eye, Sparkles } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { Project, ProjectStatus } from '@/domain/types'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { RiskLevelBadge } from '@/components/shared/AiPortfolioSummary'
+import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
 import { isReviewerSentToApproverProjectStatus } from '@/services/projectService'
 import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
@@ -28,6 +29,7 @@ type BudgetTypeFilter =
   | 'Operational Non-Recurring'
   | 'New Project'
   | 'Project Continuation'
+type AiReviewFlagFilter = 'all-ai-review-flags' | string
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
@@ -40,13 +42,22 @@ function AiScore({ score }: { score: number }) {
       : score >= 65
         ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700/30 dark:bg-amber-900/20 dark:text-amber-300'
         : 'border-red-200 bg-red-50 text-red-700 dark:border-red-700/30 dark:bg-red-900/20 dark:text-red-300'
-  const Icon = score >= 85 ? TrendingUp : score >= 65 ? Minus : TrendingDown
+  return <span className={cn('inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold', tone)}>{score}%</span>
+}
+
+function ProjectAiFlagTags({ project, portfolioSummary }: { project: Project; portfolioSummary: PortfolioSummaryPayload | null }) {
+  const flags = getProjectAiReviewFlags(project.aiReviewFlags).filter((flag) => flag.severity !== 'Low')
+  if (flags.length === 0) return null
 
   return (
-    <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold', tone)}>
-      <Icon className="h-3.5 w-3.5" />
-      AI {score}%
-    </span>
+    <p className="mt-3 text-sm leading-6 text-[#475569] dark:text-slate-300">
+      {flags.map((flag, index) => (
+        <span key={`${project.id}-${flag.key}`}>
+          {flag.label}
+          {index < flags.length - 1 ? ', ' : ''}
+        </span>
+      ))}
+    </p>
   )
 }
 
@@ -77,6 +88,7 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
           <p className="mt-1 text-sm font-medium text-[#0F172A] dark:text-white">{project.strategicPriority}</p>
           <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">{project.classification}</p>
         </div>
+        <ProjectAiFlagTags project={project} portfolioSummary={portfolioSummary} />
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
@@ -145,7 +157,15 @@ export default function ReviewerProjects() {
   const [hasActiveTableFilters, setHasActiveTableFilters] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all-statuses')
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
+  const [aiReviewFlagFilter, setAiReviewFlagFilter] = useState<AiReviewFlagFilter>('all-ai-review-flags')
   const [exporting, setExporting] = useState(false)
+  const aiReviewFlagOptions = Array.from(
+    new Map(
+      projects
+        .flatMap((project) => getProjectAiReviewFlags(project.aiReviewFlags).filter((flag) => flag.severity !== 'Low'))
+        .map((flag) => [flag.key, { key: flag.key, label: flag.label }])
+    ).values()
+  )
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -180,8 +200,13 @@ export default function ReviewerProjects() {
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
+    const matchesAiReviewFlag =
+      aiReviewFlagFilter === 'all-ai-review-flags' ||
+      getProjectAiReviewFlags(project.aiReviewFlags)
+        .filter((flag) => flag.severity !== 'Low')
+        .some((flag) => flag.key === aiReviewFlagFilter)
 
-    return matchesSearch && matchesTab && matchesStatus && matchesBudgetType
+    return matchesSearch && matchesTab && matchesStatus && matchesBudgetType && matchesAiReviewFlag
   })
 
   const handleExport = async () => {
@@ -297,6 +322,24 @@ export default function ReviewerProjects() {
             </SelectContent>
           </Select>
         </div>
+        <div className="w-[240px]">
+          <Select value={aiReviewFlagFilter} onValueChange={(value) => setAiReviewFlagFilter(value as AiReviewFlagFilter)}>
+            <SelectTrigger>
+              <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                <Sparkles className="h-4 w-4 text-[#A855F7] dark:text-[#E9D5FF]" />
+                <span className="truncate text-[#A855F7] dark:text-[#E9D5FF]">AI Review Flag</span>
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-ai-review-flags">AI Review Flag</SelectItem>
+              {aiReviewFlagOptions.map((option) => (
+                <SelectItem key={option.key} value={option.key}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => void handleExport()} disabled={exporting || loading}><Download className="h-4 w-4" />{exporting ? 'Exporting...' : 'Export'}</Button>
           <div className="flex overflow-hidden rounded-[8px] border border-[#E2E8F0] dark:border-white/10">
@@ -317,6 +360,7 @@ export default function ReviewerProjects() {
             linkBase="/reviewer/review-queue"
             showCreatedBy
             showAiScore
+            portfolioSummary={portfolioSummary}
             onFilterStateChange={setHasActiveTableFilters}
           />
         ) : (

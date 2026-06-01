@@ -38,6 +38,7 @@ type WorkflowTargetOwner = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy'
 const ICT_BUDGET_SELECT_FIELDS = [
   'dga_ict_budgetid',
   'dga_budget_ref_id',
+  'dga_ai_flags',
   'dga_activity_type',
   'dga_summary',
   '_createdby_value',
@@ -349,6 +350,7 @@ function mapBudgetRecordToProject(
   return {
     id: record.dga_budget_ref_id?.trim() || record.dga_ict_budgetid || 'UNKNOWN-BUDGET',
     ictBudgetId: record.dga_ict_budgetid,
+    aiReviewFlags: record.dga_ai_flags ?? [],
     ownerId,
     submittedById:
       (record as unknown as Record<string, string | undefined>)._createdby_value ??

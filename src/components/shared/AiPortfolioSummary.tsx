@@ -163,6 +163,10 @@ function toDisplayText(value: unknown): string {
   return ''
 }
 
+function extractBudgetReferenceIds(value: string) {
+  return Array.from(new Set((value.match(/\bBID-\d+\b/gi) ?? []).map((item) => item.toUpperCase())))
+}
+
 function ChartCard({
   title,
   description,
@@ -407,6 +411,7 @@ export function AiPortfolioSummary({
           label: formatFlagLabel(key),
           count: bucket?.project_ids?.length ?? 0,
           summary: toDisplayText(resolvePortfolioTemplate(bucket?.summary_template, summary)),
+          projectIds: bucket?.project_ids ?? [],
         }))
         .filter((e) => e.count > 0),
     [summary]
@@ -940,7 +945,7 @@ export function AiPortfolioSummary({
                   <div className="grid gap-4 sm:grid-cols-2">
                     {aiFlags.map((flag) => {
                       const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                      const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
+                      const relatedProjectIds = flag.projectIds ?? []
                       return (
                         <div key={flag.key} className="flex items-start gap-3">
                           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
@@ -951,15 +956,37 @@ export function AiPortfolioSummary({
                               <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
                                 {formatSectionHeading(flag.label)}:
                               </p>
-                              <span className="rounded-full border border-[#E9D5FF] bg-[#FDF8FF] px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                                {severityLabel}
-                              </span>
                               <span className="rounded-full border border-[#E2E8F0] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                                 {flag.count} project{flag.count !== 1 ? 's' : ''}
                               </span>
                             </div>
                             {toDisplayText(flag.summary) && (
                               <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
+                            )}
+                            {relatedProjectIds.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                                  Related Projects
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {relatedProjectIds.map((projectId) => {
+                                    const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                    const project = findProject(projects, projectId)
+                                    const label = project?.id ?? projectId
+                                    const cls =
+                                      'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                    return href ? (
+                                      <Link key={projectId} to={href} className={cls}>
+                                        {label}
+                                      </Link>
+                                    ) : (
+                                      <span key={projectId} className={cls}>
+                                        {label}
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -978,12 +1005,42 @@ export function AiPortfolioSummary({
               <div className="space-y-3">
                 {hasActions ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {recommendedActions.slice(0, 6).map((action, i) => (
-                      <div key={i} className="flex items-start gap-2.5">
-                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" aria-hidden="true" />
-                        <span className="text-sm leading-6 text-[#475569] dark:text-slate-200">{action}</span>
-                      </div>
-                    ))}
+                    {recommendedActions.slice(0, 6).map((action, i) => {
+                      const relatedProjectIds = extractBudgetReferenceIds(action)
+                      return (
+                        <div key={i} className="rounded-2xl border border-[#F0D9FF] bg-[#FDF8FF]/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-start gap-2.5">
+                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" aria-hidden="true" />
+                            <span className="text-sm leading-6 text-[#475569] dark:text-slate-200">{action}</span>
+                          </div>
+                          {relatedProjectIds.length > 0 && (
+                            <div className="mt-2 pl-6">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                                Related Projects
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {relatedProjectIds.map((projectId) => {
+                                  const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                  const project = findProject(projects, projectId)
+                                  const label = project?.id ?? projectId
+                                  const cls =
+                                    'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                  return href ? (
+                                    <Link key={projectId} to={href} className={cls}>
+                                      {label}
+                                    </Link>
+                                  ) : (
+                                    <span key={projectId} className={cls}>
+                                      {label}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="py-3 text-center text-sm text-[#64748B] dark:text-slate-400">
@@ -1030,7 +1087,7 @@ export function AiPortfolioSummary({
                         </div>
 
                         <div className="mt-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-400">
+                          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
                             Affected Projects
                           </p>
                           {group.projectIds.length > 0 ? (
@@ -1075,7 +1132,6 @@ export function AiPortfolioSummary({
                   <div className="space-y-2">
                     {aiFlags.map((flag) => {
                       const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                      const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
                       const titleText =
                         FLAG_TITLE_FN[flag.key]?.(flag.count) ??
                         `${flag.count} project${flag.count !== 1 ? 's' : ''} flagged for ${flag.label.toLowerCase()}.`
@@ -1095,9 +1151,6 @@ export function AiPortfolioSummary({
                               )}
                             </div>
                           </div>
-                          <span className="shrink-0 rounded-full bg-[#FDF8FF] px-2 py-0.5 text-[10px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                            {severityLabel}
-                          </span>
                         </div>
                       )
                     })}
@@ -1235,7 +1288,6 @@ export function AiPortfolioSummary({
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {aiFlags.map((flag) => {
                   const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                  const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
                   return (
                     <div key={flag.key} className="flex items-start gap-3">
                       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
@@ -1246,9 +1298,6 @@ export function AiPortfolioSummary({
                           <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
                             {formatSectionHeading(flag.label)}:
                           </p>
-                          <span className="rounded-full border border-[#E9D5FF] bg-[#FDF8FF] px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                            {severityLabel}
-                          </span>
                         </div>
                         {toDisplayText(flag.summary) && (
                           <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>

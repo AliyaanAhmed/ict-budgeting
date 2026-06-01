@@ -13,6 +13,7 @@ const PORTFOLIO_SUMMARY_TYPE: Dga_ict_ai_summariesdga_summary_type = 2
 
 export type PortfolioRole = 'respondent' | 'reviewer' | 'approver'
 export type PortfolioSeverityKey = 'high' | 'medium' | 'low'
+export type PortfolioReviewFlagSeverity = 'High' | 'Medium' | 'Low'
 
 type ProjectIdMap = Record<string, string[]>
 
@@ -108,6 +109,20 @@ export interface PortfolioProjectInsight {
     low: number
   }
   isRoleFocusProject: boolean
+}
+
+export interface PortfolioProjectReviewFlag {
+  key: string
+  label: string
+  severity: PortfolioReviewFlagSeverity
+  projectIds: string[]
+}
+
+const PORTFOLIO_REVIEW_FLAG_META: Record<string, { label: string; severity: PortfolioReviewFlagSeverity }> = {
+  evidence_risk: { label: 'Evidence Risk', severity: 'High' },
+  budget_accuracy_risk: { label: 'Budget Accuracy Risk', severity: 'High' },
+  strategic_alignment_risk: { label: 'Strategic Alignment Risk', severity: 'Medium' },
+  dge_budget_consideration_risk: { label: 'DGE Budget Consideration Risk', severity: 'Medium' },
 }
 
 function hasPortfolioSummaryFields(value: unknown): value is PortfolioSummaryPayload {
@@ -223,6 +238,39 @@ export function parsePortfolioSummaryData(value: unknown): PortfolioSummaryPaylo
 
 export function getAiReviewFlags(summary: PortfolioSummaryPayload | null | undefined) {
   return summary?.portfolio_statistics?.ai_review_flags ?? summary?.ai_review_flags ?? {}
+}
+
+export function getPortfolioProjectReviewFlags(
+  summary: PortfolioSummaryPayload | null | undefined,
+  budgetReferenceId: string
+) {
+  return Object.entries(getAiReviewFlags(summary))
+    .filter(([key, bucket]) => {
+      if (!PORTFOLIO_REVIEW_FLAG_META[key]) return false
+      return includesProject(bucket?.project_ids, budgetReferenceId)
+    })
+    .map(([key, bucket]) => ({
+      key,
+      label: PORTFOLIO_REVIEW_FLAG_META[key].label,
+      severity: PORTFOLIO_REVIEW_FLAG_META[key].severity,
+      projectIds: bucket?.project_ids ?? [],
+    }))
+}
+
+export function getPortfolioReviewFlagFilterOptions(
+  summary: PortfolioSummaryPayload | null | undefined
+) {
+  return Object.entries(getAiReviewFlags(summary))
+    .filter(([key, bucket]) => {
+      const meta = PORTFOLIO_REVIEW_FLAG_META[key]
+      if (!meta || meta.severity === 'Low') return false
+      return (bucket?.project_ids?.length ?? 0) > 0
+    })
+    .map(([key]) => ({
+      key,
+      label: PORTFOLIO_REVIEW_FLAG_META[key].label,
+      severity: PORTFOLIO_REVIEW_FLAG_META[key].severity,
+    }))
 }
 
 export function getClarificationGroups(summary: PortfolioSummaryPayload | null | undefined) {

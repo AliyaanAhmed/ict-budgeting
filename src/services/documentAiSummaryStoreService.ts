@@ -152,6 +152,16 @@ export interface BudgetOverviewData {
   clarifications?: {
     has_clarifications?: boolean
     summary_message?: string
+    items?: Array<{
+      clarification_id?: string
+      priority?: string
+      category?: string
+      raised_by?: string
+      message?: string
+      why_needed?: string
+      linked_issue_id?: string
+      suggested_recipient?: string
+    }>
   }
   recommended_next_actions?: Array<{ priority?: number; role?: string; action?: string }>
   validated_items?: Array<{ category?: string; item?: string }>
@@ -185,6 +195,25 @@ export interface StoredBudgetAiSummaryRecord {
   parsedSummary: SupportingDocumentEvaluationSummary | null
 }
 
+export type ProjectAiReviewFlagSeverity = 'High' | 'Medium' | 'Low'
+
+export interface ProjectAiReviewFlag {
+  code: Dga_ict_budgetsdga_ai_flags
+  key: string
+  label: string
+  severity: ProjectAiReviewFlagSeverity
+}
+
+function normalizeProjectAiReviewFlagSeverity(
+  value: string | null | undefined
+): ProjectAiReviewFlagSeverity | null {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === 'high') return 'High'
+  if (normalized === 'medium') return 'Medium'
+  if (normalized === 'low') return 'Low'
+  return null
+}
+
 export interface CreateDocumentSummaryInput {
   budgetId: string
   documentName: string
@@ -211,6 +240,32 @@ const BUDGET_OVERVIEW_AI_FLAG_MAP = {
   budget_accuracy_risk: 4,
   clarification_required: 8,
 } as const satisfies Partial<Record<keyof BudgetOverviewReviewFlags, Dga_ict_budgetsdga_ai_flags>>
+
+const PROJECT_AI_REVIEW_FLAG_META: Record<Dga_ict_budgetsdga_ai_flags, Omit<ProjectAiReviewFlag, 'code'>> = {
+  1: { key: 'document_incompleteness', label: 'Evidence Risk', severity: 'High' },
+  2: { key: 'dge_policy_compliance_risk', label: 'DGE Budget Consideration Risk', severity: 'Medium' },
+  3: { key: 'strategic_priority_misalignment', label: 'Strategic Alignment Risk', severity: 'Medium' },
+  4: { key: 'budget_misalignment', label: 'Budget Accuracy Risk', severity: 'High' },
+  5: { key: 'account_code_misalignment', label: 'Account Code Misalignment', severity: 'Medium' },
+  6: { key: 'similar_project_current_cycle', label: 'Similar Project in Current Cycle', severity: 'Low' },
+  7: { key: 'similar_project_previous_cycles', label: 'Similar Project in Previous Cycles', severity: 'Low' },
+  8: { key: 'possible_clarification_detected', label: 'Clarification Required', severity: 'High' },
+}
+
+export function getProjectAiReviewFlags(
+  aiFlags: Dga_ict_budgetsdga_ai_flags[] | null | undefined
+): ProjectAiReviewFlag[] {
+  if (!aiFlags?.length) {
+    return []
+  }
+
+  return Array.from(new Set(aiFlags))
+    .map((code) => {
+      const meta = PROJECT_AI_REVIEW_FLAG_META[code]
+      return meta ? { code, ...meta } : null
+    })
+    .filter((flag): flag is ProjectAiReviewFlag => Boolean(flag))
+}
 
 function hasBudgetOverviewFields(value: unknown): value is BudgetOverviewData {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -348,7 +403,12 @@ export function getBudgetAiFlagsFromBudgetOverview(
   const nextFlags = Object.entries(BUDGET_OVERVIEW_AI_FLAG_MAP).reduce<Dga_ict_budgetsdga_ai_flags[]>(
     (flags, [key, optionValue]) => {
       const reviewFlag = parsedData.ai_review_flags?.[key as keyof BudgetOverviewReviewFlags]
-      if (reviewFlag?.flag) {
+      const severity =
+        normalizeProjectAiReviewFlagSeverity(reviewFlag?.severity) ??
+        PROJECT_AI_REVIEW_FLAG_META[optionValue]?.severity ??
+        null
+
+      if (reviewFlag?.flag && (severity === 'High' || severity === 'Medium')) {
         flags.push(optionValue)
       }
       return flags

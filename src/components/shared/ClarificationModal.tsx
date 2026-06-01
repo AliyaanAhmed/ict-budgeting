@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { HelpCircle, MessageSquareText, Send, WandSparkles } from 'lucide-react'
+import { HelpCircle, MessageSquareText, Send, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { AttachmentIconPicker } from '@/components/shared/AttachmentIconPicker'
@@ -16,19 +16,24 @@ interface ClarificationModalProps {
   onOpenChange: (open: boolean) => void
   projectName: string
   onSubmit: (payload: { message: string; files?: File[] }) => void
+  quickPrompts?: string[]
 }
 
-const SUGGESTIONS = [
-  'Please provide a stronger business justification for the requested budget.',
-  'Please attach the missing supporting documents and procurement references.',
-  'Please clarify the CapEx and OpEx split with supporting assumptions.',
-]
-
-export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }: ClarificationModalProps) {
+export function ClarificationModal({
+  open,
+  onOpenChange,
+  projectName,
+  onSubmit,
+  quickPrompts = [],
+}: ClarificationModalProps) {
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<File[]>([])
 
   const isValid = useMemo(() => message.trim().length > 0, [message])
+  const visibleQuickPrompts = useMemo(
+    () => Array.from(new Set(quickPrompts.map((prompt) => prompt.trim()).filter(Boolean))).slice(0, 4),
+    [quickPrompts]
+  )
 
   const handleClose = (next: boolean) => {
     onOpenChange(next)
@@ -44,14 +49,9 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
     handleClose(false)
   }
 
-  const handleAutofill = () => {
-    const nextSuggestion = SUGGESTIONS.find((suggestion) => suggestion !== message) ?? SUGGESTIONS[0]
-    setMessage(nextSuggestion)
-  }
-
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="p-0">
+      <DialogContent className="max-w-[1040px] p-0">
         <div className="rounded-t-[28px] border-b border-[var(--border)] bg-[var(--muted)] py-4 pl-6 pr-12">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#286CFF] text-white">
@@ -64,35 +64,39 @@ export function ClarificationModal({ open, onOpenChange, projectName, onSubmit }
           </div>
         </div>
 
-        <div className="px-6 pb-6 pt-4">
-
+        <div className="px-6 pb-6 pt-5">
           <div className="space-y-5">
-           
-
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#64748B] dark:text-white">
+                <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#0F172A] dark:text-white">
                   <MessageSquareText className="h-3.5 w-3.5" />
                   Clarification Message
                 </label>
-                <button
-                  type="button"
-                  onClick={handleAutofill}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#DDEBFF] bg-[#F8FBFF] text-[#64748B] transition-colors hover:border-[#286CFF] hover:bg-[#E7F5FF] hover:text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
-                  title="Autofill clarification"
-                  aria-label="Autofill clarification"
-                >
-                  <WandSparkles className="h-4 w-4" />
-                </button>
               </div>
               <Textarea
-                rows={3}
+                rows={6}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Describe exactly what needs to be clarified..."
-                className="rounded-xl border-[var(--border)] text-[14px] leading-6"
+                className="rounded-2xl border-[var(--border)] text-[14px] leading-6"
               />
             </div>
+
+            {visibleQuickPrompts.length > 0 && (
+              <div className="flex flex-wrap gap-2.5">
+                {visibleQuickPrompts.map((prompt, index) => (
+                  <button
+                    key={`${index}-${prompt}`}
+                    type="button"
+                    onClick={() => setMessage(prompt)}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#E9D5FF] bg-white px-4 py-2 text-left transition-colors hover:border-[#C084FC] hover:bg-[#FDF8FF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                    <span className="truncate text-sm text-[#475569] dark:text-slate-200">{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
               <div className="flex flex-wrap items-center gap-2">

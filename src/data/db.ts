@@ -1,3 +1,5 @@
+import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
+
 export const currentCycle = {
   id: 'CY-2026',
   name: 'ICT Budget Planning 2026',
@@ -77,6 +79,7 @@ export interface ProjectDocument {
 export interface Project {
   id: string
   ictBudgetId?: string
+  aiReviewFlags?: Dga_ict_budgetsdga_ai_flags[]
   ownerId?: string | null
   ownerType?: string | null
   statusCode?: number | null

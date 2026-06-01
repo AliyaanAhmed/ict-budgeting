@@ -147,7 +147,6 @@ import {
   SupportingDocumentAiInsights,
   type SupportingDocumentAiInsightItem,
 } from '@/components/shared/SupportingDocumentAiInsights'
-import { SupportingDocuments } from '@/components/shared/SupportingDocuments'
 import {
   evaluateSupportingDocument,
   parseSupportingDocumentEvaluationSummary,
@@ -251,7 +250,7 @@ function BudgetConsiderationCompactCards({
         return group.items.map((item) => (
           <article
             key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
-            className="group relative overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+            className="relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -289,13 +288,13 @@ function BudgetConsiderationCompactCards({
               <div className="relative shrink-0">
                 <button
                   type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
+                  className="peer inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
                   aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
                 >
                   <Info className="h-4 w-4" />
                 </button>
 
-                <div className="pointer-events-none absolute bottom-full right-0 z-[120] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 group-hover:pointer-events-auto group-hover:-translate-y-1 group-hover:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
+                <div className="pointer-events-none absolute bottom-full right-0 z-[220] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 peer-hover:pointer-events-auto peer-hover:-translate-y-1 peer-hover:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:-translate-y-1 peer-focus-visible:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
                   <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
                     Reason
                   </p>
@@ -374,7 +373,7 @@ function AiFieldAssistTrigger({
           </div>
           <div className="mt-3">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Value</p>
-            <p className="mt-1 text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
+            <p className="mt-1 whitespace-pre-line text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
           </div>
           {canApply ? (
             <button
@@ -440,6 +439,7 @@ function DetailSection({
   icon,
   children,
   action,
+  titleAdornment,
   noShadow = false,
 }: {
   id?: string
@@ -448,6 +448,7 @@ function DetailSection({
   icon: React.ElementType
   children: React.ReactNode
   action?: React.ReactNode
+  titleAdornment?: React.ReactNode
   noShadow?: boolean
 }) {
   return (
@@ -462,7 +463,10 @@ function DetailSection({
         <div className="flex items-start gap-2.5">
           <SectionIcon icon={icon} />
           <div>
-            <h3 className="text-lg font-bold text-[var(--foreground)]">{title}</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-bold text-[var(--foreground)]">{title}</h3>
+              {titleAdornment}
+            </div>
             {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--muted-foreground)]">{description}</p>}
           </div>
         </div>
@@ -835,10 +839,10 @@ function workflowActionDetails(
 
   if (action === 'complete-review') {
     return {
-      title: 'Complete Review?',
+      title: 'Mark as Reviewed?',
       description:
         'This will mark the reviewer assessment as completed and keep the project with the reviewer until it is submitted to the approver.',
-      confirmLabel: 'Complete Review',
+      confirmLabel: 'Mark as Reviewed',
       tone: 'primary' as const,
     }
   }
@@ -1431,10 +1435,19 @@ function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSumm
 
 function resolveAiFieldMapping(field: SupportingDocumentSuggestedProjectField) {
   const key = field.field_key?.trim().toLowerCase() ?? ''
+  const label = field.field_label?.trim().toLowerCase() ?? ''
   if (key === 'project_name') return 'initiativeName' as const
   if (key === 'project_description') return 'summary' as const
   if (key === 'category') return 'category' as const
   if (key === 'technology_company') return 'technologyCompany' as const
+  if (
+    key === 'activity_type' ||
+    key === 'project_budget_type' ||
+    key === 'budget_type' ||
+    label === 'project budget type'
+  ) {
+    return 'activityType' as const
+  }
   return null
 }
 
@@ -1502,6 +1515,23 @@ function resolveManualAiFieldSuggestion(
       : {
           patch: {},
           error: `Technology Company "${rawValue}" does not match any available option.`,
+        }
+  }
+
+  if (mapping === 'activityType') {
+    const normalized = rawValue.trim().toLowerCase()
+    const matched = ACTIVITY_TYPE_OPTIONS.find(
+      (option) =>
+        option.title.toLowerCase() === normalized ||
+        option.title.toLowerCase().includes(normalized) ||
+        normalized.includes(option.title.toLowerCase())
+    )
+
+    return matched
+      ? { patch: { activityType: matched.value as ActivityType } }
+      : {
+          patch: {},
+          error: `Project Budget Type "${rawValue}" does not match any available option.`,
         }
   }
 
@@ -1711,6 +1741,7 @@ function BudgetOverviewCard({
   const pf = scores?.project_fields
   const pfTotal = (pf?.evaluated_count ?? 0)
   const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
+  const pfPercentage = pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0
   const ba = scores?.budget_account
   const baLabel = !ba
     ? null
@@ -1784,7 +1815,7 @@ function BudgetOverviewCard({
             {pfTotal > 0 && (
               <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                 <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
-                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfPercentage}%</p>
               </div>
             )}
             {baLabel && (
@@ -1864,6 +1895,7 @@ function InteractiveBudgetOverviewCard({
   loading,
   error,
   currentRole,
+  confidenceScore,
   isRefreshing,
   policyLoading,
   policyError,
@@ -1875,6 +1907,7 @@ function InteractiveBudgetOverviewCard({
   loading: boolean
   error: string | null
   currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  confidenceScore: number
   isRefreshing: boolean
   policyLoading: boolean
   policyError: string | null
@@ -1922,6 +1955,7 @@ function InteractiveBudgetOverviewCard({
   const pf = scores?.project_fields
   const pfTotal = pf?.evaluated_count ?? 0
   const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
+  const pfPercentage = pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0
   const ba = scores?.budget_account
   const baLabel = !ba
     ? null
@@ -1944,6 +1978,8 @@ function InteractiveBudgetOverviewCard({
   }
 
   const readiness = readinessAccent(readinessStatus)
+  const confidenceTone =
+    confidenceScore >= 80 ? 'green' : confidenceScore >= 60 ? 'amber' : 'red'
   const hasPolicyMatch = policyResult?.overallAssessment.hasPolicyMatch ?? false
   const hasExpandablePolicyContent = policyLoading || Boolean(policyError) || Boolean(policyResult)
   const canExpand = Boolean(data) || hasExpandablePolicyContent
@@ -2004,7 +2040,9 @@ function InteractiveBudgetOverviewCard({
           reason: reviewFlags.clarification_required.reason || '',
         }
       : null,
-  ].filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
+  ]
+    .filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
+    .filter((flag) => flag.severity.trim().toLowerCase() !== 'low')
 
   function aiFlagTone(severity?: string) {
     const normalized = severity?.toLowerCase()
@@ -2060,20 +2098,30 @@ function InteractiveBudgetOverviewCard({
   const overviewMetricCards = (
     <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
       {typeof scores?.document_evidence?.evidence_score === 'number' && (
-        <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-          <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Document Evidence</p>
-          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
-            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${Math.min(100, scores.document_evidence.evidence_score)}%` }} />
+        <div className="rounded-xl border border-[#E3EEFF] bg-[linear-gradient(180deg,#F7FBFF_0%,#FFFFFF_100%)] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-300">Document Evidence</p>
+              <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">Evidence strength from attached documents</p>
+            </div>
+            <span className="shrink-0 rounded-full border border-[#D7E4F4] bg-white px-2.5 py-1 text-sm font-bold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+              {scores.document_evidence.evidence_score}%
+            </span>
+          </div>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#DCEBFF] dark:bg-white/10">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#286CFF_0%,#7C3AED_100%)]"
+              style={{ width: `${Math.min(100, scores.document_evidence.evidence_score)}%` }}
+            />
           </div>
         </div>
       )}
       {pfTotal > 0 && (
         <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
           <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Project Fields</p>
-          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{pfPercentage}%</p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
-            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0}%` }} />
+            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${pfPercentage}%` }} />
           </div>
         </div>
       )}
@@ -2294,6 +2342,48 @@ function InteractiveBudgetOverviewCard({
                 {roleSummary}
               </p>
             ) : null}
+            {data ? (
+              <div className="mt-3">
+                <div
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-2xl border px-3 py-2',
+                    confidenceTone === 'green'
+                      ? 'border-[#CFE9D9] bg-[#ECFDF3]'
+                      : confidenceTone === 'amber'
+                        ? 'border-[#F3D7A0] bg-[#FFF8E8]'
+                        : 'border-[#F5C2C7] bg-[#FFF1F3]'
+                  )}
+                >
+                  <Sparkles
+                    className={cn(
+                      'h-4 w-4',
+                      confidenceTone === 'green'
+                        ? 'text-[#16794B]'
+                        : confidenceTone === 'amber'
+                          ? 'text-[#B7791F]'
+                          : 'text-[#B42318]'
+                    )}
+                  />
+                  <div>
+                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">
+                      AI Confidence Score
+                    </p>
+                    <p
+                      className={cn(
+                        'text-sm font-bold',
+                        confidenceTone === 'green'
+                          ? 'text-[#16794B]'
+                          : confidenceTone === 'amber'
+                            ? 'text-[#B7791F]'
+                            : 'text-[#B42318]'
+                      )}
+                    >
+                      {confidenceScore}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             {data && (activeAiFlags.length > 0 || isRefreshing) ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {activeAiFlags.map((flag) => (
@@ -2331,7 +2421,6 @@ function InteractiveBudgetOverviewCard({
               </div>
             ) : null}
             {!expanded ? collapsedPolicySummary : null}
-            {!expanded ? fileEvidenceSummary : null}
           </div>
         </div>
         <div className="absolute right-8 top-5 flex flex-col items-end gap-2">
@@ -2388,12 +2477,7 @@ function InteractiveBudgetOverviewCard({
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-[#A855F7] dark:text-[#E9D5FF]" />
-                    <p
-                      className={cn(
-                        'font-semibold text-[#0F172A] dark:text-white',
-                        currentRole === 'Approver' || currentRole === 'Respondent' ? 'text-base' : 'text-lg'
-                      )}
-                    >
+                    <p className="text-base font-semibold text-[#0F172A] dark:text-white">
                       {currentRole} View
                     </p>
                   </div>
@@ -2815,6 +2899,16 @@ export default function ProjectDetail() {
       }),
     [clarificationFileUrls, supportingDocuments]
   )
+  const aiSupportingDocumentByName = useMemo(
+    () =>
+      new Map(
+        aiSupportingDocuments.map((doc) => [
+          (doc.fullname || doc.title || 'Document').trim().toLowerCase(),
+          doc,
+        ])
+      ),
+    [aiSupportingDocuments]
+  )
   const clarificationDocumentNames = useMemo(
     () =>
       new Set(
@@ -2832,7 +2926,6 @@ export default function ProjectDetail() {
   const documentStatus = sharepointDocsLoading ? 'Loading' : hasSupportingDocuments ? 'Complete' : 'Missing'
   const documentTone =
     documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
-  const canDeleteDocuments = currentRole === 'Respondent' && isEditMode
   const detailEntityName = getStoredInstanceDetail()?.name?.trim() || currentUser.entity
 
   const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean }) => {
@@ -3258,11 +3351,8 @@ export default function ProjectDetail() {
   const isActionSummaryCombined =
     actionSupportingDocumentSummary.type === 'cumulative' &&
     actionSupportingDocumentSummary.fileCount > 1
-  const actionSummarySourceLabel = isActionSummaryCombined
-    ? `Cumulative summary across ${actionSupportingDocumentSummary.fileCount} files`
-    : actionSupportingDocumentSummary.fileCount > 0
-      ? 'Single file summary'
-      : 'Upload or persist documents to activate AI guidance'
+  const showDetailSupportingDocumentSummary =
+    isActionSummaryCombined && detailActionSummaryText.trim().length > 0
 
   useEffect(() => {
     const nextSelectedIds = detailSelectableRows.map((row) => row.id)
@@ -3323,6 +3413,14 @@ export default function ProjectDetail() {
     if (mapping === 'technologyCompany') {
       const selectedName = selectedTechnologyCompany?.name.trim().toLowerCase() ?? ''
       return selectedName === normalized || selectedName.includes(normalized) || normalized.includes(selectedName)
+    }
+
+    if (mapping === 'activityType') {
+      const selectedActivityType = ACTIVITY_TYPE_OPTIONS.find(
+        (option) => option.value === formValues.activityType
+      )
+      const selectedTitle = selectedActivityType?.title.trim().toLowerCase() ?? ''
+      return selectedTitle === normalized || selectedTitle.includes(normalized) || normalized.includes(selectedTitle)
     }
 
     return false
@@ -3517,6 +3615,7 @@ export default function ProjectDetail() {
       loading={persistedDocumentSummariesLoading}
       error={persistedDocumentSummariesError}
       currentRole={currentRole}
+      confidenceScore={confidence}
       isRefreshing={pendingBudgetOverviewRefreshModifiedOn !== null}
       policyLoading={detailPolicyEvaluationLoading}
       policyError={detailPolicyEvaluationError}
@@ -3525,6 +3624,16 @@ export default function ProjectDetail() {
       fileInsightItems={detailSupportingDocumentInsightItems}
     />
   )
+
+  const clarificationQuickPrompts = useMemo(() => {
+    const clarificationData = budgetOverviewRecord?.parsedData?.clarifications
+    const prompts = [
+      clarificationData?.summary_message ?? '',
+      ...(clarificationData?.items?.map((item) => item.message ?? '') ?? []),
+    ]
+
+    return Array.from(new Set(prompts.map((prompt) => prompt.trim()).filter(Boolean))).slice(0, 4)
+  }, [budgetOverviewRecord])
 
   const detailDocumentActionCards = isEditMode ? (
       <div className="space-y-4">
@@ -4960,6 +5069,10 @@ export default function ProjectDetail() {
       handleTechnologyCompanyChange(result.patch.technologyCompanyId)
     }
 
+    if (result.patch.activityType !== undefined) {
+      handleActivityTypeChange(result.patch.activityType as ActivityType)
+    }
+
     if (!suppressRefresh && result.appliedName?.trim() && formValues.summary.trim()) {
       setSavedFormValues((prev) => ({ ...prev, initiativeName: result.appliedName ?? prev.initiativeName }))
     }
@@ -4979,10 +5092,37 @@ export default function ProjectDetail() {
     }
 
     if (Object.keys(aggregatedPatch).length > 0) {
-      setFormValues((prev) => ({
-        ...prev,
-        ...aggregatedPatch,
-      }))
+      setFormValues((prev) => {
+        if (aggregatedPatch.activityType === undefined) {
+          return {
+            ...prev,
+            ...aggregatedPatch,
+          }
+        }
+
+        const nextVisibleFields = getVisibleBudgetFields(
+          aggregatedPatch.activityType as ActivityType
+        )
+
+        return {
+          ...prev,
+          ...aggregatedPatch,
+          totalBudgetPaidPreviousYear: nextVisibleFields.includes('totalBudgetPaidPreviousYear')
+            ? prev.totalBudgetPaidPreviousYear
+            : '',
+          totalBudgetPayableFutureYear: nextVisibleFields.includes('totalBudgetPayableFutureYear')
+            ? prev.totalBudgetPayableFutureYear
+            : '',
+          totalBudgetPayableNextYear: nextVisibleFields.includes('totalBudgetPayableNextYear')
+            ? prev.totalBudgetPayableNextYear
+            : '',
+          totalBudgetPayableForYearAfterNext: nextVisibleFields.includes(
+            'totalBudgetPayableForYearAfterNext'
+          )
+            ? prev.totalBudgetPayableForYearAfterNext
+            : '',
+        }
+      })
 
       setFieldErrors((prev) => {
         const nextErrors = { ...prev }
@@ -4991,6 +5131,13 @@ export default function ProjectDetail() {
         })
         if (aggregatedPatch.technologyCompanyId !== undefined) {
           delete nextErrors.technologyProductIds
+        }
+        if (aggregatedPatch.activityType !== undefined) {
+          delete nextErrors.activityType
+          delete nextErrors.totalBudgetPaidPreviousYear
+          delete nextErrors.totalBudgetPayableFutureYear
+          delete nextErrors.totalBudgetPayableNextYear
+          delete nextErrors.totalBudgetPayableForYearAfterNext
         }
         return nextErrors
       })
@@ -5298,6 +5445,19 @@ export default function ProjectDetail() {
     setSharepointDocs((prev) => prev.filter((d) => d.sharepointdocumentid !== doc.sharepointdocumentid))
   }
 
+  const handleDeleteDetailInsightItem = useCallback(
+    async (item: SupportingDocumentAiInsightItem) => {
+      const documentName = item.file.name.trim().toLowerCase()
+      const mappedDoc = aiSupportingDocumentByName.get(documentName)
+      if (!mappedDoc) {
+        return
+      }
+
+      await handleDeleteDocument(mappedDoc)
+    },
+    [aiSupportingDocumentByName, handleDeleteDocument]
+  )
+
   const refreshSharepointDocs = async () => {
     if (!ictBudgetId) return []
     try {
@@ -5525,6 +5685,118 @@ export default function ProjectDetail() {
 
   // ── Section navigation ───────────────────────────────────────────────────────
   const displayedBudgetItems = hasDataverseBudgetProject ? budgetLineItems : fallbackBudgetItems
+  const pendingActionAccountCodes = useMemo(
+    () =>
+      actionAccountCodes.filter((suggestion) => {
+        const normalizedAccountName = suggestion.accountName.trim().toLowerCase()
+        const normalizedAccountCode = suggestion.accountCode.trim().toLowerCase()
+        const normalizedRawLabel = suggestion.rawAccountLabel.trim().toLowerCase()
+
+        return !displayedBudgetItems.some((item) => {
+          const accountName = item.accountName.trim().toLowerCase()
+          const ebsCode = (item.ebsCode ?? '').trim().toLowerCase()
+          const fusionCode = (item.fusionCode ?? '').trim().toLowerCase()
+
+          return (
+            accountName === normalizedAccountName ||
+            accountName === normalizedRawLabel ||
+            accountName.includes(normalizedAccountName) ||
+            normalizedAccountName.includes(accountName) ||
+            ebsCode === normalizedAccountCode ||
+            fusionCode === normalizedAccountCode
+          )
+        })
+      }),
+    [actionAccountCodes, displayedBudgetItems]
+  )
+
+  async function applyPendingAiAccountCodeSuggestions() {
+    if (pendingActionAccountCodes.length === 0) return
+
+    setAiApplyingAccountCode(true)
+
+    try {
+      const classificationRecords = await getClassificationRecords()
+      const { nodeMap } = buildClassificationTree(classificationRecords)
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const nextBudgetLineItems: BudgetLineItemRecord[] = []
+      const failedMessages: string[] = []
+
+      for (const suggestion of pendingActionAccountCodes) {
+        const draft = buildBudgetItemDraftFromSuggestedAccountCode(suggestion, nodeMap)
+        if (!draft) {
+          failedMessages.push(`No GL account matching "${suggestion.rawAccountLabel}" was found.`)
+          continue
+        }
+        if (existingIds.has(draft.id)) {
+          continue
+        }
+
+        existingIds.add(draft.id)
+        nextBudgetLineItems.push({
+          id: draft.id,
+          budgetId: ictBudgetId ?? null,
+          classificationId: draft.id,
+          accountName: draft.accountName,
+          l1: draft.l1,
+          l2: draft.l2,
+          l3: draft.l3,
+          accountGroup: draft.accountGroup,
+          description: draft.description,
+          expenseTypeValue: draft.expenseTypeValue,
+          expenseTypeLabel: draft.expenseTypeLabel,
+          ebsCode: draft.ebsCode,
+          fusionCode: draft.fusionCode,
+          budgetRequested: suggestion.mappedBudget,
+        })
+      }
+
+      if (nextBudgetLineItems.length > 0) {
+        setBudgetLineItems((prev) => [...prev, ...nextBudgetLineItems])
+        setBudgetItemsError(null)
+        setFieldErrors((prev) => {
+          const next = { ...prev }
+          delete next.budgetItems
+          return next
+        })
+      }
+
+      if (nextBudgetLineItems.length === 0 && failedMessages.length === 0) {
+        showErrorToast('Already added', 'All suggested account codes are already in the budget line items.')
+      } else if (failedMessages.length > 0) {
+        showErrorToast('Some account codes could not be applied', failedMessages.join('\n'))
+      }
+    } catch (error) {
+      showErrorToast(
+        'Apply failed',
+        error instanceof Error ? error.message : 'Could not apply the account code suggestions.'
+      )
+    } finally {
+      setAiApplyingAccountCode(false)
+      setOpenAiAssistField(null)
+    }
+  }
+
+  function buildBudgetAccountCodesAssist() {
+    const firstPendingSuggestion = pendingActionAccountCodes[0]
+    if (!firstPendingSuggestion) return null
+
+    const suggestionLabel = pendingActionAccountCodes
+      .map((suggestion) => suggestion.displayLabel)
+      .join('\n')
+
+    return (
+      <AiFieldAssistTrigger
+        fieldLabel="Budget Account Codes"
+        suggestedValue={suggestionLabel}
+        isOpen={openAiAssistField === 'budgetItems'}
+        canApply={isEditMode}
+        onToggle={() => setOpenAiAssistField((current) => (current === 'budgetItems' ? null : 'budgetItems'))}
+        onApply={() => void applyPendingAiAccountCodeSuggestions()}
+        helperText="Switch the form to Edit mode to add the AI-suggested account codes from here."
+      />
+    )
+  }
   const budgetTotal = hasDataverseBudgetProject
     ? displayedBudgetItems.reduce((total, item) => total + item.budgetRequested, 0)
     : project.requestedBudget
@@ -6308,6 +6580,7 @@ export default function ProjectDetail() {
                 id="sec-budget"
                 description="Create and review project budget line items from the classification hierarchy."
                 icon={WalletCards}
+                titleAdornment={buildBudgetAccountCodesAssist()}
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
@@ -6316,7 +6589,12 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <EditField label="Project Budget Type" required error={fieldErrors.activityType}>
+                  <EditField
+                    label="Project Budget Type"
+                    required
+                    error={fieldErrors.activityType}
+                    aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
+                  >
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       {ACTIVITY_TYPE_OPTIONS.map((option) => {
                         const selected = formValues.activityType === option.value
@@ -6398,24 +6676,29 @@ export default function ProjectDetail() {
                 icon={FileCheck2}
                 noShadow
               >
-                {(sharepointDocsLoading || supportingDocuments.length > 0) && (
-                  <div className="mb-4">
-                    <SupportingDocuments
-                      docs={supportingDocuments}
-                      loading={sharepointDocsLoading}
-                      clarificationFileUrls={clarificationFileUrls}
-                      alwaysShowDeleteButton={currentRole === 'Respondent'}
-                      onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                    />
-                  </div>
-                )}
                 {currentRole === 'Respondent' && (
                   <FileUploadDropzone
                     files={uploadedFiles}
                     onChange={setUploadedFiles}
                     compact={supportingDocuments.length > 0}
+                    hideFileList
                     fileStatuses={detailUploadedFileStatuses}
                   />
+                )}
+                {showDetailSupportingDocumentSummary && (
+                  <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                        <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                          {detailActionSummaryText}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {(detailSupportingDocumentInsightItems.length > 0 || persistedDocumentSummariesLoading || persistedDocumentSummariesError) && (
                   <div className="mt-4">
@@ -6424,7 +6707,10 @@ export default function ProjectDetail() {
                         {persistedDocumentSummariesError}
                       </div>
                     ) : (
-                      <SupportingDocumentAiInsights items={detailSupportingDocumentInsightItems} />
+                      <SupportingDocumentAiInsights
+                        items={detailSupportingDocumentInsightItems}
+                        onDeleteItem={currentRole === 'Respondent' && isEditMode ? handleDeleteDetailInsightItem : undefined}
+                      />
                     )}
                   </div>
                 )}
@@ -6475,7 +6761,7 @@ export default function ProjectDetail() {
                         onClick={() => void prepareWorkflowAction('complete-review')}
                       >
                         <Check className="h-4 w-4" />
-                        Complete Review
+                        Mark as Reviewed
                       </Button>
                     )}
                     {canSubmitToApprover && (
@@ -6576,6 +6862,7 @@ export default function ProjectDetail() {
                 id="sec-budget"
                 description="Account-level spend breakdown for review validation."
                 icon={WalletCards}
+                titleAdornment={buildBudgetAccountCodesAssist()}
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
@@ -6584,7 +6871,12 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <Field label="Project Budget Type" value={display.budgetActivityType} />
+                  <Field
+                    label="Project Budget Type"
+                    value={display.budgetActivityType}
+                    aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
+                    highlighted={animatedAiFields.includes('activityType')}
+                  />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
                       <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
@@ -6617,14 +6909,23 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
-                <SupportingDocuments
-                  docs={supportingDocuments}
-                  loading={sharepointDocsLoading}
-                  clarificationFileUrls={clarificationFileUrls}
-                  onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                />
+                {showDetailSupportingDocumentSummary && (
+                  <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                        <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                          {detailActionSummaryText}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {(detailSupportingDocumentInsightItems.length > 0 || persistedDocumentSummariesLoading || persistedDocumentSummariesError) && (
-                  <div className="mt-4">
+                  <div className={cn(showDetailSupportingDocumentSummary && 'mt-4')}>
                     {persistedDocumentSummariesError && detailSupportingDocumentInsightItems.length === 0 ? (
                       <div className="rounded-xl border border-[#F5C2C7] bg-[#FFF1F3] px-4 py-3 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118]">
                         {persistedDocumentSummariesError}
@@ -6719,7 +7020,7 @@ export default function ProjectDetail() {
                         onClick={() => void prepareWorkflowAction('complete-review')}
                       >
                         <Check className="h-4 w-4" />
-                        Complete Review
+                        Mark as Reviewed
                       </Button>
                     )}
                     {canSubmitToApprover && (
@@ -7138,6 +7439,7 @@ export default function ProjectDetail() {
         onOpenChange={setClarificationModalOpen}
         projectName={display.name}
         onSubmit={handleRaiseClarification}
+        quickPrompts={clarificationQuickPrompts}
       />
       <Dialog open={workStreamModalOpen} onOpenChange={setWorkStreamModalOpen}>
         <DialogContent className="max-w-[520px] p-0">
