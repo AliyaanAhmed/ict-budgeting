@@ -224,15 +224,18 @@ body {
   inset: -20%;
   background: conic-gradient(
     from 0deg,
-    rgba(168, 85, 247, 0) 0deg,
-    rgba(168, 85, 247, 0.28) 22deg,
-    rgba(168, 85, 247, 0.95) 64deg,
-    rgba(192, 132, 252, 1) 116deg,
-    rgba(168, 85, 247, 1) 178deg,
-    rgba(216, 180, 254, 0.6) 232deg,
-    rgba(168, 85, 247, 0) 360deg
+    rgba(79, 70, 229, 0) 0deg,
+    rgba(99, 102, 241, 0.22) 18deg,
+    rgba(139, 92, 246, 0.75) 48deg,
+    rgba(168, 85, 247, 1) 85deg,
+    rgba(192, 38, 211, 1) 128deg,
+    rgba(217, 70, 239, 1) 155deg,
+    rgba(168, 85, 247, 0.85) 188deg,
+    rgba(139, 92, 246, 0.4) 220deg,
+    rgba(99, 102, 241, 0.1) 248deg,
+    rgba(79, 70, 229, 0) 360deg
   );
-  filter: blur(1px) drop-shadow(0 0 8px rgba(168, 85, 247, 0.72));
+  filter: blur(1px) drop-shadow(0 0 10px rgba(168, 85, 247, 0.65)) drop-shadow(0 0 5px rgba(217, 70, 239, 0.5));
   animation: copilotSnakeBorder 6.8s linear infinite;
   z-index: -2;
 }

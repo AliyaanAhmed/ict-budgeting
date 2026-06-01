@@ -7,6 +7,7 @@ import {
   Bot,
   BrainCircuit,
   Calendar,
+  CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -28,20 +29,24 @@ import {
   TriangleAlert,
   Users,
 } from 'lucide-react'
-import {
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
+import { PortfolioInsightCharts } from '@/components/shared/PortfolioInsightCharts'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import { useBudgetByCategoryChart } from '@/hooks/useDashboardBudgetCharts'
+import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
+import {
+  getAiReviewFlags,
+  getClarificationGroups,
+  getPortfolioCounts,
+  getPortfolioSummaryRoleView,
+  resolvePortfolioTemplate,
+} from '@/services/portfolioSummaryService'
 import { useDelayedLoading } from '@/lib/useDelayedLoading'
 import { dashboardPalette } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
@@ -172,8 +177,10 @@ function ActionMetricCard({
           <div className="min-h-[3.25rem]">
             <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
           </div>
-          <div className="mt-3 flex items-end gap-3">
+          <div className="mt-3 mb-2">
             <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
+          </div>
+          <div className="mt-3">
             <span
               className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
               style={{ backgroundColor: `${accent}14`, color: accent }}
@@ -189,7 +196,7 @@ function ActionMetricCard({
           {icon}
         </div>
       </div>
-      <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-4 text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
+      <div className="mt-2 flex items-center justify-between border-t border-[#EEF3F8] pt-[10px] text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
         <span>Open Projects</span>
         <ChevronRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
       </div>
@@ -201,6 +208,28 @@ function parseProjectDate(project: { submittedDateRaw?: string; submittedDate: s
   const rawValue = project.submittedDateRaw || project.submittedDate
   const parsed = Date.parse(rawValue)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function getLatestClarificationMessage(project: {
+  clarifications: Array<{
+    date: string
+    message: string
+    replies: Array<{ date: string; message: string }>
+  }>
+}) {
+  const activity = project.clarifications.flatMap((clarification) => [
+    { date: clarification.date, message: clarification.message },
+    ...clarification.replies.map((reply) => ({ date: reply.date, message: reply.message })),
+  ])
+
+  if (!activity.length) return null
+
+  return [...activity]
+    .sort((a, b) => {
+      const aTime = Date.parse(a.date)
+      const bTime = Date.parse(b.date)
+      return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+    })[0]?.message ?? null
 }
 
 function DashboardLoadingState() {
@@ -240,6 +269,7 @@ export default function ApproverDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
+  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
   const { runActionToast } = useToast()
   const effectiveLiveProjects = useMemo(
     () =>
@@ -259,6 +289,13 @@ export default function ApproverDashboard() {
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
+  const dueDateLabel = selectedCycle?.endDate
+    ? new Date(selectedCycle.endDate).toLocaleDateString('en-AE', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null
   const submittedToApproverProjects = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Approver')
   const clarificationProjects = effectiveLiveProjects.filter((project) => project.status === 'Clarification Required')
   const approvedProjects = effectiveLiveProjects.filter((project) => project.status === 'Approved')
@@ -334,23 +371,25 @@ export default function ApproverDashboard() {
     percent: totalBudget > 0 ? Math.round((item.value / totalBudget) * 100) : 0,
   }))
 
-  const clarificationMonitorItems = useMemo(
-    () =>
-      clarificationProjects.slice(0, 4).map((project) => ({
-        name: project.name,
-        pendingWith: project.pendingWith || 'Respondent',
-        status: 'Clarification Pending',
-        note: project.submittedDate,
-        budget: project.requestedBudget,
-        id: project.id,
-      })),
+  const clarificationFocusProjects = useMemo(
+    () => [...clarificationProjects].sort((a, b) => parseProjectDate(b) - parseProjectDate(a)).slice(0, 2),
     [clarificationProjects]
   )
+
+  const portfolioAiFlags = useMemo(() => getAiReviewFlags(portfolioSummary), [portfolioSummary])
+  const portfolioClarification = useMemo(() => getClarificationGroups(portfolioSummary), [portfolioSummary])
+  const portfolioCounts = useMemo(() => getPortfolioCounts(portfolioSummary), [portfolioSummary])
+  const planningSummary = useMemo(
+    () => resolvePortfolioTemplate(getPortfolioSummaryRoleView(portfolioSummary, 'approver')?.planning_cycle_summary_template, portfolioSummary),
+    [portfolioSummary]
+  )
+  const approverProgressAssigned = pendingApproval + approvedCount + submittedToDgeCount
+  const approverProgressValue = approverProgressAssigned > 0 ? Math.round(((approvedCount + submittedToDgeCount) / approverProgressAssigned) * 100) : 0
 
   const insightCards = [
     {
       title: 'High Risk',
-      value: highRiskCount,
+      value: portfolioCounts.highRiskProjects || highRiskCount,
       note: 'Need immediate review',
       accent: '#EF4444',
       icon: <ShieldAlert className="h-4.5 w-4.5" />,
@@ -358,35 +397,17 @@ export default function ApproverDashboard() {
       border: 'border-[#FFD1D1] dark:border-[#5B2632]',
     },
     {
-      title: 'Missing Documents',
-      value: 1,
-      note: 'Blocking approval',
+      title: 'Evidence Risk',
+      value: portfolioAiFlags.evidence_risk?.project_ids?.length ?? 0,
+      note: 'Missing or incomplete evidence',
       accent: '#F97316',
       icon: <ClipboardCheck className="h-4.5 w-4.5" />,
       bg: 'bg-white dark:bg-[#18263F]',
       border: 'border-[#FFD9C3] dark:border-[#5A3523]',
     },
     {
-      title: 'Low Confidence',
-      value: 5,
-      note: 'AI readiness below 60%',
-      accent: '#D97706',
-      icon: <TriangleAlert className="h-4.5 w-4.5" />,
-      bg: 'bg-white dark:bg-[#18263F]',
-      border: 'border-[#F7E1A1] dark:border-[#64582A]',
-    },
-    {
-      title: 'Possible Duplicates',
-      value: 3,
-      note: 'Similar projects detected',
-      accent: '#9333EA',
-      icon: <CopyPlus className="h-4.5 w-4.5" />,
-      bg: 'bg-white dark:bg-[#18263F]',
-      border: 'border-[#E9D5FF] dark:border-[#52307A]',
-    },
-    {
-      title: 'Budget Anomalies',
-      value: 4,
+      title: 'Budget Accuracy Risk',
+      value: portfolioAiFlags.budget_accuracy_risk?.project_ids?.length ?? 0,
       note: 'Unusual spending patterns',
       accent: '#286CFF',
       icon: <TrendingUp className="h-4.5 w-4.5" />,
@@ -394,8 +415,26 @@ export default function ApproverDashboard() {
       border: 'border-[#D4E4FF] dark:border-[#315389]',
     },
     {
+      title: 'Strategic Alignment Risk',
+      value: portfolioAiFlags.strategic_alignment_risk?.project_ids?.length ?? 0,
+      note: 'Weak strategic justification',
+      accent: '#9333EA',
+      icon: <CircleAlert className="h-4.5 w-4.5" />,
+      bg: 'bg-white dark:bg-[#18263F]',
+      border: 'border-[#E9D5FF] dark:border-[#52307A]',
+    },
+    {
+      title: 'Clarification Open',
+      value: portfolioClarification.already_raised?.project_ids?.length ?? 0,
+      note: 'Need respondent reply',
+      accent: '#D97706',
+      icon: <MessageSquareMore className="h-4.5 w-4.5" />,
+      bg: 'bg-white dark:bg-[#18263F]',
+      border: 'border-[#F7E1A1] dark:border-[#64582A]',
+    },
+    {
       title: 'Clarification Likely',
-      value: 6,
+      value: portfolioClarification.potential_clarification?.project_ids?.length ?? 0,
       note: 'May need follow-up',
       accent: '#F97316',
       icon: <MessageSquareMore className="h-4.5 w-4.5" />,
@@ -541,21 +580,29 @@ export default function ApproverDashboard() {
               {cycleName}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              Current cycle status: final approval is in progress, reviewer-cleared projects are being checked for DGE readiness, and clarification loops remain open where evidence is incomplete.
+              {planningSummary || 'Current cycle status: final approval is in progress, reviewer-cleared projects are being checked for DGE readiness, and clarification loops remain open where evidence is incomplete.'}
             </p>
-            <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#1D4ED8] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#BFDBFE]">
-                <Calendar className="h-4 w-4" />
-                {instanceDetail?.name ?? cycleName}
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
-                <Radar className="h-4 w-4" />
-                {daysRemaining} days remaining
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#3B82F6] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#BFDBFE]">
-                <Users className="h-4 w-4" />
-                Final DGE gate
-              </span>
+            <div className="mt-5 space-y-3">
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
+                  <Radar className="h-4 w-4" />
+                  {daysRemaining} days remaining
+                </span>
+                {dueDateLabel && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
+                    <CalendarClock className="h-4 w-4" />
+                    Due {dueDateLabel}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-2 rounded-full border border-[#DCE8F6] bg-white px-3.5 py-2 font-medium text-[#475569] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-slate-100">
+                  <Users className="h-4 w-4 text-[#286CFF] dark:text-[#BFDBFE]" />
+                  <span>My Progress</span>
+                  <span className="text-[#0F172A] dark:text-white">{approvedCount + submittedToDgeCount}/{approverProgressAssigned || 0}</span>
+                  <span className="h-2 w-16 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                    <span className="block h-full rounded-full bg-[#286CFF]" style={{ width: `${approverProgressValue}%` }} />
+                  </span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -568,11 +615,11 @@ export default function ApproverDashboard() {
         <div className="overflow-x-auto">
           <div className="flex min-w-[980px] items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFE] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
                 <Calendar className="h-4.5 w-4.5" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-200">DGE submission deadline</p>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200 [text-wrap-mode:nowrap]">DGE Submission Deadline</p>
                 <p className="mt-1 text-sm font-bold text-[#286CFE] dark:text-[#BFDBFE]">{daysRemaining} days remaining</p>
               </div>
             </div>
@@ -580,16 +627,16 @@ export default function ApproverDashboard() {
             <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
 
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#A855F7] text-white shadow-[0_12px_20px_rgba(168,85,247,0.18)]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
                 <Sparkles className="h-4.5 w-4.5" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-200">AI summary</p>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">AI Summary</p>
                 <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
                   {summaryCounts.inCycle} projects in cycle,{' '}
-                  <span className="text-[#286CFE]">{summaryCounts.withRespondent} with Respondent</span>,{' '}
-                  <span className="text-[#5B87FF]">{summaryCounts.withReviewer} with Reviewer</span>,{' '}
-                  <span className="text-[#0C65F5]">{summaryCounts.withApprover} with Approver</span>
+                  <span className="text-[#286CFE] dark:text-[#BFDBFE]">{summaryCounts.withRespondent} with Respondent</span>,{' '}
+                  <span className="text-[#5B87FF] dark:text-[#CFE0FF]">{summaryCounts.withReviewer} with Reviewer</span>,{' '}
+                  <span className="text-[#0C65F5] dark:text-[#93C5FD]">{summaryCounts.withApprover} with Approver</span>
                 </p>
               </div>
             </div>
@@ -597,11 +644,11 @@ export default function ApproverDashboard() {
             <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
 
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#9333EA]/18 dark:text-[#E9D5FF]">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
                 <BrainCircuit className="h-4.5 w-4.5" />
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-200">Entity progress</p>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Entity Progress</p>
                 <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
                   <span className="text-[#7C3AED]">1</span> of {portfolioAlreadySubmittedToDge ? 1 : 0}
                 </p>
@@ -610,9 +657,7 @@ export default function ApproverDashboard() {
 
             {portfolioAlreadySubmittedToDge ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#A855F7] text-white">
-                  <CheckCircle2 className="h-4 w-4" />
-                </div>
+                <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                 <div>
                   <p className="text-sm font-bold text-[#A855F7] dark:text-[#E9D5FF]">Submitted to DGE</p>
                   <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-slate-100">
@@ -688,40 +733,25 @@ export default function ApproverDashboard() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="flex items-center justify-between gap-3">
+            <div className="mt-5 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-[#1B2A41]">
+              <div className="grid gap-4 sm:grid-cols-3 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10">
+                <div className="sm:pr-4">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Requested Budget</p>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15">
-                    <BadgeDollarSign className="h-4 w-4" />
+                  <div className="mt-3">
+                    <CompactAmount amount={totalBudget} />
                   </div>
                 </div>
-                <div className="mt-4">
-                  <CompactAmount amount={totalBudget} />
-                </div>
-              </div>
-
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="flex items-center justify-between gap-3">
+                <div className="sm:px-4">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Approved Budget</p>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#ECFDF3] text-[#16A34A] dark:bg-[#16A34A]/15">
-                    <CheckCircle2 className="h-4 w-4" />
+                  <div className="mt-3">
+                    <CompactAmount amount={approvedBudget} iconColor={dashboardPalette.aeGreen} />
                   </div>
                 </div>
-                <div className="mt-4">
-                  <CompactAmount amount={approvedBudget} iconColor={dashboardPalette.aeGreen} />
-                </div>
-              </div>
-
-              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="flex items-center justify-between gap-3">
+                <div className="sm:pl-4">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Confidence</p>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/15">
-                    <BrainCircuit className="h-4 w-4" />
+                  <div className="mt-3 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
+                    {avgConfidence}%
                   </div>
-                </div>
-                <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
-                  {avgConfidence}%
                 </div>
               </div>
             </div>
@@ -729,89 +759,26 @@ export default function ApproverDashboard() {
         </Card>
       </section>
 
-      <section
-        title="AI summary of final approval blockers and role-specific portfolio risks."
-        className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
-      >
-        <button
-          type="button"
-          onClick={() => setPortfolioExpanded((value) => !value)}
-          className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-white/30 dark:hover:bg-white/5"
-        >
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_16px_30px_rgba(168,85,247,0.24)]">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</h2>
-                <InfoHint text="A final approval view of the portfolio showing major blockers before the package can move to DGE." />
-                <span className="inline-flex items-center rounded-full bg-[#FDF8FF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                  DGE blockers found
-                </span>
-              </div>
-              <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
-                Portfolio status: {pendingApproval + clarificationCount + highRiskCount} items need attention before the final submission gate.
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-4">
-            <div className="hidden items-center gap-4 text-sm md:flex">
-              <span className="text-[#0F172A] dark:text-white">
-                {summaryCounts.inCycle} <span className="text-[#64748B] dark:text-slate-100">projects</span>
-              </span>
-              <span className="text-[#A855F7] dark:text-[#E9D5FF]">
-                {avgConfidence}% <span className="text-[#64748B] dark:text-slate-100">avg confidence</span>
-              </span>
-              <span className="text-[#C084FC] dark:text-[#E9D5FF]">
-                {highRiskCount} <span className="text-[#64748B] dark:text-slate-100">high risk</span>
-              </span>
-              <RefreshCcw className="h-4 w-4 text-[#64748B] dark:text-slate-100" />
-            </div>
-            <ChevronDown className={cn('h-5 w-5 text-[#64748B] transition-transform dark:text-slate-100', portfolioExpanded && 'rotate-180')} />
-          </div>
-        </button>
-
-        {portfolioExpanded && (
-          <div className="border-t border-[#E9D5FF] px-6 pb-6 pt-5 dark:border-white/10">
-            <div className="space-y-3">
-              {portfolioIssues.map((issue) => (
-                <div
-                  key={issue.title}
-                  className="flex items-start justify-between gap-4 rounded-[22px] border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 shrink-0 text-[#A855F7]">
-                      {issue.icon}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{issue.title}</p>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">{issue.detail}</p>
-                    </div>
-                  </div>
-                  <span
-                    className="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                    style={{ backgroundColor: '#FDF8FF', color: '#A855F7' }}
-                  >
-                    {issue.badge}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
+      <AiPortfolioSummary
+        role="approver"
+        summary={portfolioSummary}
+        loading={portfolioLoading}
+        error={portfolioError}
+        projects={effectiveLiveProjects}
+        variant="dashboard"
+        projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+      />
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
           title="AI-detected approval issues and risk themes needing final approver attention."
-          className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
+          className="hidden overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]"
         >
           <CardContent className="p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                  <Sparkles className="h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Risk &amp; Priority Insights</h3>
                   <InfoHint text="AI surfaces the themes that most often block final approval and DGE readiness." />
                 </div>
@@ -830,7 +797,7 @@ export default function ApproverDashboard() {
                     {highRiskCount + clarificationCount} portfolio signals need final attention
                   </p>
                 </div>
-                <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#A855F7] text-white shadow-[0_18px_30px_rgba(168,85,247,0.24)]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-[#A855F7] text-white">
                   <Sparkles className="h-6 w-6" />
                 </div>
               </div>
@@ -912,7 +879,7 @@ export default function ApproverDashboard() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-xs font-bold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#BFDBFE]">
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-xs font-bold text-[#286CFF] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
                           {index + 1}
                         </span>
                         <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
@@ -923,7 +890,7 @@ export default function ApproverDashboard() {
                           : `${project.strategicPriority} budget record in the current ICT planning cycle.`}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
-                        <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 font-semibold text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
+                        <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 font-semibold text-[#286CFE] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
                           {showPendingApprovalPanel ? 'Awaiting approval' : project.status}
                         </span>
                         <span>{project.budgetType}</span>
@@ -946,6 +913,7 @@ export default function ApproverDashboard() {
             </div>
           </CardContent>
         </Card>
+        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['budgetConsideration']} />
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -958,7 +926,7 @@ export default function ApproverDashboard() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Category</h3>
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Strategic Priority</h3>
                   <InfoHint text="Shows how the submitted budget is distributed across strategic ICT categories before final approval and DGE submission." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
@@ -972,10 +940,11 @@ export default function ApproverDashboard() {
             <BudgetByCategory data={budgetByCategory} />
           </CardContent>
         </Card>
+        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['issues']} />
 
         <Card
           title="Requested budget distribution across approver-visible workflow stages."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
             <div className="mb-5 flex items-start justify-between gap-4">
@@ -1056,38 +1025,42 @@ export default function ApproverDashboard() {
                     <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Clarification Monitor</h3>
                     <InfoHint text="A compact view of active clarification conversations that can block final approval." />
                   </div>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Track active clarifications before final approval</p>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Review clarification context and unblock these projects before final approval</p>
                 </div>
-                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
+                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
                   {clarificationCount} pending
                 </span>
               </div>
 
               <div className="space-y-3">
-                {clarificationMonitorItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-4 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-4 transition-all duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1B2A41]"
+                {clarificationFocusProjects.map((project, index) => (
+                  <Link
+                    key={project.id}
+                    to={`/approver/approval-queue/${project.id}`}
+                    className="group block rounded-[22px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#1B2A41] dark:hover:border-[#4F98FF] dark:hover:bg-[#203352]"
                   >
-                    <div>
-                      <p className="text-lg font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Pending with: {item.pendingWith}</p>
-                      <div className="mt-2">
-                        <CurrencyAmount amount={item.budget} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-xs font-bold text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
+                            {index + 1}
+                          </span>
+                          <p className="truncate text-[15px] font-semibold text-[#0F172A] dark:text-white">{project.name}</p>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-sm text-[#64748B] dark:text-slate-100">
+                          {getLatestClarificationMessage(project) || project.summary || `${project.strategicPriority} / ${project.classification}`}
+                        </p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[#64748B] dark:text-slate-100">
+                          <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 font-semibold text-[#286CFE] dark:bg-[#286CFE]/15 dark:text-[#BFDBFE]">
+                            Clarification needed
+                          </span>
+                          <span>{project.lastModified}</span>
+                          <span>{project.workStream}</span>
+                        </div>
                       </div>
+                      <MoveRight className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#286CFF]" />
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="inline-flex items-center rounded-full bg-[#EAF1FF] px-3 py-1 text-xs font-semibold text-[#0C65F5] dark:bg-[#0C65F5]/18 dark:text-[#DBEAFE]">
-                        {item.status}
-                      </span>
-                      <Button variant="outline" asChild className="h-10 rounded-2xl">
-                        <Link to={`/approver/approval-queue/${item.id}`}>
-                          Visit Project
-                          <MoveRight className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
 
@@ -1175,15 +1148,15 @@ export default function ApproverDashboard() {
               {[
                 { label: 'Approved', value: approvedCount, tone: '#16A34A' },
                 { label: 'Pending Approval', value: pendingApproval, tone: '#D97706' },
-                { label: 'With Reviewer', value: reviewerProjects.length, tone: '#286CFF' },
-                { label: 'On Respondent', value: respondentProjects.length, tone: '#F97316' },
+                { label: 'Pending with Reviewer', value: reviewerProjects.length, tone: '#286CFF' },
+                { label: 'Pending with Respondent', value: respondentProjects.length, tone: '#F97316' },
                 { label: 'Submitted to DGE', value: submittedToDgeCount, tone: '#7C3AED' },
               ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 dark:border-white/10 dark:bg-[#20314D]">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 dark:border-[#37547A] dark:bg-[#20314D]">
+                  <p className="text-xs font-semibold tracking-[0.1em] text-[#64748B] dark:text-slate-100">{item.label}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.tone }} />
-                    <span className="text-2xl font-bold text-[#0F172A] dark:text-white">{item.value}</span>
+                    <span className="text-2xl font-bold text-[#0F172A] dark:text-[#E2E8F0]">{item.value}</span>
                   </div>
                 </div>
               ))}
@@ -1240,7 +1213,7 @@ export default function ApproverDashboard() {
       </section>
 
       {clarificationCount > 0 && (
-        <section>
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           <Card
             title="Fast access to actions the approver takes most often."
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
@@ -1253,7 +1226,7 @@ export default function ApproverDashboard() {
                   <InfoHint text="Shortcuts into queue review, readiness checks, notifications, and AI-assisted triage." />
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-6">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {quickActions.map((action) => (
                   <Link
                     key={action.label}
@@ -1287,6 +1260,145 @@ export default function ApproverDashboard() {
                     </div>
                   </Link>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card
+            title="Requested budget distribution across approver-visible workflow stages."
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          >
+            <CardContent className="p-6">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
+                    <InfoHint text="Shows how requested budget is currently distributed across the approver-visible project workflow." />
+                  </div>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Requested budget split across approval stages</p>
+                </div>
+                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#C6DBFF]">
+                  Portfolio mix
+                </span>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+                <div className="relative h-[230px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={queueBudgetMix}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={3}
+                        strokeWidth={0}
+                      >
+                        {queueBudgetMix.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Portfolio</span>
+                    <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {queueBudgetMix.map((item) => (
+                    <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                        <span className="text-[#64748B] dark:text-slate-100">Requested</span>
+                        <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {clarificationCount > 0 ? null : (
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <Card
+            title="Requested budget distribution across approver-visible workflow stages."
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          >
+            <CardContent className="p-6">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
+                    <InfoHint text="Shows how requested budget is currently distributed across the approver-visible project workflow." />
+                  </div>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Requested budget split across approval stages</p>
+                </div>
+                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#C6DBFF]">
+                  Portfolio mix
+                </span>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+                <div className="relative h-[230px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={queueBudgetMix}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={3}
+                        strokeWidth={0}
+                      >
+                        {queueBudgetMix.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Portfolio</span>
+                    <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {queueBudgetMix.map((item) => (
+                    <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                        <span className="text-[#64748B] dark:text-slate-100">Requested</span>
+                        <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

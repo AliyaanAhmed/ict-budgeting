@@ -124,6 +124,68 @@ function getAcceptedExtensions(accept: string) {
   )
 }
 
+export interface FileValidationResult {
+  validFiles: File[]
+  rejectedZeroKb: string[]
+  rejectedOversize: string[]
+  rejectedRestrictedType: string[]
+  rejectedUnsupportedType: string[]
+}
+
+export function validateFilesForUpload(params: {
+  incoming: File[]
+  existingFiles?: File[]
+  accept?: string
+  maxSizeMB?: number
+}): FileValidationResult {
+  const {
+    incoming,
+    existingFiles = [],
+    accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg',
+    maxSizeMB = 20,
+  } = params
+
+  const acceptedExtensions = getAcceptedExtensions(accept)
+  const rejectedZeroKb: string[] = []
+  const rejectedOversize: string[] = []
+  const rejectedRestrictedType: string[] = []
+  const rejectedUnsupportedType: string[] = []
+
+  const validFiles = incoming.filter((file) => {
+    const extension = getFileExtension(file.name)
+
+    if (file.size <= 0) {
+      rejectedZeroKb.push(file.name)
+      return false
+    }
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      rejectedOversize.push(file.name)
+      return false
+    }
+    if (!extension || RESTRICTED_FILE_EXTENSIONS.has(extension)) {
+      rejectedRestrictedType.push(file.name)
+      return false
+    }
+    if (acceptedExtensions.size > 0 && !acceptedExtensions.has(extension)) {
+      rejectedUnsupportedType.push(file.name)
+      return false
+    }
+
+    const alreadyExists = existingFiles.some(
+      (existing) => existing.name === file.name && existing.size === file.size
+    )
+    return !alreadyExists
+  })
+
+  return {
+    validFiles,
+    rejectedZeroKb,
+    rejectedOversize,
+    rejectedRestrictedType,
+    rejectedUnsupportedType,
+  }
+}
+
 export function FileUploadDropzone({
   files,
   onChange,
@@ -141,35 +203,17 @@ export function FileUploadDropzone({
 
   const addFiles = useCallback(
     (incoming: File[]) => {
-      const rejectedZeroKb: string[] = []
-      const rejectedOversize: string[] = []
-      const rejectedRestrictedType: string[] = []
-      const rejectedUnsupportedType: string[] = []
-
-      const valid = incoming.filter((file) => {
-        const extension = getFileExtension(file.name)
-
-        if (file.size <= 0) {
-          rejectedZeroKb.push(file.name)
-          return false
-        }
-        if (file.size > maxSizeMB * 1024 * 1024) {
-          rejectedOversize.push(file.name)
-          return false
-        }
-        if (!extension || RESTRICTED_FILE_EXTENSIONS.has(extension)) {
-          rejectedRestrictedType.push(file.name)
-          return false
-        }
-        if (acceptedExtensions.size > 0 && !acceptedExtensions.has(extension)) {
-          rejectedUnsupportedType.push(file.name)
-          return false
-        }
-
-        const alreadyExists = files.some(
-          (existing) => existing.name === file.name && existing.size === file.size
-        )
-        return !alreadyExists
+      const {
+        validFiles,
+        rejectedZeroKb,
+        rejectedOversize,
+        rejectedRestrictedType,
+        rejectedUnsupportedType,
+      } = validateFilesForUpload({
+        incoming,
+        existingFiles: files,
+        accept,
+        maxSizeMB,
       })
 
       if (rejectedZeroKb.length > 0) {
@@ -197,11 +241,11 @@ export function FileUploadDropzone({
         )
       }
 
-      if (valid.length > 0) {
-        onChange([...files, ...valid])
+      if (validFiles.length > 0) {
+        onChange([...files, ...validFiles])
       }
     },
-    [acceptedExtensions, files, maxSizeMB, onChange, showErrorToast]
+    [accept, files, maxSizeMB, onChange, showErrorToast]
   )
 
   const removeFile = (index: number) => {

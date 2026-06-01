@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Bot,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -11,6 +10,7 @@ import {
   FileX,
   Inbox,
   ListFilter,
+  Loader2,
   MessageSquare,
   Search,
   Send,
@@ -29,6 +29,7 @@ import { useToast } from '@/context/ToastContext'
 import { useQueueCounts } from '@/context/QueueCountsContext'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
+import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
 type ReviewFilter = 'all' | 'to-review' | 'reviewed' | 'clarification'
@@ -53,18 +54,25 @@ const toneConfig = {
   red:   { accent: '#DC2626', border: '#FFD1D1', iconBg: '#FFF0F0', iconColor: '#DC2626', badge: 'Monitor' },
 } as const
 
-function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
+function QueueStat({ label, value, icon: Icon, tone = 'blue', sub, onClick, active = false }: {
   label: string
   value: React.ReactNode
   icon: React.ElementType
   tone?: keyof typeof toneConfig
   sub?: string
+  onClick?: () => void
+  active?: boolean
 }) {
   const c = toneConfig[tone]
+  const isClickable = Boolean(onClick)
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className="group overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
-      style={{ borderColor: c.border }}
+      style={{ borderColor: active ? '#286CFF' : c.border }}
+      disabled={!isClickable}
+      aria-pressed={active}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -87,7 +95,7 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
         </span>
         {sub ? <p className="text-xs text-[#64748B] dark:text-slate-200">{sub}</p> : null}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -106,6 +114,129 @@ function AiInsightRow({ expanded, onToggle, confidence, children }: {
         <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', expanded && 'rotate-180')} />
       </button>
       {expanded && <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">{children}</div>}
+    </div>
+  )
+}
+
+function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
+  const [data, setData] = useState<StoredBudgetOverviewRecord | null>(null)
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    if (!ictBudgetId) { setLoadingData(false); return }
+    let mounted = true
+    getAllAiSummaryRecordsByBudgetId(ictBudgetId)
+      .then(({ budgetOverviewRecord }) => {
+        if (mounted) { setData(budgetOverviewRecord); setLoadingData(false) }
+      })
+      .catch(() => { if (mounted) setLoadingData(false) })
+    return () => { mounted = false }
+  }, [ictBudgetId])
+
+  if (loadingData) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-xs text-[#64748B]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#A855F7]" />
+        <span>Analysing project...</span>
+      </div>
+    )
+  }
+
+  const parsed = data?.parsedData
+  if (!parsed) {
+    return (
+      <p className="rounded-xl bg-[#F8FAFC] px-3 py-2.5 text-xs text-[#94A3B8] dark:bg-white/5 dark:text-slate-400">
+        AI budget overview not yet available for this project.
+      </p>
+    )
+  }
+
+  const overall = parsed.overall_assessment
+  const readiness = overall?.readiness_status
+  const summary = overall?.executive_summary
+  const strengths = (overall?.primary_strengths ?? []).slice(0, 2)
+  const risks = (overall?.primary_risks ?? []).slice(0, 2)
+  const evidenceScore = parsed.score_inputs?.document_evidence?.evidence_score
+  const alignmentScore = parsed.strategic_alignment?.recommended_options?.[0]?.relevance_score
+
+  const isReady = readiness && !readiness.toLowerCase().includes('not') && !readiness.toLowerCase().includes('partial') && readiness.toLowerCase().includes('ready')
+  const isPartial = readiness?.toLowerCase().includes('partial')
+  const readinessCfg = isReady
+    ? { bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' }
+    : isPartial
+      ? { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' }
+      : { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' }
+
+  return (
+    <div className="space-y-3">
+      {readiness && (
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', readinessCfg.bg, readinessCfg.text)}>
+          <span className={cn('h-1.5 w-1.5 rounded-full', readinessCfg.dot)} />
+          {readiness}
+        </span>
+      )}
+
+      {(evidenceScore !== undefined || alignmentScore !== undefined) && (
+        <div className="grid grid-cols-2 gap-2">
+          {evidenceScore !== undefined && (
+            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Doc Evidence</p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
+                  <div className="h-full rounded-full bg-[#286CFF] transition-all" style={{ width: `${Math.min(100, Math.round(evidenceScore))}%` }} />
+                </div>
+                <span className="tabular-nums text-xs font-bold text-[#286CFF]">{Math.round(evidenceScore)}%</span>
+              </div>
+            </div>
+          )}
+          {alignmentScore !== undefined && (
+            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Alignment</p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
+                  <div className="h-full rounded-full bg-[#16A34A] transition-all" style={{ width: `${Math.min(100, Math.round(alignmentScore))}%` }} />
+                </div>
+                <span className="tabular-nums text-xs font-bold text-[#16A34A]">{Math.round(alignmentScore)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {summary && (
+        <p className="line-clamp-2 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
+      )}
+
+      {(strengths.length > 0 || risks.length > 0) && (
+        <div className="grid grid-cols-2 gap-2">
+          {strengths.length > 0 && (
+            <div className="rounded-xl border border-green-100 bg-green-50/60 px-2.5 py-2 dark:border-green-900/30 dark:bg-green-900/10">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Strengths</p>
+              <div className="space-y-1">
+                {strengths.map((s, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
+                    <span className="text-[11px] leading-4 text-green-800 dark:text-green-300">{s}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {risks.length > 0 && (
+            <div className="rounded-xl border border-red-100 bg-red-50/60 px-2.5 py-2 dark:border-red-900/30 dark:bg-red-900/10">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Risks</p>
+              <div className="space-y-1">
+                {risks.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                    <span className="text-[11px] leading-4 text-red-800 dark:text-red-300">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -266,7 +397,7 @@ export default function ReviewQueue() {
   })
   const clarificationSelected = selectedIds.filter(id => {
     const project = projects.find(p => p.id === id)
-    return Boolean(project && project.status === 'To Review' && isProjectActionable(project))
+    return Boolean(project && (project.status === 'To Review' || project.status === 'Reviewed') && isProjectActionable(project))
   })
 
   const toggleSelected = (id: string) =>
@@ -294,6 +425,10 @@ export default function ReviewQueue() {
         for (const id of projectIds) {
           await projectService.reviewerCompleteReview(getIctId(id))
         }
+        await Promise.allSettled(projectIds.map(id => {
+          const ictId = getIctId(id)
+          return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()
+        }))
         setProjects(prev => {
           const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Reviewed' as const } : p)
           setReviewCount(updated.filter(p => p.status === 'To Review').length)
@@ -318,6 +453,10 @@ export default function ReviewQueue() {
         for (const id of projectIds) {
           await projectService.reviewerApprove(getIctId(id))
         }
+        await Promise.allSettled(projectIds.map(id => {
+          const ictId = getIctId(id)
+          return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()
+        }))
         setProjects(prev => {
           const updated = prev.filter(p => !projectIds.includes(p.id))
           setReviewCount(updated.filter(p => p.status === 'To Review').length)
@@ -345,6 +484,10 @@ export default function ReviewQueue() {
         for (const id of projectIds) {
           await projectService.reviewerRaiseClarification(getIctId(id), payload)
         }
+        await Promise.allSettled(projectIds.map(id => {
+          const ictId = getIctId(id)
+          return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()
+        }))
         setProjects(prev => {
           const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Clarification Pending' as const } : p)
           setReviewCount(updated.filter(p => p.status === 'To Review').length)
@@ -394,9 +537,33 @@ export default function ReviewQueue() {
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat label="To Review" value={loading ? '—' : toReviewCount} icon={Clock} tone="amber" sub="Waiting for reviewer action" />
-        <QueueStat label="Reviewed" value={loading ? '—' : reviewedCount} icon={CheckCircle2} tone="green" sub="Ready for approver submission" />
-        <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={MessageSquare} tone="red" sub="Returned for respondent input" />
+        <QueueStat
+          label="To Review"
+          value={loading ? '—' : toReviewCount}
+          icon={Clock}
+          tone="amber"
+          sub="Waiting for reviewer action"
+          onClick={() => setActiveFilter('to-review')}
+          active={activeFilter === 'to-review'}
+        />
+        <QueueStat
+          label="Reviewed"
+          value={loading ? '—' : reviewedCount}
+          icon={CheckCircle2}
+          tone="green"
+          sub="Ready for approver submission"
+          onClick={() => setActiveFilter('reviewed')}
+          active={activeFilter === 'reviewed'}
+        />
+        <QueueStat
+          label="Clarification"
+          value={loading ? '—' : clarificationCount}
+          icon={MessageSquare}
+          tone="red"
+          sub="Returned for respondent input"
+          onClick={() => setActiveFilter('clarification')}
+          active={activeFilter === 'clarification'}
+        />
         <QueueStat
           label="Total Budget"
           value={loading ? '—' : <CurrencyAmount amount={totalBudget} className="text-3xl font-bold leading-none" iconSize={18} />}
@@ -557,7 +724,7 @@ export default function ReviewQueue() {
             const isActionable = isProjectActionable(proj)
             const isCompletable = !hasCycleDgeSubmission && proj.status === 'To Review' && isActionable
             const isSubmittable = (hasCycleDgeSubmission ? proj.status === 'To Review' : proj.status === 'Reviewed') && isActionable
-            const canClarify = proj.status === 'To Review' && isActionable
+            const canClarify = (proj.status === 'To Review' || proj.status === 'Reviewed') && isActionable
             const aiExpanded = !collapsedAiIds.has(proj.id)
 
             return (
@@ -590,11 +757,8 @@ export default function ReviewQueue() {
                         <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200">
                           {proj.budgetType && proj.budgetType !== '-' && <><span>{proj.budgetType}</span><span>/</span></>}
-                          <span>By {proj.submittedBy}</span>
-                          <span>/</span>
-                          <span>Submitted {proj.submittedDate}</span>
-                          <span>/</span>
-                          <span>Updated {proj.updatedDate}</span>
+                          {proj.statusForAdgeLabel && proj.statusForAdgeLabel !== '-' && <><span>{proj.statusForAdgeLabel}</span><span>/</span></>}
+                          <span>{proj.updatedDate && proj.updatedDate !== '-' ? `Updated ${proj.updatedDate}` : `Submitted ${proj.submittedDate}`}</span>
                         </div>
                       </div>
                     </div>
@@ -643,14 +807,7 @@ export default function ReviewQueue() {
                         })}
                         confidence={proj.aiConfidence}
                       >
-                        <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">
-                          AI recommends validating budget assumptions, document evidence, and strategic alignment before forwarding this request.
-                        </p>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
-                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Scope OK</span>
-                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Budget Check</span>
-                          <span className="rounded-lg border border-[#F0D9FF] bg-white px-2 py-2 text-center text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">Docs Scan</span>
-                        </div>
+                        <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
                       </AiInsightRow>
                     </div>
                     <div className="grid shrink-0 grid-cols-2 gap-2 lg:w-[220px] lg:grid-cols-1">

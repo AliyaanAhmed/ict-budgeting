@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
-  Bot,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -10,6 +9,7 @@ import {
   Eye,
   Inbox,
   ListFilter,
+  Loader2,
   Search,
   Send,
   ShieldCheck,
@@ -27,9 +27,12 @@ import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { useToast } from '@/context/ToastContext'
 import { useQueueCounts } from '@/context/QueueCountsContext'
 import { projectService } from '@/services/projectService'
+import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
+import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
+import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import type { ApprovalQueueProject, ClarificationPayload } from '@/domain/types'
 
 type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification' | 'submitted-dge'
@@ -61,18 +64,25 @@ const toneConfig = {
   red:   { accent: '#DC2626', border: '#FFD1D1', iconBg: '#FFF0F0', iconColor: '#DC2626', badge: 'Returned' },
 } as const
 
-function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
+function QueueStat({ label, value, icon: Icon, tone = 'blue', sub, onClick, active = false }: {
   label: string
   value: React.ReactNode
   icon: React.ElementType
   tone?: keyof typeof toneConfig
   sub?: string
+  onClick?: () => void
+  active?: boolean
 }) {
   const c = toneConfig[tone]
+  const isClickable = Boolean(onClick)
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className="group overflow-hidden rounded-[24px] border bg-white px-4 py-5 shadow-none transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] dark:bg-[#18263F] sm:px-5 sm:py-6"
-      style={{ borderColor: c.border }}
+      style={{ borderColor: active ? '#286CFF' : c.border }}
+      disabled={!isClickable}
+      aria-pressed={active}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -95,22 +105,129 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub }: {
         </span>
         {sub ? <p className="text-xs text-[#64748B] dark:text-slate-200">{sub}</p> : null}
       </div>
-    </div>
+    </button>
   )
 }
 
-function AiPanel({ expanded, onToggle, children }: { expanded: boolean; onToggle: () => void; children: React.ReactNode }) {
+function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
+  const [data, setData] = useState<StoredBudgetOverviewRecord | null>(null)
+  const [loadingData, setLoadingData] = useState(true)
+
+  useEffect(() => {
+    if (!ictBudgetId) { setLoadingData(false); return }
+    let mounted = true
+    getAllAiSummaryRecordsByBudgetId(ictBudgetId)
+      .then(({ budgetOverviewRecord }) => {
+        if (mounted) { setData(budgetOverviewRecord); setLoadingData(false) }
+      })
+      .catch(() => { if (mounted) setLoadingData(false) })
+    return () => { mounted = false }
+  }, [ictBudgetId])
+
+  if (loadingData) {
+    return (
+      <div className="flex items-center gap-2 py-2 text-xs text-[#64748B]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-[#A855F7]" />
+        <span>Analysing project...</span>
+      </div>
+    )
+  }
+
+  const parsed = data?.parsedData
+  if (!parsed) {
+    return (
+      <p className="rounded-xl bg-[#F8FAFC] px-3 py-2.5 text-xs text-[#94A3B8] dark:bg-white/5 dark:text-slate-400">
+        AI budget overview not yet available for this project.
+      </p>
+    )
+  }
+
+  const overall = parsed.overall_assessment
+  const readiness = overall?.readiness_status
+  const summary = overall?.executive_summary
+  const strengths = (overall?.primary_strengths ?? []).slice(0, 2)
+  const risks = (overall?.primary_risks ?? []).slice(0, 2)
+  const evidenceScore = parsed.score_inputs?.document_evidence?.evidence_score
+  const alignmentScore = parsed.strategic_alignment?.recommended_options?.[0]?.relevance_score
+
+  const isReady = readiness && !readiness.toLowerCase().includes('not') && !readiness.toLowerCase().includes('partial') && readiness.toLowerCase().includes('ready')
+  const isPartial = readiness?.toLowerCase().includes('partial')
+  const readinessCfg = isReady
+    ? { bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' }
+    : isPartial
+      ? { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' }
+      : { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' }
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-      <button onClick={onToggle} className="flex w-full items-center gap-3 bg-gradient-to-r from-[#A855F7]/5 to-transparent px-4 py-3 text-left">
-        <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
-        <div>
-          <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Portfolio Summary</p>
-          <p className="text-xs text-[#64748B] dark:text-slate-200">High-value approvals, risk concentration, and readiness signals</p>
+    <div className="space-y-3">
+      {readiness && (
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', readinessCfg.bg, readinessCfg.text)}>
+          <span className={cn('h-1.5 w-1.5 rounded-full', readinessCfg.dot)} />
+          {readiness}
+        </span>
+      )}
+
+      {(evidenceScore !== undefined || alignmentScore !== undefined) && (
+        <div className="grid grid-cols-2 gap-2">
+          {evidenceScore !== undefined && (
+            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Doc Evidence</p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
+                  <div className="h-full rounded-full bg-[#286CFF] transition-all" style={{ width: `${Math.min(100, Math.round(evidenceScore))}%` }} />
+                </div>
+                <span className="tabular-nums text-xs font-bold text-[#286CFF]">{Math.round(evidenceScore)}%</span>
+              </div>
+            </div>
+          )}
+          {alignmentScore !== undefined && (
+            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Alignment</p>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
+                  <div className="h-full rounded-full bg-[#16A34A] transition-all" style={{ width: `${Math.min(100, Math.round(alignmentScore))}%` }} />
+                </div>
+                <span className="tabular-nums text-xs font-bold text-[#16A34A]">{Math.round(alignmentScore)}%</span>
+              </div>
+            </div>
+          )}
         </div>
-        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', expanded && 'rotate-180')} />
-      </button>
-      {expanded && <div className="border-t border-[#E9D5FF] px-4 py-4 dark:border-white/10">{children}</div>}
+      )}
+
+      {summary && (
+        <p className="line-clamp-2 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
+      )}
+
+      {(strengths.length > 0 || risks.length > 0) && (
+        <div className="grid grid-cols-2 gap-2">
+          {strengths.length > 0 && (
+            <div className="rounded-xl border border-green-100 bg-green-50/60 px-2.5 py-2 dark:border-green-900/30 dark:bg-green-900/10">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Strengths</p>
+              <div className="space-y-1">
+                {strengths.map((s, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
+                    <span className="text-[11px] leading-4 text-green-800 dark:text-green-300">{s}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {risks.length > 0 && (
+            <div className="rounded-xl border border-red-100 bg-red-50/60 px-2.5 py-2 dark:border-red-900/30 dark:bg-red-900/10">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Risks</p>
+              <div className="space-y-1">
+                {risks.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                    <span className="text-[11px] leading-4 text-red-800 dark:text-red-300">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -187,6 +304,7 @@ export default function ApprovalQueue() {
   const { selectedCycle } = useCycle()
   const { instanceId } = useInstance()
   const { items: liveProjects } = useRoleProjects('approver', instanceId)
+  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
   const [projects, setProjects] = useState<ApprovalQueueProject[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -195,7 +313,6 @@ export default function ApprovalQueue() {
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [expandedAiId, setExpandedAiId] = useState<string | null>(null)
-  const [aiPortfolioExpanded, setAiPortfolioExpanded] = useState(true)
   const [clarificationProject, setClarificationProject] = useState<ApprovalQueueProject | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -318,6 +435,7 @@ export default function ApprovalQueue() {
             await projectService.approverApprove(getIctId(id))
           }
         }
+        await Promise.allSettled(ictBudgetIds.map(id => invalidateBudgetOverviewRecord(id)))
         setStatusOverrides((prev) => {
           const next = { ...prev }
           for (const ictBudgetId of ictBudgetIds) {
@@ -364,6 +482,7 @@ export default function ApprovalQueue() {
     await runActionToast(
       async () => {
         await projectService.approverSubmitToDge(projectIds)
+        await Promise.allSettled(projectIds.map(id => invalidateBudgetOverviewRecord(id)))
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
           const next = { ...prev }
@@ -397,6 +516,10 @@ export default function ApprovalQueue() {
         for (const id of projectIds) {
           await projectService.approverRaiseClarification(getIctId(id), payload)
         }
+        await Promise.allSettled(projectIds.map(id => {
+          const ictId = getIctId(id)
+          return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()
+        }))
         setProjects(prev => {
           const updated = prev.map(p => projectIds.includes(p.id) ? { ...p, status: 'Clarification Pending' as const } : p)
           setApprovalCount(updated.filter(p => p.status === 'Pending').length)
@@ -453,9 +576,33 @@ export default function ApprovalQueue() {
           tone="blue"
           sub="Current value in approver scope"
         />
-        <QueueStat label="Pending Approval" value={loading ? '—' : pendingCount} icon={AlertTriangle} tone="amber" sub="Awaiting final decision" />
-        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" sub="Ready for DGE handoff" />
-        <QueueStat label="Submitted to DGE" value={loading ? '—' : submittedToDgeCount} icon={Sparkles} tone="red" sub="Already with strategy team" />
+        <QueueStat
+          label="Pending Approval"
+          value={loading ? '—' : pendingCount}
+          icon={AlertTriangle}
+          tone="amber"
+          sub="Awaiting final decision"
+          onClick={() => setActiveFilter('pending')}
+          active={activeFilter === 'pending'}
+        />
+        <QueueStat
+          label="Approved"
+          value={loading ? '—' : approvedCount}
+          icon={CheckCircle2}
+          tone="green"
+          sub="Ready for DGE handoff"
+          onClick={() => setActiveFilter('approved')}
+          active={activeFilter === 'approved'}
+        />
+        <QueueStat
+          label="Submitted to DGE"
+          value={loading ? '—' : submittedToDgeCount}
+          icon={Sparkles}
+          tone="red"
+          sub="Already with strategy team"
+          onClick={() => setActiveFilter('submitted-dge')}
+          active={activeFilter === 'submitted-dge'}
+        />
       </div>
 
       <div className="hidden grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -471,30 +618,20 @@ export default function ApprovalQueue() {
       </div>
 
       {/* ── AI Portfolio Panel ── */}
-      <AiPanel expanded={aiPortfolioExpanded} onToggle={() => setAiPortfolioExpanded(v => !v)}>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">Projects in cycle</p>
-            <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{cycleProjectCount}</p>
-          </div>
-          <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">With approver</p>
-            <p className="mt-1 text-lg font-bold text-green-600">{approverOwnedCount}</p>
-          </div>
-          <div className="rounded-xl bg-white/85 p-3 dark:bg-white/5">
-            <p className="text-xs text-[#64748B]">Submitted to DGE</p>
-            <p className="mt-1 text-lg font-bold text-[#7C3AED]">{submittedToDgeCount}</p>
-          </div>
-        </div>
-        <p className="mt-3 text-xs leading-5 text-[#475569] dark:text-slate-200">
-          {cycleProjectCount} projects are in this cycle. {respondentCount} are with Respondent, {reviewerCount} are with Reviewer, and {approverOwnedCount} are currently with Approver for final action.
-        </p>
-      </AiPanel>
+      <AiPortfolioSummary
+        variant="projects"
+        role="approver"
+        summary={portfolioSummary}
+        loading={portfolioLoading}
+        error={portfolioError}
+        projects={effectiveLiveProjects}
+        projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+      />
 
       <div className="rounded-[26px] border border-[#D9E6F5] bg-white p-5 shadow-none dark:border-white/10 dark:bg-[#162339]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_16px_30px_rgba(40,108,255,0.20)]">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white">
               <Send className="h-5 w-5" />
             </div>
             <div>
@@ -675,6 +812,7 @@ export default function ApprovalQueue() {
             const accent = statusAccent(proj.status)
             const isSelected = selectedIds.includes(proj.id)
             const isActionable = proj.status === 'Pending'
+            const canClarify = proj.status === 'Pending' || proj.status === 'Approved'
             const aiExpanded = expandedAiId === proj.id
 
             return (
@@ -703,11 +841,8 @@ export default function ApprovalQueue() {
                         <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">{proj.name}</h3>
                         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#475569] dark:text-slate-200">
                           {proj.budgetType && proj.budgetType !== '-' && <><span>{proj.budgetType}</span><span>/</span></>}
-                          {proj.glCodeCount > 0 && <><span>{proj.glCodeCount} budget codes</span><span>/</span></>}
-                          <span>Reviewed by {proj.reviewedBy}</span>
-                          {proj.submittedDate && proj.submittedDate !== '-' && (
-                            <><span>/</span><span>Submitted {proj.submittedDate}</span></>
-                          )}
+                          {proj.statusForAdgeLabel && proj.statusForAdgeLabel !== '-' && <><span>{proj.statusForAdgeLabel}</span><span>/</span></>}
+                          <span>{proj.updatedDate && proj.updatedDate !== '-' ? `Updated ${proj.updatedDate}` : `Submitted ${proj.submittedDate}`}</span>
                         </div>
                       </div>
                     </div>
@@ -744,8 +879,8 @@ export default function ApprovalQueue() {
                       <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', aiExpanded && 'rotate-180')} />
                     </button>
                     {aiExpanded && (
-                      <div className="border-t border-[#E9D5FF] px-4 py-3 text-xs leading-5 text-[#475569] dark:border-white/10 dark:text-slate-200">
-                        {proj.summary || 'AI approval analysis will appear here once configured. Review budget assumptions, evidence, and strategic alignment before approving.'}
+                      <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">
+                        <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
                       </div>
                     )}
                   </div>
@@ -755,8 +890,8 @@ export default function ApprovalQueue() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={!isActionable}
-                      onClick={() => { if (isActionable) setClarificationProject(proj) }}
+                      disabled={!canClarify}
+                      onClick={() => { if (canClarify) setClarificationProject(proj) }}
                     >
                       <Undo2 className="h-4 w-4" />Raise Clarification
                     </Button>

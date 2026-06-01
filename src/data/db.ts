@@ -104,7 +104,7 @@ export interface Project {
   documents: ProjectDocument[]
   clarifications: Clarification[]
   aiScore: number
-  riskLevel: RiskLevel
+  riskLevel: RiskLevel | null
   capex: number
   opex: number
 }

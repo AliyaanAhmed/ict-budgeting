@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Minus, Search, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './StatusBadge'
 import { DirhamIcon } from './DirhamIcon'
+import { TeamHoverCard } from './TeamHoverCard'
 import { UserHoverCard } from './UserHoverCard'
 import {
   DropdownMenu,
@@ -44,11 +45,9 @@ interface ColumnDefinition<T> {
 }
 
 function AiScore({ score }: { score: number }) {
-  const color = score >= 85 ? 'text-green-600' : score >= 65 ? 'text-amber-600' : 'text-red-600'
-  const Icon = score >= 85 ? TrendingUp : score >= 65 ? Minus : TrendingDown
+  const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600'
   return (
-    <span className={`inline-flex items-center gap-1 font-mono text-[14px] font-semibold ${color}`}>
-      <Icon className="h-3.5 w-3.5" />
+    <span className={`inline-flex items-center font-mono text-[14px] font-semibold ${color}`}>
       {score}%
     </span>
   )
@@ -257,7 +256,7 @@ function ColumnFilterMenu<T>({
 
           {column.type === 'option' && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">
+              <p className="text-[11px] font-semibold text-[#94A3B8]">
                 Options
               </p>
               <div className="max-h-44 space-y-1 overflow-y-auto pr-1">
@@ -317,7 +316,41 @@ export function ProjectTable({
   const [sort, setSort] = useState<SortState | undefined>()
 
   const columns = useMemo<ColumnDefinition<Project>[]>(() => {
-    const baseColumns: ColumnDefinition<Project>[] = []
+    const baseColumns: ColumnDefinition<Project>[] = [
+      {
+        id: 'budgetReferenceId',
+        header: 'Ref ID',
+        type: 'text',
+        accessor: (project) => project.id,
+        render: (project) => (
+          <Link
+            to={`${linkBase}/${project.id}`}
+            className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
+          >
+           
+            {project.id}
+             {project.clarifications.some((c) => c.status === 'Open') && (
+              <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            )}
+          </Link>
+        ),
+        headerClassName: 'w-36',
+      },
+      {
+        id: 'name',
+        header: 'Project Name',
+        type: 'text',
+        accessor: (project) => project.name,
+        render: (project) => (
+          <Link
+            to={`${linkBase}/${project.id}`}
+            className="font-medium text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
+          >
+            {project.name}
+          </Link>
+        ),
+      },
+    ]
 
     if (showAiScore) {
       baseColumns.push({
@@ -330,23 +363,7 @@ export function ProjectTable({
       })
     }
 
-    baseColumns.push({
-        id: 'name',
-        header: 'Project Name',
-        type: 'text',
-        accessor: (project) => project.name,
-        render: (project) => (
-          <Link
-            to={`${linkBase}/${project.id}`}
-            className="flex items-center gap-1.5 font-medium text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
-          >
-            {project.clarifications.some((c) => c.status === 'Open') && (
-              <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-            )}
-            {project.name}
-          </Link>
-        ),
-      },
+    baseColumns.push(
       {
         id: 'strategicPriority',
         header: 'Strategic Priority',
@@ -402,7 +419,15 @@ export function ProjectTable({
         options: Array.from(new Set(projects.map((project) => project.pendingWith || '-'))).sort(),
         render: (project) =>
           project.pendingWith ? (
-            <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">{project.pendingWith}</span>
+            project.ownerType?.toLowerCase().includes('team') && project.ownerId ? (
+              <TeamHoverCard
+                name={project.pendingWith}
+                teamId={project.ownerId}
+                className="rounded-lg bg-[#EEF5FF] px-2.5 py-1.5 text-[14px] font-normal text-[var(--primary)] transition-colors hover:bg-[#DCEEFF] hover:text-[#043DFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE] dark:hover:bg-[#286CFF]/25"
+              />
+            ) : (
+              <span className="text-[14px] font-normal text-[#0F172A] dark:text-white">{project.pendingWith}</span>
+            )
           ) : (
             <span className="text-[14px] text-[#94A3B8]">-</span>
           ),
@@ -502,7 +527,7 @@ export function ProjectTable({
                   {column.id === 'budget' ? (
                     <span className="inline-flex items-center gap-1.5 leading-none">
                       <span>{column.header}</span>
-                      <DirhamIcon width={14} height={14} color="currentColor" className="shrink-0 self-center" />
+                      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
                     </span>
                   ) : (
                     <span>{column.header}</span>

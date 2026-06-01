@@ -575,7 +575,35 @@ export async function updateIctBudgetStatus(
   }
 
   if (targetOwner && notificationText?.trim()) {
-    await createNotificationForRole(targetOwner, notificationText.trim())
+    await createNotificationForRole(
+      targetOwner,
+      await buildBudgetNotificationText(ictBudgetId, notificationText.trim())
+    )
+  }
+}
+
+async function buildBudgetNotificationText(ictBudgetId: string, notificationText: string) {
+  try {
+    const result = await Dga_ict_budgetsService.get(ictBudgetId, {
+      select: ['dga_initiative_project_requirement_name', 'dga_budget_ref_id'],
+    })
+
+    const projectName =
+      result.data?.dga_initiative_project_requirement_name?.trim() ||
+      result.data?.dga_budget_ref_id?.trim() ||
+      ''
+
+    if (!projectName) {
+      return notificationText
+    }
+
+    return `${projectName}: ${notificationText}`
+  } catch (error) {
+    console.warn('[IctBudgetDraftService] Failed to resolve project name for notification text:', {
+      ictBudgetId,
+      error,
+    })
+    return notificationText
   }
 }
 

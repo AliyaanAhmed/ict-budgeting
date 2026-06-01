@@ -14,10 +14,13 @@
       "PowerShell(Get-ChildItem \"c:\\\\ICT-Budgeting-2026\" -File | Where-Object { $_.Extension -eq \".md\" } | Select-Object Name)",
       "Bash(Copy-Item \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx\" \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx.bak\" -Force)",
       "Bash(Write-Host \"Backup created.\")",
-      "Bash(cp \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx\" \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx.bak\" && echo \"Backup created.\")"
+      "Bash(cp \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx\" \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx.bak\" && echo \"Backup created.\")",
+      "Bash(git checkout *)",
+      "Bash(dir /s /b \"c:\\\\ICT-Budgeting-2026\\\\Data.md\" \"c:\\\\ICT-Budgeting-2026\\\\Workflow.md\" \"c:\\\\ICT-Budgeting-2026\\\\AI_SERVICES_DETAILED_GUIDE.md\" 2>nul)"
     ],
     "additionalDirectories": [
-      "c:\\ICT-Budgeting-2026\\src\\pages\\respondent"
+      "c:\\ICT-Budgeting-2026\\src\\pages\\respondent",
+      "c:\\ICT-Budgeting-2026"
     ]
   }
 }

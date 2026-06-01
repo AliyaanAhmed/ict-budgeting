@@ -1,4 +1,5 @@
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import type { TeamRole } from '@/services/userContextService'
 import {
   SESSION_RESPONDENT_ACCOUNT_KEY,
@@ -105,4 +106,30 @@ export function getStoredInstanceDetail(): AppInstanceDetail | null {
   const raw = sessionStorage.getItem(SESSION_INSTANCE_DETAIL_KEY)
   if (!raw) return null
   try { return JSON.parse(raw) as AppInstanceDetail } catch { return null }
+}
+
+const INSTANCE_STATUS_PLANNING = 776140002
+
+export async function markCurrentInstancePlanningIfFirstProject(): Promise<boolean> {
+  const instanceId = getStoredInstanceId()
+  if (!instanceId) {
+    return false
+  }
+
+  const budgetsResult = await Dga_ict_budgetsService.getAll({
+    select: ['dga_ict_budgetid'],
+    filter: `_dga_ict_budget_instance_value eq ${instanceId}`,
+    top: 2,
+  })
+
+  const budgetCount = budgetsResult.data?.length ?? 0
+  if (budgetCount !== 1) {
+    return false
+  }
+
+  await Dga_ict_budget_instancesService.update(instanceId, {
+    statuscode: INSTANCE_STATUS_PLANNING,
+  })
+
+  return true
 }

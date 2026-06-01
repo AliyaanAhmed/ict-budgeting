@@ -8,8 +8,9 @@ export interface ReviewQueueProject {
   name: string
   entity: string
   status: 'To Review' | 'Reviewed' | 'Clarification Pending'
+  statusForAdgeLabel?: string
   isActionable?: boolean
-  riskLevel: RiskLevel
+  riskLevel: RiskLevel | null
   hasMissingDocs: boolean
   requestedBudget: number
   capex: number
@@ -32,16 +33,18 @@ export interface ApprovalQueueProject {
   name: string
   entity: string
   status: 'Pending' | 'Approved' | 'Clarification Pending' | 'Submitted to DGE'
+  statusForAdgeLabel?: string
   budgetType: string
   budgetCategory: string
   requestedBudget: number
-  riskLevel: RiskLevel
+  riskLevel: RiskLevel | null
   aiConfidence: number
   summary: string
   glCodeCount: number
   reviewedBy: string
   submittedDate: string
   submittedDateRaw: string
+  updatedDate?: string
 }
 
 export interface ProjectLookups {
