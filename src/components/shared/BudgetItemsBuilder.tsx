@@ -83,7 +83,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                     <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E9F4FF]">
                       <CircleDollarSign className="h-6 w-6 text-[var(--primary)]" />
                     </div>
-                    <p className="text-sm font-bold text-[#0F172A] dark:text-white">No budget account codes added yet</p>
+                    <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>No budget account codes added yet</p>
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">
                       Use the classification picker to add GL accounts and then enter each requested amount.
                     </p>

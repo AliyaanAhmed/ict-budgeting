@@ -9,6 +9,7 @@ interface FileUploadDropzoneProps {
   accept?: string
   maxSizeMB?: number
   compact?: boolean
+  hideFileList?: boolean
   fileStatuses?: Record<string, 'uploading' | 'analyzing' | 'error'>
   fileScores?: Record<string, number | null>
 }
@@ -192,6 +193,7 @@ export function FileUploadDropzone({
   accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg',
   maxSizeMB = 20,
   compact = false,
+  hideFileList = false,
   fileStatuses,
   fileScores,
 }: FileUploadDropzoneProps) {
@@ -378,7 +380,7 @@ export function FileUploadDropzone({
         />
       </div>
 
-      {files.length > 0 && (
+      {files.length > 0 && !hideFileList && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {files.map((file, index) => {
             const extension = file.name.split('.').pop() ?? ''

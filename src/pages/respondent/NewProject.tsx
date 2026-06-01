@@ -17,6 +17,7 @@ import {
   Clock3,
   FileText,
   FolderKanban,
+  Info,
   Layers,
   Lightbulb,
   Loader2,
@@ -96,6 +97,7 @@ import {
   type SupportingDocumentEvaluationSummary,
   type SupportingDocumentSuggestedProjectField,
 } from '@/services/aiSupportingDocumentEvaluationService'
+import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
 import {
   createDocumentSummaryRecords,
   upsertCumulativeSummaryRecord,
@@ -107,6 +109,11 @@ import {
   getClassificationRecords,
 } from '@/services/classificationService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
+import {
+  buildBudgetItemDraftFromSuggestedAccountCode,
+  getComputedSupportingDocumentAccountCodeSuggestions,
+  type ComputedSupportingDocumentAccountCodeSuggestion,
+} from '@/features/supportingDocumentAccountCodes'
 import {
   getStrategicPriorityOptions,
   type StrategicPriorityOption,
@@ -185,6 +192,20 @@ interface CopilotPendingSuggestion {
   evidence?: string
   reviewFlags?: Array<{ flag?: string; reason?: string; severity?: string }>
   rawModelResponse?: string
+}
+
+interface ManualSuggestionRow {
+  id: string
+  section: string
+  title: string
+  value: string
+  detail?: string
+  confidence?: number | null
+  kind: 'summary' | 'field' | 'budget-line' | 'account-code'
+  field?: SupportingDocumentSuggestedProjectField
+  budgetLineIndex?: number
+  accountCodeSuggestion?: ComputedSupportingDocumentAccountCodeSuggestion
+  actionable: boolean
 }
 
 interface FormValues {
@@ -489,7 +510,7 @@ function buildCopilotCumulativeAnalysisMessage(summary: SupportingDocumentEvalua
   if (recommendedActions.length > 0) {
     lines.push('', '### Recommended User Actions')
     for (const action of recommendedActions.slice(0, 4)) {
-      lines.push(`- ${action}`)
+      lines.push(`- ${toDisplayText(action)}`)
     }
   }
 
@@ -513,15 +534,15 @@ function buildCopilotBudgetConsiderationMessage(
   const lines = [
     '## DGE Budget Considerations',
     `### ${matchLabel}`,
-    overall.summary || 'AI reviewed the current project against DGE ICT Budget Considerations.',
+    toDisplayText(overall.summary) || 'AI reviewed the current project against DGE ICT Budget Considerations.',
   ]
 
   if (matchGroups.length > 0) {
     lines.push('', '### Policy Matches')
     for (const item of matchGroups) {
-      lines.push(`- Policy ${item.policyNumber}: ${item.policyName} — ${item.matchType}`)
+      lines.push(`- Policy ${toDisplayText(item.policyNumber) || '-'}: ${toDisplayText(item.policyName) || 'Policy match'} — ${toDisplayText(item.matchType) || 'Match'}`)
       if (item.requiredAction) {
-        lines.push(`  Action: ${item.requiredAction}`)
+        lines.push(`  Action: ${toDisplayText(item.requiredAction)}`)
       }
     }
   }
@@ -643,6 +664,21 @@ function renderCopilotMessageText(text: string) {
 function formatAiFieldValue(value: string | string[] | undefined) {
   if (!value) return '-'
   return Array.isArray(value) ? value.join(', ') : value
+}
+
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplayText(item)).filter(Boolean).join(', ')
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.text === 'string') return record.text.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+  }
+  return ''
 }
 
 function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSummary | null) {
@@ -794,7 +830,7 @@ function BudgetAssistantLandingHero({
   onUploadClick,
   onCheckBudgetConsideration,
   onRemoveStagedFile,
-  onToggleMode,
+  onSelectMode,
   canCheckBudgetConsideration,
   projectFieldSuggestionsLoading,
 }: {
@@ -809,7 +845,7 @@ function BudgetAssistantLandingHero({
   onUploadClick: () => void
   onCheckBudgetConsideration: () => void
   onRemoveStagedFile: () => void
-  onToggleMode: () => void
+  onSelectMode: (mode: 'manual' | 'ai') => void
   canCheckBudgetConsideration: boolean
   projectFieldSuggestionsLoading: boolean
 }) {
@@ -822,29 +858,39 @@ function BudgetAssistantLandingHero({
       <div className="pointer-events-none absolute inset-0 opacity-[0.45] dark:opacity-[0.16]" style={{ backgroundImage: 'radial-gradient(circle at center, rgba(216,180,254,0.3) 0.8px, transparent 1px)', backgroundSize: '24px 24px', backgroundPosition: '8px 8px' }} />
       <div className="pointer-events-none absolute -left-24 top-14 h-64 w-64 rounded-full bg-[radial-gradient(circle,rgba(168,85,247,0.14),transparent_70%)] blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-8 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18),transparent_72%)] blur-3xl" />
-      <div className="absolute right-6 top-4 z-[2] sm:right-8 lg:right-10">
-        <div className="flex shrink-0 items-center justify-center gap-3 rounded-2xl border border-[#DDEBFF] bg-white/88 px-4 py-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
-          <User className={cn('h-5 w-5 shrink-0', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
-          <span className={cn('shrink-0 text-sm font-bold', mode === 'manual' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Manual</span>
-          <button
-            onClick={onToggleMode}
-            className={cn('relative h-6 w-12 shrink-0 overflow-hidden rounded-full p-1 transition-colors', mode === 'ai' ? 'bg-[var(--primary)]' : 'bg-[#CBD5E1]')}
-            aria-label="Toggle input mode"
-          >
-            <div className={cn('h-4 w-4 rounded-full bg-white shadow transition-transform', mode === 'ai' ? 'translate-x-6' : 'translate-x-0')} />
-          </button>
-          <span className={cn('shrink-0 text-sm font-bold', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')}>Budget Assistant</span>
-          <Bot className={cn('h-5 w-5 shrink-0', mode === 'ai' ? 'text-[var(--primary)]' : 'text-[#94A3B8]')} />
-        </div>
-      </div>
 
       <div className="relative z-[1] mx-auto flex w-full max-w-6xl flex-1 flex-col">
-        <div className="relative mx-auto flex max-w-5xl items-center justify-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/90 px-4 py-2 text-sm font-semibold text-[#A855F7] shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
-            <Sparkles className="h-4 w-4" />
-            Budget Assistant
+        <div className="relative mx-auto mb-4 flex max-w-5xl items-center justify-center">
+          <div className="inline-flex items-center gap-1 rounded-full border border-[#D8B4FE] bg-white/92 p-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur dark:border-white/10 dark:bg-[#20162F]/90">
+            <button
+              type="button"
+              onClick={() => onSelectMode('manual')}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all',
+                mode === 'manual'
+                  ? 'bg-white text-[#0F172A] shadow-sm dark:bg-white/10 dark:text-white'
+                  : 'text-[#64748B] hover:bg-white/70 hover:text-[#0F172A] dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white'
+              )}
+            >
+              <FileText className="h-4 w-4" />
+              Manual Entry
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectMode('ai')}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all',
+                mode === 'ai'
+                  ? 'bg-[linear-gradient(135deg,#A855F7_0%,#8B5CF6_100%)] text-white shadow-[0_10px_20px_rgba(168,85,247,0.28)]'
+                  : 'text-[#64748B] hover:bg-white/70 hover:text-[#0F172A] dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-white'
+              )}
+            >
+              <Sparkles className="h-4 w-4" />
+              Budget Assistant
+            </button>
           </div>
         </div>
+        
         <div className="relative mx-auto max-w-4xl text-center">
           <div className="pointer-events-none absolute left-[calc(100%+3rem)] top-2 hidden opacity-40 dark:opacity-20 xl:block">
             <div className="relative h-28 w-40">
@@ -974,7 +1020,7 @@ function CopilotDocumentAnalysisMessage({
             <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Individual File Analysis Complete</p>
             <h4 className="mt-1 truncate text-base font-bold text-[#0F172A] dark:text-white">{fileName}</h4>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              {limitCopilotText(fileSummary?.short_summary ?? 'The file was analyzed and mapped into project evidence.', 320)}
+              {limitCopilotText(toDisplayText(fileSummary?.short_summary) || 'The file was analyzed and mapped into project evidence.', 320)}
             </p>
           </div>
         </div>
@@ -984,23 +1030,23 @@ function CopilotDocumentAnalysisMessage({
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Document Profile</p>
             <div className="mt-2 space-y-1.5 text-sm text-[#334155] dark:text-slate-200">
-              <p><span className="font-semibold">Type:</span> {profile?.document_type ?? 'Not identified'}</p>
-              <p><span className="font-semibold">Vendor:</span> {profile?.issuer_or_vendor ?? 'Not identified'}</p>
-              <p><span className="font-semibold">Entity:</span> {profile?.recipient_or_entity ?? 'Not identified'}</p>
+              <p><span className="font-semibold">Type:</span> {toDisplayText(profile?.document_type) || 'Not identified'}</p>
+              <p><span className="font-semibold">Vendor:</span> {toDisplayText(profile?.issuer_or_vendor) || 'Not identified'}</p>
+              <p><span className="font-semibold">Entity:</span> {toDisplayText(profile?.recipient_or_entity) || 'Not identified'}</p>
             </div>
           </div>
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Supports Project: {evidence?.supports_project ?? 'Unclear'}
+                Supports Project: {toDisplayText(evidence?.supports_project) || 'Unclear'}
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-200">
                 Quality Score: {typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'N/A'}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              {limitCopilotText(evidence?.reason ?? evidence?.recommended_user_action ?? 'The AI extracted evidence quality and project support signals from the file.', 220)}
+              {limitCopilotText(toDisplayText(evidence?.reason) || toDisplayText(evidence?.recommended_user_action) || 'The AI extracted evidence quality and project support signals from the file.', 220)}
             </p>
           </div>
         </div>
@@ -1025,8 +1071,8 @@ function CopilotDocumentAnalysisMessage({
                 <div className="mt-2 space-y-2">
                   {reviewFlags.slice(0, 2).map((flag, index) => (
                     <div key={`${fileName}-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
-                      <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{flag.flag ?? 'Review'}</p>
-                      <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{flag.reason ?? 'Needs confirmation.'}</p>
+                      <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{toDisplayText(flag.flag) || 'Review'}</p>
+                      <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{toDisplayText(flag.reason) || 'Needs confirmation.'}</p>
                     </div>
                   ))}
                 </div>
@@ -1064,7 +1110,7 @@ function CopilotCumulativeAnalysisMessage({
             <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Cumulative Analysis Complete</p>
             <h4 className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">Combined Evidence View</h4>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              {limitCopilotText(fileSummary?.short_summary ?? 'The uploaded files were combined into one cumulative project evidence summary.', 360)}
+              {limitCopilotText(toDisplayText(fileSummary?.short_summary) || 'The uploaded files were combined into one cumulative project evidence summary.', 360)}
             </p>
           </div>
         </div>
@@ -1091,14 +1137,14 @@ function CopilotCumulativeAnalysisMessage({
             <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Evidence Assessment</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <span className="rounded-full border border-[#E9D5FF] bg-[#F3E8FF] px-2.5 py-1 text-xs font-semibold text-[#7E22CE] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Supports Project: {evidence?.supports_project ?? 'Unclear'}
+                Supports Project: {toDisplayText(evidence?.supports_project) || 'Unclear'}
               </span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#475569] dark:bg-white/10 dark:text-slate-200">
                 Quality Score: {typeof evidence?.evidence_score === 'number' ? evidence.evidence_score : 'N/A'}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              {limitCopilotText(evidence?.reason ?? 'The AI combined all completed files into one evidence assessment.', 250)}
+              {limitCopilotText(toDisplayText(evidence?.reason) || 'The AI combined all completed files into one evidence assessment.', 250)}
             </p>
           </div>
           <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
@@ -1106,7 +1152,7 @@ function CopilotCumulativeAnalysisMessage({
             <div className="mt-2 space-y-2">
               {(recommendedActions.length > 0 ? recommendedActions.slice(0, 3) : ['Review the combined suggestions card before applying fields into the draft.']).map((action, index) => (
                 <div key={`action-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm leading-6 text-[#334155] dark:border-white/10 dark:bg-white/10 dark:text-slate-200">
-                  {action}
+                  {toDisplayText(action)}
                 </div>
               ))}
             </div>
@@ -1118,8 +1164,8 @@ function CopilotCumulativeAnalysisMessage({
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {reviewFlags.slice(0, 4).map((flag, index) => (
                 <div key={`cumulative-flag-${index}`} className="rounded-xl border border-red-100 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{flag.flag ?? 'Review'}</p>
-                  <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{flag.reason ?? 'Needs confirmation.'}</p>
+                  <p className="text-sm font-semibold text-[#B42318] dark:text-[#FCA5A5]">{toDisplayText(flag.flag) || 'Review'}</p>
+                  <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-[#FECACA]">{toDisplayText(flag.reason) || 'Needs confirmation.'}</p>
                 </div>
               ))}
             </div>
@@ -1152,7 +1198,7 @@ function CopilotPolicyAnalysisMessage({
             <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">DGE Budget Considerations</p>
             <h4 className="mt-1 text-base font-bold text-[#0F172A] dark:text-white">Policy Review</h4>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              {overall.summary || 'AI reviewed the project against DGE ICT Budget Considerations.'}
+              {toDisplayText(overall.summary) || 'AI reviewed the project against DGE ICT Budget Considerations.'}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {conflictCount > 0 && (
@@ -1197,7 +1243,7 @@ function CopilotPolicyAnalysisMessage({
               >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-[#0F172A] dark:text-white">
-                    {item.policyName}
+                    {toDisplayText(item.policyName) || 'Policy match'}
                   </span>
                   <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold', tagClass)}>
                     {item.matchType}
@@ -1207,7 +1253,7 @@ function CopilotPolicyAnalysisMessage({
               </button>
               {isExpanded && (
                 <div className="px-4 pb-3 pt-0 text-sm leading-6 text-[#475569] dark:text-slate-200">
-                  {item.requiredAction || 'No specific action required.'}
+                  {toDisplayText(item.requiredAction) || 'No specific action required.'}
                 </div>
               )}
             </div>
@@ -1257,15 +1303,26 @@ function renderCopilotMessage(text: string) {
 function EmptyActionCard({
   description,
   icon: Icon,
+  plain,
+  hideIcon,
 }: {
   description: string
   icon: React.ElementType
+  plain?: boolean
+  hideIcon?: boolean
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-dashed border-[#A855F726] bg-[#FDF8FF] px-4 py-5 text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-        <Icon className="h-5 w-5" />
-      </div>
+    <div
+      className={cn(
+        'relative flex items-start gap-3 rounded-xl border px-4 py-5 text-sm text-[#64748B] dark:border-white/10 dark:text-slate-300',
+        plain ? 'border-dashed border-[#E2E8F0] bg-transparent dark:bg-transparent' : 'border-[#EAF0F6] bg-[#F8FBFF] dark:bg-white/5'
+      )}
+    >
+      {!hideIcon ? (
+        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+          <Icon className="h-5 w-5" />
+        </div>
+      ) : null}
       <p className="leading-6">{description}</p>
     </div>
   )
@@ -1788,12 +1845,32 @@ function resolveManualAiFieldSuggestion(
 
   if (mapping === 'technologyCompany') {
     const normalized = rawValue.toLowerCase()
-    const matched = technologyCompanies.find(
-      (company) =>
-        company.name.toLowerCase() === normalized ||
-        company.name.toLowerCase().includes(normalized) ||
-        normalized.includes(company.name.toLowerCase())
-    )
+    const candidateTerms = rawValue
+      .split(',')
+      .map((term) => term.trim().toLowerCase())
+      .filter(Boolean)
+
+    const matched =
+      technologyCompanies.find(
+        (company) =>
+          company.name.toLowerCase() === normalized ||
+          company.name.toLowerCase().includes(normalized) ||
+          normalized.includes(company.name.toLowerCase())
+      ) ??
+      technologyCompanies.find((company) =>
+        candidateTerms.some(
+          (term) =>
+            company.name.toLowerCase() === term ||
+            company.name.toLowerCase().includes(term) ||
+            term.includes(company.name.toLowerCase()) ||
+            company.products.some(
+              (product) =>
+                product.name.toLowerCase() === term ||
+                product.name.toLowerCase().includes(term) ||
+                term.includes(product.name.toLowerCase())
+            )
+        )
+      )
 
     return matched
       ? {
@@ -1873,45 +1950,219 @@ function collectCopilotSuggestedFields(analysis: Record<string, unknown>): Parti
   return nextFields
 }
 
+function findMatchingTechnologyCompany(
+  rawValue: string,
+  technologyCompanies: TechnologyCompanyOption[]
+) {
+  const normalized = rawValue.toLowerCase()
+  const candidateTerms = rawValue
+    .split(',')
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean)
+
+  return (
+    technologyCompanies.find(
+      (company) =>
+        company.name.toLowerCase() === normalized ||
+        company.name.toLowerCase().includes(normalized) ||
+        normalized.includes(company.name.toLowerCase())
+    ) ??
+    technologyCompanies.find((company) =>
+      candidateTerms.some(
+        (term) =>
+          company.name.toLowerCase() === term ||
+          company.name.toLowerCase().includes(term) ||
+          term.includes(company.name.toLowerCase()) ||
+          company.products.some(
+            (product) =>
+              product.name.toLowerCase() === term ||
+              product.name.toLowerCase().includes(term) ||
+              term.includes(product.name.toLowerCase())
+          )
+      )
+    )
+  )
+}
+
+function resolveFormFieldPatch(input: {
+  baseValues: FormValues
+  patch: Partial<Record<keyof FormValues, string | string[]>>
+  technologyCompanies: TechnologyCompanyOption[]
+  workStreams: WorkStreamOption[]
+  strategicPriorities: StrategicPriorityOption[]
+}) {
+  const nextValues = { ...input.baseValues }
+  const resolvedKeys = new Set<keyof FormValues>()
+  const failedMessages: string[] = []
+  let pendingTechnologyProductValue: string | string[] | undefined
+
+  for (const [key, value] of Object.entries(input.patch) as Array<[keyof FormValues, string | string[]]>) {
+    if (value === undefined || value === null) continue
+
+    if (key === 'initiativeName' || key === 'summary' || key === 'plannedStartDate' || key === 'plannedEndDate') {
+      nextValues[key] = Array.isArray(value) ? value.join(', ') : value
+      resolvedKeys.add(key)
+      continue
+    }
+
+    if (key === 'category') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = CATEGORY_OPTIONS.find((option) => option.label.toLowerCase() === raw.toLowerCase())
+      if (matched) {
+        nextValues.category = matched.value
+        resolvedKeys.add('category')
+      } else {
+        failedMessages.push(`Category "${raw}" does not match any available category option.`)
+      }
+      continue
+    }
+
+    if (key === 'budgetItemType') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = BUDGET_ITEM_TYPE_OPTIONS.find((option) => option.label.toLowerCase() === raw.toLowerCase())
+      if (matched) {
+        nextValues.budgetItemType = matched.value
+        resolvedKeys.add('budgetItemType')
+      } else {
+        failedMessages.push(`ICT Budget Items Type "${raw}" does not match any available option.`)
+      }
+      continue
+    }
+
+    if (key === 'activityType') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = ACTIVITY_TYPE_OPTIONS.find((option) => option.title.toLowerCase() === raw.toLowerCase())
+      if (matched) {
+        nextValues.activityType = matched.value
+        resolvedKeys.add('activityType')
+      } else {
+        failedMessages.push(`Project Budget Type "${raw}" does not match any available option.`)
+      }
+      continue
+    }
+
+    if (key === 'technologyCompanyId') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = findMatchingTechnologyCompany(raw, input.technologyCompanies)
+      if (matched) {
+        nextValues.technologyCompanyId = matched.id
+        nextValues.technologyProductIds = []
+        resolvedKeys.add('technologyCompanyId')
+        resolvedKeys.add('technologyProductIds')
+      } else {
+        failedMessages.push(`Technology Company "${raw}" does not match any available option.`)
+      }
+      continue
+    }
+
+    if (key === 'technologyProductIds') {
+      pendingTechnologyProductValue = value
+      continue
+    }
+
+    if (key === 'workStreamId') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = input.workStreams.find((stream) => labelsMatch(stream.name, raw))
+      if (matched) {
+        nextValues.workStreamId = matched.id
+        resolvedKeys.add('workStreamId')
+      } else {
+        failedMessages.push(`Work Stream "${raw}" does not match any available option.`)
+      }
+      continue
+    }
+
+    if (key === 'strategicPriorityId') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = input.strategicPriorities.find((option) => !option.parentId && spNameMatch(option.name, raw))
+      if (matched) {
+        nextValues.strategicPriorityId = matched.id
+        nextValues.strategicPriorityClassificationId = ''
+        resolvedKeys.add('strategicPriorityId')
+        resolvedKeys.add('strategicPriorityClassificationId')
+      } else {
+        failedMessages.push(`Strategic Priority "${raw}" does not match any available option.`)
+      }
+      continue
+    }
+
+    if (key === 'strategicPriorityClassificationId') {
+      const raw = Array.isArray(value) ? value[0] ?? '' : value
+      const matched = input.strategicPriorities.find(
+        (option) =>
+          Boolean(option.parentId) &&
+          spNameMatch(option.name, raw) &&
+          (!nextValues.strategicPriorityId || option.parentId === nextValues.strategicPriorityId)
+      )
+
+      if (matched) {
+        nextValues.strategicPriorityClassificationId = matched.id
+        resolvedKeys.add('strategicPriorityClassificationId')
+        if (!nextValues.strategicPriorityId && matched.parentId) {
+          nextValues.strategicPriorityId = matched.parentId
+          resolvedKeys.add('strategicPriorityId')
+        }
+      } else {
+        failedMessages.push(`Strategic Priority Classification "${raw}" does not match any available option.`)
+      }
+    }
+  }
+
+  if (pendingTechnologyProductValue !== undefined) {
+    const rawValues = Array.isArray(pendingTechnologyProductValue)
+      ? pendingTechnologyProductValue
+      : [pendingTechnologyProductValue]
+    const selectedCompany =
+      input.technologyCompanies.find((company) => company.id === nextValues.technologyCompanyId) ?? null
+
+    if (selectedCompany) {
+      const matchedProducts = selectedCompany.products
+        .filter((product) =>
+          rawValues.some(
+            (raw) =>
+              product.name.toLowerCase() === raw.toLowerCase() ||
+              product.name.toLowerCase().includes(raw.toLowerCase()) ||
+              raw.toLowerCase().includes(product.name.toLowerCase())
+          )
+        )
+        .map((product) => product.id)
+
+      if (matchedProducts.length > 0) {
+        nextValues.technologyProductIds = matchedProducts
+        resolvedKeys.add('technologyProductIds')
+      } else if (rawValues.some((raw) => raw.trim().length > 0)) {
+        failedMessages.push(`Technology Product "${rawValues.join(', ')}" does not match the selected company.`)
+      }
+    } else if (rawValues.some((raw) => raw.trim().length > 0)) {
+      failedMessages.push('Technology Products could not be applied because no Technology Company was resolved first.')
+    }
+  }
+
+  return {
+    nextValues,
+    resolvedKeys,
+    failedMessages,
+  }
+}
+
 function buildBudgetItemsFromSupportingDocumentSummary(summary: Record<string, unknown>) {
-  const accountCodeSuggestions = Array.isArray(summary.account_code_suggestions)
-    ? (summary.account_code_suggestions as Array<Record<string, unknown>>)
-    : []
-  const budgetLines = Array.isArray(summary.budget_lines)
-    ? (summary.budget_lines as SupportingDocumentBudgetLine[])
-    : []
+  const computedSuggestions = getComputedSupportingDocumentAccountCodeSuggestions(summary)
 
-  return accountCodeSuggestions.reduce<BudgetItemDraft[]>((items, suggestion, index) => {
-    const accountCode = String(suggestion.account_code ?? '').trim()
-    if (!accountCode) return items
-
-    const lineNumberMatches = Array.isArray(suggestion.mapped_budget_line_numbers)
-      ? (suggestion.mapped_budget_line_numbers as number[])
-      : []
-    const matchedLine = budgetLines.find((line) => lineNumberMatches.includes(line.line_number ?? -1)) ?? budgetLines[index] ?? null
-
-    items.push({
-      id: `copilot-${accountCode}-${index}`,
-      accountName: accountCode,
-      l1: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l1 ?? 'Pending L1'),
-      l2: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l2 ?? 'Pending L2'),
-      l3: String((suggestion.classification_path as Record<string, unknown> | undefined)?.l3 ?? 'Pending L3'),
+  return computedSuggestions.map<BudgetItemDraft>((suggestion, index) => ({
+      id: `copilot-${suggestion.accountCode || suggestion.rawAccountLabel}-${index}`,
+      accountName: suggestion.rawAccountLabel,
+      l1: String(suggestion.classificationPath?.l1 ?? 'Pending L1'),
+      l2: String(suggestion.classificationPath?.l2 ?? 'Pending L2'),
+      l3: String(suggestion.classificationPath?.l3 ?? 'Pending L3'),
       ebsCode: '',
       fusionCode: '',
-      glCode: accountCode,
+      glCode: suggestion.rawAccountLabel,
       accountGroup: null,
       description: null,
       expenseTypeValue: null,
-      expenseTypeLabel: String(suggestion.expense_type ?? 'Pending'),
-      budgetRequested: typeof suggestion.requested_budget === 'number'
-        ? suggestion.requested_budget
-        : typeof matchedLine?.amount === 'number'
-          ? matchedLine.amount
-          : 0,
-    })
-
-    return items
-  }, [])
+      expenseTypeLabel: suggestion.expenseType || 'Pending',
+      budgetRequested: suggestion.mappedBudget,
+    }))
 }
 
 function toMatchTypeAccent(matchType: PolicyMatchType) {
@@ -1977,6 +2228,86 @@ function getPolicyPanelTheme(matchType: PolicyMatchType | 'No Policy Match') {
     hover: 'hover:bg-[#F7FCF8]/80 dark:hover:bg-white/5',
     pill: 'bg-[#ECFDF3] text-[#027A48] dark:bg-[#027A48]/15 dark:text-[#A6F4C5]',
   }
+}
+
+function BudgetConsiderationCompactCards({
+  groups,
+}: {
+  groups: PolicyMatchGroup[]
+}) {
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {groups.flatMap((group) => {
+        const accent = toMatchTypeAccent(group.matchType)
+
+        return group.items.map((item) => (
+          <article
+            key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
+            className="group relative overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <div className={cn('mt-0.5 shrink-0', accent.text)}>
+                    {group.matchType === 'Potential Conflict' ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : group.matchType === 'Coordination Required' ? (
+                      <Layers className="h-4 w-4" />
+                    ) : (
+                      <Lightbulb className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
+                      {toDisplayText(item.policyName) || 'Policy match'}
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                      Policy {item.policyNumber}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold', accent.sofbadge)}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
+                    {item.matchType}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-[#D7E4F4] bg-white px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                    Probability {item.relevanceScore ?? '-'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
+                  aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+
+                <div className="pointer-events-none absolute bottom-full right-0 z-[120] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 group-hover:pointer-events-auto group-hover:-translate-y-1 group-hover:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
+                  <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
+                    Reason
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
+                    {toDisplayText(item.reason) || 'No reason provided.'}
+                  </p>
+                  <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
+                    Recommended Action
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
+                    {toDisplayText(item.requiredAction) || 'No recommended action provided.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </article>
+        ))
+      })}
+    </div>
+  )
 }
 
 function truncatePolicyCopy(text: string, maxCharacters: number) {
@@ -2171,9 +2502,13 @@ export default function NewProject() {
   const [chatStagedFile, setChatStagedFile] = useState<File | null>(null)
   const [suggestionFlashOn, setSuggestionFlashOn] = useState(false)
   const [copilotAltSuggestionApplied, setCopilotAltSuggestionApplied] = useState(false)
+  const [selectedManualSuggestionIds, setSelectedManualSuggestionIds] = useState<string[]>([])
+  const [manualSuggestionApplyLoading, setManualSuggestionApplyLoading] = useState(false)
   const chatFileInputRef = useRef<HTMLInputElement>(null)
+  const manualFileInputRef = useRef<HTMLInputElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const shownCopilotDocumentSummaryRef = useRef<Set<string>>(new Set())
+  const manualSuggestionAutoSelectionKeyRef = useRef<string | null>(null)
   const prevSuggestionCountRef = useRef(0)
   const shownCopilotCumulativeSummaryScopeRef = useRef<string | null>(null)
 
@@ -2969,11 +3304,146 @@ export default function NewProject() {
       ? `Cumulative summary across ${activeSupportingDocumentSummary.fileCount} files`
       : latestCompletedSupportingDocument?.file.name ?? 'Single document summary'
   const actionSuggestedFields = actionSummary?.suggested_project_fields ?? []
-  const actionBudgetLines = actionSummary?.budget_lines ?? []
+  const actionAccountCodes = getComputedSupportingDocumentAccountCodeSuggestions(actionSummary)
+  const actionBudgetLines: SupportingDocumentBudgetLine[] = []
   const actionAccountCode = actionSummary?.account_code_suggestions?.[0] ?? null
   const actionDocumentSummary = actionSummary?.file_summary ?? null
   const actionEvidenceAssessment = actionSummary?.evidence_assessment ?? null
   const actionBudgetTotal = getDocumentSummaryBudgetTotal(actionSummary ?? null)
+  const manualSuggestionRows = useMemo<ManualSuggestionRow[]>(() => {
+    const rows: ManualSuggestionRow[] = []
+
+    actionSuggestedFields.forEach((field, index) => {
+      const mappedPatch = collectCopilotSuggestedFields({
+        suggested_project_fields: [field as unknown as Record<string, unknown>],
+      })
+
+      rows.push({
+        id: `field-${field.field_key ?? field.field_label ?? index}-${index}`,
+        section: 'Suggested Fields',
+        title: field.field_label ?? field.field_key ?? 'Suggested Field',
+        value: formatAiFieldValue(field.suggested_value),
+        confidence: typeof field.confidence === 'number' ? field.confidence : null,
+        kind: 'field',
+        field,
+        actionable: Object.keys(mappedPatch).length > 0,
+      })
+    })
+
+    actionAccountCodes.forEach((suggestion, index) => {
+      const classificationPath = [
+        suggestion.classificationPath?.l1,
+        suggestion.classificationPath?.l2,
+        suggestion.classificationPath?.l3,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+      const mappedLinesLabel =
+        suggestion.mappedLineNumbers.length > 0
+          ? `Mapped lines ${suggestion.mappedLineNumbers.join(', ')}`
+          : 'Mapped amount pending confirmation'
+
+      rows.push({
+        id: `account-code-${suggestion.accountCode || index}-${index}`,
+        section: 'Account Codes',
+        title: suggestion.displayLabel,
+        value: classificationPath || suggestion.reason || 'AI mapped this spend to a suggested account code.',
+        detail: [
+          suggestion.expenseType || null,
+          mappedLinesLabel,
+          suggestion.mappedBudget > 0 ? formatAEDFull(suggestion.mappedBudget) : null,
+        ]
+          .filter(Boolean)
+          .join(' • '),
+        confidence: suggestion.confidence,
+        kind: 'account-code',
+        accountCodeSuggestion: suggestion,
+        actionable: true,
+      })
+    })
+
+    return rows
+
+    actionBudgetLines.forEach((line, index) => {
+      const amountText = formatCopilotBudgetAmount(line.amount, line.currency)
+      rows.push({
+        id: `budget-line-${line.line_number ?? index}-${index}`,
+        section: 'Budget Lines',
+        title: line.description ?? `Budget line ${index + 1}`,
+        value: [amountText, line.amount_period, line.vat_treatment ? `VAT ${line.vat_treatment}` : '']
+          .filter(Boolean)
+          .join(' • '),
+        kind: 'budget-line',
+        budgetLineIndex: index,
+        actionable: false,
+      })
+    })
+
+    if (actionAccountCode?.account_code) {
+      rows.push({
+        id: 'account-code-suggestion',
+        section: 'Account Code Suggestion',
+        title: actionAccountCode?.account_code ?? 'Suggested account code',
+        value:
+          truncateAiText(toDisplayText(actionAccountCode?.reason), 180) ||
+          'AI found a likely GL/account-code match for this evidence.',
+        detail:
+          typeof actionAccountCode?.requested_budget === 'number'
+            ? formatAEDFull(actionAccountCode?.requested_budget ?? 0)
+            : undefined,
+        confidence:
+          typeof actionAccountCode?.account_code_confidence === 'number'
+            ? actionAccountCode?.account_code_confidence
+            : null,
+        kind: 'account-code',
+        actionable: true,
+      })
+    }
+
+    return rows
+  }, [
+    actionAccountCodes,
+    actionAccountCode,
+    actionBudgetLines,
+    actionDocumentSummary,
+    actionEvidenceAssessment,
+    actionSuggestedFields,
+  ])
+  const manualSuggestionSelectionKey = useMemo(
+    () => manualSuggestionRows.map((row) => row.id).join('|'),
+    [manualSuggestionRows]
+  )
+  const manualReadOnlyRows = useMemo(
+    () => manualSuggestionRows.filter((row) => row.kind === 'summary'),
+    [manualSuggestionRows]
+  )
+  const manualSelectableRows = useMemo(
+    () => manualSuggestionRows.filter((row) => row.actionable),
+    [manualSuggestionRows]
+  )
+  const activeSupportingDocumentSummaryText =
+    toDisplayText(actionDocumentSummary?.short_summary) ||
+    toDisplayText(actionDocumentSummary?.detailed_summary) ||
+    toDisplayText(actionEvidenceAssessment?.reason) ||
+    ''
+  useEffect(() => {
+    const nextSelectedIds = manualSuggestionRows
+      .filter((row) => row.actionable)
+      .map((row) => row.id)
+
+    if (!manualSuggestionSelectionKey) {
+      manualSuggestionAutoSelectionKeyRef.current = null
+      setSelectedManualSuggestionIds((current) => (current.length === 0 ? current : []))
+      return
+    }
+
+    if (manualSuggestionAutoSelectionKeyRef.current === manualSuggestionSelectionKey) {
+      return
+    }
+
+    manualSuggestionAutoSelectionKeyRef.current = manualSuggestionSelectionKey
+    setSelectedManualSuggestionIds(nextSelectedIds)
+  }, [manualSuggestionRows, manualSuggestionSelectionKey])
   const copilotActionSummary = activeCopilotSupportingDocumentSummary.parsedSummary
   const latestCompletedCopilotSupportingDocument =
     completedCopilotSupportingDocumentInputs[completedCopilotSupportingDocumentInputs.length - 1] ?? null
@@ -3041,12 +3511,19 @@ export default function NewProject() {
       return
     }
 
+    const documentRecords = await Promise.all(
+      completedInputs.map(async (item) => {
+        const prepared = await prepareSupportingDocumentFile(item.file)
+        return {
+          budgetId,
+          documentName: prepared.preparedFile.name,
+          documentSummary: item.rawSummary,
+        }
+      })
+    )
+
     await createDocumentSummaryRecords(
-      completedInputs.map((item) => ({
-        budgetId,
-        documentName: item.file.name,
-        documentSummary: item.rawSummary,
-      }))
+      documentRecords
     )
 
     if (completedInputs.length === 1) {
@@ -3551,6 +4028,53 @@ export default function NewProject() {
       void sendCopilotPromptWithFile(validFile, chatInput)
     } else {
       setChatStagedFile(validFile)
+    }
+  }
+
+  const handleManualSupportingDocumentSelection = (fileList: FileList | null) => {
+    const incoming = Array.from(fileList ?? [])
+    if (incoming.length === 0) return
+
+    const {
+      validFiles,
+      rejectedZeroKb,
+      rejectedOversize,
+      rejectedRestrictedType,
+      rejectedUnsupportedType,
+    } = validateFilesForUpload({
+      incoming,
+      existingFiles: uploadedFiles,
+      accept: '.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg',
+      maxSizeMB: 20,
+    })
+
+    if (rejectedZeroKb.length > 0) {
+      showErrorToast(
+        'Empty files are not allowed',
+        `${rejectedZeroKb.join(', ')} ${rejectedZeroKb.length === 1 ? 'is' : 'are'} 0 KB and cannot be uploaded.`
+      )
+    }
+    if (rejectedOversize.length > 0) {
+      showErrorToast(
+        'File size exceeded',
+        `${rejectedOversize.join(', ')} ${rejectedOversize.length === 1 ? 'is' : 'are'} larger than 20 MB and cannot be uploaded.`
+      )
+    }
+    if (rejectedRestrictedType.length > 0) {
+      showErrorToast(
+        'Restricted file type',
+        `${rejectedRestrictedType.join(', ')} ${rejectedRestrictedType.length === 1 ? 'is' : 'are'} not allowed for security reasons.`
+      )
+    }
+    if (rejectedUnsupportedType.length > 0) {
+      showErrorToast(
+        'Unsupported file type',
+        `${rejectedUnsupportedType.join(', ')} ${rejectedUnsupportedType.length === 1 ? 'is' : 'are'} not in the supported file types list.`
+      )
+    }
+
+    if (validFiles.length > 0) {
+      setUploadedFiles((prev) => [...prev, ...validFiles])
     }
   }
 
@@ -4658,6 +5182,115 @@ export default function NewProject() {
     }
   }
 
+  const applySelectedManualSuggestions = async () => {
+    const selectedRows = manualSuggestionRows.filter((row) => selectedManualSuggestionIds.includes(row.id))
+    if (selectedRows.length === 0) {
+      showErrorToast('No suggestions selected', 'Select at least one suggestion before applying.')
+      return
+    }
+
+    setManualSuggestionApplyLoading(true)
+
+    try {
+      let nextFormValues = formValues
+      const aggregatedPatch: Partial<Record<keyof FormValues, string | string[]>> = {}
+      const failedMessages: string[] = []
+      const selectedAccountCodeSuggestions: ComputedSupportingDocumentAccountCodeSuggestion[] = []
+
+      for (const row of selectedRows) {
+        if (row.kind === 'field' && row.field) {
+          const mappedPatch = collectCopilotSuggestedFields({
+            suggested_project_fields: [row.field as unknown as Record<string, unknown>],
+          })
+          Object.assign(aggregatedPatch, mappedPatch)
+          continue
+        }
+
+        if (row.kind === 'account-code' && row.accountCodeSuggestion) {
+          selectedAccountCodeSuggestions.push(row.accountCodeSuggestion)
+        }
+      }
+
+      if (Object.keys(aggregatedPatch).length > 0) {
+        const resolved = resolveFormFieldPatch({
+          baseValues: formValues,
+          patch: aggregatedPatch,
+          technologyCompanies,
+          workStreams,
+          strategicPriorities,
+        })
+
+        nextFormValues = resolved.nextValues
+        failedMessages.push(...resolved.failedMessages)
+
+        setFormValues(resolved.nextValues)
+        setFieldErrors((prev) => {
+          const nextErrors = { ...prev }
+          resolved.resolvedKeys.forEach((key) => {
+            delete nextErrors[key]
+          })
+          return nextErrors
+        })
+      }
+
+      if (selectedAccountCodeSuggestions.length > 0) {
+        const classificationRecords = await getClassificationRecords()
+        const { nodeMap } = buildClassificationTree(classificationRecords)
+        const draftsToAdd: BudgetItemDraft[] = []
+
+        selectedAccountCodeSuggestions.forEach((suggestion) => {
+          const draft = buildBudgetItemDraftFromSuggestedAccountCode(suggestion, nodeMap)
+          if (draft) {
+            draftsToAdd.push(draft)
+          } else {
+            failedMessages.push(
+              `No GL account matching "${suggestion.rawAccountLabel}" was found in the classification tree.`
+            )
+          }
+        })
+
+        if (draftsToAdd.length > 0) {
+          setBudgetItems((prev) => {
+            const existing = new Set(prev.map((item) => item.id))
+            const uniqueDrafts = new Map<string, BudgetItemDraft>()
+
+            for (const item of draftsToAdd) {
+              if (!uniqueDrafts.has(item.id)) {
+                uniqueDrafts.set(item.id, item)
+              }
+            }
+
+            const additions = Array.from(uniqueDrafts.values()).filter((item) => !existing.has(item.id))
+            return additions.length > 0 ? [...prev, ...additions] : prev
+          })
+          setBudgetItemsError(null)
+          setFieldErrors((prev) => {
+            const nextErrors = { ...prev }
+            delete nextErrors.budgetItems
+            return nextErrors
+          })
+        }
+      }
+
+      const name = nextFormValues.initiativeName.trim()
+      const desc = nextFormValues.summary.trim()
+      if (name && desc) {
+        void refreshAiSuggestions(name, desc)
+      }
+
+      if (failedMessages.length > 0) {
+        showErrorToast('Some suggestions could not be applied', failedMessages.join('\n'))
+      }
+    } catch (error) {
+      showErrorToast(
+        'Suggestions not applied',
+        error instanceof Error ? error.message : 'Could not apply the selected suggestions.'
+      )
+    } finally {
+      setManualSuggestionApplyLoading(false)
+    }
+  }
+
   const applyCopilotFieldPatch = (patch: Partial<Record<keyof FormValues, string | string[]>>) => {
     const nextValues = { ...copilotFormValues }
     let pendingTechnologyProductValue: string | string[] | undefined
@@ -4987,7 +5620,7 @@ export default function NewProject() {
                   {policyEvaluationError}
                 </div>
               ) : policyEvaluationResult ? (
-                <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF8FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+                <div className="relative rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
                   <button
                     type="button"
                     onClick={() => {
@@ -4995,7 +5628,7 @@ export default function NewProject() {
                         setPolicyEvaluationExpanded((value) => !value)
                       }
                     }}
-                    className="flex w-full items-start justify-between gap-4 px-6 py-5 text-left"
+                    className="flex w-full items-start justify-between gap-4 bg-gradient-to-b from-[#FDF7FF] to-white px-6 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
                   >
                     <div className="flex items-start gap-3">
                       <div className="mt-1 shrink-0 text-[#A855F7]">
@@ -5003,12 +5636,12 @@ export default function NewProject() {
                       </div>
                       <div className="min-w-0">
                         <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">
-                          AI Budget Considerations
+                          AI Budget Consideration
                         </h2>
                         <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
                           {policyEvaluationResult.overallAssessment.hasPolicyMatch
                             ? 'AI screened this project against DGE ICT Budget Considerations and highlighted the policies that need attention.'
-                            : policyEvaluationResult.overallAssessment.summary}
+                            : toDisplayText(policyEvaluationResult.overallAssessment.summary)}
                         </p>
                       </div>
                     </div>
@@ -5018,19 +5651,19 @@ export default function NewProject() {
                           {policyEvaluationResult.overallAssessment.hasPotentialConflict && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-[#FECACA] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:text-[#FCA5A5]">
                               <span className="h-1.5 w-1.5 rounded-full bg-[#DC2626]" />
-                              {policyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0} conflict
+                              Potential Conflict ({policyMatchGroups.find((group) => group.matchType === 'Potential Conflict')?.items.length ?? 0})
                             </span>
                           )}
                           {policyEvaluationResult.overallAssessment.hasCoordinationRequirement && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-[#FDE68A] px-2.5 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:text-[#F6D28A]">
                               <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
-                              {policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0} coordination
+                              Coordination Required ({policyMatchGroups.find((group) => group.matchType === 'Coordination Required')?.items.length ?? 0})
                             </span>
                           )}
                           {policyEvaluationResult.overallAssessment.hasAllowedWithConditions && (
                             <span className="inline-flex items-center gap-1 rounded-full border border-[#BBF7D0] px-2.5 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:text-[#86EFAC]">
                               <span className="h-1.5 w-1.5 rounded-full bg-[#22C55E]" />
-                              {policyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0} conditional
+                              Allowed Conditions ({policyMatchGroups.find((group) => group.matchType === 'Allowed With Conditions')?.items.length ?? 0})
                             </span>
                           )}
                         </div>
@@ -5040,193 +5673,40 @@ export default function NewProject() {
                           Cleared by AI
                         </span>
                       )}
-                      {policyEvaluationResult.overallAssessment.hasPolicyMatch && (
-                        <div className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 text-sm font-semibold text-[#A855F7] shadow-sm dark:bg-white/10 dark:text-[#E9D5FF]">
-                          <span>{policyEvaluationExpanded ? 'Collapse' : 'Expand'}</span>
-                          <ChevronDown
-                            className={cn(
-                              'h-4 w-4 transition-transform',
-                              policyEvaluationExpanded && 'rotate-180'
-                            )}
-                          />
-                        </div>
-                      )}
                     </div>
                   </button>
 
-                  <div className="px-6 pb-5">
-                    {policyEvaluationResult.overallAssessment.hasPolicyMatch ? (
-                      <>
-                        <div className="p-0">
-                          {policyEvaluationExpanded ? (
-                            <div className="grid gap-4 lg:grid-cols-3">
-                              {policyMatchGroups.flatMap((group) => {
-                                const accent = toMatchTypeAccent(group.matchType)
-
-                                return group.items.map((item) => {
-                                  const reasonKey = `${item.policyNumber}-${item.policyName}-reason`
-                                  const actionKey = `${item.policyNumber}-${item.policyName}-action`
-                                  const truncatedReason = truncatePolicyCopy(item.reason, 100)
-                                  const truncatedAction = truncatePolicyCopy(item.requiredAction, 92)
-                                  const showFullReason = expandedPolicyTextSections[reasonKey] === true
-                                  const showFullAction = expandedPolicyTextSections[actionKey] === true
-                                  return (
-                                    <article
-                                      key={`${item.policyNumber}-${item.policyName}-detail`}
-                                      className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
-                                    >
-                                      <div className="border-b border-[#F0D9FF] px-4 py-3.5 dark:border-white/10">
-                                        <div className="flex items-start gap-3">
-                                          <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                            {group.matchType === 'Potential Conflict' ? (
-                                              <AlertTriangle className="h-5 w-5" />
-                                            ) : group.matchType === 'Coordination Required' ? (
-                                              <Layers className="h-5 w-5" />
-                                            ) : (
-                                              <Lightbulb className="h-5 w-5" />
-                                            )}
-                                          </div>
-                                          <div className="min-w-0 flex-1">
-                                            <div className="mb-1">
-                                              <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                                <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                                {item.matchType}
-                                              </span>
-                                            </div>
-                                            <h3 className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                              {item.policyName}
-                                            </h3>
-                                            <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                                              Policy {item.policyNumber}
-                                            </p>
-                                          </div>
-                                          <div className="shrink-0 text-right">
-                                            <p className="text-xl font-bold text-[#A855F7]">
-                                              {item.relevanceScore}
-                                            </p>
-                                            <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
-                                              Probability
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
-
-                                      <div className="px-4 py-3.5">
-                                        <p className="mb-3 text-xs leading-relaxed text-[#475569] dark:text-slate-200">
-                                          {showFullReason ? item.reason : truncatedReason.text}
-                                          {truncatedReason.truncated && (
-                                            <button
-                                              type="button"
-                                              onClick={() => togglePolicyTextSection(reasonKey)}
-                                              className="ml-2 font-semibold text-[#A855F7] hover:underline"
-                                            >
-                                              {showFullReason ? 'Less' : 'More'}
-                                            </button>
-                                          )}
-                                        </p>
-
-                                        <div className="mb-3 flex items-center gap-2">
-                                          <Clock3 className="h-4 w-4 text-[#94A3B8]" />
-                                          <span className="text-xs text-[#64748B] dark:text-slate-300">Policy Area:</span>
-                                          <span className="text-xs font-semibold text-[#0F172A] dark:text-white">
-                                            {item.strategicArea}
-                                          </span>
-                                        </div>
-
-                                        <div className="mb-3 rounded-xl border border-[#A855F726] bg-[#FDF8FF] p-3 dark:border-white/10 dark:bg-white/5">
-                                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#A855F7] dark:text-[#E9D5FF]">
-                                            Recommended Action
-                                          </p>
-                                          <p className="text-xs leading-relaxed text-[#475569] dark:text-slate-200">
-                                            {showFullAction ? item.requiredAction : truncatedAction.text}
-                                            {truncatedAction.truncated && (
-                                              <button
-                                                type="button"
-                                                onClick={() => togglePolicyTextSection(actionKey)}
-                                                className="ml-2 font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
-                                              >
-                                                {showFullAction ? 'Less' : 'More'}
-                                              </button>
-                                            )}
-                                          </p>
-                                        </div>
-
-                                      </div>
-                                    </article>
-                                  )
-                                })
-                              })}
-                            </div>
-                          ) : (
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                              {policyMatchGroups
-                                .flatMap((group) =>
-                                  group.items.map((item) => ({ group, item }))
-                                )
-                                .map(({ group, item }) => {
-                                  const accent = toMatchTypeAccent(group.matchType)
-
-                                  return (
-                                    <div
-                                      key={`${item.policyNumber}-${item.policyName}-preview`}
-                                      className="rounded-2xl border border-[#E9D5FF] bg-white px-3 py-3 shadow-sm dark:border-white/10 dark:bg-[#1E293B]"
-                                    >
-                                      <div className="flex items-start gap-2.5">
-                                        <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                                          {group.matchType === 'Potential Conflict' ? (
-                                            <AlertTriangle className="h-4 w-4" />
-                                          ) : group.matchType === 'Coordination Required' ? (
-                                            <Layers className="h-4 w-4" />
-                                          ) : (
-                                            <CheckCircle2 className="h-4 w-4" />
-                                          )}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                                              <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                                              {item.matchType}
-                                            </span>
-                                            <span className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]">
-                                              {item.relevanceScore}
-                                            </span>
-                                          </div>
-                                          <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                                            {item.policyName}
-                                          </p>
-                                          <p className="mt-1 text-[11px] text-[#64748B] dark:text-slate-300">
-                                            Policy {item.policyNumber}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                            </div>
-                          )}
-                        </div>
-
-                        {!policyEvaluationExpanded && (
-                          <p className="mt-3 text-sm text-[#64748B] dark:text-slate-200">
-                            Expand to review all matched policies with their reason, evidence, and required action.
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
-                            <CheckCircle2 className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
-                            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                              {policyEvaluationResult.overallAssessment.summary}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                  <div
+                    className={cn(
+                      'grid transition-all duration-300 ease-out',
+                      policyEvaluationResult.overallAssessment.hasPolicyMatch
+                        ? policyEvaluationExpanded
+                          ? 'grid-rows-[1fr] opacity-100'
+                          : 'grid-rows-[0fr] opacity-0'
+                        : 'grid-rows-[1fr] opacity-100'
                     )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="border-t border-[#E9D5FF] px-6 pb-5 pt-5 dark:border-white/10">
+                        {policyEvaluationResult.overallAssessment.hasPolicyMatch ? (
+                          <BudgetConsiderationCompactCards groups={policyMatchGroups} />
+                        ) : (
+                          <div className="rounded-xl border border-[#DCE8F6] bg-white px-4 py-4 shadow-[0_10px_25px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-white/5">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#E8F8F3] text-[#0F9D7A] dark:bg-[#0F9D7A]/15 dark:text-[#9CE7D4]">
+                                <CheckCircle2 className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
+                                <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                                  {toDisplayText(policyEvaluationResult.overallAssessment.summary)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -5235,6 +5715,89 @@ export default function NewProject() {
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
             <div className="min-w-0 space-y-5">
+              <input
+                ref={manualFileInputRef}
+                type="file"
+                className="hidden"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.jpg,.jpeg"
+                onChange={(event) => {
+                  handleManualSupportingDocumentSelection(event.target.files)
+                  event.target.value = ''
+                }}
+              />
+              {uploadedFiles.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[#D9E6F5] bg-white p-5 dark:border-white/10 dark:bg-[#162339] sm:p-6">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#E7F5FF] text-[var(--primary)] dark:bg-[var(--primary)]/15 dark:text-[#BFDBFE]">
+                        <Upload className="h-7 w-7" />
+                      </div>
+                      <div className="max-w-xl">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-2xl font-bold text-[#0F172A] dark:text-white">Get Started with Document Upload</h4>
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                          Upload your project proposal, scope document, quotation, or cost sheet to keep everything attached from the start.
+                        </p>
+                        <div className="mt-3 inline-flex items-start gap-2 text-sm text-[#7E22CE] dark:text-[#E9D5FF]">
+                          <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+                          <p className="leading-5">
+                            Once uploaded, the document can be analyzed and AI will recommend suggested fields for your draft.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="lg:shrink-0">
+                      <Button
+                        type="button"
+                        onClick={() => manualFileInputRef.current?.click()}
+                        className="h-12 rounded-2xl bg-[var(--primary)] px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1F5BFF] active:bg-[#1A4ED8]"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Upload Document
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-none dark:border-white/10 dark:bg-[#1E293B]">
+                  <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
+                    <div className="flex items-start gap-4">
+                      <div className="mt-1 shrink-0 text-[var(--primary)]">
+                        <Upload className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents</h3>
+                        <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
+                          Start with a proposal, scope document, quotation, or cost sheet. Uploaded files can also be analyzed to recommend project fields.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4 sm:p-6">
+                    <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} hideFileList />
+                    {activeSupportingDocumentSummary.type === 'cumulative' &&
+                    activeSupportingDocumentSummary.fileCount > 1 &&
+                    activeSupportingDocumentSummaryText.trim() ? (
+                      <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                            <Sparkles className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                              {activeSupportingDocumentSummaryText}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <SupportingDocumentAiInsights items={supportingDocumentInsightItems} />
+                  </div>
+                </section>
+              )}
             <FormSection
               title="Project Details"
               description="Define the initiative, strategic alignment, work stream, technology, and item type using live Dataverse lookups."
@@ -5322,7 +5885,7 @@ export default function NewProject() {
                       )}
 
                       {topAiSuggestion && (
-                        <div className="relative overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
+                        <div className="relative overflow-hidden rounded-xl border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
                           <div className="pointer-events-none absolute inset-0 overflow-hidden">
                             <Sparkles className="absolute left-5 top-3 h-4 w-4 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
                             <Bot className="absolute left-16 bottom-3 h-5 w-5 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
@@ -5332,7 +5895,12 @@ export default function NewProject() {
                             <Bot className="absolute right-36 bottom-3 h-6 w-6 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
                             <Sparkles className="absolute right-8 bottom-4 h-4 w-4 text-[#A855F7]/[0.12] dark:text-[#E9D5FF]/[0.12]" />
                           </div>
-                          <div className="flex w-full flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div
+                            className={cn(
+                              'flex w-full flex-col gap-3 bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:from-[#2A123D] dark:to-[#1E293B] lg:flex-row lg:items-center lg:justify-between',
+                              aiSuggestionExpanded && 'border-b border-[#E9D5FF] dark:border-white/10'
+                            )}
+                          >
                             <div className="min-w-0 flex-1">
                               <div className="mb-2 flex items-center gap-2">
                                 <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
@@ -5382,7 +5950,7 @@ export default function NewProject() {
                           </div>
 
                           {aiSuggestionExpanded && (
-                            <div className="border-t border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+                            <div className="rounded-b-xl bg-white px-3 py-3 dark:bg-[#1E293B]">
                               <div className="grid gap-3 xl:grid-cols-2">
                                 {matchedAiSuggestions.map((suggestion) => {
                                   const isApplied =
@@ -5393,9 +5961,9 @@ export default function NewProject() {
                                     <div
                                       key={`${suggestion.rank}-${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`}
                                       className={cn(
-                                        'rounded-2xl border bg-white p-4 shadow-sm transition-colors dark:bg-white/5',
+                                        'rounded-2xl border bg-white p-4 transition-colors dark:bg-white/5',
                                         isApplied
-                                          ? 'border-[#A855F7] shadow-[0_10px_24px_rgba(168,85,247,0.16)]'
+                                          ? 'border-[#A855F7]'
                                           : 'border-[#E9D5FF] dark:border-white/10'
                                       )}
                                     >
@@ -5432,7 +6000,7 @@ export default function NewProject() {
                                       </div>
 
                                       <p className="text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                                        {suggestion.reason || 'AI did not provide a written reason for this recommendation.'}
+                                        {toDisplayText(suggestion.reason) || 'AI did not provide a written reason for this recommendation.'}
                                       </p>
 
                                       <div className="mt-4 flex flex-wrap gap-2">
@@ -5627,7 +6195,7 @@ export default function NewProject() {
                         )}
                       >
                         <div className="flex w-full items-center justify-between gap-3">
-                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
+                          <p className="text-sm text-[#0F172A] dark:text-white"  style={{fontWeight: 600}}>{option.title}</p>
                           <div
                             className={cn(
                               'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
@@ -5697,28 +6265,6 @@ export default function NewProject() {
               )}
             </FormSection>
 
-          <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-none dark:border-white/10 dark:bg-[#1E293B]">
-            <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
-              <div className="flex items-start gap-4">
-                <div className="mt-1 shrink-0 text-[var(--primary)]">
-                  <Upload className="h-6 w-6" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-[#0F172A] dark:text-white">Supporting Documents</h3>
-                  <p className="mt-0.5 text-sm text-[#475569] dark:text-slate-300">
-                    Attach business cases, cost sheets, quotations, or technical evidence. Documents are uploaded when you save the draft.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="p-4 sm:p-6">
-              <FileUploadDropzone files={uploadedFiles} onChange={setUploadedFiles} />
-              {uploadedFiles.length > 0 && (
-                <SupportingDocumentAiInsights items={supportingDocumentInsightItems} />
-              )}
-            </div>
-          </section>
-
             <div className="rounded-2xl border border-[#DDEBFF] bg-white p-4 shadow-[0_14px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#1E293B] sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
@@ -5745,36 +6291,149 @@ export default function NewProject() {
             </div>
           </div>
 
-            <aside className="space-y-4">
-              <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-                <div className="mb-4 flex items-center justify-between gap-3">
+            <aside className="space-y-4 mt-4">
+              <div className="rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+                <div className="flex items-start justify-between gap-3 border-b border-[#F1E4FF] px-4 py-4 dark:border-white/10">
                   <div className="flex items-start gap-3">
-                    <div className="mt-1 shrink-0 text-[#A855F7]">
-                      <Sparkles className="h-6 w-6" />
+                    <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                      <Sparkles className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="text-base font-bold text-[#0F172A] dark:text-white">AI Action Cards</h3>
-                      <p className="text-xs text-[#64748B] dark:text-slate-300">
-                        {activeSupportingDocumentSummary.loading
-                          ? 'Preparing aggregate document guidance...'
-                          : actionSummarySourceLabel}
-                      </p>
+                      <p className="font-semibold text-[#0F172A] dark:text-white" style={{ fontSize: 15 }}>Suggested Project Fields</p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
-                    {activeSupportingDocumentSummary.type === 'cumulative' && activeSupportingDocumentSummary.fileCount > 1 ? 'Combined' : 'Single'}
-                  </span>
+                  {manualSelectableRows.length > 0 && !activeSupportingDocumentSummary.loading ? (
+                    <button
+                      type="button"
+                      onClick={() => void applySelectedManualSuggestions()}
+                      disabled={selectedManualSuggestionIds.length === 0 || manualSuggestionApplyLoading}
+                      className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#A855F7_0%,#8B5CF6_100%)] px-4 py-2.5 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {manualSuggestionApplyLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      Apply Suggestions
+                    </button>
+                  ) : null}
                 </div>
 
-                <div className="space-y-4">
+                {activeSupportingDocumentSummary.loading ? (
+                  <div className="flex items-center gap-2 px-4 py-4 text-sm text-[#64748B] dark:text-slate-300">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#A855F7] dark:text-[#E9D5FF]" />
+                    Analyzing the uploaded document and preparing suggestions...
+                  </div>
+                ) : activeSupportingDocumentSummary.error ? (
+                  <div className="mx-4 my-4 rounded-xl border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-3 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+                    {activeSupportingDocumentSummary.error}
+                  </div>
+                ) : manualSuggestionRows.length > 0 ? (
+                  <div className="space-y-4 px-4 py-4">
+                    {manualReadOnlyRows.length > 0 ? (
+                      <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                        <div className="space-y-4">
+                          {manualReadOnlyRows.map((row) => (
+                            <div key={row.id} className="border-b border-[#E5EDF6] pb-4 last:border-b-0 last:pb-0 dark:border-white/10">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{row.section}</p>
+                                  <p className="mt-0.5 text-sm font-medium text-[#0F172A] dark:text-white">{row.title}</p>
+                                </div>
+                                {typeof row.confidence === 'number' && (
+                                  <span className="rounded-full border border-[#D7E4F4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                                    {row.confidence}%
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">{row.value}</p>
+                              {row.detail ? (
+                                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">{row.detail}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {manualSelectableRows.length > 0 ? (
+                      <div className="divide-y divide-[#EEF2F7] bg-white px-4 dark:divide-white/10 dark:bg-[#1E293B]">
+                          {manualSelectableRows.map((row) => {
+                      const checked = selectedManualSuggestionIds.includes(row.id)
+
+                      return (
+                        <label
+                          key={row.id}
+                          className={cn('flex items-start gap-3 py-3', row.actionable ? 'cursor-pointer' : 'cursor-default')}
+                        >
+                          <span className="relative mt-0.5 shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => {
+                                setSelectedManualSuggestionIds((current) =>
+                                  event.target.checked
+                                    ? [...current, row.id]
+                                    : current.filter((item) => item !== row.id)
+                                )
+                              }}
+                              className="sr-only"
+                            />
+                            <span
+                              className={cn(
+                                'flex h-5 w-5 items-center justify-center rounded-md border transition-colors',
+                                checked
+                                  ? 'border-[#A855F7] bg-[#A855F7] text-white'
+                                  : 'border-[#CBD5E1] bg-white text-transparent dark:border-white/15 dark:bg-white/5'
+                              )}
+                            >
+                              <Check className={cn('h-3.5 w-3.5', checked ? 'opacity-100' : 'opacity-0')} />
+                            </span>
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                {row.kind !== 'field' ? (
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{row.section}</p>
+                                ) : null}
+                                <p className="mt-0.5 text-sm font-medium text-[#0F172A] dark:text-white">{row.title}</p>
+                              </div>
+                              {typeof row.confidence === 'number' && (
+                                <span className="rounded-full border border-[#D7E4F4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                                  {row.confidence}%
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">{row.value}</p>
+                            {row.detail ? (
+                              <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">{row.detail}</p>
+                            ) : null}
+                          </div>
+                        </label>
+                      )
+                          })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <EmptyActionCard
+                    description="Upload a supporting document to review one consolidated set of suggested summary details, fields, budget evidence, and account guidance."
+                    icon={Sparkles}
+                    plain
+                    hideIcon
+                  />
+                )}
+              </div>
+
+              {/*
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-                          <Layers className="h-5 w-5" />
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                          <Sparkles className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Suggested Project Fields</p>
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Suggested Project Fields</p>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Apply-ready suggestions</p>
                         </div>
                       </div>
@@ -5790,7 +6449,7 @@ export default function NewProject() {
                       ) : null}
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <div className="flex items-center gap-2 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Synthesizing field suggestions...
                       </div>
@@ -5803,7 +6462,7 @@ export default function NewProject() {
                         {actionSuggestedFields.slice(0, 4).map((field) => {
                           const canApply = resolveAiFieldMapping(field) !== null
                           return (
-                            <div key={field.field_key ?? field.field_label} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <div key={field.field_key ?? field.field_label} className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">
@@ -5844,26 +6503,26 @@ export default function NewProject() {
                   </div>
 
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-                          <CircleDollarSign className="h-5 w-5" />
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                          <Sparkles className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Budget Lines</p>
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Budget Lines</p>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Extracted financial evidence</p>
                         </div>
                       </div>
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <div className="flex items-center gap-2 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Consolidating budget lines...
                       </div>
                     ) : actionBudgetLines.length > 0 ? (
                       <div className="space-y-2">
                         {actionBudgetLines.slice(0, 3).map((line, index) => (
-                          <div key={`${line.line_number ?? index}-${line.description ?? 'budget-line'}`} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                          <div key={`${line.line_number ?? index}-${line.description ?? 'budget-line'}`} className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{line.description ?? 'Budget line'}</p>
@@ -5891,25 +6550,25 @@ export default function NewProject() {
                   </div>
 
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-                          <CheckCircle2 className="h-5 w-5" />
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                          <Sparkles className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Account Code Suggestion</p>
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Account Code Suggestion</p>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Best-fit GL recommendation</p>
                         </div>
                       </div>
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <div className="flex items-center gap-2 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Mapping account code recommendation...
                       </div>
                     ) : actionAccountCode ? (
                       <div className="space-y-3">
-                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Primary Account Code</p>
@@ -5930,7 +6589,7 @@ export default function NewProject() {
                         </div>
                         <div className="grid gap-2 sm:grid-cols-3">
                           {(['l1', 'l2', 'l3'] as const).map((level) => (
-                            <div key={level} className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                            <div key={level} className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                               <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{level.replace(/^l/i, 'L')}</p>
                               <p className="mt-1 text-xs font-semibold text-[#0F172A] dark:text-white">
                                 {actionAccountCode.classification_path?.[level] ?? '-'}
@@ -5938,8 +6597,8 @@ export default function NewProject() {
                             </div>
                           ))}
                         </div>
-                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                          {truncateAiText(actionAccountCode.reason, 180) || 'AI account-code rationale will appear here.'}
+                        <div className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                          {truncateAiText(toDisplayText(actionAccountCode.reason), 180) || 'AI account-code rationale will appear here.'}
                         </div>
                         <button
                           type="button"
@@ -5969,30 +6628,30 @@ export default function NewProject() {
                   </div>
 
                   <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-                          <FileText className="h-5 w-5" />
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                          <Sparkles className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Summary</p>
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Summary</p>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">Cross-document AI readout</p>
                         </div>
                       </div>
                     </div>
                     {activeSupportingDocumentSummary.loading ? (
-                      <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+                      <div className="flex items-center gap-2 rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Building the current summary card...
                       </div>
                     ) : actionDocumentSummary || actionEvidenceAssessment ? (
                       <div className="space-y-3">
-                        <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                        <div className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
                           <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
-                            {actionDocumentSummary?.short_summary
-                              ?? actionDocumentSummary?.detailed_summary
-                              ?? actionEvidenceAssessment?.reason
-                              ?? 'The current AI summary will appear here after analysis.'}
+                            {toDisplayText(actionDocumentSummary?.short_summary)
+                              || toDisplayText(actionDocumentSummary?.detailed_summary)
+                              || toDisplayText(actionEvidenceAssessment?.reason)
+                              || 'The current AI summary will appear here after analysis.'}
                           </p>
                         </div>
                         {(actionEvidenceAssessment?.recommended_user_action || actionEvidenceAssessment?.evidence_score) && (
@@ -6006,7 +6665,7 @@ export default function NewProject() {
                               )}
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
-                              {actionEvidenceAssessment?.recommended_user_action ?? actionEvidenceAssessment?.reason}
+                              {toDisplayText(actionEvidenceAssessment?.recommended_user_action) || toDisplayText(actionEvidenceAssessment?.reason)}
                             </p>
                           </div>
                         )}
@@ -6018,8 +6677,7 @@ export default function NewProject() {
                       />
                     )}
                   </div>
-                </div>
-              </div>
+              */}
             </aside>
           </div>
         </>
@@ -6048,7 +6706,7 @@ export default function NewProject() {
             onUploadClick={() => chatFileInputRef.current?.click()}
             onCheckBudgetConsideration={() => void runCopilotBudgetConsiderationCheck()}
             onRemoveStagedFile={() => setChatStagedFile(null)}
-            onToggleMode={() => setMode('manual')}
+            onSelectMode={setMode}
             canCheckBudgetConsideration={canCheckCopilotBudgetConsideration}
             projectFieldSuggestionsLoading={isCopilotProjectFieldSuggestionLoading}
           />
@@ -6499,7 +7157,7 @@ export default function NewProject() {
                     return (
                       <button key={option.value} type="button" onClick={() => handleCopilotActivityTypeChange(option.value)} className={cn('rounded-2xl border p-4 text-left transition-colors', selected ? 'border-[#A855F7] bg-[#FDF7FF]' : 'border-[#DDEBFF] bg-white hover:border-[#D8B4FE] hover:bg-[#FDF7FF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5')}>
                         <div className="flex w-full items-center justify-between gap-3">
-                          <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
+                          <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>{option.title}</p>
                           <div className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full border', selected ? 'border-[#A855F7] bg-[#A855F7] text-white' : 'border-[#CBD5E1] text-transparent')}>
                             <Check className="h-3.5 w-3.5" />
                           </div>

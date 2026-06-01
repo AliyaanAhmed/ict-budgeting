@@ -280,7 +280,7 @@ export function UserHoverCard({
               <div className="rounded-2xl border border-[#E7EEF8] bg-[#FAFCFF] p-3 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">Full Name:</p>
+                    <p className="text-[11px] font-semibold text-[#94A3B8]">Full Name:</p>
                     <p className="mt-1 text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">{displayName}</p>
                   </div>
                   <CopyButton label="full name" value={displayName} />
@@ -290,7 +290,7 @@ export function UserHoverCard({
               <div className="rounded-2xl border border-[#E7EEF8] bg-[#FAFCFF] p-3 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">Email:</p>
+                    <p className="text-[11px] font-semibold text-[#94A3B8]">Email:</p>
                     <p className="mt-1 min-h-[20px] text-sm font-medium leading-5 text-[#0F172A] dark:text-white">
                       {emailValue}
                     </p>
@@ -302,7 +302,7 @@ export function UserHoverCard({
               <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
                 <div className="mb-3 flex items-center gap-2">
                   <ShieldCheck className="h-4 w-4 text-[#286CFF]" />
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#94A3B8]">Quick Actions</p>
+                  <p className="text-[11px] font-semibold text-[#94A3B8]">Quick Actions</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <ActionButton href={details.email ? `mailto:${details.email}` : undefined} disabled={!details.email}>

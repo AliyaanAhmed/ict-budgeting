@@ -237,10 +237,11 @@ function AiReviewFlagsChart({ summary }: { summary: PortfolioSummaryPayload | nu
               />
               <YAxis
                 type="category"
-                dataKey="shortLabel"
-                width={124}
+                dataKey="label"
+                width={190}
                 tickLine={false}
                 axisLine={false}
+                interval={0}
                 tick={{ fill: '#475569', fontSize: 12 }}
               />
               <Tooltip content={<ProjectIdTooltip />} cursor={{ fill: '#F8FBFF' }} />
@@ -330,10 +331,11 @@ function IssuesChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
                     />
                     <YAxis
                       type="category"
-                      dataKey="shortLabel"
-                      width={118}
+                      dataKey="label"
+                      width={190}
                       tickLine={false}
                       axisLine={false}
+                      interval={0}
                       tick={{ fill: '#475569', fontSize: 12 }}
                     />
                     <Tooltip content={<ProjectIdTooltip />} cursor={{ fill: '#F8FBFF' }} />

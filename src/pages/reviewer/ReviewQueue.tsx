@@ -32,6 +32,19 @@ import { projectService } from '@/services/projectService'
 import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map((item) => toDisplayText(item)).filter(Boolean).join(', ')
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.text === 'string') return record.text.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+  }
+  return ''
+}
+
 type ReviewFilter = 'all' | 'to-review' | 'reviewed' | 'clarification'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
 
@@ -106,14 +119,21 @@ function AiInsightRow({ expanded, onToggle, confidence, children }: {
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-      <button onClick={onToggle} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
-        <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7]" />
-        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Review Insights</span>
-        {confidence > 0 && <span className="text-xs text-[#64748B] dark:text-slate-200">{confidence}% confidence</span>}
-        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', expanded && 'rotate-180')} />
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+      <button
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
+      >
+        <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Insights</span>
+        {confidence > 0 && (
+          <span className="rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-medium text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+            {confidence}% confidence
+          </span>
+        )}
+        <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform dark:text-[#E9D5FF]', expanded && 'rotate-180')} />
       </button>
-      {expanded && <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">{children}</div>}
+      {expanded && <div className="border-t border-[#E9D5FF] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#1E293B]">{children}</div>}
     </div>
   )
 }
@@ -152,10 +172,10 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
   }
 
   const overall = parsed.overall_assessment
-  const readiness = overall?.readiness_status
-  const summary = overall?.executive_summary
-  const strengths = (overall?.primary_strengths ?? []).slice(0, 2)
-  const risks = (overall?.primary_risks ?? []).slice(0, 2)
+  const readiness = toDisplayText(overall?.readiness_status)
+  const summary = toDisplayText(overall?.executive_summary)
+  const strengths = (overall?.primary_strengths ?? []).map((item) => toDisplayText(item)).filter(Boolean).slice(0, 2)
+  const risks = (overall?.primary_risks ?? []).map((item) => toDisplayText(item)).filter(Boolean).slice(0, 2)
   const evidenceScore = parsed.score_inputs?.document_evidence?.evidence_score
   const alignmentScore = parsed.strategic_alignment?.recommended_options?.[0]?.relevance_score
 
@@ -176,11 +196,17 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
         </span>
       )}
 
+      {summary && (
+        <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="line-clamp-3 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
+        </div>
+      )}
+
       {(evidenceScore !== undefined || alignmentScore !== undefined) && (
         <div className="grid grid-cols-2 gap-2">
           {evidenceScore !== undefined && (
-            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Doc Evidence</p>
+            <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+              <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Doc Evidence</p>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
                   <div className="h-full rounded-full bg-[#286CFF] transition-all" style={{ width: `${Math.min(100, Math.round(evidenceScore))}%` }} />
@@ -190,8 +216,8 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
             </div>
           )}
           {alignmentScore !== undefined && (
-            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Alignment</p>
+            <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+              <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Alignment</p>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
                   <div className="h-full rounded-full bg-[#16A34A] transition-all" style={{ width: `${Math.min(100, Math.round(alignmentScore))}%` }} />
@@ -203,15 +229,11 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
         </div>
       )}
 
-      {summary && (
-        <p className="line-clamp-2 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
-      )}
-
       {(strengths.length > 0 || risks.length > 0) && (
         <div className="grid grid-cols-2 gap-2">
           {strengths.length > 0 && (
-            <div className="rounded-xl border border-green-100 bg-green-50/60 px-2.5 py-2 dark:border-green-900/30 dark:bg-green-900/10">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Strengths</p>
+            <div className="rounded-2xl border border-green-100 bg-green-50/60 px-3 py-3 dark:border-green-900/30 dark:bg-green-900/10">
+              <p className="mb-2 text-xs font-semibold text-green-700 dark:text-green-400">Strengths</p>
               <div className="space-y-1">
                 {strengths.map((s, i) => (
                   <div key={i} className="flex items-start gap-1.5">
@@ -223,8 +245,8 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
             </div>
           )}
           {risks.length > 0 && (
-            <div className="rounded-xl border border-red-100 bg-red-50/60 px-2.5 py-2 dark:border-red-900/30 dark:bg-red-900/10">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Risks</p>
+            <div className="rounded-2xl border border-red-100 bg-red-50/60 px-3 py-3 dark:border-red-900/30 dark:bg-red-900/10">
+              <p className="mb-2 text-xs font-semibold text-red-700 dark:text-red-400">Risks</p>
               <div className="space-y-1">
                 {risks.map((r, i) => (
                   <div key={i} className="flex items-start gap-1.5">

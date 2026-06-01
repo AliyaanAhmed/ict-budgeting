@@ -3,7 +3,6 @@ import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Search,
 import { Link } from 'react-router-dom'
 import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
-import { StatusBadge } from './StatusBadge'
 import { DirhamIcon } from './DirhamIcon'
 import { TeamHoverCard } from './TeamHoverCard'
 import { UserHoverCard } from './UserHoverCard'
@@ -49,6 +48,67 @@ function AiScore({ score }: { score: number }) {
   return (
     <span className={`inline-flex items-center font-mono text-[14px] font-semibold ${color}`}>
       {score}%
+    </span>
+  )
+}
+
+const STATUS_FOR_ADGE_DESCRIPTIONS: Record<string, string> = {
+  Draft: "Project is being created and is pending with the Respondent.",
+  'Clarification Pending': "Clarification has been raised and is awaiting the Respondent's response.",
+  'Under Reviewer Review': 'Project is under review by the Reviewer.',
+  'Reviewer Review Completed': 'Reviewer has completed the review and the project is awaiting transfer to the Approver.',
+  'Under Approver Review': 'Project is under review by the Approver.',
+  'Approved by Approver': 'Project has been approved and is ready for the next stage.',
+  'Under DGE Review': 'Project or entity submission is under DGE review.',
+  'Allocation In Progress': 'Budget allocation entry is pending with the Respondent.',
+  'Allocation In Review': 'Budget allocation has been submitted and is awaiting Approver review.',
+  'Allocation Completed': 'Budget allocation has been approved.',
+  'Utilization In Progress': 'Budget utilization entry is pending with the Respondent.',
+  'Utilization Completed': 'Budget utilization is complete and no further entries can be made.',
+}
+
+const STATUS_FOR_ADGE_BADGE_CLASSES: Record<string, string> = {
+  Draft: 'border border-[#CFE0FF] bg-[#E7F5FF] text-[#286CFF] dark:border-[#4D73B8] dark:bg-[#1E3A68] dark:text-[#DBEAFE]',
+  'Clarification Pending': 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400',
+  'Under Reviewer Review': 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  'Reviewer Review Completed': 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400',
+  'Under Approver Review': 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400',
+  'Approved by Approver': 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
+  'Under DGE Review': 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300',
+  'Allocation In Progress': 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
+  'Allocation In Review': 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300',
+  'Allocation Completed': 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300',
+  'Utilization In Progress': 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300',
+  'Utilization Completed': 'bg-lime-50 text-lime-700 dark:bg-lime-900/20 dark:text-lime-300',
+}
+
+function StatusWithTooltip({
+  label,
+  fallbackStatus,
+}: {
+  label?: string | null
+  fallbackStatus: string
+}) {
+  const resolvedLabel = label?.trim() || fallbackStatus
+  const description =
+    STATUS_FOR_ADGE_DESCRIPTIONS[resolvedLabel] || 'Current project workflow status.'
+  const badgeClass =
+    STATUS_FOR_ADGE_BADGE_CLASSES[resolvedLabel] || 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-100'
+
+  return (
+    <span className="group relative inline-flex">
+      <span
+        className={cn(
+          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap',
+          badgeClass
+        )}
+      >
+        {resolvedLabel}
+      </span>
+      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-72 -translate-x-1/2 rounded-2xl border border-[#DCE6F1] bg-white/95 px-3 py-2 text-xs leading-5 text-[#475569] opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.14)] transition-all duration-200 group-hover:translate-y-1 group-hover:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95 dark:text-slate-100">
+        <span className="block font-semibold text-[#0F172A] dark:text-white">{resolvedLabel}</span>
+        <span className="mt-1 block">{description}</span>
+      </span>
     </span>
   )
 }
@@ -407,9 +467,14 @@ export function ProjectTable({
         id: 'status',
         header: 'Status',
         type: 'option',
-        accessor: (project) => project.status,
-        options: Array.from(new Set(projects.map((project) => project.status))).sort(),
-        render: (project) => <StatusBadge status={project.status} />,
+        accessor: (project) => project.statusForAdgeLabel || project.status,
+        options: Array.from(new Set(projects.map((project) => project.statusForAdgeLabel || project.status))).sort(),
+        render: (project) => (
+          <StatusWithTooltip
+            label={project.statusForAdgeLabel}
+            fallbackStatus={project.status}
+          />
+        ),
       },
       {
         id: 'pendingWith',

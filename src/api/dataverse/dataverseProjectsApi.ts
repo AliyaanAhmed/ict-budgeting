@@ -377,6 +377,7 @@ function mapBudgetRecordToProject(
     requestedBudget: record.dga_total_budget_requested ?? 0,
     budgetItems: [],
     status: mappedStatus,
+    statusForAdgeLabel: statusLabel || mappedStatus,
     approvalStatus: mappedStatus,
     pendingWith:
       getFormattedAnnotation(

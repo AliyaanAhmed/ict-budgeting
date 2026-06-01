@@ -199,6 +199,7 @@ export interface UpsertCumulativeSummaryInput {
 }
 
 const CUMULATIVE_ROLE_CONTEXT: Dga_ict_ai_summariesdga_role_context = 1
+const CUMULATIVE_INVALIDATION_ROLE_CONTEXT: Dga_ict_ai_summariesdga_role_context = 7
 const CUMULATIVE_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 8
 const CUMULATIVE_SUMMARY_STAGE: Dga_ict_ai_summariesdga_summary_stage = 1
 const CUMULATIVE_SUMMARY_TYPE: Dga_ict_ai_summariesdga_summary_type = 1
@@ -228,6 +229,39 @@ function extractOpenAiTextPayload(value: unknown): string | null {
   const firstContent = content[0] as Record<string, unknown>
   const text = firstContent?.['text']
   return typeof text === 'string' ? text : null
+}
+
+function sanitizeTemplateTextNodes(value: unknown, visited = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeTemplateTextNodes(item, visited))
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  if (visited.has(value)) {
+    return value
+  }
+  visited.add(value)
+
+  const record = value as Record<string, unknown>
+  if (typeof record.text_template === 'string') {
+    return record.text_template.trim()
+  }
+  if (typeof record.text === 'string') {
+    return record.text.trim()
+  }
+  if (typeof record.value === 'string') {
+    return record.value.trim()
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, nestedValue]) => [
+      key,
+      sanitizeTemplateTextNodes(nestedValue, visited),
+    ])
+  )
 }
 
 function findBudgetOverviewData(value: unknown, visited = new Set<unknown>()): BudgetOverviewData | null {
@@ -296,6 +330,8 @@ export function parseBudgetOverviewData(value: unknown): BudgetOverviewData | nu
     const parsedBudgetOverview = findBudgetOverviewData(value)
     console.log('[BudgetOverview] Final parsed BudgetOverviewData:', parsedBudgetOverview)
     return parsedBudgetOverview
+      ? (sanitizeTemplateTextNodes(parsedBudgetOverview) as BudgetOverviewData)
+      : null
   } catch (error) {
     console.warn('[DocumentAiSummaryStore] Failed to parse budget overview data:', error)
     return null
@@ -396,6 +432,22 @@ function asCumulativeCreatePayload(input: UpsertCumulativeSummaryInput) {
     dga_is_valid: input.isValid ?? true,
     dga_response_time: input.responseTime ?? undefined,
     dga_response_json: input.responseJson,
+  } as unknown as Omit<
+    Dga_ict_ai_summariesBase,
+    'dga_ict_ai_summaryid'
+  >
+}
+
+function asCumulativeInvalidationCreatePayload(budgetId: string) {
+  return {
+    'dga_ReferenceRecordId_dga_ict_budget@odata.bind': `/dga_ict_budgets(${budgetId})`,
+    dga_name: 'Cumulative Supporting Document Summary',
+    dga_role_context: CUMULATIVE_INVALIDATION_ROLE_CONTEXT,
+    dga_summary_category: CUMULATIVE_SUMMARY_CATEGORY,
+    dga_summary_stage: CUMULATIVE_SUMMARY_STAGE,
+    dga_summary_type: CUMULATIVE_SUMMARY_TYPE,
+    dga_is_valid: true,
+    dga_response_json: '',
   } as unknown as Omit<
     Dga_ict_ai_summariesBase,
     'dga_ict_ai_summaryid'
@@ -603,8 +655,24 @@ export async function getAllAiSummaryRecordsByBudgetId(budgetId: string): Promis
 }
 
 export async function invalidateCumulativeSummaryRecord(budgetId: string) {
-  const existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
-  if (!existing) return
+  let existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
+
+  if (!existing) {
+    const createResult = await Dga_ict_ai_summariesService.create(
+      asCumulativeInvalidationCreatePayload(budgetId)
+    )
+
+    if (!createResult.success) {
+      throw new Error(
+        createResult.error?.message?.trim() || 'Failed to create cumulative AI summary before invalidation.'
+      )
+    }
+
+    existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
+    if (!existing) {
+      throw new Error('Cumulative AI summary record could not be found after creation.')
+    }
+  }
 
   const result = await Dga_ict_ai_summariesService.update(existing.id, {
     dga_is_valid: false,

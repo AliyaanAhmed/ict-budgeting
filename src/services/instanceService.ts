@@ -133,3 +133,14 @@ export async function markCurrentInstancePlanningIfFirstProject(): Promise<boole
 
   return true
 }
+
+export async function updateCurrentInstanceSubmissionDate(submittedAt: Date = new Date()): Promise<void> {
+  const instanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)?.trim() || null
+  if (!instanceId) {
+    throw new Error('Current ICT budget instance is missing from session storage.')
+  }
+
+  await Dga_ict_budget_instancesService.update(instanceId, {
+    dga_entity_submission_date: submittedAt.toISOString(),
+  })
+}

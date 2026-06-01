@@ -2,16 +2,19 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  BadgeCheck,
   ChevronDown,
   CircleAlert,
   Clock3,
   CopyPlus,
+  Handshake,
   Info,
   MessageSquare,
   RefreshCcw,
   Scale,
   ShieldAlert,
   Sparkles,
+  TriangleAlert,
 } from 'lucide-react'
 import {
   Bar,
@@ -140,6 +143,24 @@ function shortenLabel(value: string, max = 24) {
   const trimmed = value.trim()
   if (trimmed.length <= max) return trimmed
   return `${trimmed.slice(0, max - 1).trimEnd()}…`
+}
+
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toDisplayText(item))
+      .filter(Boolean)
+      .join(', ')
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+    if (typeof record.label === 'string') return record.label.trim()
+  }
+  return ''
 }
 
 function ChartCard({
@@ -326,15 +347,15 @@ export function AiPortfolioSummary({
   const counts = useMemo(() => getPortfolioCounts(summary), [summary])
   const roleView = useMemo(() => getPortfolioSummaryRoleView(summary, role), [summary, role])
   const roleSummary = useMemo(
-    () => resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary),
+    () => toDisplayText(resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary)),
     [roleView?.summary_template, roleView?.summary, summary]
   )
   const planningSummary = useMemo(
-    () => resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary),
+    () => toDisplayText(resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary)),
     [roleView?.planning_cycle_summary_template, summary]
   )
   const recommendedActions = useMemo(
-    () => getRoleRecommendedActions(summary, role),
+    () => getRoleRecommendedActions(summary, role).map((action) => toDisplayText(action)).filter(Boolean),
     [summary, role]
   )
   const issueCategories = useMemo(
@@ -385,7 +406,7 @@ export function AiPortfolioSummary({
           key,
           label: formatFlagLabel(key),
           count: bucket?.project_ids?.length ?? 0,
-          summary: resolvePortfolioTemplate(bucket?.summary_template, summary),
+          summary: toDisplayText(resolvePortfolioTemplate(bucket?.summary_template, summary)),
         }))
         .filter((e) => e.count > 0),
     [summary]
@@ -395,15 +416,16 @@ export function AiPortfolioSummary({
       summary?.calculation_sources?.budget_consideration_flag_project_ids ??
       summary?.portfolio_statistics?.ai_review_flags?.dge_budget_consideration_risk?.budget_consideration_flag_project_ids
 
-    const summaryText = resolvePortfolioTemplate(
+    const summaryText = toDisplayText(resolvePortfolioTemplate(
       summary?.portfolio_statistics?.ai_review_flags?.dge_budget_consideration_risk?.summary_template,
       summary
-    )
+    ))
 
     const groups = [
       {
         key: 'has_potential_conflict',
         label: 'Potential Conflict',
+        icon: TriangleAlert,
         description: 'These projects may have direct overlap or policy conflict with DGE-managed scope.',
         projectIds: source?.has_potential_conflict ?? [],
         tone:
@@ -412,6 +434,7 @@ export function AiPortfolioSummary({
       {
         key: 'has_coordination_required',
         label: 'Coordination Required',
+        icon: Handshake,
         description: 'These projects can move forward, but DGE coordination is expected before final approval.',
         projectIds: source?.has_coordination_required ?? [],
         tone:
@@ -420,6 +443,7 @@ export function AiPortfolioSummary({
       {
         key: 'has_allowed_with_conditions',
         label: 'Allowed With Conditions',
+        icon: BadgeCheck,
         description: 'These projects appear supportable when the stated conditions are documented and satisfied.',
         projectIds: source?.has_allowed_with_conditions ?? [],
         tone:
@@ -934,8 +958,8 @@ export function AiPortfolioSummary({
                                 {flag.count} project{flag.count !== 1 ? 's' : ''}
                               </span>
                             </div>
-                            {flag.summary && (
-                              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{flag.summary}</p>
+                            {toDisplayText(flag.summary) && (
+                              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
                             )}
                           </div>
                         </div>
@@ -985,7 +1009,10 @@ export function AiPortfolioSummary({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{group.label}</p>
+                            <div className="flex items-center gap-2">
+                              <group.icon className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{group.label}</p>
+                            </div>
                             <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">
                               {group.description}
                             </p>
@@ -1063,8 +1090,8 @@ export function AiPortfolioSummary({
                             </div>
                             <div>
                               <p className="text-xs font-semibold text-[#0F172A] dark:text-white">{titleText}</p>
-                              {flag.summary && (
-                                <p className="mt-0.5 text-[11px] leading-4 text-[#64748B] dark:text-slate-400">{flag.summary}</p>
+                              {toDisplayText(flag.summary) && (
+                                <p className="mt-0.5 text-[11px] leading-4 text-[#64748B] dark:text-slate-400">{toDisplayText(flag.summary)}</p>
                               )}
                             </div>
                           </div>
@@ -1223,8 +1250,8 @@ export function AiPortfolioSummary({
                             {severityLabel}
                           </span>
                         </div>
-                        {flag.summary && (
-                          <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{flag.summary}</p>
+                        {toDisplayText(flag.summary) && (
+                          <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
                         )}
                       </div>
                     </div>

@@ -1,4 +1,5 @@
 import { PowerAppV2_CallUploadFileFlowService } from '@/generated/services/PowerAppV2_CallUploadFileFlowService'
+import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
 
 const UPLOAD_TARGET_URL =
   'https://15ab284543e0e696a0c3fc6bd63330.55.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/0505788ca25042198ed8c5d0384b5a42/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=uNYDB3aKWPwTps6dh0H4OG90VKU7E8QHmsLFcWcfFIU'
@@ -58,20 +59,22 @@ function extractUploadedFileUrl(result: unknown, excludedUrls: string[]): string
 }
 
 export async function uploadFileToRecord(recordId: string, file: File): Promise<string | null> {
-  const ext = (file.name.split('.').pop() ?? '').toLowerCase()
+  const { preparedFile: fileToUpload } = await prepareSupportingDocumentFile(file)
+  const ext = (fileToUpload.name.split('.').pop() ?? '').toLowerCase()
 
   console.log('[FileUpload] Starting upload')
   console.log(`[FileUpload]   Record ID : ${recordId}`)
   console.log(`[FileUpload]   File name : ${file.name}`)
+  console.log(`[FileUpload]   Upload as : ${fileToUpload.name}`)
   console.log(`[FileUpload]   File type : ${ext}`)
-  console.log(`[FileUpload]   File size : ${file.size} bytes`)
+  console.log(`[FileUpload]   File size : ${fileToUpload.size} bytes`)
 
-  const fileContent = await fileToBase64(file)
+  const fileContent = await fileToBase64(fileToUpload)
 
   const payload = JSON.stringify({
     recordId,
     uploadedFile: {
-      fileName: file.name,
+      fileName: fileToUpload.name,
       fileType: ext,
       fileContent,
       folderPath: recordId,
@@ -88,13 +91,13 @@ export async function uploadFileToRecord(recordId: string, file: File): Promise<
   console.log('[FileUpload] Connector result:', result)
 
   if (result.error) {
-    console.error(`[FileUpload] Upload failed for "${file.name}":`, result.error)
-    throw new Error(`Upload failed for "${file.name}": ${result.error.message ?? JSON.stringify(result.error)}`)
+    console.error(`[FileUpload] Upload failed for "${fileToUpload.name}":`, result.error)
+    throw new Error(`Upload failed for "${fileToUpload.name}": ${result.error.message ?? JSON.stringify(result.error)}`)
   }
 
   const uploadedUrl = extractUploadedFileUrl(result, [UPLOAD_TARGET_URL])
-  console.log(`[FileUpload] Uploaded URL for "${file.name}":`, uploadedUrl)
-  console.log(`[FileUpload] Upload successful for: ${file.name}`)
+  console.log(`[FileUpload] Uploaded URL for "${fileToUpload.name}":`, uploadedUrl)
+  console.log(`[FileUpload] Upload successful for: ${fileToUpload.name}`)
   return uploadedUrl
 }
 

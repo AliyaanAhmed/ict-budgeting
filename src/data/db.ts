@@ -80,6 +80,7 @@ export interface Project {
   ownerId?: string | null
   ownerType?: string | null
   statusCode?: number | null
+  statusForAdgeLabel?: string
   submittedById?: string | null
   name: string
   strategicPriority: string

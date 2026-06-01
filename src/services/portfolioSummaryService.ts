@@ -137,6 +137,39 @@ function extractOpenAiTextPayload(value: unknown): string | null {
   return null
 }
 
+function sanitizeTemplateTextNodes(value: unknown, visited = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeTemplateTextNodes(item, visited))
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  if (visited.has(value)) {
+    return value
+  }
+  visited.add(value)
+
+  const record = value as Record<string, unknown>
+  if (typeof record.text_template === 'string') {
+    return record.text_template.trim()
+  }
+  if (typeof record.text === 'string') {
+    return record.text.trim()
+  }
+  if (typeof record.value === 'string') {
+    return record.value.trim()
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, nestedValue]) => [
+      key,
+      sanitizeTemplateTextNodes(nestedValue, visited),
+    ])
+  )
+}
+
 function findPortfolioSummaryPayload(value: unknown, visited = new Set<unknown>()): PortfolioSummaryPayload | null {
   if (!value) return null
 
@@ -180,7 +213,8 @@ export function parsePortfolioSummaryData(value: unknown): PortfolioSummaryPaylo
   if (!value) return null
 
   try {
-    return findPortfolioSummaryPayload(value)
+    const parsed = findPortfolioSummaryPayload(value)
+    return parsed ? (sanitizeTemplateTextNodes(parsed) as PortfolioSummaryPayload) : null
   } catch (error) {
     console.warn('[PortfolioSummary] Failed to parse portfolio summary:', error)
     return null
