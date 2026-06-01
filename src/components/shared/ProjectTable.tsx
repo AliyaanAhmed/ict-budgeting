@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Minus, Search, TrendingDown, TrendingUp, X } from 'lucide-react'
+import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown, Check, Clock, Eye, Filter, Search, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Project } from '@/domain/types'
 import { cn } from '@/lib/utils'
@@ -45,11 +45,9 @@ interface ColumnDefinition<T> {
 }
 
 function AiScore({ score }: { score: number }) {
-  const color = score >= 85 ? 'text-green-600' : score >= 65 ? 'text-amber-600' : 'text-red-600'
-  const Icon = score >= 85 ? TrendingUp : score >= 65 ? Minus : TrendingDown
+  const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600'
   return (
-    <span className={`inline-flex items-center gap-1 font-mono text-[14px] font-semibold ${color}`}>
-      <Icon className="h-3.5 w-3.5" />
+    <span className={`inline-flex items-center font-mono text-[14px] font-semibold ${color}`}>
       {score}%
     </span>
   )
@@ -318,7 +316,41 @@ export function ProjectTable({
   const [sort, setSort] = useState<SortState | undefined>()
 
   const columns = useMemo<ColumnDefinition<Project>[]>(() => {
-    const baseColumns: ColumnDefinition<Project>[] = []
+    const baseColumns: ColumnDefinition<Project>[] = [
+      {
+        id: 'budgetReferenceId',
+        header: 'Ref ID',
+        type: 'text',
+        accessor: (project) => project.id,
+        render: (project) => (
+          <Link
+            to={`${linkBase}/${project.id}`}
+            className="inline-flex items-center gap-1.5 font-mono text-[13px] font-semibold text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
+          >
+           
+            {project.id}
+             {project.clarifications.some((c) => c.status === 'Open') && (
+              <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            )}
+          </Link>
+        ),
+        headerClassName: 'w-36',
+      },
+      {
+        id: 'name',
+        header: 'Project Name',
+        type: 'text',
+        accessor: (project) => project.name,
+        render: (project) => (
+          <Link
+            to={`${linkBase}/${project.id}`}
+            className="font-medium text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
+          >
+            {project.name}
+          </Link>
+        ),
+      },
+    ]
 
     if (showAiScore) {
       baseColumns.push({
@@ -331,23 +363,7 @@ export function ProjectTable({
       })
     }
 
-    baseColumns.push({
-        id: 'name',
-        header: 'Project Name',
-        type: 'text',
-        accessor: (project) => project.name,
-        render: (project) => (
-          <Link
-            to={`${linkBase}/${project.id}`}
-            className="flex items-center gap-1.5 font-medium text-[#0F172A] transition-colors hover:text-[var(--primary)] dark:text-white"
-          >
-            {project.clarifications.some((c) => c.status === 'Open') && (
-              <Clock className="h-3.5 w-3.5 shrink-0 text-amber-500" />
-            )}
-            {project.name}
-          </Link>
-        ),
-      },
+    baseColumns.push(
       {
         id: 'strategicPriority',
         header: 'Strategic Priority',

@@ -8,6 +8,7 @@ import {
   type UserTeam,
 } from '@/services/userContextService'
 import {
+  getClarificationsByBudgetId,
   raiseBudgetClarification,
 } from '@/services/clarificationService'
 import { getBudgetLineItemsByBudgetIds } from '@/services/budgetLineItemService'
@@ -327,7 +328,8 @@ function toPlainTextSummary(value: string | null | undefined) {
 
 function mapBudgetRecordToProject(
   record: Awaited<ReturnType<typeof Dga_ict_budgetsService.getAll>>['data'][number],
-  portfolioSummary = null as Awaited<ReturnType<typeof getLatestPlanningPortfolioSummaryByCurrentInstance>> | null
+  portfolioSummary = null as Awaited<ReturnType<typeof getLatestPlanningPortfolioSummaryByCurrentInstance>> | null,
+  clarifications: Project['clarifications'] = []
 ): Project {
   const statusLabel = getFormattedAnnotation(
     record,
@@ -405,7 +407,7 @@ function mapBudgetRecordToProject(
     technology: { company: '-', product: '-' },
     summary: toPlainTextSummary(record.dga_summary),
     documents: [],
-    clarifications: [],
+    clarifications,
     aiScore: typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : 0,
     riskLevel: portfolioInsight.riskLevel,
     capex: 0,
@@ -437,7 +439,25 @@ async function getAllBudgetProjects() {
     orderBy: ['modifiedon desc'],
   })
 
-  return (result.data ?? []).map((record) => mapBudgetRecordToProject(record, portfolioSummary))
+  const records = result.data ?? []
+  const clarificationBudgetIds = records
+    .filter((record) => mapStatus(record.dga_status_for_adge, getFormattedAnnotation(record, 'dga_status_for_adge@OData.Community.Display.V1.FormattedValue')) === 'Clarification Required')
+    .map((record) => record.dga_ict_budgetid)
+    .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+
+  const clarificationEntries = await Promise.all(
+    clarificationBudgetIds.map(async (budgetId) => [budgetId, await getClarificationsByBudgetId(budgetId)] as const)
+  )
+
+  const clarificationsByBudgetId = new Map<string, Project['clarifications']>(clarificationEntries)
+
+  return records.map((record) =>
+    mapBudgetRecordToProject(
+      record,
+      portfolioSummary,
+      record.dga_ict_budgetid ? clarificationsByBudgetId.get(record.dga_ict_budgetid) ?? [] : []
+    )
+  )
 }
 
 function escapeODataString(value: string) {

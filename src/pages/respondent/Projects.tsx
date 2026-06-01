@@ -392,7 +392,7 @@ export default function RespondentProjects() {
           <ProjectTable
             projects={filtered}
             showCreatedBy
-            showAiScore={false}
+            showAiScore
             onFilterStateChange={setHasActiveTableFilters}
           />
         ) : (

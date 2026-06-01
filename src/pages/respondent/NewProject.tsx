@@ -1658,11 +1658,11 @@ function FormSection({
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className={cn('flex items-start', noIconBg ? 'gap-2.5' : 'gap-4')}>
           {noIconBg ? (
-            <div className="mt-1 shrink-0 text-[var(--primary)]">
+            <div className="mt-1 shrink-0 text-[#0F172A] dark:text-white">
               <Icon className="h-6 w-6" />
             </div>
           ) : (
-            <div className="flex h-12 w-12 shrink-0 items-start justify-center pt-[10px] rounded-2xl border border-[#BFD8FF] bg-[#EFF6FF] text-[var(--primary)] dark:border-white/10 dark:bg-white/5">
+            <div className="flex h-12 w-12 shrink-0 items-start justify-center pt-[10px] rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] text-[#0F172A] dark:border-white/10 dark:bg-white/5 dark:text-white">
               <Icon className="h-6 w-6" />
             </div>
           )}
@@ -5401,7 +5401,7 @@ export default function NewProject() {
                                     >
                                       <div className="mb-3 flex items-start justify-between gap-3">
                                           <div>
-                                          <div className="inline-flex items-center rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                                          <div className="inline-flex items-center rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-semibold text-[#0F172A] dark:border-white/10 dark:bg-white/10 dark:text-white">
                                             Option {suggestion.rank}
                                           </div>
                                           <div className="mt-2 space-y-2">
@@ -6061,13 +6061,13 @@ export default function NewProject() {
             <div className="relative h-[680px] xl:h-[calc(100vh-6rem)]">
               <section
                 className={cn(
-                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]',
+                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out dark:border-white/10 dark:bg-[#1E293B]',
                   copilotWorkspaceView === 'chat'
                     ? 'translate-y-0 opacity-100 pointer-events-auto'
                     : '-translate-y-2 opacity-0 pointer-events-none'
                 )}
               >
-                <div className="flex items-start justify-between gap-4 border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                <div className="flex items-start justify-between gap-4 border-b border-[#F0D9FF] bg-gradient-to-b from-[#FDF7FF] to-white px-5 py-4 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
                   <div className="flex items-center gap-3">
                     <div className="shrink-0 text-[#A855F7]">
                       <Sparkles className="h-6 w-6" />
@@ -6220,13 +6220,13 @@ export default function NewProject() {
 
               <section
                 className={cn(
-                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 ease-out dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]',
+                  'absolute inset-0 flex h-full flex-col overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white transition-all duration-300 ease-out dark:border-white/10 dark:bg-[#1E293B]',
                   copilotWorkspaceView === 'suggestions'
                     ? 'translate-y-0 opacity-100 pointer-events-auto'
                     : 'translate-y-full opacity-0 pointer-events-none'
                 )}
               >
-                <div className="shrink-0 border-b border-[#F0D9FF] px-5 py-4 dark:border-white/10">
+                <div className="shrink-0 border-b border-[#F0D9FF] bg-gradient-to-b from-[#FDF7FF] to-white px-5 py-4 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
                   <div className="flex justify-center">
                     <Button
                       type="button"
@@ -6385,7 +6385,7 @@ export default function NewProject() {
                           {matchedCopilotAiSuggestions.slice(0, 2).map((suggestion, index) => (
                             <div key={`${suggestion.strategicPriority}-${suggestion.strategicPriorityClassification}`} className="rounded-xl border border-[#F0D9FF] bg-[#FDF7FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                               <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="text-xs font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Option {index + 1}</p>
+                                <p className="text-xs font-semibold text-[#0F172A] dark:text-white">Option {index + 1}</p>
                                 <Button className="rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]" onClick={() => applyCopilotAiSuggestion(suggestion, 'both')}>
                                   <Check className="h-4 w-4" />
                                   Apply

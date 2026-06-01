@@ -316,7 +316,7 @@ export default function ReviewerProjects() {
             projects={filtered}
             linkBase="/reviewer/review-queue"
             showCreatedBy
-            showAiScore={false}
+            showAiScore
             onFilterStateChange={setHasActiveTableFilters}
           />
         ) : (

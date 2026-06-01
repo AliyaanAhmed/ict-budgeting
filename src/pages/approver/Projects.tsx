@@ -314,7 +314,7 @@ export default function ApproverProjects() {
             projects={filtered}
             linkBase="/approver/approval-queue"
             showCreatedBy
-            showAiScore={false}
+            showAiScore
             onFilterStateChange={setHasActiveTableFilters}
           />
         ) : (
