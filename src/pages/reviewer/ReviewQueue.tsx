@@ -49,12 +49,14 @@ type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recur
 function statusAccent(status: ReviewQueueProject['status']) {
   if (status === 'To Review') return '#286CFF'
   if (status === 'Reviewed') return '#22C55E'
+  if (status === 'Submitted to Approver') return '#7C3AED'
   return '#F59E0B'
 }
 
 function statusBadgeClass(status: string) {
   if (status === 'To Review') return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
   if (status === 'Reviewed') return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+  if (status === 'Submitted to Approver') return 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300'
   return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
 }
 
@@ -460,21 +462,35 @@ export default function ReviewQueue() {
   }, [setReviewCount])
 
   const toReviewCount = projects.filter(p => p.status === 'To Review').length
-  const reviewedCount = projects.filter(p => p.status === 'Reviewed').length
+  const reviewedCount = projects.filter((p) => {
+    const statusLabel = (p.statusForAdgeLabel ?? '').trim().toLowerCase()
+    return p.status === 'Reviewed' && statusLabel !== 'under approver review' && statusLabel !== 'submitted to approver'
+  }).length
   const clarificationCount = projects.filter(p => p.status === 'Clarification Pending').length
-  const sentToApproverCount = projects.filter((p) => (p as { statusCode?: number }).statusCode === 776140002).length
+  const sentToApproverCount = projects.filter((p) => {
+    const statusLabel = (p.statusForAdgeLabel ?? '').trim().toLowerCase()
+    return (
+      p.status === 'Submitted to Approver' ||
+      statusLabel === 'under approver review' ||
+      statusLabel === 'submitted to approver'
+    )
+  }).length
   const totalBudget = projects.reduce((s, p) => s + p.requestedBudget, 0)
 
   const filtered = projects
     .filter(p => {
       const q = search.trim().toLowerCase()
       const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
-      const matchesTab =
-        activeFilter === 'all' ? true :
-        activeFilter === 'to-review' ? p.status === 'To Review' :
-        activeFilter === 'reviewed' ? p.status === 'Reviewed' :
-        activeFilter === 'clarification' ? p.status === 'Clarification Pending' :
-        (p as { statusCode?: number }).statusCode === 776140002
+        const statusLabel = (p.statusForAdgeLabel ?? '').trim().toLowerCase()
+        const matchesTab =
+          activeFilter === 'all' ? true :
+          activeFilter === 'to-review' ? p.status === 'To Review' :
+          activeFilter === 'reviewed'
+            ? p.status === 'Reviewed' && statusLabel !== 'under approver review' && statusLabel !== 'submitted to approver'
+            : activeFilter === 'clarification' ? p.status === 'Clarification Pending' :
+            p.status === 'Submitted to Approver' ||
+            statusLabel === 'under approver review' ||
+            statusLabel === 'submitted to approver'
       const matchesBudget = budgetTypeFilter === 'all' || p.budgetType === budgetTypeFilter
       return matchesSearch && matchesTab && matchesBudget
     })
@@ -502,7 +518,10 @@ export default function ReviewQueue() {
   const submittableSelected = selectedIds.filter(id => {
     const project = projects.find(p => p.id === id)
     if (!project || !isProjectActionable(project)) return false
-    return hasCycleDgeSubmission ? project.status === 'To Review' : project.status === 'Reviewed'
+    const statusLabel = (project.statusForAdgeLabel ?? '').trim().toLowerCase()
+    return hasCycleDgeSubmission
+      ? project.status === 'To Review'
+      : project.status === 'Reviewed' && statusLabel !== 'under approver review' && statusLabel !== 'submitted to approver'
   })
   const clarificationSelected = selectedIds.filter(id => {
     const project = projects.find(p => p.id === id)
@@ -567,7 +586,16 @@ export default function ReviewQueue() {
           return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()
         }))
         setProjects(prev => {
-          const updated = prev.filter(p => !projectIds.includes(p.id))
+          const updated = prev.map((project) =>
+            projectIds.includes(project.id)
+              ? {
+                  ...project,
+                  status: 'Submitted to Approver' as const,
+                  statusForAdgeLabel: 'Under Approver Review',
+                  isActionable: false,
+                }
+              : project
+          )
           setReviewCount(updated.filter(p => p.status === 'To Review').length)
           return updated
         })
@@ -648,8 +676,8 @@ export default function ReviewQueue() {
                 { id: 'all' as const, label: 'All', count: projects.length },
                 { id: 'to-review' as const, label: 'To Review', count: toReviewCount },
                 { id: 'reviewed' as const, label: 'Reviewed', count: reviewedCount },
-                { id: 'clarification' as const, label: 'Clarification', count: clarificationCount },
                 { id: 'sent-approver' as const, label: 'Sent to Approver', count: sentToApproverCount },
+                { id: 'clarification' as const, label: 'Clarification', count: clarificationCount },
               ]).map(tab => (
               <button
                 key={tab.id}

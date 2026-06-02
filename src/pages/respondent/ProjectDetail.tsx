@@ -39,6 +39,7 @@ import {
   Upload,
   UserCheck,
   WalletCards,
+  X,
   Zap,
   BarChart2,
 } from 'lucide-react'
@@ -242,15 +243,65 @@ function BudgetConsiderationCompactCards({
 }: {
   groups: PolicyMatchGroup[]
 }) {
+  const [tooltip, setTooltip] = useState<null | {
+    top: number
+    left: number
+    title: string
+    reason: string
+    action: string
+  }>(null)
+  const closeTimerRef = useRef<number | null>(null)
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const scheduleClose = () => {
+    clearCloseTimer()
+    closeTimerRef.current = window.setTimeout(() => setTooltip(null), 120)
+  }
+
+  useEffect(() => {
+    if (!tooltip) return
+    const handle = () => setTooltip(null)
+    window.addEventListener('scroll', handle, true)
+    window.addEventListener('resize', handle)
+    return () => {
+      window.removeEventListener('scroll', handle, true)
+      window.removeEventListener('resize', handle)
+    }
+  }, [tooltip])
+
+  const tooltipNode = tooltip
+    ? createPortal(
+        <div
+          className="fixed z-[1000] w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left shadow-[0_18px_45px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#10203A]/95"
+          style={{ top: tooltip.top, left: tooltip.left }}
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
+          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Reason</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.reason || 'No reason provided.'}</p>
+          <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Recommended Action</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.action || 'No recommended action provided.'}</p>
+        </div>,
+        document.body
+      )
+    : null
+
   return (
     <div className="grid gap-3 lg:grid-cols-3">
+      {tooltipNode}
       {groups.flatMap((group) => {
         const accent = toMatchTypeAccent(group.matchType)
 
         return group.items.map((item) => (
           <article
             key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
-            className="relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+            className="group relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:z-20 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -286,28 +337,38 @@ function BudgetConsiderationCompactCards({
               </div>
 
               <div className="relative shrink-0">
+                <span className="sr-only">{toDisplayText(item.policyName) || 'policy match'}</span>
                 <button
                   type="button"
                   className="peer inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
                   aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
+                  onMouseEnter={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      title: toDisplayText(item.policyName) || 'policy match',
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onMouseLeave={scheduleClose}
+                  onFocus={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      title: toDisplayText(item.policyName) || 'policy match',
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onBlur={scheduleClose}
                 >
                   <Info className="h-4 w-4" />
                 </button>
-
-                <div className="pointer-events-none absolute bottom-full right-0 z-[220] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 peer-hover:pointer-events-auto peer-hover:-translate-y-1 peer-hover:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:-translate-y-1 peer-focus-visible:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
-                  <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
-                    Reason
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-                    {toDisplayText(item.reason) || 'No reason provided.'}
-                  </p>
-                  <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
-                    Recommended Action
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-                    {toDisplayText(item.requiredAction) || 'No recommended action provided.'}
-                  </p>
-                </div>
               </div>
             </div>
           </article>
@@ -2047,7 +2108,7 @@ function InteractiveBudgetOverviewCard({
   function aiFlagTone(severity?: string) {
     const normalized = severity?.toLowerCase()
     if (normalized === 'high') {
-      return 'border-[#E2E8F0] bg-white text-[#7F1D1D] dark:border-white/10 dark:bg-white/5 dark:text-[#FCA5A5]'
+      return 'border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
     }
     if (normalized === 'medium') {
       return 'border-[#E2E8F0] bg-white text-[#92400E] dark:border-white/10 dark:bg-white/5 dark:text-[#F6D28A]'
@@ -2323,11 +2384,11 @@ function InteractiveBudgetOverviewCard({
   )
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+    <div className="relative overflow-visible rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
       <button
         type="button"
         onClick={() => canExpand && setExpanded((value) => !value)}
-        className="relative block w-full bg-gradient-to-b from-[#FDF7FF] to-white px-8 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
+        className="relative block w-full rounded-[28px] bg-gradient-to-b from-[#FDF7FF] to-white px-8 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
       >
         <div className="flex items-start gap-3 pr-14">
           <div className="mt-1 shrink-0 text-[#A855F7]">
@@ -7003,6 +7064,7 @@ export default function ProjectDetail() {
                           className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={handleCancelEdit}
                         >
+                          <X className="h-4 w-4" />
                           Cancel
                         </Button>
                       </>
@@ -7124,6 +7186,7 @@ export default function ProjectDetail() {
                           className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={handleCancelEdit}
                         >
+                          <X className="h-4 w-4" />
                           Cancel
                       </Button>
                     </>

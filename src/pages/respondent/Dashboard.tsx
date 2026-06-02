@@ -148,7 +148,7 @@ function MetricCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">
+          <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">
             {title}
           </p>
           <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
@@ -232,7 +232,7 @@ function ActionMetricCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+          <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           <div className="mt-4">
             <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
           </div>
@@ -939,7 +939,7 @@ export default function RespondentDashboard() {
                 { label: 'Pending with Respondent', value: respondentOwned, tone: dashboardPalette.primary },
                 { label: 'Pending with Reviewer', value: submittedToReviewer, tone: dashboardPalette.primarySoft },
                 { label: 'Pending with Approver', value: submittedToApprover, tone: dashboardPalette.primaryDeep },
-                { label: 'Needs Attention', value: attentionCount, tone: dashboardPalette.primaryMuted },
+                { label: 'Clarification', value: clarificationRequired, tone: dashboardPalette.primaryMuted },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">
@@ -957,7 +957,7 @@ export default function RespondentDashboard() {
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4.5 w-4.5 text-[#A855F7] dark:text-[#E9D5FF]" />
                 <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
-                  Recommended next action for you
+                  Recommended Review Actions
                 </p>
               </div>
               <ul className="mt-3 space-y-2">

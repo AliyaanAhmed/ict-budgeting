@@ -7,7 +7,7 @@ export interface ReviewQueueProject {
   ictBudgetId: string
   name: string
   entity: string
-  status: 'To Review' | 'Reviewed' | 'Clarification Pending'
+  status: 'To Review' | 'Reviewed' | 'Clarification Pending' | 'Submitted to Approver'
   statusForAdgeLabel?: string
   isActionable?: boolean
   riskLevel: RiskLevel | null

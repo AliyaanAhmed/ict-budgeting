@@ -120,7 +120,7 @@ function MetricCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">{title}</p>
+          <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">{value}</div>
         </div>
         <div
@@ -195,7 +195,7 @@ function ActionMetricCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="min-h-[3.25rem]">
-            <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+            <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           </div>
           <div className="mt-3 mb-2">
             <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
@@ -710,7 +710,7 @@ export default function ApproverDashboard() {
       </section>
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <ActionMetricCard
             title={<><span className="block">Pending</span><span className="block">Approval</span></>}
             value={pendingApproval}
@@ -737,15 +737,6 @@ export default function ApproverDashboard() {
             icon={<CheckCircle2 className="h-5 w-5" />}
             href="/approver/projects?tab=approved"
             description="Approved items held until the entity moves onward to DGE."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Submitted</span><span className="block">DGE</span></>}
-            value={submittedToDgeCount}
-            accent="#7C3AED"
-            badge="Forwarded"
-            icon={<Send className="h-5 w-5" />}
-            href="/approver/projects?tab=submitted-dge"
-            description="Portfolio items already handed off for strategic review."
           />
         </div>
 
@@ -1057,7 +1048,7 @@ export default function ApproverDashboard() {
         />
 
         <Card
-          title="Shows whether the portfolio is ready for final onward submission to DGE."
+          title="Cycle Workspace"
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="flex h-full flex-col p-6">
@@ -1065,25 +1056,24 @@ export default function ApproverDashboard() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Send className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Final Approval Readiness</h3>
-                  <InfoHint text="A role-specific readiness board showing what still blocks the portfolio from moving to DGE." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Cycle Workspace</h3>
+                  <InfoHint text="A role-specific workspace showing the current cycle states and the next actions needed before DGE submission." />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Review the current blockers before moving the portfolio forward
+                  Review the current cycle states before moving the portfolio forward
                 </p>
               </div>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Approved', value: approvedCount, tone: '#16A34A' },
-                { label: 'Pending Approval', value: pendingApproval, tone: '#D97706' },
-                { label: 'Pending with Reviewer', value: reviewerProjects.length, tone: '#286CFF' },
-                { label: 'Pending with Respondent', value: respondentProjects.length, tone: '#F97316' },
-                { label: 'Submitted to DGE', value: submittedToDgeCount, tone: '#7C3AED' },
+                { label: 'Pending with Respondent', value: respondentProjects.length, tone: '#286CFF' },
+                { label: 'Pending with Reviewer', value: reviewerProjects.length, tone: '#4F98FF' },
+                { label: 'Pending with Approver', value: pendingApproval, tone: '#7C3AED' },
+                { label: 'Clarification', value: clarificationCount, tone: '#F97316' },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 dark:border-[#37547A] dark:bg-[#20314D]">
-                  <p className="text-xs font-semibold tracking-[0.1em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">{item.label}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.tone }} />
                     <span className="text-2xl font-bold text-[#0F172A] dark:text-[#E2E8F0]">{item.value}</span>
@@ -1098,7 +1088,7 @@ export default function ApproverDashboard() {
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Suggested next move</p>
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Recommended Review Actions</p>
                   <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
                     {portfolioAlreadySubmittedToDge
                       ? 'The full portfolio has already moved to DGE. Keep monitoring downstream progress and any returned clarifications.'
@@ -1113,30 +1103,14 @@ export default function ApproverDashboard() {
             </div>
 
             <div className="mt-auto flex flex-col gap-3 pt-5">
-              {portfolioAlreadySubmittedToDge ? (
-                <div className="rounded-[22px] border border-[#DDD6FE] bg-[#F5F3FF] px-4 py-4 dark:border-[#5B3AA8] dark:bg-[#2A1C4A]">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white">
-                      <Send className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-[#5B21B6] dark:text-[#DDD6FE]">Submitted to DGE</p>
-                      <p className="mt-1 text-xs leading-5 text-[#6D28D9] dark:text-slate-100">
-                        The portfolio has already been forwarded for strategic alignment review.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
-                  disabled={!allProjectsApproved}
-                  onClick={() => void handleSubmitToDge()}
-                >
-                  Submit to DGE
-                  <MoveRight className="h-4 w-4" />
-                </Button>
-              )}
+              <Button
+                className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
+                disabled={!allProjectsApproved}
+                onClick={() => void handleSubmitToDge()}
+              >
+                Submit to DGE
+                <MoveRight className="h-4 w-4" />
+              </Button>
             </div>
           </CardContent>
         </Card>

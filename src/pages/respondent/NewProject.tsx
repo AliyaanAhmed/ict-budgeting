@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowUpRight,
@@ -1010,7 +1011,7 @@ function CopilotDocumentAnalysisMessage({
   const reviewFlags = summary?.review_flags ?? []
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+    <div className="overflow-visible rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
       <div className="border-b border-[#E9D5FF] px-4 py-4 dark:border-white/10">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[#A855F7]">
@@ -2235,15 +2236,64 @@ function BudgetConsiderationCompactCards({
 }: {
   groups: PolicyMatchGroup[]
 }) {
+  const [tooltip, setTooltip] = useState<null | {
+    top: number
+    left: number
+    reason: string
+    action: string
+  }>(null)
+  const closeTimerRef = useRef<number | null>(null)
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const scheduleClose = () => {
+    clearCloseTimer()
+    closeTimerRef.current = window.setTimeout(() => setTooltip(null), 120)
+  }
+
+  useEffect(() => {
+    if (!tooltip) return
+    const handle = () => setTooltip(null)
+    window.addEventListener('scroll', handle, true)
+    window.addEventListener('resize', handle)
+    return () => {
+      window.removeEventListener('scroll', handle, true)
+      window.removeEventListener('resize', handle)
+    }
+  }, [tooltip])
+
+  const tooltipNode = tooltip
+    ? createPortal(
+        <div
+          className="fixed z-[1000] w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left shadow-[0_18px_45px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#10203A]/95"
+          style={{ top: tooltip.top, left: tooltip.left }}
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
+          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Reason</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.reason || 'No reason provided.'}</p>
+          <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Recommended Action</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.action || 'No recommended action provided.'}</p>
+        </div>,
+        document.body
+      )
+    : null
+
   return (
     <div className="grid gap-3 lg:grid-cols-3">
+      {tooltipNode}
       {groups.flatMap((group) => {
         const accent = toMatchTypeAccent(group.matchType)
 
         return group.items.map((item) => (
           <article
             key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
-            className="relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+            className="group relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:z-20 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -2283,24 +2333,31 @@ function BudgetConsiderationCompactCards({
                   type="button"
                   className="peer inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
                   aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
+                  onMouseEnter={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onMouseLeave={scheduleClose}
+                  onFocus={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onBlur={scheduleClose}
                 >
                   <Info className="h-4 w-4" />
                 </button>
-
-                <div className="pointer-events-none absolute bottom-full right-0 z-[220] mb-2 w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.18)] transition-all duration-200 peer-hover:pointer-events-auto peer-hover:-translate-y-1 peer-hover:opacity-100 peer-focus-visible:pointer-events-auto peer-focus-visible:-translate-y-1 peer-focus-visible:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95">
-                  <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
-                    Reason
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-                    {toDisplayText(item.reason) || 'No reason provided.'}
-                  </p>
-                  <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
-                    Recommended Action
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-                    {toDisplayText(item.requiredAction) || 'No recommended action provided.'}
-                  </p>
-                </div>
               </div>
             </div>
           </article>
@@ -5832,6 +5889,26 @@ export default function NewProject() {
                   </FormField>
                 </div>
 
+                <div className="md:col-span-2">
+                  <FormField
+                    label="Summary / Description"
+                    required
+                    error={fieldErrors.summary}
+                  >
+                    <Textarea
+                      value={formValues.summary}
+                      onChange={(event) => updateField('summary', event.target.value)}
+                      onBlur={() => void refreshAiSuggestions()}
+                      rows={6}
+                      className={cn(
+                        'rounded-xl bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus-visible:ring-[var(--primary)]',
+                        fieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+                      )}
+                      placeholder="Describe the problem, proposed solution, departments impacted, measurable benefits, and any dependencies..."
+                    />
+                  </FormField>
+                </div>
+
                 <FormField
                   label="Strategic Priorities"
                   required
@@ -6145,31 +6222,6 @@ export default function NewProject() {
                   />
                 </FormField>
               </div>
-            </FormSection>
-
-            <FormSection
-              title="Project Summary"
-              description="Explain the business need, expected outcome, beneficiaries, and delivery approach."
-              icon={FileText}
-              noIconBg
-            >
-              <FormField
-                label="Summary / Description"
-                required
-                error={fieldErrors.summary}
-              >
-                <Textarea
-                  value={formValues.summary}
-                  onChange={(event) => updateField('summary', event.target.value)}
-                  onBlur={() => void refreshAiSuggestions()}
-                  rows={6}
-                  className={cn(
-                    'rounded-xl bg-white shadow-sm focus-visible:ring-[var(--primary)]',
-                    fieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]'
-                  )}
-                  placeholder="Describe the problem, proposed solution, departments impacted, measurable benefits, and any dependencies..."
-                />
-              </FormField>
             </FormSection>
 
             <FormSection
@@ -7141,12 +7193,6 @@ export default function NewProject() {
                   <DatePickerField value={copilotFormValues.plannedEndDate} onChange={(value) => updateCopilotField('plannedEndDate', value)} invalid={Boolean(copilotFieldErrors.plannedEndDate)} />
                 </FormField>
               </div>
-            </FormSection>
-
-            <FormSection title="Project Summary" description="Capture the business need, scope, beneficiaries, and expected outcome." icon={FileText} noIconBg>
-              <FormField label="Summary / Description" required error={copilotFieldErrors.summary}>
-                <Textarea value={copilotFormValues.summary} onChange={(event) => updateCopilotField('summary', event.target.value)} rows={6} className={cn('rounded-xl bg-white shadow-sm focus-visible:ring-[#A855F7]', copilotFieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
-              </FormField>
             </FormSection>
 
             <FormSection title="Project Budget Type" description="Select the budget type. The required financial fields below will adapt accordingly." icon={CircleDollarSign} noIconBg>

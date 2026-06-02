@@ -495,6 +495,10 @@ export default function ApprovalQueue() {
   const respondentCount = effectiveLiveProjects.filter((project) => project.status === 'Draft' || project.status === 'Clarification Required').length
   const reviewerCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed').length
   const approverOwnedCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Approver' || project.status === 'Approved').length
+  const aiSummaryProjectCount = cycleProjectCount
+  const aiSummaryRespondentCount = respondentCount
+  const aiSummaryReviewerCount = reviewerCount
+  const aiSummaryApproverCount = approverOwnedCount
   const allProjectsApproved = cycleProjectCount > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
   const hasCycleDgeSubmission = effectiveLiveProjects.some(
     (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
@@ -682,13 +686,6 @@ export default function ApprovalQueue() {
               Review reviewer-cleared submissions, decide final approvals, and return items that need clarification.
             </p>
           </div>
-          <div className="sm:min-w-[220px]">
-            <QueueSummaryChip
-              label="Amount Requested"
-              value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-lg font-bold" iconSize={14} />}
-              accent="#286CFF"
-            />
-          </div>
         </div>
       </div>
 
@@ -714,9 +711,10 @@ export default function ApprovalQueue() {
                 <Sparkles className="h-4.5 w-4.5" />
               </div>
               <div>
-                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">AI Summary</p>
                 <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
-                  {loading ? '—' : `${pendingCount} pending / ${approvedCount} approved / ${submittedToDgeCount} submitted to DGE`}
+                  {loading
+                    ? '—'
+                    : `${aiSummaryProjectCount} projects in cycle, ${aiSummaryRespondentCount} with Respondent, ${aiSummaryReviewerCount} with Reviewer, ${aiSummaryApproverCount} with Approver`}
                 </p>
               </div>
             </div>
@@ -735,19 +733,6 @@ export default function ApprovalQueue() {
               </div>
             </div>
 
-            <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
-
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
-                <BrainCircuit className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Budget</p>
-                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
-                  {loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-sm font-semibold" iconSize={14} />}
-                </p>
-              </div>
-            </div>
 
             {portfolioAlreadySubmittedToDge ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">

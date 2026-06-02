@@ -90,7 +90,7 @@ function MetricCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">
+          <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">
             {title}
           </p>
           <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
@@ -175,7 +175,7 @@ function ActionMetricCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="min-h-[3.25rem]">
-            <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+            <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           </div>
           <div className="mt-3 mb-2">
             <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
@@ -277,6 +277,7 @@ export default function ReviewerDashboard() {
   const toReview = pendingReviewProjects.length
   const reviewCompleted = reviewCompletedProjects.length
   const clarificationPending = clarificationSentProjects.length
+  const pendingRespondent = draftProjects.length
   const reviewed = sentToApproverProjects.length
 
   const totalQueueBudget = liveProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
@@ -529,7 +530,7 @@ export default function ReviewerDashboard() {
             description="Projects sent back to respondent for reviewer clarification."
           />
           <ActionMetricCard
-            title={<><span className="block">Sent</span><span className="block">Approver</span></>}
+            title={<><span className="block">Sent</span><span className="block">to Approver</span></>}
             value={reviewed}
             accent={dashboardPalette.aeGreen}
             badge="Forwarded"
@@ -814,10 +815,10 @@ export default function ReviewerDashboard() {
 
             <div className="mt-5 grid grid-cols-2 gap-3">
               {[
-                { label: 'Pending Review', value: toReview, tone: dashboardPalette.primary },
-                { label: 'Review Completed', value: reviewCompleted, tone: dashboardPalette.primarySoft },
-                { label: 'Clarif. Sent', value: clarificationPending, tone: dashboardPalette.primaryDeep },
-                { label: 'Sent To Approver', value: reviewed, tone: dashboardPalette.primaryMuted },
+                { label: 'Pending with Respondent', value: pendingRespondent, tone: dashboardPalette.primary },
+                { label: 'Pending with Reviewer', value: toReview, tone: dashboardPalette.primarySoft },
+                { label: 'Pending with Approver', value: reviewed, tone: dashboardPalette.primaryDeep },
+                { label: 'Clarification', value: clarificationPending, tone: dashboardPalette.primaryMuted },
               ].map((item) => (
                 <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
                   <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">

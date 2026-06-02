@@ -166,6 +166,10 @@ export default function ReviewerProjects() {
         .map((flag) => [flag.key, { key: flag.key, label: flag.label }])
     ).values()
   )
+  const selectedAiReviewFlagLabel =
+    aiReviewFlagFilter === 'all-ai-review-flags'
+      ? 'AI Review Flag'
+      : aiReviewFlagOptions.find((option) => option.key === aiReviewFlagFilter)?.label ?? 'AI Review Flag'
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -327,7 +331,7 @@ export default function ReviewerProjects() {
             <SelectTrigger>
               <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
                 <Sparkles className="h-4 w-4 text-[#A855F7] dark:text-[#E9D5FF]" />
-                <span className="truncate text-[#A855F7] dark:text-[#E9D5FF]">AI Review Flag</span>
+                <span className="truncate text-[#A855F7] dark:text-[#E9D5FF]">{selectedAiReviewFlagLabel}</span>
               </span>
             </SelectTrigger>
             <SelectContent>

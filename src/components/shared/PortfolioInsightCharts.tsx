@@ -43,25 +43,25 @@ const DASHBOARD_SERIES = [
   dashboardPalette.primaryDark,
 ] as const
 const ISSUE_SEVERITY_COLORS = {
-  high: '#7A2848',
-  medium: '#B68A35',
-  low: '#2E7D74',
+  high: '#DC2626',
+  medium: '#D97706',
+  low: '#16A34A',
 } as const
 const ISSUE_CATEGORY_COLORS = [
-  '#1E3A8A',
-  '#B68A35',
-  '#2E7D74',
-  '#5B87FF',
-  '#8B5CF6',
-  '#64748B',
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
 ] as const
 const AI_REVIEW_FLAG_COLORS = [
-  '#123C73',
-  '#2E6F95',
-  '#B68A35',
-  '#1F6A5A',
-  '#6E5BD2',
-  '#5F6B7A',
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
+  dashboardPalette.primary,
 ] as const
 
 function shortenLabel(value: string, max = 20) {
