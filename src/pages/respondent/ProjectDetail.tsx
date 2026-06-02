@@ -2841,6 +2841,83 @@ export default function ProjectDetail() {
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
   const [pendingClarificationReply, setPendingClarificationReply] = useState<PendingClarificationReply | null>(null)
 
+  const applyBudgetOverviewAiInsights = useCallback((overview: StoredBudgetOverviewRecord['parsedData']) => {
+    const strategicAlignment = overview?.strategic_alignment
+    const recommendedOptions = strategicAlignment?.recommended_options ?? []
+    const mappedSuggestions = recommendedOptions
+      .map((option, index) => ({
+        rank: Number(option.rank ?? index + 1) || index + 1,
+        strategicPriority: toDisplayText(option.strategic_priority) || 'Unknown',
+        strategicPriorityClassification: toDisplayText(option.strategic_priority_classification) || 'Unknown',
+        relevanceScore: Number(option.relevance_score ?? 0) || 0,
+        reason: toDisplayText(option.reason),
+      }))
+      .filter((suggestion) => suggestion.strategicPriority && suggestion.strategicPriorityClassification)
+      .sort((left, right) => left.rank - right.rank)
+
+    const policyAlignment = (overview as {
+      budget_policy_alignment?: {
+        has_potential_conflict?: boolean
+        has_coordination_requirement?: boolean
+        has_allowed_with_conditions?: boolean
+        summary?: string
+        policy_matches?: Array<{
+          policy_number?: string
+          dge_budget_consideration?: string
+          match_type?: string
+          relevance_score?: number
+          required_action?: string
+          strategic_area?: string
+          evidence_from_project?: string[]
+          reason?: string
+        }>
+      }
+    })?.budget_policy_alignment
+
+    const mappedAssessmentItems = (policyAlignment?.policy_matches ?? [])
+      .map((item) => {
+        const matchType = String(item.match_type ?? '').trim()
+        return {
+          policyNumber: toDisplayText(item.policy_number),
+          policyName: toDisplayText(item.dge_budget_consideration),
+          strategicArea: toDisplayText(item.strategic_area),
+          matchType:
+            matchType === 'Potential Conflict'
+              ? ('Potential Conflict' as const)
+              : matchType === 'Allowed With Conditions'
+                ? ('Allowed With Conditions' as const)
+                : ('Coordination Required' as const),
+          relevanceScore: Number(item.relevance_score ?? 0) || 0,
+          reason: toDisplayText(item.reason || item.required_action),
+          evidenceFromProject: Array.isArray(item.evidence_from_project)
+            ? item.evidence_from_project.map((value) => toDisplayText(value)).filter(Boolean)
+            : [],
+          requiredAction: toDisplayText(item.required_action),
+        } satisfies PolicyAssessmentItem
+      })
+      .filter((item) => item.policyNumber && item.policyName)
+
+    setDetailAiSuggestions(mappedSuggestions)
+    setDetailPolicyEvaluationResult({
+      assessmentItems: mappedAssessmentItems,
+      overallAssessment: {
+        hasPolicyMatch: Boolean(policyAlignment?.has_potential_conflict || policyAlignment?.has_coordination_requirement || policyAlignment?.has_allowed_with_conditions),
+        hasPotentialConflict: Boolean(policyAlignment?.has_potential_conflict),
+        hasCoordinationRequirement: Boolean(policyAlignment?.has_coordination_requirement),
+        hasAllowedWithConditions: Boolean(policyAlignment?.has_allowed_with_conditions),
+        summary: toDisplayText(policyAlignment?.summary),
+      },
+      promptId: '',
+      promptUsecase: '',
+      formattedPrompt: '',
+      rawResponse: overview ?? null,
+    })
+    setDetailAiSuggestionError(null)
+    setDetailPolicyEvaluationError(null)
+    setDetailAiSuggestionLoading(false)
+    setDetailPolicyEvaluationLoading(false)
+  }, [])
+
   // ── SharePoint documents ─────────────────────────────────────────────────────
   const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
   const [sharepointDocsLoading, setSharepointDocsLoading] = useState(false)
@@ -4581,6 +4658,33 @@ export default function ProjectDetail() {
   )
 
   useEffect(() => {
+    if (persistedDocumentSummariesLoading) {
+      return
+    }
+
+    const overviewAiData = budgetOverviewRecord?.parsedData as (StoredBudgetOverviewRecord['parsedData'] & {
+      budget_policy_alignment?: {
+        has_potential_conflict?: boolean
+        has_coordination_requirement?: boolean
+        has_allowed_with_conditions?: boolean
+        summary?: string
+        policy_matches?: Array<{
+          policy_number?: string
+          dge_budget_consideration?: string
+          match_type?: string
+          relevance_score?: number
+          required_action?: string
+          strategic_area?: string
+          evidence_from_project?: string[]
+          reason?: string
+        }>
+      }
+    }) | null
+    if (overviewAiData?.strategic_alignment || overviewAiData?.budget_policy_alignment) {
+      applyBudgetOverviewAiInsights(overviewAiData)
+      return
+    }
+
     const name = formValues.initiativeName.trim()
     const desc = formValues.summary.trim()
     if (!name || !desc) {
@@ -4632,7 +4736,7 @@ export default function ProjectDetail() {
     }
     // Only re-fire on page load (savedFormValues) or explicit blur triggers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailEntityName, savedFormValues.initiativeName, savedFormValues.summary])
+  }, [applyBudgetOverviewAiInsights, budgetOverviewRecord, detailEntityName, formValues.initiativeName, formValues.summary, persistedDocumentSummariesLoading, savedFormValues.initiativeName, savedFormValues.summary])
 
   const validateForm = () => {
     const nextErrors: IctBudgetFieldErrorMap = {}

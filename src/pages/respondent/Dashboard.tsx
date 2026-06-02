@@ -203,7 +203,7 @@ function truncateAtWordBoundary(value: string, maxCharacters: number) {
   const nextText = (lastSpace > 40 ? clipped.slice(0, lastSpace) : clipped).trimEnd()
 
   return {
-    text: `${nextText}...`,
+    text: nextText,
     truncated: true,
   }
 }
@@ -542,18 +542,18 @@ export default function RespondentDashboard() {
             <p className="mt-1 text-sm font-medium text-[#64748B] dark:text-slate-200">
               {instanceDetail?.name ?? storedInstanceDetail?.name ?? 'Entity'}
             </p>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              <span className="inline">
+            <span className="relative mt-3 inline-flex max-w-2xl items-end gap-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
+              <span className={planningExpanded ? 'block' : 'block line-clamp-2'}>
                 {planningExpanded ? (planningSummary || planningSummaryPreview.text) : planningSummaryPreview.text}
               </span>
               <button
                 type="button"
                 onClick={() => setPlanningExpanded((current) => !current)}
-                className="ml-1 inline-flex translate-y-[1px] items-center rounded-full border border-[#D8E7FF] bg-[#EEF5FF] px-2 py-0.5 align-baseline text-[11px] font-semibold leading-none text-[#286CFF] transition-colors hover:border-[#BFD4FF] hover:bg-[#E7F0FF] hover:text-[#0C65F5] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:bg-white/10 dark:hover:text-white"
+                className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#D8E7FF] bg-[#EEF5FF] px-2 py-0.5 text-[11px] font-semibold leading-none text-[#286CFF] transition-colors hover:border-[#BFD4FF] hover:bg-[#E7F0FF] hover:text-[#0C65F5] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:bg-white/10 dark:hover:text-white"
               >
                 {planningExpanded ? 'Less' : '..'}
               </button>
-            </p>
+            </span>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
                 <Radar className="h-4 w-4" />
