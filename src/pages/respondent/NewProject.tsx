@@ -6343,7 +6343,7 @@ export default function NewProject() {
             </div>
           </div>
 
-            <aside className="space-y-4 mt-4">
+            <aside className="space-y-4 mt-5">
               <div className="rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
                 <div className="flex items-start justify-between gap-3 border-b border-[#F1E4FF] px-4 py-4 dark:border-white/10">
                   <div className="flex items-start gap-3">
