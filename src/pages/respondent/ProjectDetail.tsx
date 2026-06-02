@@ -429,11 +429,10 @@ function AiFieldAssistTrigger({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI suggested this field</p>
-              <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
             </div>
           </div>
           <div className="mt-3">
-            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Value</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
             <p className="mt-1 whitespace-pre-line text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
           </div>
           {canApply ? (
@@ -588,17 +587,20 @@ function EditDatePickerField({
   onChange,
   placeholder = 'Pick a date',
   invalid,
+  minDate,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   invalid?: boolean
+  minDate?: string
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => (value ? new Date(`${value}T00:00:00`) : new Date()))
 
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null
+  const minimumDate = minDate ? new Date(`${minDate}T00:00:00`) : null
   const today = new Date()
   const calendarStart = startOfWeek(startOfMonth(viewMonth))
   const calendarEnd = endOfWeek(endOfMonth(viewMonth))
@@ -606,7 +608,16 @@ function EditDatePickerField({
   const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
   const formattedValue = selectedDate ? format(selectedDate, 'MMM d, yyyy') : placeholder
 
+  useEffect(() => {
+    if (!open || !minimumDate) return
+    const selectedMonth = selectedDate ?? viewMonth
+    if (selectedMonth < startOfMonth(minimumDate)) {
+      setViewMonth(minimumDate)
+    }
+  }, [minimumDate, open, selectedDate, viewMonth])
+
   const selectDate = (date: Date) => {
+    if (minimumDate && date < minimumDate) return
     onChange(format(date, 'yyyy-MM-dd'))
     setViewMonth(date)
     setOpen(false)
@@ -670,15 +681,18 @@ function EditDatePickerField({
                   const selected = selectedDate ? isSameDay(date, selectedDate) : false
                   const currentMonth = isSameMonth(date, viewMonth)
                   const isToday = isSameDay(date, today)
+                  const disabledDate = Boolean(minimumDate && date < minimumDate)
 
                   return (
                     <button
                       key={date.toISOString()}
                       type="button"
+                      disabled={disabledDate}
                       onClick={() => selectDate(date)}
                       className={cn(
                         'flex h-8 w-8 items-center justify-center rounded-lg p-2 text-sm font-normal leading-none text-[#286CFF] transition-colors outline-none hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:hover:bg-white/10',
                         !currentMonth && 'text-[#94A3B8]',
+                        disabledDate && 'cursor-not-allowed text-[#CBD5E1] hover:bg-transparent dark:text-slate-600',
                         isToday && !selected && 'bg-[#E7F5FF] text-[#043DFF]',
                         selected && 'bg-[#286CFF] text-white hover:bg-[#286CFF] hover:text-white'
                       )}
@@ -1399,7 +1413,7 @@ const FORM_SECTIONS = [
 
 const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
   initiativeName: 'Initiative / Budget Item Name',
-  strategicPriorityId: 'Strategic Priorities',
+  strategicPriorityId: 'Strategic Priority',
   strategicPriorityClassificationId: 'Strategic Priority Classifications',
   workStreamId: 'Work Stream',
   technologyCompanyId: 'Technology (Company)',
@@ -3105,6 +3119,13 @@ export default function ProjectDetail() {
         }
       })
 
+      if (id) {
+        const refreshedProject = await projectService.getProjectById(id)
+        if (refreshedProject) {
+          setProjectData(refreshedProject)
+        }
+      }
+
       return {
         documentSummaries,
         cumulativeRecord,
@@ -3119,7 +3140,7 @@ export default function ProjectDetail() {
         setPersistedDocumentSummariesLoading(false)
       }
     }
-  }, [ictBudgetId, pendingBudgetOverviewRefreshModifiedOn, pendingCumulativeRefreshModifiedOn])
+  }, [id, ictBudgetId, pendingBudgetOverviewRefreshModifiedOn, pendingCumulativeRefreshModifiedOn])
 
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -3558,7 +3579,7 @@ export default function ProjectDetail() {
     if (!suggestion) return null
 
     const fieldLabel =
-      type === 'priority' ? 'Strategic Priorities' : 'Strategic Priority Classifications'
+      type === 'priority' ? 'Strategic Priority' : 'Strategic Priority Classifications'
     const suggestedValue =
       type === 'priority'
         ? suggestion.strategicPriority
@@ -3692,6 +3713,7 @@ export default function ProjectDetail() {
                   const isApplied =
                     formValues.strategicPriorityId === suggestion.priorityId &&
                     formValues.strategicPriorityClassificationId === suggestion.classificationId
+                  const canApplySuggestion = Boolean(suggestion.priorityId) && Boolean(suggestion.classificationId)
 
                   return (
                     <div
@@ -3727,6 +3749,17 @@ export default function ProjectDetail() {
                       <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
                         {toDisplayText(suggestion.reason) || 'AI identified this as a likely strategic match.'}
                       </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          className="h-10 rounded-xl bg-[#A855F7] px-4 text-sm text-white hover:bg-[#9333EA]"
+                          onClick={() => applyAiSuggestion(suggestion, 'both')}
+                          disabled={!canApplySuggestion}
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          {isApplied ? 'Applied' : 'Apply'}
+                        </Button>
+                      </div>
                     </div>
                   )
                 })}
@@ -4745,7 +4778,7 @@ export default function ProjectDetail() {
       nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
     }
     if (!formValues.strategicPriorityId) {
-      nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+      nextErrors.strategicPriorityId = 'Strategic Priority is required.'
     }
     if (!formValues.strategicPriorityClassificationId) {
       nextErrors.strategicPriorityClassificationId =
@@ -5865,6 +5898,7 @@ export default function ProjectDetail() {
         const normalizedAccountName = suggestion.accountName.trim().toLowerCase()
         const normalizedAccountCode = suggestion.accountCode.trim().toLowerCase()
         const normalizedRawLabel = suggestion.rawAccountLabel.trim().toLowerCase()
+        const normalizedDisplayLabel = suggestion.displayLabel.trim().toLowerCase()
 
         return !displayedBudgetItems.some((item) => {
           const accountName = item.accountName.trim().toLowerCase()
@@ -5874,10 +5908,15 @@ export default function ProjectDetail() {
           return (
             accountName === normalizedAccountName ||
             accountName === normalizedRawLabel ||
+            accountName === normalizedDisplayLabel ||
             accountName.includes(normalizedAccountName) ||
             normalizedAccountName.includes(accountName) ||
+            accountName.includes(normalizedDisplayLabel) ||
+            normalizedDisplayLabel.includes(accountName) ||
             ebsCode === normalizedAccountCode ||
-            fusionCode === normalizedAccountCode
+            fusionCode === normalizedAccountCode ||
+            ebsCode === normalizedDisplayLabel ||
+            fusionCode === normalizedDisplayLabel
           )
         })
       }),
@@ -6568,7 +6607,7 @@ export default function ProjectDetail() {
                     </EditField>
                   </div>
                   <EditField
-                    label="Strategic Priorities"
+                    label="Strategic Priority"
                     required
                     error={fieldErrors.strategicPriorityId}
                   >
@@ -6722,6 +6761,7 @@ export default function ProjectDetail() {
                       value={formValues.plannedEndDate}
                       onChange={(value) => updateField('plannedEndDate', value)}
                       invalid={Boolean(fieldErrors.plannedEndDate)}
+                      minDate={formValues.plannedStartDate || undefined}
                     />
                   </EditField>
                 </div>
@@ -6981,7 +7021,7 @@ export default function ProjectDetail() {
                     highlighted={animatedAiFields.includes('initiativeName')}
                   />
                   <Field
-                    label="Strategic Priorities"
+                    label="Strategic Priority"
                     value={display.strategicPriority}
                     aiAssist={buildStrategicAiAssist('priority')}
                   />

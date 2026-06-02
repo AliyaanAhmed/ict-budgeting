@@ -333,7 +333,7 @@ function buildCompletedSupportingDocumentInputs(
 
 const VALIDATION_LABELS: Record<keyof FormValues | 'budgetItems', string> = {
   initiativeName: 'Initiative / Budget Item Name',
-  strategicPriorityId: 'Strategic Priorities',
+  strategicPriorityId: 'Strategic Priority',
   strategicPriorityClassificationId: 'Strategic Priority Classifications',
   workStreamId: 'Work Stream',
   technologyCompanyId: 'Technology (Company)',
@@ -1408,7 +1408,7 @@ function validateDraftState(input: {
     nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
   }
   if (!input.values.strategicPriorityId) {
-    nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+    nextErrors.strategicPriorityId = 'Strategic Priority is required.'
   }
   if (!input.values.strategicPriorityClassificationId) {
     nextErrors.strategicPriorityClassificationId = 'Strategic Priority Classifications is required.'
@@ -1541,17 +1541,20 @@ function DatePickerField({
   onChange,
   placeholder = 'Pick a date',
   invalid,
+  minDate,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   invalid?: boolean
+  minDate?: string
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => (value ? new Date(`${value}T00:00:00`) : new Date()))
 
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null
+  const minimumDate = minDate ? new Date(`${minDate}T00:00:00`) : null
   const today = new Date()
   const calendarStart = startOfWeek(startOfMonth(viewMonth))
   const calendarEnd = endOfWeek(endOfMonth(viewMonth))
@@ -1574,7 +1577,16 @@ function DatePickerField({
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [open])
 
+  useEffect(() => {
+    if (!open || !minimumDate) return
+    const currentAnchor = selectedDate ?? viewMonth
+    if (currentAnchor < startOfMonth(minimumDate)) {
+      setViewMonth(minimumDate)
+    }
+  }, [minimumDate, open, selectedDate, viewMonth])
+
   const selectDate = (date: Date) => {
+    if (minimumDate && date < minimumDate) return
     onChange(format(date, 'yyyy-MM-dd'))
     setViewMonth(date)
     setOpen(false)
@@ -1638,15 +1650,18 @@ function DatePickerField({
                   const selected = selectedDate ? isSameDay(date, selectedDate) : false
                   const currentMonth = isSameMonth(date, viewMonth)
                   const isToday = isSameDay(date, today)
+                  const disabledDate = Boolean(minimumDate && date < minimumDate)
 
                   return (
                     <button
                       key={date.toISOString()}
                       type="button"
+                      disabled={disabledDate}
                       onClick={() => selectDate(date)}
                       className={cn(
                         'flex h-8 w-8 items-center justify-center rounded-lg p-2 text-sm font-normal leading-none text-[#286CFF] transition-colors outline-none hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:hover:bg-white/10',
                         !currentMonth && 'text-[#94A3B8]',
+                        disabledDate && 'cursor-not-allowed text-[#CBD5E1] hover:bg-transparent dark:text-slate-600',
                         isToday && !selected && 'bg-[#E7F5FF] text-[#043DFF]',
                         selected && 'bg-[#286CFF] text-white hover:bg-[#286CFF] hover:text-white'
                       )}
@@ -4766,7 +4781,7 @@ export default function NewProject() {
       nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
     }
     if (!formValues.strategicPriorityId) {
-      nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+      nextErrors.strategicPriorityId = 'Strategic Priority is required.'
     }
     if (!formValues.strategicPriorityClassificationId) {
       nextErrors.strategicPriorityClassificationId =
@@ -5821,7 +5836,7 @@ export default function NewProject() {
                 <section className="rounded-2xl border border-[#DDEBFF] bg-white shadow-none dark:border-white/10 dark:bg-[#1E293B]">
                   <div className="border-b border-[#DDEBFF] px-4 py-4 dark:border-white/10 sm:px-6">
                     <div className="flex items-start gap-4">
-                      <div className="mt-1 shrink-0 text-[var(--primary)]">
+                      <div className="mt-1 shrink-0 text-[#0F172A] dark:text-white">
                         <Upload className="h-6 w-6" />
                       </div>
                       <div>
@@ -5910,7 +5925,7 @@ export default function NewProject() {
                 </div>
 
                 <FormField
-                  label="Strategic Priorities"
+                  label="Strategic Priority"
                   required
                   error={fieldErrors.strategicPriorityId}
                 >
@@ -6219,6 +6234,7 @@ export default function NewProject() {
                     value={formValues.plannedEndDate}
                     onChange={(value) => updateField('plannedEndDate', value)}
                     invalid={Boolean(fieldErrors.plannedEndDate)}
+                    minDate={formValues.plannedStartDate || undefined}
                   />
                 </FormField>
               </div>
@@ -6971,7 +6987,7 @@ export default function NewProject() {
                         {copilotAiSuggestionLoading ? (
                           <>
                             <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priorities</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priority</p>
                               <div className="mt-1 flex items-center gap-1.5 text-xs text-[#A855F7]"><Loader2 className="h-3 w-3 animate-spin" />Loading...</div>
                             </div>
                             <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
@@ -6982,7 +6998,7 @@ export default function NewProject() {
                         ) : matchedCopilotAiSuggestions[0] ? (
                           <>
                             <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priorities</p>
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Strategic Priority</p>
                               <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{matchedCopilotAiSuggestions[0].strategicPriority}</p>
                             </div>
                             <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
@@ -7160,7 +7176,7 @@ export default function NewProject() {
                 <FormField label="Initiative / Budget Item Name" required error={copilotFieldErrors.initiativeName}>
                   <Input value={copilotFormValues.initiativeName} onChange={(event) => updateCopilotField('initiativeName', event.target.value)} className={cn('h-12 rounded-xl bg-white shadow-sm dark:bg-[#1E293B]', copilotFieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
                 </FormField>
-                <FormField label="Strategic Priorities" required error={copilotFieldErrors.strategicPriorityId}>
+                <FormField label="Strategic Priority" required error={copilotFieldErrors.strategicPriorityId}>
                   <LookupSelect value={copilotFormValues.strategicPriorityId} onChange={handleCopilotStrategicPriorityChange} placeholder="Select parent strategic priority" options={strategicPriorityParentOptions} icon={TrendingUp} disabled={lookupLoading} invalid={Boolean(copilotFieldErrors.strategicPriorityId)} />
                 </FormField>
                 <FormField label="Strategic Priority Classification" required error={copilotFieldErrors.strategicPriorityClassificationId}>
@@ -7190,7 +7206,12 @@ export default function NewProject() {
                   <DatePickerField value={copilotFormValues.plannedStartDate} onChange={(value) => updateCopilotField('plannedStartDate', value)} invalid={Boolean(copilotFieldErrors.plannedStartDate)} />
                 </FormField>
                 <FormField label="Planned End Date" required error={copilotFieldErrors.plannedEndDate}>
-                  <DatePickerField value={copilotFormValues.plannedEndDate} onChange={(value) => updateCopilotField('plannedEndDate', value)} invalid={Boolean(copilotFieldErrors.plannedEndDate)} />
+                  <DatePickerField
+                    value={copilotFormValues.plannedEndDate}
+                    onChange={(value) => updateCopilotField('plannedEndDate', value)}
+                    invalid={Boolean(copilotFieldErrors.plannedEndDate)}
+                    minDate={copilotFormValues.plannedStartDate || undefined}
+                  />
                 </FormField>
               </div>
             </FormSection>
