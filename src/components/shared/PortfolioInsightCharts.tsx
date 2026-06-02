@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -20,6 +21,7 @@ type ChartKey = 'aiReviewFlags' | 'issues' | 'budgetConsideration'
 interface PortfolioInsightChartsProps {
   summary: PortfolioSummaryPayload | null
   chartKeys?: ChartKey[]
+  projectHrefBuilder?: (projectId: string) => string
 }
 
 type ChartDatum = {
@@ -40,6 +42,27 @@ const DASHBOARD_SERIES = [
   dashboardPalette.primaryMuted,
   dashboardPalette.primaryDark,
 ] as const
+const ISSUE_SEVERITY_COLORS = {
+  high: '#7A2848',
+  medium: '#B68A35',
+  low: '#2E7D74',
+} as const
+const ISSUE_CATEGORY_COLORS = [
+  '#1E3A8A',
+  '#B68A35',
+  '#2E7D74',
+  '#5B87FF',
+  '#8B5CF6',
+  '#64748B',
+] as const
+const AI_REVIEW_FLAG_COLORS = [
+  '#123C73',
+  '#2E6F95',
+  '#B68A35',
+  '#1F6A5A',
+  '#6E5BD2',
+  '#5F6B7A',
+] as const
 
 function shortenLabel(value: string, max = 20) {
   const trimmed = value.trim()
@@ -47,7 +70,7 @@ function shortenLabel(value: string, max = 20) {
   return `${trimmed.slice(0, max - 1).trimEnd()}...`
 }
 
-function ProjectIdTooltip({ active, payload, label }: any) {
+function ProjectIdTooltip({ active, payload, label, projectHrefBuilder }: any) {
   if (!active || !payload?.length) return null
   const datum = payload[0]?.payload
   if (!datum) return null
@@ -69,12 +92,22 @@ function ProjectIdTooltip({ active, payload, label }: any) {
           </p>
           <div className="flex flex-wrap gap-1">
             {datum.projectIds.map((id: string) => (
-              <span
-                key={id}
-                className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2 py-0.5 text-[11px] font-medium text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE]"
-              >
-                {id}
-              </span>
+              projectHrefBuilder ? (
+                <Link
+                  key={id}
+                  to={projectHrefBuilder(id)}
+                  className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2 py-0.5 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]"
+                >
+                  {id}
+                </Link>
+              ) : (
+                <span
+                  key={id}
+                  className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2 py-0.5 text-[11px] font-medium text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE]"
+                >
+                  {id}
+                </span>
+              )
             ))}
           </div>
         </div>
@@ -95,7 +128,7 @@ function DashboardInsightCard({
   return (
     <Card
       title={description}
-      className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+      className="overflow-visible rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
     >
       <CardContent className="flex h-full flex-col p-6">
         <div className="mb-5">
@@ -128,7 +161,7 @@ function buildAiReviewFlagData(summary: PortfolioSummaryPayload | null): ChartDa
       ),
       count: bucket?.project_ids?.length ?? 0,
       projectIds: bucket?.project_ids ?? [],
-      fill: DASHBOARD_SERIES[index % DASHBOARD_SERIES.length],
+      fill: AI_REVIEW_FLAG_COLORS[index % AI_REVIEW_FLAG_COLORS.length],
     }))
     .filter((entry) => entry.count > 0)
 }
@@ -142,7 +175,7 @@ function buildIssueSeverityData(summary: PortfolioSummaryPayload | null): ChartD
       shortLabel: 'High',
       count: severity.high?.project_ids?.length ?? 0,
       projectIds: severity.high?.project_ids ?? [],
-      fill: dashboardPalette.primaryDark,
+      fill: ISSUE_SEVERITY_COLORS.high,
     },
     {
       key: 'medium',
@@ -150,7 +183,7 @@ function buildIssueSeverityData(summary: PortfolioSummaryPayload | null): ChartD
       shortLabel: 'Medium',
       count: severity.medium?.project_ids?.length ?? 0,
       projectIds: severity.medium?.project_ids ?? [],
-      fill: dashboardPalette.primary,
+      fill: ISSUE_SEVERITY_COLORS.medium,
     },
     {
       key: 'low',
@@ -158,7 +191,7 @@ function buildIssueSeverityData(summary: PortfolioSummaryPayload | null): ChartD
       shortLabel: 'Low',
       count: severity.low?.project_ids?.length ?? 0,
       projectIds: severity.low?.project_ids ?? [],
-      fill: dashboardPalette.primarySoft,
+      fill: ISSUE_SEVERITY_COLORS.low,
     },
   ].filter((entry) => entry.count > 0)
 }
@@ -173,7 +206,7 @@ function buildIssueCategoryData(summary: PortfolioSummaryPayload | null): ChartD
       shortLabel: shortenLabel(label, 22),
       count: bucket?.project_ids?.length ?? 0,
       projectIds: bucket?.project_ids ?? [],
-      fill: DASHBOARD_SERIES[index % DASHBOARD_SERIES.length],
+      fill: ISSUE_CATEGORY_COLORS[index % ISSUE_CATEGORY_COLORS.length],
     }))
     .filter((entry) => entry.count > 0)
     .sort((left, right) => right.count - left.count)
@@ -215,7 +248,13 @@ function buildBudgetConsiderationData(summary: PortfolioSummaryPayload | null): 
   ]
 }
 
-function AiReviewFlagsChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
+function AiReviewFlagsChart({
+  summary,
+  projectHrefBuilder,
+}: {
+  summary: PortfolioSummaryPayload | null
+  projectHrefBuilder?: (projectId: string) => string
+}) {
   const data = buildAiReviewFlagData(summary)
 
   return (
@@ -244,7 +283,7 @@ function AiReviewFlagsChart({ summary }: { summary: PortfolioSummaryPayload | nu
                 interval={0}
                 tick={{ fill: '#475569', fontSize: 12 }}
               />
-              <Tooltip content={<ProjectIdTooltip />} cursor={{ fill: '#F8FBFF' }} />
+              <Tooltip allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 60 }} content={<ProjectIdTooltip projectHrefBuilder={projectHrefBuilder} />} cursor={{ fill: '#F8FBFF' }} />
               <Bar dataKey="count" radius={[0, 10, 10, 0]} maxBarSize={30}>
                 {data.map((entry) => (
                   <Cell key={entry.key} fill={entry.fill} />
@@ -260,7 +299,13 @@ function AiReviewFlagsChart({ summary }: { summary: PortfolioSummaryPayload | nu
   )
 }
 
-function IssuesChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
+function IssuesChart({
+  summary,
+  projectHrefBuilder,
+}: {
+  summary: PortfolioSummaryPayload | null
+  projectHrefBuilder?: (projectId: string) => string
+}) {
   const severityData = buildIssueSeverityData(summary)
   const categoryData = buildIssueCategoryData(summary)
 
@@ -291,7 +336,7 @@ function IssuesChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
                           <Cell key={entry.key} fill={entry.fill} />
                         ))}
                       </Pie>
-                      <Tooltip content={<ProjectIdTooltip />} />
+                      <Tooltip allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 60 }} content={<ProjectIdTooltip projectHrefBuilder={projectHrefBuilder} />} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -338,7 +383,7 @@ function IssuesChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
                       interval={0}
                       tick={{ fill: '#475569', fontSize: 12 }}
                     />
-                    <Tooltip content={<ProjectIdTooltip />} cursor={{ fill: '#F8FBFF' }} />
+                    <Tooltip allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 60 }} content={<ProjectIdTooltip projectHrefBuilder={projectHrefBuilder} />} cursor={{ fill: '#F8FBFF' }} />
                     <Bar dataKey="count" radius={[0, 10, 10, 0]} maxBarSize={28}>
                       {categoryData.map((entry) => (
                         <Cell key={entry.key} fill={entry.fill} />
@@ -359,7 +404,13 @@ function IssuesChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
   )
 }
 
-function BudgetConsiderationChart({ summary }: { summary: PortfolioSummaryPayload | null }) {
+function BudgetConsiderationChart({
+  summary,
+  projectHrefBuilder,
+}: {
+  summary: PortfolioSummaryPayload | null
+  projectHrefBuilder?: (projectId: string) => string
+}) {
   const data = buildBudgetConsiderationData(summary)
 
   return (
@@ -385,7 +436,7 @@ function BudgetConsiderationChart({ summary }: { summary: PortfolioSummaryPayloa
                   axisLine={false}
                   tick={{ fill: '#64748B', fontSize: 12 }}
                 />
-                <Tooltip content={<ProjectIdTooltip />} cursor={{ fill: '#F8FBFF' }} />
+                <Tooltip allowEscapeViewBox={{ x: true, y: true }} wrapperStyle={{ zIndex: 60 }} content={<ProjectIdTooltip projectHrefBuilder={projectHrefBuilder} />} cursor={{ fill: '#F8FBFF' }} />
                 <Bar dataKey="count" radius={[10, 10, 0, 0]} maxBarSize={46}>
                   {data.map((entry) => (
                     <Cell key={entry.key} fill={entry.fill} />
@@ -419,12 +470,13 @@ function BudgetConsiderationChart({ summary }: { summary: PortfolioSummaryPayloa
 export function PortfolioInsightCharts({
   summary,
   chartKeys = CHART_KEYS,
+  projectHrefBuilder,
 }: PortfolioInsightChartsProps) {
   return (
     <>
-      {chartKeys.includes('aiReviewFlags') && <AiReviewFlagsChart summary={summary} />}
-      {chartKeys.includes('issues') && <IssuesChart summary={summary} />}
-      {chartKeys.includes('budgetConsideration') && <BudgetConsiderationChart summary={summary} />}
+      {chartKeys.includes('aiReviewFlags') && <AiReviewFlagsChart summary={summary} projectHrefBuilder={projectHrefBuilder} />}
+      {chartKeys.includes('issues') && <IssuesChart summary={summary} projectHrefBuilder={projectHrefBuilder} />}
+      {chartKeys.includes('budgetConsideration') && <BudgetConsiderationChart summary={summary} projectHrefBuilder={projectHrefBuilder} />}
     </>
   )
 }

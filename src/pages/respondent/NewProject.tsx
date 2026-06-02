@@ -1516,7 +1516,7 @@ function LookupSelect({
             value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]'
           )}
         >
-          <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Icon className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <SelectValue placeholder={placeholder} />
         </span>
       </SelectTrigger>
@@ -1592,7 +1592,7 @@ function DatePickerField({
           selectedDate ? 'text-[#0F172A]' : 'text-[#64748B]'
         )}
       >
-        <CalendarDays className="mr-2 h-4 w-4 shrink-0" />
+        <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
         <span>{formattedValue}</span>
       </button>
 
@@ -2375,7 +2375,7 @@ function ProductMultiSelect({
         )}
       >
         <span className="inline-flex min-w-0 items-center gap-5">
-          <Package className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Package className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <span className={cn('truncate text-sm', selectedProducts.length === 0 && 'text-[#64748B]')}>
             {disabled ? 'Select technology company first' : triggerLabel}
           </span>
@@ -5786,7 +5786,7 @@ export default function NewProject() {
                             <Sparkles className="h-5 w-5" />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Documents Summary</p>
                             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
                               {activeSupportingDocumentSummaryText}
                             </p>

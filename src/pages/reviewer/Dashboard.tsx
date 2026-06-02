@@ -50,6 +50,7 @@ import { dashboardPalette } from '@/lib/dashboardPalette'
 import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { isReviewerSentToApproverProjectStatus } from '@/services/projectService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
 
 function InfoHint({ text }: { text: string }) {
   return (
@@ -131,6 +132,22 @@ function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; icon
       iconSize={16}
     />
   )
+}
+
+function truncateAtWordBoundary(value: string, maxCharacters: number) {
+  const trimmed = value.trim()
+  if (trimmed.length <= maxCharacters) {
+    return { text: trimmed, truncated: false }
+  }
+
+  const clipped = trimmed.slice(0, maxCharacters)
+  const lastSpace = clipped.lastIndexOf(' ')
+  const nextText = (lastSpace > 40 ? clipped.slice(0, lastSpace) : clipped).trimEnd()
+
+  return {
+    text: `${nextText}...`,
+    truncated: true,
+  }
 }
 
 function ActionMetricCard({
@@ -225,6 +242,7 @@ function computeDaysRemaining(endDate?: string | null): number {
 
 export default function ReviewerDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
+  const [planningExpanded, setPlanningExpanded] = useState(false)
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
@@ -298,6 +316,11 @@ export default function ReviewerDashboard() {
   const planningSummary = useMemo(
     () => resolvePortfolioTemplate(getPortfolioSummaryRoleView(portfolioSummary, 'reviewer')?.planning_cycle_summary_template, portfolioSummary),
     [portfolioSummary]
+  )
+  const storedInstanceDetail = getStoredInstanceDetail()
+  const planningSummaryPreview = useMemo(
+    () => truncateAtWordBoundary(planningSummary || 'Current cycle status: reviewer assessment is active, submitted projects are being validated, and clarifications are routed to respondents before items move to approver review.', 210),
+    [planningSummary]
   )
   const reviewerProgressAssigned = toReview + reviewCompleted + clarificationPending + reviewed
   const reviewerProgressValue = reviewerProgressAssigned > 0 ? Math.round((reviewed / reviewerProgressAssigned) * 100) : 0
@@ -434,8 +457,20 @@ export default function ReviewerDashboard() {
             <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
               {cycleName}
             </h1>
+            <p className="mt-1 text-sm font-medium text-[#64748B] dark:text-slate-200">
+              {instanceDetail?.name ?? storedInstanceDetail?.name ?? 'Entity'}
+            </p>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              {planningSummary || 'Current cycle status: reviewer assessment is active, submitted projects are being validated, and clarifications are routed to respondents before items move to approver review.'}
+              <span className="inline">
+                {planningExpanded ? (planningSummary || planningSummaryPreview.text) : planningSummaryPreview.text}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPlanningExpanded((current) => !current)}
+                className="ml-1 inline-flex translate-y-[1px] items-center rounded-full border border-[#D8E7FF] bg-[#EEF5FF] px-2 py-0.5 align-baseline text-[11px] font-semibold leading-none text-[#286CFF] transition-colors hover:border-[#BFD4FF] hover:bg-[#E7F0FF] hover:text-[#0C65F5] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                {planningExpanded ? 'Less' : '..'}
+              </button>
             </p>
             <div className="mt-5 space-y-3">
               <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -505,12 +540,12 @@ export default function ReviewerDashboard() {
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-5 sm:p-6">
+          <CardContent className="flex h-full flex-col justify-center p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Review Snapshot</h3>
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
                   <InfoHint text="Consolidated reviewer view of queue budget, completed review value, and AI-estimated approval outlook." />
                 </div>
               </div>
@@ -553,7 +588,7 @@ export default function ReviewerDashboard() {
       />
 
       {/* ─── Projects Requiring Attention + Budget Mix ─── */}
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
         <Card
           title="Reviewer-owned projects that are ready for assessment or need immediate attention."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
@@ -628,7 +663,11 @@ export default function ReviewerDashboard() {
           </CardContent>
         </Card>
 
-        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['aiReviewFlags']} />
+        <PortfolioInsightCharts
+          summary={portfolioSummary}
+          chartKeys={['aiReviewFlags']}
+          projectHrefBuilder={(projectId) => `/reviewer/review-queue/${projectId}`}
+        />
 
         <Card
           title="Requested budget distribution across review statuses in the current queue."
@@ -827,7 +866,11 @@ export default function ReviewerDashboard() {
         </Card>
 
         <div className="grid h-full gap-5">
-          <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['budgetConsideration']} />
+          <PortfolioInsightCharts
+            summary={portfolioSummary}
+            chartKeys={['budgetConsideration']}
+            projectHrefBuilder={(projectId) => `/reviewer/review-queue/${projectId}`}
+          />
           <Card
             title="Shows how requested budget is distributed across the four ICT budget activity types in the reviewer workspace."
             className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
@@ -843,7 +886,7 @@ export default function ReviewerDashboard() {
                   Requested budget split across all four budget types
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" style={{marginTop: 50}}>
                 {budgetTypeBreakdown.map((item) => (
                     <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
                     <div className="flex items-center gap-3">
@@ -879,7 +922,7 @@ export default function ReviewerDashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
         <Card
           title="Shows how requested budget is distributed across the four ICT budget activity types in the reviewer workspace."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
@@ -895,39 +938,45 @@ export default function ReviewerDashboard() {
                 Requested budget split across all four budget types
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {budgetTypeBreakdown.map((item) => (
-                <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
-                      {item.count}
-                    </div>
-                    <div>
-                      <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
-                      <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of queue total</p>
+            <div className="mx-auto mt-12 max-w-2xl">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {budgetTypeBreakdown.map((item) => (
+                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>
+                    <div className="flex min-h-[104px] items-center gap-3">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
+                        {item.count}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
+                        <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of queue total</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
-              <div className="flex h-full">
-                {budgetTypeBreakdown.map((item, index) => (
-                  <div
-                    key={item.key}
-                    className={`${index === 0 ? 'rounded-l-full' : ''} ${index === budgetTypeBreakdown.length - 1 ? 'rounded-r-full' : ''} h-full`}
-                    style={{
-                      width: `${item.share}%`,
-                      backgroundColor: item.accent,
-                    }}
-                  />
                 ))}
+              </div>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                <div className="flex h-full">
+                  {budgetTypeBreakdown.map((item, index) => (
+                    <div
+                      key={item.key}
+                      className={`${index === 0 ? 'rounded-l-full' : ''} ${index === budgetTypeBreakdown.length - 1 ? 'rounded-r-full' : ''} h-full`}
+                      style={{
+                        width: `${item.share}%`,
+                        backgroundColor: item.accent,
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
-        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['issues']} />
+        <PortfolioInsightCharts
+          summary={portfolioSummary}
+          chartKeys={['issues']}
+          projectHrefBuilder={(projectId) => `/reviewer/review-queue/${projectId}`}
+        />
       </section>
     </div>
   )

@@ -4,7 +4,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  Download,
+  BrainCircuit,
   Eye,
   Inbox,
   ListFilter,
@@ -138,6 +138,25 @@ function AiInsightRow({ confidence, children }: {
         )}
       </div>
       <div className="border-t border-[#E9D5FF] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#1E293B]">{children}</div>
+    </div>
+  )
+}
+
+function QueueSummaryChip({
+  label,
+  value,
+  accent = '#286CFF',
+}: {
+  label: string
+  value: React.ReactNode
+  accent?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#162339]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-300">{label}</p>
+      <div className="mt-1 text-lg font-bold leading-none" style={{ color: accent }}>
+        {value}
+      </div>
     </div>
   )
 }
@@ -321,15 +340,21 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
           <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
-            Potential Conflict ({policyCounts.potentialConflict})
-          </span>
-          <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
-            Coordination Required ({policyCounts.coordinationRequired})
-          </span>
-          <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
-            Allowed With Conditions ({policyCounts.allowedWithConditions})
-          </span>
+          {policyCounts.potentialConflict > 0 && (
+            <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
+              Potential Conflict ({policyCounts.potentialConflict})
+            </span>
+          )}
+          {policyCounts.coordinationRequired > 0 && (
+            <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
+              Coordination Required ({policyCounts.coordinationRequired})
+            </span>
+          )}
+          {policyCounts.allowedWithConditions > 0 && (
+            <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
+              Allowed With Conditions ({policyCounts.allowedWithConditions})
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -657,68 +682,14 @@ export default function ApprovalQueue() {
               Review reviewer-cleared submissions, decide final approvals, and return items that need clarification.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-            <div className="flex items-center gap-3">
-              <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
-              <div>
-                <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Approval Summary</p>
-                <p className="text-xs text-[#64748B] dark:text-slate-200">
-                  {loading ? '—' : `${pendingCount} pending / ${approvedCount} approved`}
-                </p>
-              </div>
-            </div>
+          <div className="sm:min-w-[220px]">
+            <QueueSummaryChip
+              label="Amount Requested"
+              value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-lg font-bold" iconSize={14} />}
+              accent="#286CFF"
+            />
           </div>
         </div>
-      </div>
-
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat
-          label="Amount Requested"
-          value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-3xl font-bold leading-none" iconSize={18} />}
-          icon={WalletCards}
-          tone="blue"
-          sub="Current value in approver scope"
-        />
-        <QueueStat
-          label="Pending Approval"
-          value={loading ? '—' : pendingCount}
-          icon={AlertTriangle}
-          tone="amber"
-          sub="Awaiting final decision"
-          onClick={() => setActiveFilter('pending')}
-          active={activeFilter === 'pending'}
-        />
-        <QueueStat
-          label="Approved"
-          value={loading ? '—' : approvedCount}
-          icon={CheckCircle2}
-          tone="green"
-          sub="Ready for DGE handoff"
-          onClick={() => setActiveFilter('approved')}
-          active={activeFilter === 'approved'}
-        />
-        <QueueStat
-          label="Submitted to DGE"
-          value={loading ? '—' : submittedToDgeCount}
-          icon={Sparkles}
-          tone="red"
-          sub="Already with strategy team"
-          onClick={() => setActiveFilter('submitted-dge')}
-          active={activeFilter === 'submitted-dge'}
-        />
-      </div>
-
-      <div className="hidden grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat
-          label="Amount Requested"
-          value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-2xl font-bold" iconSize={16} />}
-          icon={WalletCards}
-          tone="blue"
-        />
-        <QueueStat label="Pending Approval" value={loading ? '—' : pendingCount} icon={AlertTriangle} tone="amber" sub="Action needed" />
-        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" />
-        <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={Sparkles} tone="amber" />
       </div>
 
       {/* ── AI Portfolio Panel ── */}
@@ -732,59 +703,75 @@ export default function ApprovalQueue() {
         projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
       />
 
-      <div className="rounded-[26px] border border-[#D9E6F5] bg-white p-5 shadow-none dark:border-white/10 dark:bg-[#162339]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white">
-              <Send className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-[#0F172A] dark:text-white">Submit To DGE</p>
-              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                Once every project in {selectedCycle?.name ?? 'this cycle'} is approved, move the full ADGE portfolio to the strategy team for DGE review.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
-                <span className="rounded-full bg-[#EEF5FF] px-3 py-1 text-[#286CFF]">{cycleProjectCount} total projects</span>
-                <span className="rounded-full bg-[#F0FDF4] px-3 py-1 text-[#16A34A]">{approvedCount} approved</span>
-                <span className="rounded-full bg-[#F8FAFC] px-3 py-1 text-[#64748B] dark:bg-white/5 dark:text-slate-100">{respondentCount} respondent / {reviewerCount} reviewer / {approverOwnedCount} approver</span>
+      <section
+        title="Once all created projects are reviewed and approved, you can submit them all to DGE."
+        className="overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(40,108,255,0.05)] dark:border-white/10 dark:bg-[#18263F]"
+      >
+        <div className="overflow-x-auto">
+          <div className="flex min-w-[980px] items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFE] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
+                <Sparkles className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">AI Summary</p>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
+                  {loading ? '—' : `${pendingCount} pending / ${approvedCount} approved / ${submittedToDgeCount} submitted to DGE`}
+                </p>
               </div>
             </div>
-          </div>
-          <div className="flex flex-col gap-2 lg:min-w-[250px]">
+
+            <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
+
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
+                <WalletCards className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Amount Requested</p>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
+                  {loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-sm font-semibold" iconSize={14} />}
+                </p>
+              </div>
+            </div>
+
+            <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
+
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
+                <BrainCircuit className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Budget</p>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
+                  {loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-sm font-semibold" iconSize={14} />}
+                </p>
+              </div>
+            </div>
+
             {portfolioAlreadySubmittedToDge ? (
-              <div className="rounded-2xl border border-[#DDD6FE] bg-[#F5F3FF] px-4 py-3 dark:border-[#5B3AA8] dark:bg-[#2A1C4A]">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-[#5B21B6] dark:text-[#DDD6FE]">Submitted to DGE</p>
-                    <p className="mt-1 text-xs leading-5 text-[#6D28D9] dark:text-slate-100">
-                      The ADGE entity has already been handed off to the strategy team. New approver-stage projects will now move directly to DGE.
-                    </p>
-                  </div>
+              <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                <div>
+                  <p className="text-sm font-bold text-[#A855F7] dark:text-[#E9D5FF]">Submitted to DGE</p>
+                  <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-slate-100">
+                    The ADGE entity has already been handed off to the strategy team. New approver-stage projects will now move directly to DGE.
+                  </p>
                 </div>
               </div>
             ) : (
               <Button
-                className="h-11 rounded-2xl"
+                className="ml-auto h-11 shrink-0 rounded-[18px] px-4 shadow-[0_12px_24px_rgba(40,108,255,0.16)]"
                 disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
-                <Send className="h-4 w-4" />
                 Submit to DGE
+                <Send className="h-4 w-4" />
               </Button>
             )}
-            <p className="text-xs text-[#64748B] dark:text-slate-200">
-              {portfolioAlreadySubmittedToDge
-                ? 'The approved portfolio has already been submitted to the strategy team.'
-                : allProjectsApproved
-                  ? 'All cycle projects are approved. The entity is ready for DGE submission.'
-                  : 'This stays disabled until every cycle project is approved by the approver.'}
-            </p>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* ── Filter bar ── */}
       <div className="rounded-2xl border border-[#DDEBFF] bg-white p-3 dark:border-white/10 dark:bg-[#1E293B]">
@@ -854,9 +841,6 @@ export default function ApprovalQueue() {
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="outline" size="sm" className="h-10 rounded-xl">
-              <Download className="h-4 w-4" />Export
-            </Button>
           </div>
         </div>
       </div>

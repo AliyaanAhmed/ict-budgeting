@@ -564,7 +564,7 @@ function EditDatePickerField({
           selectedDate ? 'text-[#0F172A] dark:text-white' : 'text-[#64748B]'
         )}
       >
-        <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-[var(--primary)]" />
+        <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
         <span>{formattedValue}</span>
       </button>
 
@@ -1013,7 +1013,7 @@ function LookupSelect({
             value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]'
           )}
         >
-          <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Icon className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <SelectValue placeholder={placeholder} />
         </span>
       </SelectTrigger>
@@ -1113,7 +1113,7 @@ function ProductMultiSelect({
         )}
       >
         <span className="inline-flex min-w-0 items-center gap-5">
-          <Package className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Package className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <span className={cn('truncate text-sm', selectedProducts.length === 0 && 'text-[#64748B]')}>
             {disabled ? 'Select technology company first' : triggerLabel}
           </span>
@@ -2096,21 +2096,14 @@ function InteractiveBudgetOverviewCard({
   }
 
   const overviewMetricCards = (
-    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
       {typeof scores?.document_evidence?.evidence_score === 'number' && (
-        <div className="rounded-xl border border-[#E3EEFF] bg-[linear-gradient(180deg,#F7FBFF_0%,#FFFFFF_100%)] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-300">Document Evidence</p>
-              <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">Evidence strength from attached documents</p>
-            </div>
-            <span className="shrink-0 rounded-full border border-[#D7E4F4] bg-white px-2.5 py-1 text-sm font-bold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
-              {scores.document_evidence.evidence_score}%
-            </span>
-          </div>
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[#DCEBFF] dark:bg-white/10">
+        <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Document Evidence</p>
+          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#286CFF_0%,#7C3AED_100%)]"
+              className="h-full rounded-full bg-[#A855F7]"
               style={{ width: `${Math.min(100, scores.document_evidence.evidence_score)}%` }}
             />
           </div>
@@ -2125,6 +2118,13 @@ function InteractiveBudgetOverviewCard({
           </div>
         </div>
       )}
+      <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+        <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">AI Confidence</p>
+        <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{confidenceScore}%</p>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
+          <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${Math.min(100, confidenceScore)}%` }} />
+        </div>
+      </div>
       {baLabel && (
         <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
           <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Budget Account</p>
@@ -2341,48 +2341,6 @@ function InteractiveBudgetOverviewCard({
               <p className="mt-1 text-sm text-[#475569] dark:text-slate-100">
                 {roleSummary}
               </p>
-            ) : null}
-            {data ? (
-              <div className="mt-3">
-                <div
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-2xl border px-3 py-2',
-                    confidenceTone === 'green'
-                      ? 'border-[#CFE9D9] bg-[#ECFDF3]'
-                      : confidenceTone === 'amber'
-                        ? 'border-[#F3D7A0] bg-[#FFF8E8]'
-                        : 'border-[#F5C2C7] bg-[#FFF1F3]'
-                  )}
-                >
-                  <Sparkles
-                    className={cn(
-                      'h-4 w-4',
-                      confidenceTone === 'green'
-                        ? 'text-[#16794B]'
-                        : confidenceTone === 'amber'
-                          ? 'text-[#B7791F]'
-                          : 'text-[#B42318]'
-                    )}
-                  />
-                  <div>
-                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">
-                      AI Confidence Score
-                    </p>
-                    <p
-                      className={cn(
-                        'text-sm font-bold',
-                        confidenceTone === 'green'
-                          ? 'text-[#16794B]'
-                          : confidenceTone === 'amber'
-                            ? 'text-[#B7791F]'
-                            : 'text-[#B42318]'
-                      )}
-                    >
-                      {confidenceScore}%
-                    </p>
-                  </div>
-                </div>
-              </div>
             ) : null}
             {data && (activeAiFlags.length > 0 || isRefreshing) ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -3457,6 +3415,43 @@ export default function ProjectDetail() {
     )
   }
 
+  function buildStrategicAiAssist(type: 'priority' | 'classification') {
+    const suggestion = topDetailAiSuggestion
+    if (!suggestion) return null
+
+    const fieldLabel =
+      type === 'priority' ? 'Strategic Priorities' : 'Strategic Priority Classifications'
+    const suggestedValue =
+      type === 'priority'
+        ? suggestion.strategicPriority
+        : suggestion.strategicPriorityClassification
+
+    if (!suggestedValue?.trim()) return null
+
+    const isApplied =
+      type === 'priority'
+        ? formValues.strategicPriorityId === suggestion.priorityId
+        : formValues.strategicPriorityClassificationId === suggestion.classificationId
+
+    if (isApplied) return null
+
+    return (
+      <AiFieldAssistTrigger
+        fieldLabel={fieldLabel}
+        suggestedValue={suggestedValue}
+        isOpen={openAiAssistField === `strategic-${type}`}
+        canApply={false}
+        onToggle={() =>
+          setOpenAiAssistField((current) =>
+            current === `strategic-${type}` ? null : `strategic-${type}`
+          )
+        }
+        onApply={() => {}}
+        helperText="Switch the form to Edit mode to apply this AI recommendation from the Strategic Priority section."
+      />
+    )
+  }
+
   const detailPolicyMatchGroups = useMemo<PolicyMatchGroup[]>(() => {
     const assessmentItems = detailPolicyEvaluationResult?.assessmentItems ?? []
     const order: PolicyMatchType[] = ['Potential Conflict', 'Coordination Required', 'Allowed With Conditions']
@@ -3608,6 +3603,20 @@ export default function ProjectDetail() {
       No AI strategic recommendation is available for this budget yet.
     </div>
   )
+
+  const detailAiSuggestionStatusCard =
+    detailAiSuggestionError ? (
+      <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+        {detailAiSuggestionError}
+      </div>
+    ) : detailAiSuggestionLoading ? (
+      <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Retrieving Strategic Priority and Classification recommendations...
+        </div>
+      </div>
+    ) : null
 
   const detailBudgetOverviewCard = (
     <InteractiveBudgetOverviewCard
@@ -6692,7 +6701,7 @@ export default function ProjectDetail() {
                         <Sparkles className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Documents Summary</p>
                         <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
                           {detailActionSummaryText}
                         </p>
@@ -6809,10 +6818,12 @@ export default function ProjectDetail() {
                   <Field
                     label="Strategic Priorities"
                     value={display.strategicPriority}
+                    aiAssist={buildStrategicAiAssist('priority')}
                   />
                   <Field
                     label="Strategic Priority Classifications"
                     value={display.classification}
+                    aiAssist={buildStrategicAiAssist('classification')}
                   />
                   <Field label="Work Stream" value={display.workStream} />
                   <Field label="ICT Budget Item Type" value={display.budgetType} />
@@ -6830,9 +6841,11 @@ export default function ProjectDetail() {
                   />
                   <Field label="Technology (Product)" value={display.technologyProduct} />
                 </div>
-                <div className="mt-4">
-                  {detailAiSuggestionCard}
-                </div>
+                {detailAiSuggestionStatusCard && (
+                  <div className="mt-4">
+                    {detailAiSuggestionStatusCard}
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
@@ -6916,7 +6929,7 @@ export default function ProjectDetail() {
                         <Sparkles className="h-5 w-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Document Summary</p>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Documents Summary</p>
                         <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
                           {detailActionSummaryText}
                         </p>

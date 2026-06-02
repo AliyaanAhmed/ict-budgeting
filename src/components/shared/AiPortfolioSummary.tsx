@@ -1302,6 +1302,31 @@ export function AiPortfolioSummary({
                         {toDisplayText(flag.summary) && (
                           <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
                         )}
+                        {flag.projectIds.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                              Related Projects
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {flag.projectIds.map((projectId) => {
+                                const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                const project = findProject(projects, projectId)
+                                const label = project?.id ?? projectId
+                                const cls =
+                                  'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                return href ? (
+                                  <Link key={projectId} to={href} className={cls}>
+                                    {label}
+                                  </Link>
+                                ) : (
+                                  <span key={projectId} className={cls}>
+                                    {label}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -1334,140 +1359,7 @@ export function AiPortfolioSummary({
             </div>
           )}
 
-          {/* ── 4. Charts 2×2 grid ── */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Risk Distribution */}
-            <ChartCard
-              title="Risk Distribution"
-              description={`${counts.totalProjects} projects · risk breakdown`}
-            >
-              {riskChartData.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="h-[180px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={riskChartData}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={48}
-                          outerRadius={72}
-                          paddingAngle={3}
-                          stroke="none"
-                        >
-                          {riskChartData.map((entry) => (
-                            <Cell key={entry.key} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<RiskDistributionTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="space-y-1.5">
-                    {riskChartData.map((entry) => (
-                      <div
-                        key={entry.key}
-                        className="flex items-center justify-between rounded-xl border border-[#F0D9FF] bg-[#FDF8FF]/60 px-3 py-2 dark:border-white/10 dark:bg-white/5"
-                      >
-                        <span className="inline-flex items-center gap-2 text-sm text-[#475569] dark:text-slate-300">
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.fill }} />
-                          {entry.name}
-                        </span>
-                        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">
-                          {entry.value} · {entry.share}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="py-4 text-sm text-[#64748B] dark:text-slate-300">No risk signals yet.</p>
-              )}
-            </ChartCard>
-
-            {/* Workflow Pipeline */}
-            {workflowStatuses.length > 0 && (
-              <ChartCard
-                title="Workflow Pipeline"
-                description="Projects by workflow stage"
-              >
-                <div style={{ height: Math.max(180, workflowChartData.length * 40 + 20) }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={workflowChartData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
-                    >
-                      <CartesianGrid horizontal={false} stroke="#F3E8FF" />
-                      <XAxis
-                        type="number"
-                        allowDecimals={false}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="shortLabel"
-                        width={88}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#475569', fontSize: 12 }}
-                      />
-                      <Tooltip content={<SimpleBarTooltip />} cursor={{ fill: '#F5EEFF' }} />
-                      <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={28}>
-                        {workflowChartData.map((entry) => (
-                          <Cell key={entry.label} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-
-            {/* Issue Categories */}
-            {issueCategories.length > 0 && (
-              <ChartCard
-                title="Issue Categories"
-                description="Top issue groups across the portfolio"
-              >
-                <div style={{ height: Math.max(180, issueCategoryChartData.length * 40 + 20) }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={issueCategoryChartData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
-                    >
-                      <CartesianGrid horizontal={false} stroke="#F3E8FF" />
-                      <XAxis
-                        type="number"
-                        allowDecimals={false}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="shortLabel"
-                        width={104}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#475569', fontSize: 12 }}
-                      />
-                      <Tooltip content={<SimpleBarTooltip />} cursor={{ fill: '#F5EEFF' }} />
-                      <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={28}>
-                        {issueCategoryChartData.map((entry) => (
-                          <Cell key={entry.label} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-
-          {/* ── 5. Priority Focus (compact pills) ── */}
+          {/* ── 4. Priority Focus (compact pills) ── */}
           {focusProjects.length > 0 && (
             <div className="rounded-[22px] border border-[#E9D5FF] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -1517,7 +1409,6 @@ export function AiPortfolioSummary({
               </div>
             </div>
           )}
-          </div>
 
         </div>
       )}
