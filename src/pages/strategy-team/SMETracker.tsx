@@ -1,39 +1,21 @@
 import { useState } from 'react'
-import {
-  ArrowRight,
-  ChevronDown,
-  ChevronUp,
-  CircleCheckBig,
-  Clock3,
-  Sparkles,
-  TriangleAlert,
-  Users,
-  Workflow,
-} from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, CircleCheckBig, Clock3, Sparkles, TriangleAlert, Users, Workflow } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
 import { smeTracks } from './strategyTeamData'
 
-type FilterKey =
-  | 'Total SME Teams'
-  | 'Teams On Track'
-  | 'Teams Behind'
-  | 'Overdue Reviews'
-  | 'Clarification Blocked'
-  | 'High-Risk Workloads'
+type FilterKey = 'Total SME Teams' | 'Teams On Track' | 'Teams Behind' | 'Overdue Reviews' | 'Clarification Blocked' | 'High-Risk Workloads'
 
 const filters: Array<{
   label: FilterKey
   value: number
-  icon: typeof Users
-  tone: string
 }> = [
-  { label: 'Total SME Teams', value: 8, icon: Users, tone: 'bg-blue-600 text-white border-blue-600 shadow-md' },
-  { label: 'Teams On Track', value: 3, icon: CircleCheckBig, tone: 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:shadow-sm' },
-  { label: 'Teams Behind', value: 2, icon: TriangleAlert, tone: 'bg-amber-100 text-amber-700 border-amber-200 hover:shadow-sm' },
-  { label: 'Overdue Reviews', value: 28, icon: Clock3, tone: 'bg-red-100 text-red-700 border-red-200 hover:shadow-sm' },
-  { label: 'Clarification Blocked', value: 5, icon: Workflow, tone: 'bg-purple-100 text-purple-700 border-purple-200 hover:shadow-sm' },
-  { label: 'High-Risk Workloads', value: 6, icon: Sparkles, tone: 'bg-orange-100 text-orange-700 border-orange-200 hover:shadow-sm' },
+  { label: 'Total SME Teams', value: 8 },
+  { label: 'Teams On Track', value: 3 },
+  { label: 'Teams Behind', value: 2 },
+  { label: 'Overdue Reviews', value: 28 },
+  { label: 'Clarification Blocked', value: 5 },
+  { label: 'High-Risk Workloads', value: 6 },
 ]
 
 function CircularMetric({
@@ -127,21 +109,19 @@ export default function SMETracker() {
         <div className="flex flex-wrap gap-3">
           {filters.map((filter) => {
             const active = activeFilter === filter.label
-            const Icon = filter.icon
             return (
               <button
                 key={filter.label}
                 type="button"
                 onClick={() => setActiveFilter(filter.label)}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-2 transition-all ${
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? filter.tone
-                    : 'border-[#D9E6F5] bg-white text-[#475569] hover:border-[#286CFF] hover:text-[#286CFF] dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-200'
+                    ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                    : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
                 }`}
               >
-                <Icon className="h-4 w-4" />
                 <span className="text-sm font-medium">{filter.label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? 'bg-white/20' : 'bg-black/5 dark:bg-white/10'}`}>
+                <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${active ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10'}`}>
                   {filter.value}
                 </span>
               </button>

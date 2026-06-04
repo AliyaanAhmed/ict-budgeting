@@ -61,10 +61,10 @@ export type QualityCheckItem = {
 }
 
 export const strategyStats = [
-  { label: 'Projects in cycle', value: '48', note: 'Across all entities', accent: '#286CFF' },
-  { label: 'Aligned priorities', value: '31', note: 'Ready for SME routing', accent: '#14B8A6' },
-  { label: 'SME queues active', value: '7', note: 'One per strategic priority', accent: '#9333EA' },
-  { label: 'Quality check items', value: '12', note: 'Awaiting governance review', accent: '#F97316' },
+  { label: 'Projects in cycle', value: '48', note: 'Across all entities', accent: '#286CFF', icon: ClipboardList },
+  { label: 'Aligned priorities', value: '31', note: 'Ready for SME routing', accent: '#14B8A6', icon: Sparkles },
+  { label: 'SME queues active', value: '7', note: 'One per strategic priority', accent: '#9333EA', icon: Users },
+  { label: 'Quality check items', value: '12', note: 'Awaiting governance review', accent: '#F97316', icon: BrainCircuit },
 ] as const
 
 export const strategyWorkflowCards = [
@@ -386,3 +386,4 @@ export const qualityCheckItems: QualityCheckItem[] = [
     adjustment: 'Add control mapping and clarify governance dependencies.',
   },
 ]
+import { BrainCircuit, ClipboardList, Sparkles, Users } from 'lucide-react'

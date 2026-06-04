@@ -47,7 +47,7 @@ export default function StrategyTeamDashboard() {
             value={item.value}
             note={item.note}
             accent={item.accent}
-            icon={<Sparkles className="h-4.5 w-4.5" />}
+            icon={<item.icon className="h-4.5 w-4.5" />}
           />
         ))}
       </section>

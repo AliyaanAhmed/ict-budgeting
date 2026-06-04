@@ -272,6 +272,18 @@ function stageMatchesEntity(entityStage: (typeof stages)[number], activeStage: (
 export default function EntityTracker() {
   const [activeStage, setActiveStage] = useState<(typeof stages)[number]>('All Stages')
 
+  const stageCounts = useMemo(
+    () =>
+      stages.map((stage) => ({
+        label: stage,
+        count:
+          stage === 'All Stages'
+            ? entityProgressRows.length
+            : entityProgressRows.filter((entity) => entity.currentStage === stage).length,
+      })),
+    []
+  )
+
   const filteredEntities = useMemo(
     () => entityProgressRows.filter((entity) => stageMatchesEntity(entity.currentStage, activeStage)),
     [activeStage]
@@ -286,19 +298,22 @@ export default function EntityTracker() {
       <section className="space-y-5">
         <EntityTrackerSummary />
 
-        <div className="flex flex-wrap gap-2">
-          {stages.map((stage) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          {stageCounts.map((stage) => (
             <button
-              key={stage}
+              key={stage.label}
               type="button"
-              onClick={() => setActiveStage(stage)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                activeStage === stage
-                  ? 'border-[#D7E4F4] bg-[#286CFF] text-white'
-                  : 'border-[#D7E4F4] bg-white text-[#475569] hover:bg-[#EEF5FF] hover:text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-slate-200'
+              onClick={() => setActiveStage(stage.label)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeStage === stage.label
+                  ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                  : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
               }`}
             >
-              {stage}
+              <span>{stage.label === 'All Stages' ? 'All Stages' : stage.label}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${activeStage === stage.label ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10'}`}>
+                {stage.count}
+              </span>
             </button>
           ))}
         </div>

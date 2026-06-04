@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, ExternalLink, MessageSquare, Search, ShieldCheck, Sparkles, TriangleAlert, Workflow } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
+import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
 import { qualityCheckItems } from './strategyTeamData'
 
 const tabs = ['All', 'Recommended', 'Not Recommended', 'Clarification Pending'] as const
@@ -178,6 +178,22 @@ export default function QualityCheck() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('All')
   const [search, setSearch] = useState('')
 
+  const tabCounts = useMemo(
+    () =>
+      tabs.map((tab) => ({
+        label: tab,
+        count:
+          tab === 'All'
+            ? qualityCheckItems.length
+            : tab === 'Recommended'
+              ? qualityCheckItems.filter((item) => item.severity === 'Info').length
+              : tab === 'Not Recommended'
+                ? qualityCheckItems.filter((item) => item.severity === 'Critical').length
+                : qualityCheckItems.filter((item) => item.statuscode.includes('Awaiting')).length,
+      })),
+    []
+  )
+
   const filteredItems = useMemo(() => {
     const searched = qualityCheckItems.filter((item) =>
       `${item.id} ${item.name} ${item.entity} ${item.classification} ${item.priority}`.toLowerCase().includes(search.toLowerCase())
@@ -213,19 +229,22 @@ export default function QualityCheck() {
               className="h-10 rounded-2xl border-[#D7E4F4] bg-white pl-10 text-sm dark:border-white/10 dark:bg-[#1E293B]"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => (
+          <div className="flex items-center gap-2 flex-wrap">
+            {tabCounts.map((tab) => (
               <button
-                key={tab}
+                key={tab.label}
                 type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  activeTab === tab
-                    ? 'bg-[#286CFF] text-white'
-                    : 'bg-[#F8FBFF] text-[#475569] hover:bg-[#EEF5FF] hover:text-[#286CFF]'
+                onClick={() => setActiveTab(tab.label)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  activeTab === tab.label
+                    ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                    : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
                 }`}
               >
-                {tab}
+                <span>{tab.label}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-xs font-bold ${activeTab === tab.label ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10'}`}>
+                  {tab.count}
+                </span>
               </button>
             ))}
           </div>
@@ -235,11 +254,11 @@ export default function QualityCheck() {
           {filteredItems.map((item) => (
             <Card key={item.id} className="overflow-hidden rounded-[20px] border-[#DCE6F6] bg-white shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
               <CardContent className="p-0">
-                <div className="flex w-full flex-col gap-4 px-5 py-4 text-left">
-                  <div className="flex w-full items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
+                  <div className="flex w-full flex-col gap-4 px-5 py-4 text-left">
+                    <div className="flex w-full items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-semibold text-[#0F172A] dark:text-white">
                           {item.id} {item.name}
                         </p>
                         <StrategyPill tone={item.severity === 'Critical' ? 'amber' : item.severity === 'Warning' ? 'blue' : 'teal'}>
@@ -256,14 +275,9 @@ export default function QualityCheck() {
                     </div>
                   </div>
 
-                  <StrategyProgressBar
-                    value={item.confidence}
-                    accent={item.severity === 'Critical' ? '#F97316' : item.severity === 'Warning' ? '#286CFF' : '#14B8A6'}
-                  />
-
                   <div className="grid gap-4 lg:grid-cols-3">
-                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                      <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[#475569]">SME Recommendation</label>
+                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                      <label className="mb-2 block text-[11px] font-medium tracking-wide text-[#475569]">SME Recommendation</label>
                       <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#4A9D5C]/30 bg-[#4A9D5C]/10 px-4 py-2">
                         <ShieldCheck className="h-5 w-5 text-[#4A9D5C]" />
                         <span className="font-medium text-[#4A9D5C]">Recommended — Approve</span>
@@ -278,15 +292,15 @@ export default function QualityCheck() {
                         Show less
                       </button>
                     </div>
-                    <div className="rounded-[20px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-300">AI Quality Insight</span>
-                        <Sparkles className="h-4 w-4 text-[#286CFF]" />
+                        <span className="text-xs font-semibold tracking-wide text-[#64748B] dark:text-slate-300">AI Quality Insight</span>
+                        <Sparkles className="h-4 w-4 text-[#A855F7]" />
                       </div>
                       <p className="mt-2 text-sm leading-6 text-[#0F172A] dark:text-white">{item.adjustment}</p>
                     </div>
-                    <div className="border-l border-[#E2E8F0] pl-6 flex flex-col rounded-[20px] border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                      <label className="mb-2 block text-[11px] font-medium uppercase tracking-wide text-[#475569]">Budget Adjustment</label>
+                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                      <label className="mb-2 block text-[11px] font-medium tracking-wide text-[#475569]">Budget Adjustment</label>
                       <div className="mb-3">
                         <div className="flex items-center gap-3">
                           <span className="text-sm text-[#94A3B8] line-through">Original: د.إ 2,400,000</span>
