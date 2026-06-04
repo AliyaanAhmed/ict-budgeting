@@ -11,9 +11,11 @@ const ROLE_DISPLAY_NAME: Record<Role, string> = {
   Reviewer: 'ICT - Reviewer',
   Approver: 'ICT - Approver',
   'ICT Admin': 'ICT Admin',
+  'ICT - Strategy Team': 'ICT - Strategy Team',
 }
 
 const NON_ADMIN_ROLES: Role[] = ['Respondent', 'Reviewer', 'Approver']
+const STATIC_ROLES: Role[] = [...NON_ADMIN_ROLES, 'ICT - Strategy Team']
 
 interface RoleContextType {
   activeRole: Role
@@ -24,26 +26,26 @@ interface RoleContextType {
 const RoleContext = createContext<RoleContextType>({
   activeRole: 'Respondent',
   setActiveRole: () => {},
-  availableRoles: NON_ADMIN_ROLES,
+  availableRoles: STATIC_ROLES,
 })
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
   const [activeRole, setActiveRoleState] = useState<Role>('Respondent')
-  const [availableRoles, setAvailableRoles] = useState<Role[]>(NON_ADMIN_ROLES)
+  const [availableRoles, setAvailableRoles] = useState<Role[]>(STATIC_ROLES)
 
   useEffect(() => {
     let cancelled = false
 
     const syncAvailableRoles = async () => {
       const raw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
-      let resolvedRoles: Role[] = NON_ADMIN_ROLES
+      let resolvedRoles: Role[] = STATIC_ROLES
 
       if (raw) {
         try {
           const teams: UserTeam[] = JSON.parse(raw)
           const teamRoles = teams
             .map((t) => t.role as Role)
-            .filter((r) => (NON_ADMIN_ROLES as string[]).includes(r))
+            .filter((r) => (STATIC_ROLES as string[]).includes(r))
 
           if (teamRoles.length > 0) {
             resolvedRoles = [...new Set(teamRoles)]
@@ -70,6 +72,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('[RoleContext] Failed to determine System Administrator access:', error)
+      }
+
+      if (!resolvedRoles.includes('ICT - Strategy Team')) {
+        resolvedRoles = [...new Set([...resolvedRoles, 'ICT - Strategy Team' as Role])] as Role[]
       }
 
       if (!cancelled) {

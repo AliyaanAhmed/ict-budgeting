@@ -46,6 +46,7 @@ const roleMeta: Record<Role, { sub: string; icon: React.ElementType }> = {
   Reviewer: { sub: 'Review submissions', icon: ClipboardCheck },
   Approver: { sub: 'Approve for DGE', icon: ShieldAlert },
   'ICT Admin': { sub: 'Manage assessment cycles', icon: Settings2 },
+  'ICT - Strategy Team': { sub: 'Strategic alignment and governance', icon: ShieldCheck },
 }
 
 function getInitials(name: string): string {

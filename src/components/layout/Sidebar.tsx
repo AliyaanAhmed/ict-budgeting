@@ -9,6 +9,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RefreshCcw,
+  ScanSearch,
+  Table2,
+  Users,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
@@ -77,6 +82,13 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     ],
     'ICT Admin': [
       { label: 'Assessment Cycle', icon: RefreshCcw, href: '/admin/assessment-cycles', matchPaths: ['/admin'] },
+    ],
+    'ICT - Strategy Team': [
+      { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-team/dashboard' },
+      { label: 'Strategic Alignment', icon: ScanSearch, href: '/strategy-team/strategic-alignment' },
+      { label: 'Entity Tracker', icon: Table2, href: '/strategy-team/entity-tracker' },
+      { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
+      { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },
     ],
   }
 
