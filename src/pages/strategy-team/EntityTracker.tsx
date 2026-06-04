@@ -104,7 +104,7 @@ function EntityStageTracker({
           <div className="flex h-full w-full">
             <div
               className="flex h-full items-center justify-center text-[11px] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.15)]"
-              style={{ width: `${(breakdown.planning / total) * 100}%`, backgroundColor: '#001080' }}
+              style={{ width: `${(breakdown.planning / total) * 100}%`, backgroundColor: '#008a65' }}
             >
               {breakdown.planning}
             </div>
@@ -131,7 +131,7 @@ function EntityStageTracker({
 
         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
           {[
-            { label: 'Planning', value: breakdown.planning, color: '#001080' },
+            { label: 'Planning', value: breakdown.planning, color: '#008a65' },
             { label: 'DGE Review', value: breakdown.dgeReview, color: '#286CFF' },
             { label: 'Allocation', value: breakdown.allocation, color: '#D0A600' },
             { label: 'Utilization', value: breakdown.utilization, color: '#9955DC' },
@@ -190,7 +190,7 @@ function EntityTrackerSummary() {
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">AI Entity Tracker Summary</h2>
+              <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Entity Tracker Summary</h2>
               <span className="inline-flex rounded-full bg-[#F5EEFF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                 Governing View
               </span>
@@ -306,9 +306,12 @@ export default function EntityTracker() {
         <div className="space-y-4">
           {filteredEntities.map((entity) => {
             return (
-              <Card key={entity.code} className="overflow-hidden rounded-[20px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+              <Card
+                key={entity.code}
+                className="group overflow-hidden rounded-[20px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-[#162339]"
+              >
                 <CardContent className="p-0">
-                  <div className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/5">
+                  <div className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">

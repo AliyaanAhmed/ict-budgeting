@@ -99,7 +99,7 @@ export default function StrategicAlignment() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-base font-bold text-[#0F172A] dark:text-white">AI Strategic Alignment Assistant</h2>
+                  <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Strategic Alignment Assistant</h2>
                   <span className="rounded-full bg-[#FDF8FF] px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                     Action Required
                   </span>

@@ -1,11 +1,121 @@
 import { useState } from 'react'
-import { BrainCircuit, ChevronDown, ChevronUp, Sparkles, Users, Workflow } from 'lucide-react'
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  CircleCheckBig,
+  Clock3,
+  Sparkles,
+  TriangleAlert,
+  Users,
+  Workflow,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { StrategyAiPanel, StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
+import { StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
 import { smeTracks } from './strategyTeamData'
 
+type FilterKey =
+  | 'Total SME Teams'
+  | 'Teams On Track'
+  | 'Teams Behind'
+  | 'Overdue Reviews'
+  | 'Clarification Blocked'
+  | 'High-Risk Workloads'
+
+const filters: Array<{
+  label: FilterKey
+  value: number
+  icon: typeof Users
+  tone: string
+}> = [
+  { label: 'Total SME Teams', value: 8, icon: Users, tone: 'bg-blue-600 text-white border-blue-600 shadow-md' },
+  { label: 'Teams On Track', value: 3, icon: CircleCheckBig, tone: 'bg-emerald-100 text-emerald-700 border-emerald-200 hover:shadow-sm' },
+  { label: 'Teams Behind', value: 2, icon: TriangleAlert, tone: 'bg-amber-100 text-amber-700 border-amber-200 hover:shadow-sm' },
+  { label: 'Overdue Reviews', value: 28, icon: Clock3, tone: 'bg-red-100 text-red-700 border-red-200 hover:shadow-sm' },
+  { label: 'Clarification Blocked', value: 5, icon: Workflow, tone: 'bg-purple-100 text-purple-700 border-purple-200 hover:shadow-sm' },
+  { label: 'High-Risk Workloads', value: 6, icon: Sparkles, tone: 'bg-orange-100 text-orange-700 border-orange-200 hover:shadow-sm' },
+]
+
+function CircularMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: string
+}) {
+  const pct = Math.max(8, Math.min(100, value / 2))
+  return (
+    <div className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
+      <div className="flex items-center gap-3">
+        <div
+          className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
+          style={{ background: `conic-gradient(${tone} ${pct}%, #EEF3F8 ${pct}% 100%)` }}
+        >
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-[#0F172A] dark:bg-[#1E293B] dark:text-white">
+            {value}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{label}</p>
+          <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{Math.round(pct)}% of target</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AiMonitorAccordion() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-start justify-between gap-4 bg-gradient-to-b from-[#FDF8FF] to-white px-6 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
+      >
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Review Insight</h2>
+              <span className="rounded-full bg-[#FDF8FF] px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                Action Required
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
+              Static review insight for the SME cycle. Expand to view the current risk signal.
+            </p>
+          </div>
+        </div>
+        {open ? <ChevronUp className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8]" /> : <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8]" />}
+      </button>
+
+      {open ? (
+        <div className="border-t border-[#E9D5FF] px-6 py-5 dark:border-white/10">
+          <div className="flex items-start gap-3 rounded-[18px] border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Static review insight</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                Smart City and Digital Services have the highest clarification pressure this cycle, while Cloud Infrastructure shows the most routing issues and should be reviewed for SME reassignment.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 export default function SMETracker() {
-  const [openPriority, setOpenPriority] = useState<string>('Artificial Intelligence')
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('Total SME Teams')
 
   return (
     <StrategyPageShell
@@ -13,208 +123,118 @@ export default function SMETracker() {
       title="SME Tracker"
       description="Monitor SME review activity organized by strategic priority. Spot bottlenecks, workload concerns, and review momentum."
     >
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            {[
-              { label: 'Strategic Priorities', value: 8, sub: 'Active areas', tone: '#286CFF' },
-              { label: 'SME Teams', value: 26, sub: 'Across all priorities', tone: '#14B8A6' },
-              { label: 'Reviews Done', value: 742, sub: 'of 1,284', tone: '#286CFF' },
-              { label: 'Avg Workload', value: '68%', sub: 'Team utilization', tone: '#F97316' },
-            ].map((s) => (
-              <div key={s.label} className="rounded-[22px] border border-[#D9E6F5] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#162339]">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: s.tone }} />
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-300">{s.label}</p>
-                </div>
-                <p className="mt-3 text-2xl font-bold text-[#0F172A] dark:text-white">{s.value}</p>
-                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{s.sub}</p>
-              </div>
-            ))}
-          </div>
-
-          <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Users className="h-5 w-5 text-[#286CFF]" />
-                    <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Review Throughput By Strategic Priority</h2>
-                  </div>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Reviewed versus pending projects</p>
-                </div>
-                <StrategyPill tone="blue">Priority based</StrategyPill>
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 gap-3">
-                {smeTracks.map((track) => {
-                  const expanded = openPriority === track.priority
-                  return (
-                    <Card key={track.priority} className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
-                      <CardContent className="p-0">
-                        <button
-                          type="button"
-                          onClick={() => setOpenPriority((current) => (current === track.priority ? '' : track.priority))}
-                          className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/5"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                                {track.priority.split(' ')[0].slice(0, 3).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-lg font-bold text-[#0F172A] dark:text-white">{track.priority}</p>
-                                <p className="text-xs text-[#64748B] dark:text-slate-300">{track.ownerTeam}</p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-[#286CFF] dark:text-[#BFDBFE]">{track.averageConfidence}% Confidence</p>
-                              <p className="text-xs text-[#64748B] dark:text-slate-300">{track.projects} Projects · {track.awaitingSME} Awaiting SME</p>
-                            </div>
-                            {expanded ? <ChevronUp className="h-5 w-5 text-[#64748B]" /> : <ChevronDown className="h-5 w-5 text-[#64748B]" />}
-                          </div>
-                        </button>
-
-                        <div className="px-5 pb-5">
-                          <StrategyProgressBar
-                            value={track.averageConfidence}
-                            accent={track.status === 'On Track' ? '#14B8A6' : track.status === 'Backlog' ? '#A855F7' : '#286CFF'}
-                          />
-
-                          <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                            {[
-                              { label: 'Routed', value: track.routed },
-                              { label: 'Completed', value: track.completed },
-                              { label: 'Awaiting SME', value: track.awaitingSME },
-                              { label: 'Projects', value: track.projects },
-                            ].map((item) => (
-                              <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
-                                <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
-                                <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{item.value}</p>
-                              </div>
-                            ))}
-                          </div>
-
-                          {expanded && (
-                            <div className="mt-4 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-                            <div className="rounded-[20px] border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-[#1E293B]">
-                              <div className="flex items-center gap-2">
-                                  <Workflow className="h-4.5 w-4.5 text-[#A855F7]" />
-                                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Routing Health</p>
-                                </div>
-                                <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">{track.nextAction}</p>
-                                <div className="mt-4 grid grid-cols-2 gap-3">
-                                  <div className="rounded-[18px] border border-[#E9D5FF] bg-white p-3 dark:border-white/10 dark:bg-[#1B2A41]">
-                                    <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Confidence</p>
-                                    <p className="mt-2 text-xl font-bold text-[#0F172A] dark:text-white">{track.averageConfidence}%</p>
-                                  </div>
-                                  <div className="rounded-[18px] border border-[#E9D5FF] bg-white p-3 dark:border-white/10 dark:bg-[#1B2A41]">
-                                    <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Status</p>
-                                    <p className="mt-2 text-xl font-bold text-[#0F172A] dark:text-white">{track.status}</p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
-                                <div className="flex items-center gap-2">
-                                  <BrainCircuit className="h-4.5 w-4.5 text-[#A855F7]" />
-                                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Recommendations</p>
-                                </div>
-                                <div className="mt-3 space-y-3">
-                                  {[
-                                    'Use the strongest evidence to close the AI backlog first.',
-                                    'Move low-risk digital experience items straight to QC.',
-                                    'Keep security items under tighter scrutiny this cycle.',
-                                  ].map((item, index) => (
-                                    <div key={item} className="flex items-start gap-3 rounded-[18px] border border-[#E9D5FF] bg-white p-3 dark:border-white/10 dark:bg-[#1B2A41]">
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-xs font-bold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                                        {index + 1}
-                                      </div>
-                                      <p className="text-sm leading-6 text-[#475569] dark:text-slate-300">{item}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+      <section className="space-y-5">
+        <div className="flex flex-wrap gap-3">
+          {filters.map((filter) => {
+            const active = activeFilter === filter.label
+            const Icon = filter.icon
+            return (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => setActiveFilter(filter.label)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-2 transition-all ${
+                  active
+                    ? filter.tone
+                    : 'border-[#D9E6F5] bg-white text-[#475569] hover:border-[#286CFF] hover:text-[#286CFF] dark:border-white/10 dark:bg-[#1E293B] dark:text-slate-200'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                <span className="text-sm font-medium">{filter.label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? 'bg-white/20' : 'bg-black/5 dark:bg-white/10'}`}>
+                  {filter.value}
+                </span>
+              </button>
+            )
+          })}
         </div>
 
-        <aside className="space-y-5">
-          <StrategyAiPanel title="SME Operations Assistant">
-            <div className="space-y-3">
-              {[
-                { title: 'Energy Transition is critical', detail: 'Only 31% reviewed with 95% workload. Reassign 12 projects to free capacity.', tag: 'Bottleneck' },
-                { title: 'Education team overloaded', detail: '92% workload across 5 reviewers. Consider adding 1 reviewer or extending window.', tag: 'Workload' },
-                { title: 'Mobility SME falling behind', detail: '47% completion vs cycle target of 65%. AI suggests batch review for low-budget items.', tag: 'Pace' },
-                { title: 'Strong momentum in Health', detail: '84% reviewed, 0 risks. Use as model for Energy team realignment.', tag: 'Positive' },
-              ].map((item) => (
-                <div key={item.title} className="rounded-[18px] border border-[#DDEBFF] bg-white p-4 dark:border-white/10 dark:bg-[#1E293B]">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
-                    <StrategyPill tone="blue">{item.tag}</StrategyPill>
+        <div className="space-y-4">
+          {smeTracks.map((track, index) => (
+            <Card key={track.priority} className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+              <CardContent className="p-0">
+                <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                        {String(index + 1).padStart(2, '0')}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{track.priority}</p>
+                        <p className="text-xs text-[#64748B] dark:text-slate-300">{track.ownerTeam}</p>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">{track.nextAction}</p>
                   </div>
-                  <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">{item.detail}</p>
+                  <div className="flex items-center gap-3">
+                    <StrategyPill tone={track.status === 'On Track' ? 'teal' : track.status === 'Backlog' ? 'violet' : 'amber'}>
+                      {track.status}
+                    </StrategyPill>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </StrategyAiPanel>
 
-          <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Outcomes</p>
-              <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Across SME decisions</p>
-              <div className="mt-4 space-y-3 text-[12px]">
-                {[
-                  { label: 'Approve', val: 482, pct: 65, tone: '#14B8A6' },
-                  { label: 'Revise', val: 178, pct: 24, tone: '#286CFF' },
-                  { label: 'Reject', val: 52, pct: 7, tone: '#EF4444' },
-                  { label: 'Hold', val: 30, pct: 4, tone: '#94A3B8' },
-                ].map((o) => (
-                  <div key={o.label}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span>{o.label}</span>
-                      <span className="tabular-nums text-[#64748B] dark:text-slate-300">{o.val}</span>
+                <div className="px-5 pb-5">
+                  <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {[
+                        { label: 'Assigned', value: 156, tone: '#286CFF' },
+                        { label: 'Reviewed', value: 98, tone: '#008a65' },
+                        { label: 'Pending', value: 58, tone: '#D0A600' },
+                        { label: 'Clarif.', value: 12, tone: '#9955DC' },
+                        { label: 'Overdue', value: 8, tone: '#EF4444' },
+                        { label: 'Due Soon', value: 15, tone: '#F97316' },
+                      ].map((item) => (
+                        <CircularMetric key={item.label} label={item.label} value={item.value} tone={item.tone} />
+                      ))}
                     </div>
-                    <div className="h-2.5 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
-                      <div className="h-full rounded-full" style={{ width: `${o.pct}%`, backgroundColor: o.tone }} />
+
+                    <div className="mt-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Completion</p>
+                          <p className="text-xs text-[#64748B] dark:text-slate-300">Current throughput and backlog balance</p>
+                        </div>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#286CFF] shadow-sm dark:bg-white/10 dark:text-[#BFDBFE]">
+                          {track.averageConfidence}%
+                        </span>
+                      </div>
+                      <StrategyProgressBar
+                        value={track.averageConfidence}
+                        accent={track.status === 'On Track' ? '#008a65' : track.status === 'Backlog' ? '#9955DC' : '#286CFF'}
+                      />
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        {[
+                          { label: 'Avg Turnaround', value: '2.4 days' },
+                          { label: 'High-Risk', value: '14 projects' },
+                          { label: 'Routing Impact', value: '4 misrouted' },
+                        ].map((item) => (
+                          <div key={item.label} className="rounded-[16px] border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                            <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
+                            <p className="mt-2 text-sm font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <AiMonitorAccordion />
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-            <CardContent className="p-4">
-              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Team Activity</p>
-              <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Last 24 hours</p>
-              <div className="mt-4 space-y-3">
-                {[
-                  { team: 'Digital Services SME', actions: 38 },
-                  { team: 'Health Systems SME', actions: 32 },
-                  { team: 'Finance SME', actions: 24 },
-                  { team: 'Education SME', actions: 17 },
-                ].map((t) => (
-                  <div key={t.team} className="flex items-center gap-3">
-                    <Sparkles className="h-3.5 w-3.5 text-[#286CFF]" />
-                    <div className="min-w-0 flex-1 text-[12px] font-medium text-[#0F172A] dark:text-white">{t.team}</div>
-                    <span className="text-[11px] tabular-nums text-[#64748B] dark:text-slate-300">{t.actions} actions</span>
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(40,108,255,0.18)] transition-colors hover:bg-[#1F5BFF]"
+                    >
+                      Open SME Queue
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </section>
     </StrategyPageShell>
   )
