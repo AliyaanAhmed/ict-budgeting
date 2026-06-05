@@ -19,7 +19,13 @@ export const currentUser = {
   activeRole: 'Respondent' as Role,
 }
 
-export type Role = 'Respondent' | 'Reviewer' | 'Approver' | 'ICT Admin' | 'ICT - Strategy Team'
+export type Role =
+  | 'Respondent'
+  | 'Reviewer'
+  | 'Approver'
+  | 'ICT Admin'
+  | 'ICT - Strategy Team'
+  | 'ICT - SME Team'
 
 export type ProjectStatus =
   | 'Draft'

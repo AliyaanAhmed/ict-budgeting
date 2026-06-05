@@ -311,7 +311,7 @@ export default function SMETracker() {
                   <div className="mt-4 flex justify-end">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(40,108,255,0.18)] transition-colors hover:bg-[#1F5BFF]"
+                      className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1F5BFF]"
                     >
                       Open SME Queue
                       <ArrowRight className="h-4 w-4" />

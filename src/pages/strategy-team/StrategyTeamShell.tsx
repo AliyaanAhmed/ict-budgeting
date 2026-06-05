@@ -78,18 +78,23 @@ export function StrategySectionCard({
   children,
   className,
   rightAction,
+  headingIcon,
 }: {
   title: string
   description?: string
   children: ReactNode
   className?: string
   rightAction?: ReactNode
+  headingIcon?: ReactNode
 }) {
   return (
     <section className={cn('overflow-hidden rounded-[22px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]', className)}>
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF3F8] px-5 py-4 dark:border-white/10">
         <div>
-          <h2 className="mt-1 text-xl font-bold text-[#0F172A] dark:text-white">{title}</h2>
+          <div className="flex items-center gap-2">
+            {headingIcon}
+            <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">{title}</h2>
+          </div>
           {description ? <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">{description}</p> : null}
         </div>
         {rightAction ? <div>{rightAction}</div> : null}

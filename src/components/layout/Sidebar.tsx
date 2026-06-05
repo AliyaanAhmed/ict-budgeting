@@ -90,6 +90,10 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
       { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },
     ],
+    'ICT - SME Team': [
+      { label: 'Dashboard', icon: LayoutDashboard, href: '/sme-team/dashboard' },
+      { label: 'Reviews', icon: ClipboardList, href: '/sme-team/reviews' },
+    ],
   }
 
   const items = navItems[activeRole] ?? []
@@ -200,7 +204,9 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
                   activeRole === 'Respondent' && 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
                   activeRole === 'Reviewer' && 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300',
                   activeRole === 'Approver' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-                  activeRole === 'ICT Admin' && 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                  activeRole === 'ICT Admin' && 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+                  activeRole === 'ICT - Strategy Team' && 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+                  activeRole === 'ICT - SME Team' && 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
                 )}
               >
                 {activeRole}

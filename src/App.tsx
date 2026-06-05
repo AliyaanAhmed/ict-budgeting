@@ -24,6 +24,8 @@ import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
 import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
 import StrategySMETracker from '@/pages/strategy-team/SMETracker'
 import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
+import SmeTeamReviews from '@/pages/sme-team/Reviews'
 
 import AssessmentCycles from '@/pages/admin/AssessmentCycles'
 import CycleDetail from '@/pages/admin/CycleDetail'
@@ -62,6 +64,9 @@ export default function App() {
                     <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
                     <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
                     <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    {/* SME Team */}
+                    <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
+                    <Route path="/sme-team/reviews" element={<SmeTeamReviews />} />
                     {/* ICT Admin */}
                     <Route path="/admin/assessment-cycles" element={<AssessmentCycles />} />
                     <Route path="/admin/cycles/:id" element={<CycleDetail />} />

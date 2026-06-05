@@ -12,10 +12,11 @@ const ROLE_DISPLAY_NAME: Record<Role, string> = {
   Approver: 'ICT - Approver',
   'ICT Admin': 'ICT Admin',
   'ICT - Strategy Team': 'ICT - Strategy Team',
+  'ICT - SME Team': 'ICT - SME Team',
 }
 
 const NON_ADMIN_ROLES: Role[] = ['Respondent', 'Reviewer', 'Approver']
-const STATIC_ROLES: Role[] = [...NON_ADMIN_ROLES, 'ICT - Strategy Team']
+const STATIC_ROLES: Role[] = [...NON_ADMIN_ROLES, 'ICT - Strategy Team', 'ICT - SME Team']
 
 interface RoleContextType {
   activeRole: Role
@@ -76,6 +77,10 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
 
       if (!resolvedRoles.includes('ICT - Strategy Team')) {
         resolvedRoles = [...new Set([...resolvedRoles, 'ICT - Strategy Team' as Role])] as Role[]
+      }
+
+      if (!resolvedRoles.includes('ICT - SME Team')) {
+        resolvedRoles = [...new Set([...resolvedRoles, 'ICT - SME Team' as Role])] as Role[]
       }
 
       if (!cancelled) {

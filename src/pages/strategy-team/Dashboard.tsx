@@ -1,24 +1,26 @@
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
-  Bell,
   BrainCircuit,
-  CalendarClock,
   CheckCircle2,
   CircleAlert,
   ClipboardList,
   Clock3,
+  FileText,
+  GaugeCircle,
+  GitBranch,
   Layers,
   MessageSquare,
-  Radar,
+  PieChart,
   ShieldAlert,
   Sparkles,
-  Workflow,
+  TriangleAlert,
   Users,
+  Workflow,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { StrategyAiPanel, StrategyMetricCard, StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
-import { entityProgressRows, smeTracks, strategyStats, strategyWorkflowCards } from './strategyTeamData'
+import { entityProgressRows, smeTracks, strategyStats } from './strategyTeamData'
 
 function MiniLink({ to, label }: { to: string; label: string }) {
   return (
@@ -39,6 +41,48 @@ export default function StrategyTeamDashboard() {
       title="Strategy Team Dashboard"
       description="A high-access governance workspace for the strategy team to steer alignment, oversee entities, monitor SMEs, and keep DGE readiness moving across the full portfolio."
     >
+      <section className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-wrap items-center gap-3 lg:gap-6">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-bold text-[#0F172A] dark:text-white">2026</p>
+                  <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                    Under DGE Review
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
+
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                <Users className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Entity Readiness</p>
+                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">18 submitted, 12 in DGE review, 6 still planning</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+              <p className="text-sm text-[#475569] dark:text-slate-200">
+                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> Strategy is currently governing 48 projects across 18 entities. 12 entities are actively under DGE review, 6 still need planning-stage intervention, and 7 high-signal items should be handled before deeper SME routing.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {strategyStats.map((item) => (
           <StrategyMetricCard
@@ -142,17 +186,54 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/strategic-alignment" label="Open table" />
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              {strategyWorkflowCards.slice(0, 2).map((card) => (
-                <div key={card.title} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{card.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{card.description}</p>
-                  <div className="mt-3 flex items-center justify-between border-t border-[#EEF3F8] pt-3 dark:border-white/10">
-                    <span className="text-2xl font-bold text-[#0F172A] dark:text-white">{card.value}</span>
-                    <StrategyPill tone="violet">{card.badge}</StrategyPill>
+            <div className="mt-5 grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Alignment Distribution</p>
+                    <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Projects by routing quality and strategy confidence.</p>
                   </div>
+                  <PieChart className="h-5 w-5 text-[#286CFF]" />
                 </div>
-              ))}
+                <div className="mt-4 space-y-3">
+                  {[
+                    { label: 'Aligned and ready', value: 31, color: '#286CFF', share: 78 },
+                    { label: 'Needs classification review', value: 9, color: '#A855F7', share: 46 },
+                    { label: 'Wrong SME routing risk', value: 5, color: '#D97706', share: 28 },
+                    { label: 'Hold for clarification', value: 3, color: '#DC2626', share: 18 },
+                  ].map((item) => (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="inline-flex items-center gap-2 font-medium text-[#0F172A] dark:text-white">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                          {item.label}
+                        </span>
+                        <span className="text-[#475569] dark:text-slate-300">{item.value}</span>
+                      </div>
+                      <div className="mt-2">
+                        <StrategyProgressBar value={item.share} accent={item.color} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { title: 'Bulk updates ready', value: 18, badge: 'Priority review' },
+                  { title: 'SME handoff blocked', value: 6, badge: 'Needs action' },
+                  { title: 'Misaligned submissions', value: 3, badge: 'Route back' },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
+                        <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                      </div>
+                      <StrategyPill tone="violet">{item.badge}</StrategyPill>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -205,24 +286,66 @@ export default function StrategyTeamDashboard() {
                   <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Clarification Governance</h2>
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
-                  Track unresolved questions before they block strategy approval or SME routing.
+                  Communication flow status.
                 </p>
               </div>
-              <MiniLink to="/strategy-team/quality-check" label="Open QC" />
+              <MiniLink to="/strategy-team/quality-check" label="View All" />
             </div>
-            <div className="mt-5 space-y-3">
-              {[
-                '7 clarification loops are still open across AI, cloud, and security workstreams.',
-                '3 projects need additional evidence before they can move to SME review.',
-                '2 exceptions are waiting for DGE governance confirmation.',
-              ].map((item, index) => (
-                <div key={item} className="flex items-start gap-3 rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                    {index + 1}
+            <div className="mt-5 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {[
+                  { label: 'DGE To ADGE', value: '23', accent: '#286CFF' },
+                  { label: 'Overdue DGE To ADGE', value: '5', accent: '#DC2626' },
+                  { label: 'Within DGE', value: '14', accent: '#A855F7' },
+                  { label: 'Avg Response', value: '2.4 days', accent: '#10B981' },
+                  { label: 'Repeated Back-And-Forth', value: '4', accent: '#D97706' },
+                  { label: 'Non-Responsive ADGEs', value: '2', accent: '#0F172A' },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">{item.label}</p>
+                    <p className="mt-3 text-3xl font-bold" style={{ color: item.accent }}>{item.value}</p>
                   </div>
-                  <p className="text-sm leading-6 text-[#475569] dark:text-slate-300">{item}</p>
+                ))}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="h-5 w-5 text-[#286CFF]" />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Highest Pending</p>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {[
+                      { entity: 'ADDA', count: 5, accent: '#DC2626' },
+                      { entity: 'DMT', count: 4, accent: '#D97706' },
+                      { entity: 'DoH', count: 3, accent: '#286CFF' },
+                    ].map((item) => (
+                      <div key={item.entity} className="flex items-center justify-between rounded-[18px] border border-[#E4EDF9] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#162339]">
+                        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.entity}</span>
+                        <span className="text-lg font-bold" style={{ color: item.accent }}>{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+
+                <div className="rounded-[22px] border border-[#E9D5FF] bg-gradient-to-br from-[#FDF8FF] via-white to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:via-[#1F1B2E] dark:to-[#1E293B]">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-[#A855F7] dark:text-[#E9D5FF]" />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Insights</p>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {[
+                      '3 clarifications appear too broad, rephrase them for faster response.',
+                      'ADDA and DMT are non-responsive, escalation is recommended.',
+                    ].map((item) => (
+                      <div key={item} className="flex items-start gap-2.5">
+                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                        <span className="text-sm leading-6 text-[#475569] dark:text-slate-200">{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -232,7 +355,7 @@ export default function StrategyTeamDashboard() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <CalendarClock className="h-5 w-5 text-[#286CFF]" />
+                  <Clock3 className="h-5 w-5 text-[#286CFF]" />
                   <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Deadline And Exception Monitor</h2>
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
@@ -241,24 +364,45 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/entity-tracker" label="Open entity view" />
             </div>
-            <div className="mt-5 space-y-3">
-              {[
-                { title: 'DGE submission window', detail: '91 days remaining', accent: '#286CFF' },
-                { title: 'Policy exceptions', detail: '4 items require escalation', accent: '#F97316' },
-                { title: 'SME backlog pressure', detail: '12 projects need quicker review', accent: '#A855F7' },
-              ].map((item) => (
-                <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{item.detail}</p>
-                    </div>
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: `${item.accent}14`, color: item.accent }}>
-                      <Clock3 className="h-4 w-4" />
-                    </div>
+            <div className="mt-5 space-y-4">
+              <div className="rounded-[24px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <GaugeCircle className="h-5 w-5 text-[#286CFF]" />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Timeline Heat</p>
                   </div>
+                  <StrategyPill tone="amber">Attention needed</StrategyPill>
                 </div>
-              ))}
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {[
+                    { title: 'Policy exceptions', value: 4, note: 'Require escalation', accent: '#F97316' },
+                    { title: 'Deadline risk items', value: 6, note: 'Likely to slip', accent: '#DC2626' },
+                    { title: 'SME backlog pressure', value: 12, note: 'Queue strain', accent: '#A855F7' },
+                  ].map((item) => (
+                    <div key={item.title} className="rounded-[20px] border border-[#E4EDF9] bg-white p-4 dark:border-white/10 dark:bg-[#162339]">
+                      <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">{item.title}</p>
+                      <p className="mt-2 text-3xl font-bold" style={{ color: item.accent }}>{item.value}</p>
+                      <p className="mt-2 text-sm text-[#64748B] dark:text-slate-300">{item.note}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  { title: 'DGE submission window', detail: '91 days remaining before the full DGE review deadline.', icon: Clock3, accent: '#286CFF' },
+                  { title: 'Planning-stage entities', detail: '6 entities still need strategy attention before they fully enter DGE review.', icon: Workflow, accent: '#D97706' },
+                  { title: 'Quality handoff pressure', detail: '5 projects should move to quality check this week to protect downstream flow.', icon: CircleAlert, accent: '#A855F7' },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: `${item.accent}14`, color: item.accent }}>
+                      <item.icon className="h-5 w-5" />
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -279,19 +423,47 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/quality-check" label="Open QC" />
             </div>
-            <div className="mt-5 space-y-3">
-              {[
-                '4 items are awaiting QC.',
-                '1 AI-driven submission needs policy validation.',
-                '3 projects are ready to be passed onward after checks.',
-              ].map((item) => (
-                <div key={item} className="flex items-start gap-3 rounded-[22px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                    <CheckCircle2 className="h-4 w-4" />
+            <div className="mt-5 grid gap-3 md:grid-cols-2 md:items-start">
+              <div className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <BrainCircuit className="h-5 w-5 text-[#286CFF]" />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">QC Flow</p>
                   </div>
-                  <p className="text-sm leading-6 text-[#475569] dark:text-slate-300">{item}</p>
+                  <span className="text-2xl font-bold text-[#0F172A] dark:text-white">12</span>
                 </div>
-              ))}
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Awaiting QC', value: 4, accent: '#286CFF' },
+                    { label: 'Ready to route', value: 3, accent: '#10B981' },
+                    { label: 'Hold items', value: 5, accent: '#D97706' },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-[18px] border border-[#DCE6F6] bg-white p-3 text-center dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xl font-bold" style={{ color: item.accent }}>{item.value}</p>
+                      <p className="mt-1 text-xs font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-3">
+                {[
+                  { title: 'AI-sensitive items', detail: '1 submission needs policy validation before strategy can sign off.', icon: Sparkles, accent: '#A855F7' },
+                  { title: 'High-confidence lane', detail: '3 projects are ready to pass onward after governance checks.', icon: CheckCircle2, accent: '#10B981' },
+                  { title: 'Clarification before QC', detail: '2 items should not enter QC until evidence gaps are closed.', icon: CircleAlert, accent: '#D97706' },
+                ].map((item) => (
+                  <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ backgroundColor: `${item.accent}14`, color: item.accent }}>
+                        <item.icon className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">{item.detail}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>

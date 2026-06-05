@@ -98,6 +98,7 @@ export function AppLayout() {
       Approver: '/approver/dashboard',
       'ICT Admin': '/admin/assessment-cycles',
       'ICT - Strategy Team': '/strategy-team/dashboard',
+      'ICT - SME Team': '/sme-team/dashboard',
     }
     const roleBasePaths: Record<string, string> = {
       Respondent: '/respondent',
@@ -105,6 +106,7 @@ export function AppLayout() {
       Approver: '/approver',
       'ICT Admin': '/admin',
       'ICT - Strategy Team': '/strategy-team',
+      'ICT - SME Team': '/sme-team',
     }
     const targetBase = roleBasePaths[activeRole]
     if (!location.pathname.startsWith(targetBase)) {
