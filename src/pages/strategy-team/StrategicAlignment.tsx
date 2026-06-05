@@ -266,12 +266,19 @@ export default function StrategicAlignment() {
                           className={cn(
                             'flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-colors',
                             active
-                              ? 'bg-[#E7F0FF] text-[#286CFF]'
+                              ? 'bg-[#286CFF] text-white shadow-[0_10px_22px_rgba(40,108,255,0.18)] dark:bg-[#286CFF] dark:text-white'
                               : 'bg-white text-[#0F172A] hover:bg-[#F8FBFF] dark:bg-white/5 dark:text-white dark:hover:bg-white/10'
                           )}
                         >
                           <span className="text-sm font-medium">{option.label === 'All' ? 'All Priorities' : option.label}</span>
-                          <span className="text-sm text-[#64748B] dark:text-slate-300">{option.count}</span>
+                          <span
+                            className={cn(
+                              'text-sm',
+                              active ? 'text-white/90' : 'text-[#64748B] dark:text-slate-300'
+                            )}
+                          >
+                            {option.count}
+                          </span>
                         </button>
                       )
                     })}
@@ -363,10 +370,10 @@ export default function StrategicAlignment() {
                   <span />
                   <span className="text-left">Project Name</span>
                   <span className="text-left">Strategic Priority</span>
-                  <span className="text-left">Status</span>
                   <span>Classification</span>
+                  <span className="text-left">Status</span>
                   <span>SME Team</span>
-                  <span className="text-right">Budget</span>
+                  <span className="text-left">Budget</span>
                 </div>
                 <div className="divide-y divide-[#EEF3F8] dark:divide-white/10">
                   {filteredProjects.map((project) => {
@@ -388,8 +395,8 @@ export default function StrategicAlignment() {
                           </p>
                         </div>
                         <div className="pt-1 text-sm text-[#475569] dark:text-slate-300">{project.strategicPriority}</div>
-                        <div className="pt-1 text-sm text-[#475569] dark:text-slate-300">{project.statuscode}</div>
                         <div className="pt-1 text-sm text-[#475569] dark:text-slate-300">{project.classification}</div>
+                        <div className="pt-1 text-sm text-[#475569] dark:text-slate-300">{project.statuscode}</div>
                         <div className="pt-1 text-sm text-[#475569] dark:text-slate-300">{project.smeTeam}</div>
                         <div className="pt-1">
                           <div className="mb-2 flex items-center justify-between text-xs text-[#64748B] dark:text-slate-300">

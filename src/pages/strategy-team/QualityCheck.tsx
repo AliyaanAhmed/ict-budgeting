@@ -9,8 +9,9 @@ const tabs = ['All', 'Recommended', 'Not Recommended', 'Clarification Pending'] 
 
 function SummaryAccordion() {
   const [open, setOpen] = useState(false)
+
   return (
-    <Card className="overflow-hidden rounded-[28px] border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+    <Card className="overflow-hidden rounded-[28px] border-[#E9D5FF] bg-white shadow-[0_14px_30px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#1E293B]">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -32,7 +33,7 @@ function SummaryAccordion() {
             </p>
           </div>
         </div>
-        {open ? <ChevronUp className="mt-1 h-5 w-5 shrink-0 text-[#64748B] transition-transform dark:text-slate-300" /> : <ChevronDown className="mt-1 h-5 w-5 shrink-0 text-[#64748B] transition-transform dark:text-slate-300" />}
+        {open ? <ChevronUp className="mt-1 h-5 w-5 shrink-0 text-[#64748B] dark:text-slate-300" /> : <ChevronDown className="mt-1 h-5 w-5 shrink-0 text-[#64748B] dark:text-slate-300" />}
       </button>
 
       {open ? (
@@ -44,18 +45,9 @@ function SummaryAccordion() {
                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Confidence Analysis</p>
               </div>
               <ul className="space-y-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" />
-                  <span><strong>1</strong> projects have low confidence and need closer quality review</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" />
-                  <span><strong>2</strong> recommended items have unresolved ambiguity in evidence</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" />
-                  <span>Budget variance detected in <strong>1</strong> high-value project</span>
-                </li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" /><span><strong>1</strong> projects have low confidence and need closer quality review</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" /><span><strong>2</strong> recommended items have unresolved ambiguity in evidence</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#F97316]" /><span>Budget variance detected in <strong>1</strong> high-value project</span></li>
               </ul>
             </div>
 
@@ -65,18 +57,9 @@ function SummaryAccordion() {
                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Recommendation Quality</p>
               </div>
               <ul className="space-y-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" />
-                  <span><strong>4</strong> recommendations appear consistent with evidence</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" />
-                  <span><strong>1</strong> not-recommended item needs verification</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" />
-                  <span><strong>1</strong> recommendation may conflict with supporting documents</span>
-                </li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" /><span><strong>4</strong> recommendations appear consistent with evidence</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" /><span><strong>1</strong> not-recommended item needs verification</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#10B981]" /><span><strong>1</strong> recommendation may conflict with supporting documents</span></li>
               </ul>
             </div>
 
@@ -86,18 +69,9 @@ function SummaryAccordion() {
                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Justification Issues</p>
               </div>
               <ul className="space-y-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
-                  <span><strong>0</strong> not-recommended items have weak or brief SME comment</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
-                  <span><strong>1</strong> comment does not clearly explain rejection reason</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" />
-                  <span>Cybersecurity project needs stronger NCA documentation note</span>
-                </li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" /><span><strong>0</strong> not-recommended items have weak or brief SME comment</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" /><span><strong>1</strong> comment does not clearly explain rejection reason</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#EF4444]" /><span>Cybersecurity project needs stronger NCA documentation note</span></li>
               </ul>
             </div>
 
@@ -107,14 +81,8 @@ function SummaryAccordion() {
                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Ambiguity Detection</p>
               </div>
               <ul className="space-y-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#A855F7]" />
-                  <span><strong>2</strong> projects still show unclear scope or evidence</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#A855F7]" />
-                  <span><strong>0</strong> may need clarification before Director review</span>
-                </li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#A855F7]" /><span><strong>2</strong> projects still show unclear scope or evidence</span></li>
+                <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#A855F7]" /><span><strong>0</strong> may need clarification before Director review</span></li>
               </ul>
               <div className="mt-4">
                 <div className="mb-3 flex items-center gap-2 text-[#7C3AED]">
@@ -122,10 +90,7 @@ function SummaryAccordion() {
                   <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Routing Risk</p>
                 </div>
                 <ul className="space-y-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                  <li className="flex gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#7C3AED]" />
-                    <span><strong>1</strong> project may need QC hold before routing</span>
-                  </li>
+                  <li className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#7C3AED]" /><span><strong>1</strong> project may need QC hold before routing</span></li>
                 </ul>
               </div>
             </div>
@@ -229,7 +194,7 @@ export default function QualityCheck() {
               className="h-10 rounded-2xl border-[#D7E4F4] bg-white pl-10 text-sm dark:border-white/10 dark:bg-[#1E293B]"
             />
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
             {tabCounts.map((tab) => (
               <button
                 key={tab.label}
@@ -237,7 +202,7 @@ export default function QualityCheck() {
                 onClick={() => setActiveTab(tab.label)}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
                   activeTab === tab.label
-                    ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                    ? 'border-[var(--primary)] bg-[var(--primary)] text-white shadow-[0_10px_22px_rgba(40,108,255,0.18)]'
                     : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
                 }`}
               >
@@ -252,13 +217,13 @@ export default function QualityCheck() {
 
         <div className="space-y-4">
           {filteredItems.map((item) => (
-            <Card key={item.id} className="overflow-hidden rounded-[20px] border-[#DCE6F6] bg-white shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
+            <Card key={item.id} className="overflow-hidden rounded-[22px] border-[#DCE6F6] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#BFD4FF] hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#162339]">
               <CardContent className="p-0">
-                  <div className="flex w-full flex-col gap-4 px-5 py-4 text-left">
-                    <div className="flex w-full items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-base font-semibold text-[#0F172A] dark:text-white">
+                <div className="flex w-full flex-col gap-4 px-5 py-4 text-left">
+                  <div className="flex w-full items-start justify-between gap-4 border-b border-[#EEF3F8] pb-4 dark:border-white/10">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[17px] font-semibold text-[#0F172A] dark:text-white">
                           {item.id} {item.name}
                         </p>
                         <StrategyPill tone={item.severity === 'Critical' ? 'amber' : item.severity === 'Warning' ? 'blue' : 'teal'}>
@@ -276,41 +241,41 @@ export default function QualityCheck() {
                   </div>
 
                   <div className="grid gap-4 lg:grid-cols-3">
-                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                      <label className="mb-2 block text-[11px] font-medium tracking-wide text-[#475569]">SME Recommendation</label>
+                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 transition-shadow hover:shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#17243A]">
+                      <label className="mb-2 block text-xs font-medium tracking-wide text-[#0F172A] dark:text-white">SME Recommendation</label>
                       <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#4A9D5C]/30 bg-[#4A9D5C]/10 px-4 py-2">
                         <ShieldCheck className="h-5 w-5 text-[#4A9D5C]" />
                         <span className="font-medium text-[#4A9D5C]">Recommended — Approve</span>
                       </div>
-                      <div className="mb-2 text-xs text-[#475569]">Dr. Fatima Al Rashdi · Cloud Infrastructure · 08 Apr 2026</div>
-                      <div className="rounded-lg p-2">
-                        <p className="text-sm text-[#0F172A]">
-                          Technically sound with clear cost justification. The proposed architecture aligns with government cloud standards and the vendor has strong track record.
-                        </p>
-                      </div>
-                      <button type="button" className="mt-1 text-xs font-medium text-[#286CFF] hover:underline">
+                      <div className="mb-2 text-xs text-[#64748B] dark:text-slate-300">Dr. Fatima Al Rashdi · Cloud Infrastructure · 08 Apr 2026</div>
+                      <p className="text-sm leading-6 text-[#0F172A] dark:text-white">
+                        Technically sound with clear cost justification. The proposed architecture aligns with government cloud standards and the vendor has strong track record.
+                      </p>
+                      <button type="button" className="mt-2 text-xs font-medium text-[#286CFF] hover:underline">
                         Show less
                       </button>
                     </div>
-                    <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
+
+                    <div className="flex flex-col rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 transition-shadow hover:shadow-[0_10px_22px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#2A123D]">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold tracking-wide text-[#64748B] dark:text-slate-300">AI Quality Insight</span>
+                        <span className="text-xs font-semibold tracking-wide text-[#0F172A] dark:text-white">AI Quality Insight</span>
                         <Sparkles className="h-4 w-4 text-[#A855F7]" />
                       </div>
                       <p className="mt-2 text-sm leading-6 text-[#0F172A] dark:text-white">{item.adjustment}</p>
                     </div>
-                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                      <label className="mb-2 block text-[11px] font-medium tracking-wide text-[#475569]">Budget Adjustment</label>
+
+                    <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 transition-shadow hover:shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#17243A]">
+                      <label className="mb-2 block text-xs font-medium tracking-wide text-[#0F172A] dark:text-white">Budget Adjustment</label>
                       <div className="mb-3">
                         <div className="flex items-center gap-3">
                           <span className="text-sm text-[#94A3B8] line-through">Original: د.إ 2,400,000</span>
-                          <span className="text-sm font-semibold text-[#0F172A]">Adjusted: د.إ 2,100,000</span>
+                          <span className="text-sm font-semibold text-[#0F172A] dark:text-white">Adjusted: د.إ 2,100,000</span>
                         </div>
                         <span className="mt-2 inline-flex w-fit items-center justify-center rounded-md border border-[#D97706]/30 bg-[#D97706]/10 px-2 py-0.5 text-xs font-medium text-[#D97706]">
                           ↓ 13% vs requested
                         </span>
                       </div>
-                      <div className="mt-4">
+                      <div className="mt-auto">
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-[#286CFF]">78% Confidence</span>

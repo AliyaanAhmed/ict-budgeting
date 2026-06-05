@@ -224,7 +224,7 @@ function EntityTrackerSummary() {
                   { label: 'Utilization ready', value: '2', note: 'Near closure', accent: '#16A34A' },
                 ].map((item) => (
                     <div key={item.label} className="rounded-[18px] border border-[#E9D5FF] bg-white p-4 shadow-[0_10px_26px_rgba(168,85,247,0.04)] dark:border-white/10 dark:bg-[#1E293B]">
-                      <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
+                      <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
                       <p className="mt-3 text-2xl font-bold text-[#0F172A] dark:text-white">{item.value}</p>
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{item.note}</p>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
@@ -371,7 +371,7 @@ export default function EntityTracker() {
                             { label: 'QC Ready', value: entity.qcReady },
                           ].map((item) => (
                             <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
-                              <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
+                            <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
                               <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{item.value}</p>
                             </div>
                           ))}
