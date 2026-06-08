@@ -1,15 +1,13 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { AppInstanceDetail } from '@/services/instanceService'
 import {
-  SESSION_INSTANCE_DETAIL_KEY,
-  SESSION_INSTANCE_ID_KEY,
   fetchAndStoreInstance,
   getAccountIdForRole,
   getStoredInstanceDetail,
   getStoredInstanceId,
 } from '@/services/instanceService'
-import { useCycle } from '@/context/CycleContext'
 import { useRole } from '@/context/RoleContext'
+import { useCycle } from '@/context/CycleContext'
 
 interface InstanceContextType {
   instanceId: string | null
@@ -36,12 +34,12 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
     setInstanceDetail(getStoredInstanceDetail())
   }, [])
 
+  const isFirstFetch = useRef(true)
+
   useEffect(() => {
     if (!selectedCycle?.id || !activeRole) return
 
-    if (activeRole === 'ICT - Strategy Team' || activeRole === 'ICT - SME Team' || activeRole === 'ICT Admin') {
-      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
-      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
+    if (activeRole !== 'Respondent' && activeRole !== 'Reviewer' && activeRole !== 'Approver') {
       setInstanceId(null)
       setInstanceDetail(null)
       setInstanceLoading(false)
@@ -50,28 +48,24 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
 
     const accountId = getAccountIdForRole(activeRole)
     if (!accountId) {
-      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
-      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
       setInstanceId(null)
       setInstanceDetail(null)
       setInstanceLoading(false)
+      console.warn('[InstanceContext] No account ID for role', activeRole, '- cannot fetch instance')
       return
     }
 
-    setInstanceLoading(true)
+    const isFirst = isFirstFetch.current
+    isFirstFetch.current = false
+
+    if (!isFirst) setInstanceLoading(true)
 
     void fetchAndStoreInstance(selectedCycle.id, accountId).then((detail) => {
       setInstanceId(detail?.id ?? null)
       setInstanceDetail(detail)
-      setInstanceLoading(false)
-    }).catch(() => {
-      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
-      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
-      setInstanceId(null)
-      setInstanceDetail(null)
-      setInstanceLoading(false)
+      if (!isFirst) setInstanceLoading(false)
     })
-  }, [activeRole, selectedCycle?.id])
+  }, [activeRole, selectedCycle?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <InstanceContext.Provider value={{ instanceId, instanceDetail, instanceLoading }}>

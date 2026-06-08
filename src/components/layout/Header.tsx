@@ -93,7 +93,14 @@ export function Header({
   onToggleRTL,
   isTranslating,
 }: HeaderProps) {
-  const { activeRole, activeRoleOptionKey, setActiveRoleOption, availableRoleOptions } = useRole()
+  const {
+    activeRole,
+    activeRoleOptionKey,
+    setActiveRole,
+    setActiveRoleOption,
+    availableRoles,
+    availableRoleOptions,
+  } = useRole()
   const [notifOpen, setNotifOpen] = useState(false)
   const [roleMenuOpen, setRoleMenuOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppNotificationItem[]>([])
@@ -396,52 +403,56 @@ export function Header({
               <DropdownMenuLabel className="px-2">Current Role</DropdownMenuLabel>
             )}
 
-            <div className="max-h-[38vh] overflow-y-auto pr-1">
-              {availableRoleOptions.map(option => {
-                const RoleIcon = roleMeta[option.role].icon
-                return (
-                  <DropdownMenuItem
-                    key={option.key}
-                    onClick={() => {
+            <div className="max-h-[320px] overflow-y-auto pr-1">
+            {availableRoleOptions.map((option) => {
+              const role = option.role
+              const RoleIcon = roleMeta[role].icon
+              const isActive =
+                option.role === 'ICT - SME Team'
+                  ? activeRole === option.role && activeRoleOptionKey === option.key
+                  : activeRole === role
+
+              return (
+                <DropdownMenuItem
+                  key={option.key}
+                  onClick={() => {
+                    if (option.role === 'ICT - SME Team' || option.role === 'ICT - Strategy Team' || option.role === 'ICT Admin') {
                       setActiveRoleOption(option.key)
-                      setRoleMenuOpen(false)
-                    }}
+                    } else {
+                      setActiveRole(role)
+                    }
+                    setRoleMenuOpen(false)
+                  }}
+                  className={cn(
+                    'rounded-xl p-3 mb-1 items-start',
+                    isActive &&
+                      'bg-[var(--primary-light)] text-[var(--primary)] dark:bg-[#286CFF]/25 dark:text-white'
+                  )}
+                >
+                  <div
                     className={cn(
-                      'rounded-xl p-3 mb-1 items-start',
-                      activeRoleOptionKey === option.key &&
-                        'bg-[var(--primary-light)] text-[var(--primary)] dark:bg-[#286CFF]/25 dark:text-white'
+                      'h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5',
+                      isActive &&
+                        'dark:bg-[#286CFF]/30 dark:border-[#4F98FF]/50 dark:text-white'
                     )}
                   >
-                    <div
+                    <RoleIcon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-tight">{option.label}</p>
+                    <p
                       className={cn(
-                        'h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5',
-                        activeRoleOptionKey === option.key &&
-                          'dark:bg-[#286CFF]/30 dark:border-[#4F98FF]/50 dark:text-white'
+                        'text-xs text-[var(--muted-foreground)] leading-tight mt-1',
+                        isActive && 'dark:text-slate-100'
                       )}
                     >
-                      <RoleIcon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold leading-tight">
-                        {option.role === 'ICT - SME Team' && option.subtitle
-                          ? `${option.label} - ${option.subtitle}`
-                          : option.label}
-                      </p>
-                      <p
-                        className={cn(
-                          'text-xs text-[var(--muted-foreground)] leading-tight mt-1',
-                          activeRoleOptionKey === option.key && 'dark:text-slate-100'
-                        )}
-                      >
-                        {option.subtitle && option.role === 'ICT - SME Team'
-                          ? option.subtitle
-                          : roleMeta[option.role].sub}
-                      </p>
-                    </div>
-                    {activeRoleOptionKey === option.key && <Check className="ml-auto h-4 w-4 mt-1" />}
-                  </DropdownMenuItem>
-                )
-              })}
+                      {option.subtitle || roleMeta[role].sub}
+                    </p>
+                  </div>
+                  {isActive && <Check className="ml-auto h-4 w-4 mt-1" />}
+                </DropdownMenuItem>
+              )
+            })}
             </div>
 
             <DropdownMenuSeparator />

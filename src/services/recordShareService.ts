@@ -10,7 +10,17 @@ const DATA_SOURCE_KEY = 'dga_webapiforportal'
 const OPERATION_NAME = 'dga_WebApiForPortal'
 
 interface GrantAccessRequestBody {
-  actionName: 'grandaccess' | 'revokeeaccess'
+  actionName: 'grandaccess'
+  isAdmin: boolean
+  userId: string
+  tableName: 'dga_ict_budget'
+  relatedId: string
+  targetId: string
+  fetchXml: 'read'
+}
+
+interface DirectGrantAccessRequestBody {
+  actionName: 'grandaccess'
   isAdmin: boolean
   userId: string
   tableName: 'dga_ict_budget'
@@ -38,14 +48,19 @@ function getShareTargetTeamId(role: TeamRole) {
   return teamIds?.approverTeamId?.trim() || null
 }
 
-async function updateIctBudgetAccessForTeam(
+export async function shareIctBudgetWithRoleTeam(
   budgetId: string,
-  targetTeamId: string,
-  actionName: GrantAccessRequestBody['actionName']
-) {
+  role: TeamRole
+): Promise<void> {
+  const targetTeamId = getShareTargetTeamId(role)
+
+  if (!targetTeamId) {
+    throw new Error(`Unable to resolve ${role.toLowerCase()} team id for ICT budget sharing.`)
+  }
+
   const client = getClient(dataSourcesInfo)
   const requestBody: GrantAccessRequestBody = {
-    actionName,
+    actionName: 'grandaccess',
     isAdmin: true,
     userId: '',
     tableName: 'dga_ict_budget',
@@ -54,9 +69,10 @@ async function updateIctBudgetAccessForTeam(
     fetchXml: 'read',
   }
 
-  console.log('[RecordShareService] Calling dga_WebApiForPortal access update:', {
+  debugger
+  console.log('[RecordShareService] Calling dga_WebApiForPortal grant access:', {
     budgetId,
-    actionName,
+    role,
     targetTeamId,
     requestBody,
   })
@@ -72,7 +88,8 @@ async function updateIctBudgetAccessForTeam(
     },
   })
 
-  console.log('[RecordShareService] Access update response:', result)
+  debugger
+  console.log('[RecordShareService] Grant access response:', result)
   console.log('[RecordShareService] result.success:', result.success)
   console.log('[RecordShareService] result.data:', result.data)
   console.log('[RecordShareService] result.error:', result.error)
@@ -82,27 +99,46 @@ async function updateIctBudgetAccessForTeam(
       result.error instanceof Error
         ? result.error.message
         : String(result.error?.message ?? result.error ?? 'Unknown custom API error')
-    throw new Error(`Failed to ${actionName === 'grandaccess' ? 'share' : 'revoke'} ICT budget access: ${errMsg}`)
+    throw new Error(`Failed to share ICT budget with ${role.toLowerCase()} team: ${errMsg}`)
   }
 }
 
-export async function grantIctBudgetAccessToTeam(budgetId: string, targetTeamId: string): Promise<void> {
-  await updateIctBudgetAccessForTeam(budgetId, targetTeamId, 'grandaccess')
-}
-
-export async function revokeIctBudgetAccessFromTeam(budgetId: string, targetTeamId: string): Promise<void> {
-  await updateIctBudgetAccessForTeam(budgetId, targetTeamId, 'revokeeaccess')
-}
-
-export async function shareIctBudgetWithRoleTeam(
-  budgetId: string,
-  role: TeamRole
-): Promise<void> {
-  const targetTeamId = getShareTargetTeamId(role)
-
-  if (!targetTeamId) {
-    throw new Error(`Unable to resolve ${role.toLowerCase()} team id for ICT budget sharing.`)
+export async function grantIctBudgetAccessToTeam(budgetId: string, teamId: string): Promise<void> {
+  if (!teamId?.trim()) {
+    throw new Error('Unable to share ICT budget because the target team id is missing.')
   }
 
-  await grantIctBudgetAccessToTeam(budgetId, targetTeamId)
+  const client = getClient(dataSourcesInfo)
+  const requestBody: DirectGrantAccessRequestBody = {
+    actionName: 'grandaccess',
+    isAdmin: true,
+    userId: '',
+    tableName: 'dga_ict_budget',
+    relatedId: budgetId,
+    targetId: teamId,
+    fetchXml: 'read',
+  }
+
+  const result = await client.executeAsync<DirectGrantAccessRequestBody, unknown>({
+    dataverseRequest: {
+      action: 'customapi',
+      parameters: {
+        operationName: OPERATION_NAME,
+        tableName: DATA_SOURCE_KEY,
+        body: requestBody,
+      },
+    },
+  })
+
+  if (!result.success) {
+    const errMsg =
+      result.error instanceof Error
+        ? result.error.message
+        : String(result.error?.message ?? result.error ?? 'Unknown custom API error')
+    throw new Error(`Failed to grant ICT budget access to team ${teamId}: ${errMsg}`)
+  }
+}
+
+export async function revokeIctBudgetAccessFromTeam(_budgetId: string, _teamId: string): Promise<void> {
+  console.warn('[RecordShareService] revokeIctBudgetAccessFromTeam is not implemented in the current custom API flow.')
 }

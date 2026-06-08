@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { Role } from '@/data/db'
 import type { UserTeam } from '@/services/userContextService'
 import { SESSION_USER_TEAMS_KEY } from '@/services/userContextService'
@@ -23,6 +23,17 @@ const ROLE_DISPLAY_NAME: Record<Role, string> = {
 }
 
 const ADGE_ROLES: Role[] = ['Respondent', 'Reviewer', 'Approver']
+
+function parseStoredRoleDisplay(value: string | null): Role | null {
+  const normalized = value?.trim() || ''
+  if (normalized === 'ICT - Respondent') return 'Respondent'
+  if (normalized === 'ICT - Reviewer') return 'Reviewer'
+  if (normalized === 'ICT - Approver') return 'Approver'
+  if (normalized === 'ICT Admin') return 'ICT Admin'
+  if (normalized === 'ICT - Strategy Team') return 'ICT - Strategy Team'
+  if (normalized === 'ICT - SME Team') return 'ICT - SME Team'
+  return null
+}
 
 export interface RoleOption {
   key: string
@@ -55,7 +66,9 @@ const RoleContext = createContext<RoleContextType>({
 })
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const [activeRole, setActiveRoleState] = useState<Role | null>(null)
+  const [activeRole, setActiveRoleState] = useState<Role | null>(() =>
+    parseStoredRoleDisplay(sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY))
+  )
   const [activeRoleOptionKey, setActiveRoleOptionKey] = useState<string | null>(null)
   const [availableRoles, setAvailableRoles] = useState<Role[]>([])
   const [availableRoleOptions, setAvailableRoleOptions] = useState<RoleOption[]>([])
@@ -73,8 +86,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         try {
           const teams: UserTeam[] = JSON.parse(raw)
           const teamRoles = teams
-            .map((t) => t.role as Role)
-            .filter((r) => (ADGE_ROLES as string[]).includes(r))
+            .map((team) => team.role as Role)
+            .filter((role) => (ADGE_ROLES as string[]).includes(role))
 
           if (teamRoles.length > 0) {
             resolvedAdgeRoles = [...new Set(teamRoles)]
@@ -91,8 +104,8 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
         })
       }
 
-      const strategyTeam = getStoredStrategyTeam()
       const currentUserId = sessionStorage.getItem('userID')?.trim() || ''
+      const strategyTeam = getStoredStrategyTeam()
       if (strategyTeam?.users.some((user) => user.id === currentUserId)) {
         resolvedRoleOptions.push({
           key: 'strategy-team',
@@ -130,7 +143,6 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       }
 
       const uniqueRoles = [...new Set(resolvedRoleOptions.map((option) => option.role))]
-
       const storedRoleDisplay = sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)?.trim() || ''
       const storedCurrentSme = getStoredCurrentSme()
       const preferredOption =
@@ -142,11 +154,13 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
             )
           : null) ??
         resolvedRoleOptions.find((option) => option.label === storedRoleDisplay) ??
-        resolvedRoleOptions[0] ?? null
+        resolvedRoleOptions[0] ??
+        null
 
       if (!cancelled) {
         setAvailableRoles(uniqueRoles)
         setAvailableRoleOptions(resolvedRoleOptions)
+
         if (preferredOption) {
           setActiveRoleState(preferredOption.role)
           setActiveRoleOptionKey(preferredOption.key)
@@ -160,6 +174,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           sessionStorage.removeItem(SESSION_CURRENT_ROLE_KEY)
           setStoredCurrentSme(null)
         }
+
         setRolesResolved(true)
       }
     }
