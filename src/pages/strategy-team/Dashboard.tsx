@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   BrainCircuit,
@@ -19,8 +20,11 @@ import {
   Workflow,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { useCycle } from '@/context/CycleContext'
 import { StrategyAiPanel, StrategyMetricCard, StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
-import { entityProgressRows, smeTracks, strategyStats } from './strategyTeamData'
+import { entityProgressRows, smeTracks } from './strategyTeamData'
+import { DGE_BUDGET_STATUS, getBudgetStageBucket, getDgePortfolioData, getInstanceStageFilterLabel, type DgePortfolioData } from '@/services/dgePortfolioService'
+import { cn } from '@/lib/utils'
 
 function MiniLink({ to, label }: { to: string; label: string }) {
   return (
@@ -34,13 +38,208 @@ function MiniLink({ to, label }: { to: string; label: string }) {
   )
 }
 
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={cn('animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10', className)} />
+}
+
+function DashboardSkeleton() {
+  return (
+    <>
+      <section className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]">
+        <div className="space-y-4 p-5">
+          <div className="flex flex-wrap gap-4">
+            <SkeletonBlock className="h-12 w-60" />
+            <SkeletonBlock className="h-12 w-60" />
+          </div>
+          <SkeletonBlock className="h-20 w-full rounded-[20px]" />
+        </div>
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <SkeletonBlock key={index} className="h-40 w-full rounded-[24px]" />
+        ))}
+      </section>
+
+      {Array.from({ length: 3 }).map((_, rowIndex) => (
+        <section key={rowIndex} className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          <SkeletonBlock className="h-[360px] w-full rounded-[28px]" />
+          <SkeletonBlock className="h-[360px] w-full rounded-[28px]" />
+        </section>
+      ))}
+    </>
+  )
+}
+
 export default function StrategyTeamDashboard() {
+  const { selectedCycle } = useCycle()
+  const [portfolio, setPortfolio] = useState<DgePortfolioData>({ instances: [], budgets: [] })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      if (!selectedCycle?.id) {
+        if (!cancelled) {
+          setPortfolio({ instances: [], budgets: [] })
+          setLoading(false)
+        }
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const data = await getDgePortfolioData(selectedCycle.id)
+        if (!cancelled) {
+          setPortfolio(data)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load strategy dashboard data.')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCycle?.id])
+
+  const budgets = portfolio.budgets
+  const instances = portfolio.instances
+
+  const entityReadiness = useMemo(() => {
+    const submitted = instances.filter((instance) => instance.budgets.length > 0).length
+    const inReview = instances.filter((instance) => getInstanceStageFilterLabel(instance.statuscode) === 'DGE Review').length
+    const planning = instances.filter((instance) => getInstanceStageFilterLabel(instance.statuscode) === 'Planning').length
+    return { submitted, inReview, planning }
+  }, [instances])
+
+  const dashboardStats = useMemo(
+    () => [
+      {
+        label: 'Projects in cycle',
+        value: budgets.length.toString(),
+        note: 'Across all entities',
+        accent: '#286CFF',
+        icon: ClipboardList,
+      },
+      {
+        label: 'Aligned priorities',
+        value: budgets
+          .filter(
+            (budget) =>
+              budget.statuscode === DGE_BUDGET_STATUS.underSmeReview ||
+              budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
+          )
+          .length.toString(),
+        note: 'Ready for SME routing',
+        accent: '#14B8A6',
+        icon: Sparkles,
+      },
+      {
+        label: 'SME queues active',
+        value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length.toString(),
+        note: 'Currently with SME teams',
+        accent: '#9333EA',
+        icon: Users,
+      },
+      {
+        label: 'Quality check items',
+        value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length.toString(),
+        note: 'Awaiting governance review',
+        accent: '#F97316',
+        icon: BrainCircuit,
+      },
+    ],
+    [budgets]
+  )
+
+  const dynamicEntityRows = useMemo(() => {
+    return instances.slice(0, 3).map((instance) => {
+      const totalBudget = instance.budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0)
+      const smeRouted = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
+      const qualityCheck = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length
+      const completed = instance.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'reviewCompleted').length
+      const completion = instance.budgets.length ? Math.round(((completed + qualityCheck) / instance.budgets.length) * 100) : 0
+
+      return {
+        code: instance.entityAbbr || instance.name.slice(0, 3).toUpperCase(),
+        name: instance.name,
+        insight: `${instance.budgets.length} projects in cycle, ${smeRouted} with SME, ${qualityCheck} in quality check.`,
+        completion,
+        budget: totalBudget,
+        totalProjects: instance.budgets.length,
+        smeRouted,
+      }
+    })
+  }, [instances])
+
+  const alignmentDistribution = useMemo(() => {
+    const alignedAndReady = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
+    const needsClassification = budgets.filter(
+      (budget) => budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+    ).length
+    const wrongRoutingRisk = budgets.filter(
+      (budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+    ).length
+    const holdForClarification = budgets.filter(
+      (budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
+    ).length
+    const total = Math.max(1, alignedAndReady + needsClassification + wrongRoutingRisk + holdForClarification)
+
+    return [
+      { label: 'Aligned and ready', value: alignedAndReady, color: '#286CFF', share: Math.round((alignedAndReady / total) * 100) },
+      { label: 'Needs classification review', value: needsClassification, color: '#A855F7', share: Math.round((needsClassification / total) * 100) },
+      { label: 'Wrong SME routing risk', value: wrongRoutingRisk, color: '#D97706', share: Math.round((wrongRoutingRisk / total) * 100) },
+      { label: 'Hold for clarification', value: holdForClarification, color: '#DC2626', share: Math.round((holdForClarification / total) * 100) },
+    ]
+  }, [budgets])
+
+  const dynamicSmeTracks = useMemo(() => {
+    return smeTracks.map((track) => {
+      const matching = budgets.filter((budget) => (budget.strategicPriorityName || '').split(' - ')[0]?.trim() === track.priority)
+      if (!matching.length) {
+        return { ...track }
+      }
+
+      const awaitingSME = matching.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
+      const completed = matching.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length
+      const avgConfidence = Math.round(
+        matching.reduce((sum, budget) => sum + (budget.aiConfidenceScore ?? 0), 0) / Math.max(1, matching.length)
+      )
+
+      return {
+        ...track,
+        projects: matching.length,
+        routed: awaitingSME,
+        completed,
+        awaitingSME,
+        averageConfidence: avgConfidence,
+      }
+    }).slice(0, 3)
+  }, [budgets])
+
   return (
     <StrategyPageShell
       eyebrow="ICT - Strategy Team"
       title="Strategy Team Dashboard"
       description="A high-access governance workspace for the strategy team to steer alignment, oversee entities, monitor SMEs, and keep DGE readiness moving across the full portfolio."
     >
+      {loading ? (
+        <DashboardSkeleton />
+      ) : (
+        <>
       <section className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
         <div className="p-4 sm:p-5">
           <div className="flex flex-wrap items-center gap-3 lg:gap-6">
@@ -51,7 +250,7 @@ export default function StrategyTeamDashboard() {
               <div className="min-w-0">
                 <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-bold text-[#0F172A] dark:text-white">2026</p>
+                  <p className="text-sm font-bold text-[#0F172A] dark:text-white">{selectedCycle?.name || 'No active cycle'}</p>
                   <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
                     Under DGE Review
                   </span>
@@ -67,7 +266,9 @@ export default function StrategyTeamDashboard() {
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Entity Readiness</p>
-                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">18 submitted, 12 in DGE review, 6 still planning</p>
+                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">
+                  {entityReadiness.submitted} submitted, {entityReadiness.inReview} in DGE review, {entityReadiness.planning} still planning
+                </p>
               </div>
             </div>
           </div>
@@ -76,15 +277,21 @@ export default function StrategyTeamDashboard() {
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
               <p className="text-sm text-[#475569] dark:text-slate-200">
-                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> Strategy is currently governing 48 projects across 18 entities. 12 entities are actively under DGE review, 6 still need planning-stage intervention, and 7 high-signal items should be handled before deeper SME routing.
+                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> Strategy is currently governing {budgets.length} projects across {instances.length} entities. {entityReadiness.inReview} entities are actively under DGE review, {entityReadiness.planning} still need planning-stage intervention, and {budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview).length} high-signal items should be handled before deeper SME routing.
               </p>
             </div>
           </div>
         </div>
       </section>
 
+      {error ? (
+        <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+          {error}
+        </div>
+      ) : null}
+
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {strategyStats.map((item) => (
+        {dashboardStats.map((item) => (
           <StrategyMetricCard
             key={item.label}
             title={item.label}
@@ -97,8 +304,8 @@ export default function StrategyTeamDashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-6">
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -112,7 +319,7 @@ export default function StrategyTeamDashboard() {
               <MiniLink to="/strategy-team/entity-tracker" label="Open tracker" />
             </div>
             <div className="mt-5 space-y-3">
-              {entityProgressRows.slice(0, 3).map((entity) => (
+              {(dynamicEntityRows.length ? dynamicEntityRows : entityProgressRows.slice(0, 3)).map((entity) => (
                 <div key={entity.code} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -139,7 +346,7 @@ export default function StrategyTeamDashboard() {
         </Card>
 
         <StrategyAiPanel title="AI Risk Snapshot">
-          <div className="space-y-3">
+          <div className="flex flex-1 flex-col justify-center space-y-3">
             <div className="rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -172,8 +379,8 @@ export default function StrategyTeamDashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-6">
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -186,7 +393,7 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/strategic-alignment" label="Open table" />
             </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-[1.2fr_0.8fr]">
+            <div className="mt-5 grid flex-1 content-center gap-3 md:grid-cols-[1.2fr_0.8fr]">
               <div className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -196,12 +403,7 @@ export default function StrategyTeamDashboard() {
                   <PieChart className="h-5 w-5 text-[#286CFF]" />
                 </div>
                 <div className="mt-4 space-y-3">
-                  {[
-                    { label: 'Aligned and ready', value: 31, color: '#286CFF', share: 78 },
-                    { label: 'Needs classification review', value: 9, color: '#A855F7', share: 46 },
-                    { label: 'Wrong SME routing risk', value: 5, color: '#D97706', share: 28 },
-                    { label: 'Hold for clarification', value: 3, color: '#DC2626', share: 18 },
-                  ].map((item) => (
+                  {alignmentDistribution.map((item) => (
                     <div key={item.label}>
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <span className="inline-flex items-center gap-2 font-medium text-[#0F172A] dark:text-white">
@@ -238,8 +440,8 @@ export default function StrategyTeamDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-6">
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -253,7 +455,7 @@ export default function StrategyTeamDashboard() {
               <MiniLink to="/strategy-team/sme-tracker" label="Open SME view" />
             </div>
             <div className="mt-5 space-y-3">
-              {smeTracks.slice(0, 3).map((track) => (
+              {dynamicSmeTracks.map((track) => (
                 <div key={track.priority} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -277,8 +479,8 @@ export default function StrategyTeamDashboard() {
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Card className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-6">
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -291,7 +493,7 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/quality-check" label="View All" />
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="mt-5 flex flex-1 flex-col justify-center space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {[
                   { label: 'DGE To ADGE', value: '23', accent: '#286CFF' },
@@ -364,7 +566,7 @@ export default function StrategyTeamDashboard() {
               </div>
               <MiniLink to="/strategy-team/entity-tracker" label="Open entity view" />
             </div>
-            <div className="mt-5 space-y-4">
+            <div className="mt-5 flex flex-1 flex-col justify-center space-y-4">
               <div className="rounded-[24px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -469,7 +671,7 @@ export default function StrategyTeamDashboard() {
         </Card>
 
         <StrategyAiPanel title="AI Governance Lens">
-          <div className="space-y-3">
+          <div className="flex flex-1 flex-col justify-center space-y-3">
             <div className="rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
               <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Overall readout</p>
               <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
@@ -489,6 +691,8 @@ export default function StrategyTeamDashboard() {
           </div>
         </StrategyAiPanel>
       </section>
+        </>
+      )}
     </StrategyPageShell>
   )
 }

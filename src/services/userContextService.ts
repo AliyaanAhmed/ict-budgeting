@@ -5,6 +5,14 @@ import { Dga_module_typesService } from '@/generated/services/Dga_module_typesSe
 import { SystemusersService } from '@/generated/services/SystemusersService'
 import { TeammembershipsService } from '@/generated/services/TeammembershipsService'
 import { TeamsService } from '@/generated/services/TeamsService'
+import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
+import {
+  SESSION_CURRENT_SME_KEY,
+  SESSION_DGE_SME_ASSIGNMENTS_KEY,
+  SESSION_DGE_STRATEGY_TEAM_KEY,
+} from '@/services/dgeRoleContextService'
+import { SESSION_CYCLES_KEY, SESSION_CURRENT_CYCLE_KEY } from '@/services/cycleService'
+import { SESSION_INSTANCE_DETAIL_KEY, SESSION_INSTANCE_ID_KEY } from '@/services/instanceService'
 
 export const SESSION_USER_KEY = 'ict_app_user'
 export const SESSION_USER_ID_KEY = 'userID'
@@ -82,6 +90,10 @@ const ROLE_MODULE_CONFIG_SESSION_KEY: Record<TeamRole, string> = {
 
 function setSessionJson(key: string, value: unknown) {
   sessionStorage.setItem(key, JSON.stringify(value))
+}
+
+export function clearRoleAndContextSession() {
+  sessionStorage.clear()
 }
 
 function storeModuleTypeId(moduleTypeId: string | null) {
@@ -350,6 +362,7 @@ async function fetchUserTeamsAndAccounts(systemUserId: string, moduleTypeId: str
 
 export async function initUserContext(): Promise<void> {
   try {
+    clearRoleAndContextSession()
     const ctx = await getContext()
 
     const objectId = ctx.user.objectId ?? ''
@@ -414,10 +427,13 @@ export async function initUserContext(): Promise<void> {
     if (userContext.systemUserId) {
       await fetchUserTeamsAndAccounts(userContext.systemUserId, moduleTypeId)
     } else {
+      sessionStorage.setItem(SESSION_USER_TEAMS_KEY, JSON.stringify([]))
       storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
     }
   } catch {
+    clearRoleAndContextSession()
     storeModuleTypeId(null)
+    sessionStorage.setItem(SESSION_USER_TEAMS_KEY, JSON.stringify([]))
     storeModuleConfigTeamIds(EMPTY_MODULE_CONFIG_TEAM_IDS)
   }
 }

@@ -96,7 +96,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     ],
   }
 
-  const items = navItems[activeRole] ?? []
+  const items = activeRole ? navItems[activeRole] ?? [] : []
   const activeHref = [...items]
     .sort((a, b) => b.href.length - a.href.length)
     .find((item) => {
@@ -209,7 +209,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
                   activeRole === 'ICT - SME Team' && 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
                 )}
               >
-                {activeRole}
+                {activeRole ?? 'No role assigned'}
               </span>
             </div>
           </div>

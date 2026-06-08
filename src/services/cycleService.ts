@@ -57,6 +57,8 @@ export async function initCycleContext(): Promise<void> {
     })
 
     if (!cycleResult.success || !cycleResult.data?.length) {
+      sessionStorage.removeItem(SESSION_CYCLES_KEY)
+      sessionStorage.removeItem(SESSION_CURRENT_CYCLE_KEY)
       return
     }
 
@@ -84,6 +86,8 @@ export async function initCycleContext(): Promise<void> {
       }))
 
     if (!allCycles.length) {
+      sessionStorage.removeItem(SESSION_CYCLES_KEY)
+      sessionStorage.removeItem(SESSION_CURRENT_CYCLE_KEY)
       return
     }
 
@@ -95,6 +99,8 @@ export async function initCycleContext(): Promise<void> {
     const defaultCycle = currentCycle ?? allCycles[0]
     sessionStorage.setItem(SESSION_CURRENT_CYCLE_KEY, JSON.stringify(defaultCycle))
   } catch {
+    sessionStorage.removeItem(SESSION_CYCLES_KEY)
+    sessionStorage.removeItem(SESSION_CURRENT_CYCLE_KEY)
     return
   }
 }

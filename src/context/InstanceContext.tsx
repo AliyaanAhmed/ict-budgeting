@@ -1,13 +1,15 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { AppInstanceDetail } from '@/services/instanceService'
 import {
-  getStoredInstanceId,
-  getStoredInstanceDetail,
-  getAccountIdForRole,
+  SESSION_INSTANCE_DETAIL_KEY,
+  SESSION_INSTANCE_ID_KEY,
   fetchAndStoreInstance,
+  getAccountIdForRole,
+  getStoredInstanceDetail,
+  getStoredInstanceId,
 } from '@/services/instanceService'
-import { useRole } from '@/context/RoleContext'
 import { useCycle } from '@/context/CycleContext'
+import { useRole } from '@/context/RoleContext'
 
 interface InstanceContextType {
   instanceId: string | null
@@ -22,46 +24,54 @@ const InstanceContext = createContext<InstanceContextType>({
 })
 
 export function InstanceProvider({ children }: { children: React.ReactNode }) {
-  const [instanceId, setInstanceId]         = useState<string | null>(null)
+  const [instanceId, setInstanceId] = useState<string | null>(null)
   const [instanceDetail, setInstanceDetail] = useState<AppInstanceDetail | null>(null)
   const [instanceLoading, setInstanceLoading] = useState(false)
 
-  const { activeRole }    = useRole()
+  const { activeRole } = useRole()
   const { selectedCycle } = useCycle()
 
-  // Seed from sessionStorage on first mount (set by initInstanceContext() in main.tsx)
   useEffect(() => {
     setInstanceId(getStoredInstanceId())
     setInstanceDetail(getStoredInstanceDetail())
   }, [])
 
-  // Track whether this is the initial effect fire so we skip the loading indicator
-  // on first mount (sessionStorage already has fresh data from the boot sequence).
-  const isFirstFetch = useRef(true)
-
-  // Re-fetch whenever the active role or selected cycle changes
   useEffect(() => {
-    if (!selectedCycle?.id) return
+    if (!selectedCycle?.id || !activeRole) return
 
-    const accountId = getAccountIdForRole(activeRole)
-    if (!accountId) {
-      console.warn('[InstanceContext] No account ID for role', activeRole, '— cannot fetch instance')
+    if (activeRole === 'ICT - Strategy Team' || activeRole === 'ICT - SME Team' || activeRole === 'ICT Admin') {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
+      setInstanceId(null)
+      setInstanceDetail(null)
+      setInstanceLoading(false)
       return
     }
 
-    const isFirst = isFirstFetch.current
-    isFirstFetch.current = false
+    const accountId = getAccountIdForRole(activeRole)
+    if (!accountId) {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
+      setInstanceId(null)
+      setInstanceDetail(null)
+      setInstanceLoading(false)
+      return
+    }
 
-    // On first mount the boot sequence already fetched the instance, so we
-    // silently refresh without showing a loading state to avoid a skeleton flash.
-    if (!isFirst) setInstanceLoading(true)
+    setInstanceLoading(true)
 
-    void fetchAndStoreInstance(selectedCycle.id, accountId).then(detail => {
+    void fetchAndStoreInstance(selectedCycle.id, accountId).then((detail) => {
       setInstanceId(detail?.id ?? null)
       setInstanceDetail(detail)
-      if (!isFirst) setInstanceLoading(false)
+      setInstanceLoading(false)
+    }).catch(() => {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
+      setInstanceId(null)
+      setInstanceDetail(null)
+      setInstanceLoading(false)
     })
-  }, [activeRole, selectedCycle?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeRole, selectedCycle?.id])
 
   return (
     <InstanceContext.Provider value={{ instanceId, instanceDetail, instanceLoading }}>

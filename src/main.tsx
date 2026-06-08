@@ -2,12 +2,13 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { initUserContext } from './services/userContextService'
 import { initCycleContext } from './services/cycleService'
+import { initDgeRoleContext } from './services/dgeRoleContextService'
 import { initInstanceContext } from './services/instanceService'
+import { initUserContext } from './services/userContextService'
 
-// Boot sequence: user → teams+accounts → cycles → instance → render
 initUserContext()
+  .then(() => initDgeRoleContext(sessionStorage.getItem('userID')))
   .then(() => initCycleContext())
   .then(() => initInstanceContext())
   .then(() => {

@@ -88,7 +88,7 @@ export function StrategySectionCard({
   headingIcon?: ReactNode
 }) {
   return (
-    <section className={cn('overflow-hidden rounded-[22px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]', className)}>
+    <section className={cn('flex h-full flex-col overflow-hidden rounded-[22px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]', className)}>
       <div className="flex items-start justify-between gap-4 border-b border-[#EEF3F8] px-5 py-4 dark:border-white/10">
         <div>
           <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export function StrategySectionCard({
         </div>
         {rightAction ? <div>{rightAction}</div> : null}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="flex flex-1 flex-col p-5">{children}</div>
     </section>
   )
 }
@@ -131,7 +131,7 @@ export function StrategyAiPanel({
   children: ReactNode
 }) {
   return (
-    <div className="rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] p-5 shadow-[0_12px_30px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#2A123D]">
+    <div className="flex h-full flex-col rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] p-5 shadow-[0_12px_30px_rgba(168,85,247,0.08)] dark:border-white/10 dark:bg-[#2A123D]">
       <div className="flex items-center gap-2">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
           <Sparkles className="h-5 w-5" />
@@ -141,7 +141,7 @@ export function StrategyAiPanel({
           <p className="text-xs text-[#64748B] dark:text-slate-300">AI-guided governance signal</p>
         </div>
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-4 flex flex-1 flex-col">{children}</div>
     </div>
   )
 }

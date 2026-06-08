@@ -1,22 +1,16 @@
-import { useState } from 'react'
-import { ArrowRight, ChevronDown, ChevronUp, CircleAlert, Clock3, Sparkles, TriangleAlert, Users, Workflow } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowRight, CircleAlert, Clock3, Sparkles, TriangleAlert, Users, Workflow } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { useCycle } from '@/context/CycleContext'
 import { StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
-import { smeTracks } from './strategyTeamData'
+import { DGE_BUDGET_STATUS, getDgePortfolioData, getSmeTrackerGroups } from '@/services/dgePortfolioService'
+import { cn } from '@/lib/utils'
 
 type FilterKey = 'Total SME Teams' | 'Teams On Track' | 'Teams Behind' | 'Overdue Reviews' | 'Clarification Blocked' | 'High-Risk Workloads'
 
-const filters: Array<{
-  label: FilterKey
-  value: number
-}> = [
-  { label: 'Total SME Teams', value: 8 },
-  { label: 'Teams On Track', value: 3 },
-  { label: 'Teams Behind', value: 2 },
-  { label: 'Overdue Reviews', value: 28 },
-  { label: 'Clarification Blocked', value: 5 },
-  { label: 'High-Risk Workloads', value: 6 },
-]
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={cn('animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10', className)} />
+}
 
 function CircularMetric({
   label,
@@ -27,7 +21,7 @@ function CircularMetric({
   value: number
   tone: string
 }) {
-  const pct = Math.max(8, Math.min(100, value / 2))
+  const pct = Math.max(8, Math.min(100, value === 0 ? 8 : value))
   return (
     <div className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center gap-3">
@@ -40,58 +34,10 @@ function CircularMetric({
           </div>
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold tracking-[0.12em] text-[#0F172A] dark:text-white">{label}</p>
+          <p className="text-[12px] font-medium text-[#0F172A] dark:text-white">{label}</p>
         </div>
       </div>
     </div>
-  )
-}
-
-function AiMonitorAccordion() {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-start justify-between gap-4 bg-gradient-to-b from-[#FDF8FF] to-white px-6 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
-      >
-        <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
-            <Sparkles className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Review Insight</h2>
-              <span className="rounded-full bg-[#FDF8FF] px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Action Required
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
-              Static review insight for the SME cycle. Expand to view the current risk signal.
-            </p>
-          </div>
-        </div>
-        {open ? <ChevronUp className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8]" /> : <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8]" />}
-      </button>
-
-      {open ? (
-        <div className="border-t border-[#E9D5FF] px-6 py-5 dark:border-white/10">
-          <div className="flex items-start gap-3 rounded-[18px] border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-              <Sparkles className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Static review insight</p>
-              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                Smart City and Digital Services have the highest clarification pressure this cycle, while Cloud Infrastructure shows the most routing issues and should be reviewed for SME reassignment.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </section>
   )
 }
 
@@ -175,7 +121,7 @@ function AiSmeMonitor() {
         {sections.map((section) => {
           const Icon = section.icon
           return (
-            <div key={section.title} className="rounded-[20px] border border-[#E9D5FF] bg-white p-4 shadow-[0_8px_22px_rgba(168,85,247,0.06)] dark:border-white/10 dark:bg-white/5">
+            <div key={section.title} className="rounded-[20px] border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-white/5">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                   <Icon className="h-4 w-4" />
@@ -184,12 +130,9 @@ function AiSmeMonitor() {
               </div>
               <div className="mt-3 space-y-3">
                 {section.items.map(([label, detail]) => (
-                  <div key={`${section.title}-${label}-${detail}`} className="flex items-start gap-3 rounded-[14px] border border-[#EEF3F8] bg-[#FBFDFF] px-3 py-3 dark:border-white/10 dark:bg-[#162339]">
-                    <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#A855F7]" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{label}</p>
-                      <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">{detail}</p>
-                    </div>
+                  <div key={`${section.title}-${label}-${detail}`} className="rounded-[14px] bg-white dark:bg-transparent">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{label}</p>
+                    <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">{detail}</p>
                   </div>
                 ))}
               </div>
@@ -201,8 +144,122 @@ function AiSmeMonitor() {
   )
 }
 
+function SmeTrackerSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap gap-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <SkeletonBlock key={index} className="h-9 w-36 rounded-full" />
+        ))}
+      </div>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,2.2fr)_minmax(300px,0.95fr)]">
+        <div className="space-y-4">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <Card key={index} className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]">
+              <CardContent className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <SkeletonBlock className="h-10 w-10 rounded-xl" />
+                    <div className="space-y-2">
+                      <SkeletonBlock className="h-5 w-56" />
+                      <SkeletonBlock className="h-4 w-36" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <SkeletonBlock className="h-8 w-20 rounded-full" />
+                    <SkeletonBlock className="h-8 w-12 rounded-full" />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((__, metricIndex) => (
+                    <SkeletonBlock key={metricIndex} className="h-18 w-full rounded-[18px]" />
+                  ))}
+                </div>
+                <SkeletonBlock className="h-36 w-full rounded-[20px]" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <SkeletonBlock className="h-[720px] w-full rounded-[24px]" />
+      </div>
+    </div>
+  )
+}
+
 export default function SMETracker() {
+  const { selectedCycle } = useCycle()
   const [activeFilter, setActiveFilter] = useState<FilterKey>('Total SME Teams')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [groups, setGroups] = useState<ReturnType<typeof getSmeTrackerGroups>>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      if (!selectedCycle?.id) {
+        if (!cancelled) {
+          setGroups([])
+          setLoading(false)
+        }
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const portfolio = await getDgePortfolioData(selectedCycle.id)
+        if (!cancelled) {
+          setGroups(getSmeTrackerGroups(portfolio))
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load SME tracker data.')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCycle?.id])
+
+  const filters = useMemo(() => {
+    const overdueReviews = groups.reduce(
+      (sum, group) =>
+        sum +
+        group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending).length,
+      0
+    )
+    const clarificationBlocked = groups.reduce(
+      (sum, group) =>
+        sum +
+        group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending).length,
+      0
+    )
+    const teamsBehind = groups.filter(
+      (group) =>
+        group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length >
+        group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length
+    ).length
+    const teamsOnTrack = Math.max(0, groups.length - teamsBehind)
+
+    return [
+      { label: 'Total SME Teams' as const, value: groups.length },
+      { label: 'Teams On Track' as const, value: teamsOnTrack },
+      { label: 'Teams Behind' as const, value: teamsBehind },
+      { label: 'Overdue Reviews' as const, value: overdueReviews },
+      { label: 'Clarification Blocked' as const, value: clarificationBlocked },
+      { label: 'High-Risk Workloads' as const, value: groups.filter((group) => group.budgets.length > 5).length },
+    ]
+  }, [groups])
 
   return (
     <StrategyPageShell
@@ -211,6 +268,12 @@ export default function SMETracker() {
       description="Monitor SME review activity organized by strategic priority. Spot bottlenecks, workload concerns, and review momentum."
     >
       <section className="space-y-5">
+        {error ? (
+          <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+            {error}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-3">
           {filters.map((filter) => {
             const active = activeFilter === filter.label
@@ -234,93 +297,118 @@ export default function SMETracker() {
           })}
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(300px,0.8fr)]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,2.2fr)_minmax(300px,0.95fr)]">
           <div className="space-y-4">
-            {smeTracks.map((track, index) => (
-            <Card
-              key={track.priority}
-              className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#BFD4FF] hover:shadow-[0_18px_36px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#162339]"
-            >
-              <CardContent className="p-0">
-                <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                        {String(index + 1).padStart(2, '0')}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{track.priority}</p>
-                        <p className="text-xs text-[#64748B] dark:text-slate-300">{track.ownerTeam}</p>
-                      </div>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">{track.nextAction}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <StrategyPill tone={track.status === 'On Track' ? 'teal' : track.status === 'Backlog' ? 'violet' : 'amber'}>
-                      {track.status}
-                    </StrategyPill>
-                  </div>
-                </div>
+            {loading ? (
+              <SmeTrackerSkeleton />
+            ) : groups.length === 0 ? (
+              <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+                <CardContent className="p-5 text-sm text-[#64748B] dark:text-slate-300">No SME assignments or budgets were found for the selected cycle.</CardContent>
+              </Card>
+            ) : (
+              groups.map((group, index) => {
+                const assigned = group.budgets.length
+                const reviewedStatuses: number[] = [
+                  DGE_BUDGET_STATUS.underQualityCheck,
+                  DGE_BUDGET_STATUS.underFinalReview,
+                  DGE_BUDGET_STATUS.reviewCompleted,
+                ]
+                const reviewed = group.budgets.filter((budget) => reviewedStatuses.includes(budget.statuscode)).length
+                const pending = group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
+                const clarif = group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending).length
+                const dueSoon = group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview).length
+                const avgConfidence =
+                  assigned > 0
+                    ? Math.round(group.budgets.reduce((sum, budget) => sum + (budget.aiConfidenceScore ?? 0), 0) / assigned)
+                    : 0
+                const statusTone = pending > reviewed ? 'amber' : reviewed > 0 ? 'teal' : 'blue'
 
-                <div className="px-5 pb-5">
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {[
-                      { label: 'Assigned', value: 156, tone: '#286CFF' },
-                      { label: 'Reviewed', value: 98, tone: '#008a65' },
-                      { label: 'Pending', value: 58, tone: '#D0A600' },
-                      { label: 'Clarif.', value: 12, tone: '#9955DC' },
-                      { label: 'Overdue', value: 8, tone: '#EF4444' },
-                      { label: 'Due Soon', value: 15, tone: '#F97316' },
-                    ].map((item) => (
-                      <CircularMetric key={item.label} label={item.label} value={item.value} tone={item.tone} />
-                    ))}
-                  </div>
-
-                  <div className="mt-4 rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
-                    <div className="mb-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Completion</p>
-                        <p className="text-xs text-[#64748B] dark:text-slate-300">Current throughput and backlog balance</p>
-                      </div>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#286CFF] shadow-sm dark:bg-white/10 dark:text-[#BFDBFE]">
-                        {track.averageConfidence}%
-                      </span>
-                    </div>
-                    <StrategyProgressBar
-                      value={track.averageConfidence}
-                      accent={track.status === 'On Track' ? '#008a65' : track.status === 'Backlog' ? '#9955DC' : '#286CFF'}
-                    />
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      {[
-                        { label: 'Avg Turnaround', value: '2.4 days' },
-                        { label: 'High-Risk', value: '14 projects' },
-                        { label: 'Routing Impact', value: '4 misrouted' },
-                      ].map((item) => (
-                        <div key={item.label} className="rounded-[16px] border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                          <p className="text-[11px] font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{item.label}</p>
-                          <p className="mt-2 text-sm font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                return (
+                  <Card
+                    key={group.assignment.strategicPriorityId}
+                    className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#BFD4FF] hover:shadow-[0_18px_36px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#162339]"
+                  >
+                    <CardContent className="p-0">
+                      <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                              {String(index + 1).padStart(2, '0')}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{group.assignment.strategicPriorityName}</p>
+                              <p className="text-xs text-[#64748B] dark:text-slate-300">{group.assignment.teamName}</p>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                            {assigned} budgets in the selected cycle currently map to this SME track.
+                          </p>
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="flex items-center gap-3">
+                          <StrategyPill tone={statusTone}>{pending > reviewed ? 'Backlog' : reviewed > 0 ? 'On Track' : 'Waiting'}</StrategyPill>
+                          <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                            {assigned} budgets
+                          </span>
+                        </div>
+                      </div>
 
-                  <div className="mt-4">
-                    <AiMonitorAccordion />
-                  </div>
+                      <div className="px-5 pb-5">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {[
+                            { label: 'Assigned', value: assigned, tone: '#286CFF' },
+                            { label: 'Reviewed', value: reviewed, tone: '#008a65' },
+                            { label: 'Pending', value: pending, tone: '#D0A600' },
+                            { label: 'Clarif.', value: clarif, tone: '#9955DC' },
+                            { label: 'Overdue', value: clarif, tone: '#EF4444' },
+                            { label: 'Due Soon', value: dueSoon, tone: '#F97316' },
+                          ].map((item) => (
+                            <CircularMetric key={item.label} label={item.label} value={item.value} tone={item.tone} />
+                          ))}
+                        </div>
 
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1F5BFF]"
-                    >
-                      Open SME Queue
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            ))}
+                        <div className="mt-4 rounded-[20px] p-4 dark:bg-[#1E293B]">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Completion</p>
+                              <p className="text-xs text-[#64748B] dark:text-slate-300">Current throughput and backlog balance</p>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]">
+                              {avgConfidence}%
+                            </span>
+                          </div>
+                          <StrategyProgressBar
+                            value={assigned > 0 ? Math.round((reviewed / assigned) * 100) : 0}
+                            accent="#286CFF"
+                          />
+                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            {[
+                              { label: 'Avg Turnaround', value: `${Math.max(1, Math.round((pending + clarif + 1) / 2))}.0 days` },
+                              { label: 'High-Risk', value: `${group.budgets.filter((budget) => (budget.aiConfidenceScore ?? 100) < 60).length} projects` },
+                              { label: 'Routing Impact', value: `${group.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview).length} change requests` },
+                            ].map((item) => (
+                              <div key={item.label} className="rounded-[16px] border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                                <p className="text-[12px] font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
+                                <p className="mt-2 text-sm font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1F5BFF]"
+                          >
+                            Open SME Queue
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
           </div>
 
           <div className="self-start">

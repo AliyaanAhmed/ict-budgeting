@@ -9,6 +9,7 @@ import {
 import { SESSION_USER_TEAMS_KEY } from '@/services/userContextService'
 import type { Role } from '@/data/db'
 import { getStoredCurrentCycle } from '@/services/cycleService'
+import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 
 export const SESSION_INSTANCE_ID_KEY     = 'instanceID'
 export const SESSION_INSTANCE_DETAIL_KEY = 'instanceDetail'
@@ -31,6 +32,24 @@ export function getAccountIdForRole(role: Role): string | null {
   const key = ROLE_ACCOUNT_KEY[role as TeamRole]
   if (!key) return null
   return sessionStorage.getItem(key) || null
+}
+
+function getStoredCurrentAdgeRole(): Role | null {
+  const stored = sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)?.trim() || ''
+
+  if (stored === 'ICT - Respondent') return 'Respondent'
+  if (stored === 'ICT - Reviewer') return 'Reviewer'
+  if (stored === 'ICT - Approver') return 'Approver'
+
+  const teamsRaw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
+  const teams: { role?: TeamRole }[] = teamsRaw ? JSON.parse(teamsRaw) : []
+  const fallbackRole = teams[0]?.role
+
+  if (fallbackRole === 'Respondent' || fallbackRole === 'Reviewer' || fallbackRole === 'Approver') {
+    return fallbackRole
+  }
+
+  return null
 }
 
 export async function fetchAndStoreInstance(
@@ -77,23 +96,32 @@ export async function fetchAndStoreInstance(
 // the default role and current cycle.
 export async function initInstanceContext(): Promise<void> {
   try {
-    // Determine default role from stored teams
-    const teamsRaw = sessionStorage.getItem(SESSION_USER_TEAMS_KEY)
-    const teams: { role: TeamRole }[] = teamsRaw ? JSON.parse(teamsRaw) : []
-    const defaultRole: Role = teams[0]?.role ?? 'Respondent'
+    const currentRole = getStoredCurrentAdgeRole()
 
-    const accountId = getAccountIdForRole(defaultRole)
+    if (!currentRole) {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
+      return
+    }
+
+    const accountId = getAccountIdForRole(currentRole)
     if (!accountId) {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
       return
     }
 
     const currentCycle = getStoredCurrentCycle()
     if (!currentCycle?.id) {
+      sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+      sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
       return
     }
 
     await fetchAndStoreInstance(currentCycle.id, accountId)
   } catch (err) {
+    sessionStorage.removeItem(SESSION_INSTANCE_ID_KEY)
+    sessionStorage.removeItem(SESSION_INSTANCE_DETAIL_KEY)
     return
   }
 }
@@ -134,8 +162,40 @@ export async function markCurrentInstancePlanningIfFirstProject(): Promise<boole
   return true
 }
 
+export async function ensureCurrentInstanceContext(): Promise<AppInstanceDetail> {
+  const storedInstanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)?.trim() || null
+  const storedInstanceDetail = getStoredInstanceDetail()
+
+  if (storedInstanceId && storedInstanceDetail) {
+    return storedInstanceDetail
+  }
+
+  const currentCycle = getStoredCurrentCycle()
+  if (!currentCycle?.id) {
+    throw new Error('Current ICT budget cycle is missing from session storage.')
+  }
+
+  const currentRole = getStoredCurrentAdgeRole()
+  if (!currentRole) {
+    throw new Error('Current ADGE role is missing from session storage.')
+  }
+
+  const accountId = getAccountIdForRole(currentRole)
+  if (!accountId) {
+    throw new Error('Current ADGE account is missing from session storage.')
+  }
+
+  const detail = await fetchAndStoreInstance(currentCycle.id, accountId)
+  if (!detail?.id) {
+    throw new Error('Current ICT budget instance could not be resolved for the active role and cycle.')
+  }
+
+  return detail
+}
+
 export async function updateCurrentInstanceSubmissionDate(submittedAt: Date = new Date()): Promise<void> {
-  const instanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)?.trim() || null
+  const existingInstanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)?.trim() || null
+  const instanceId = existingInstanceId || (await ensureCurrentInstanceContext()).id
   if (!instanceId) {
     throw new Error('Current ICT budget instance is missing from session storage.')
   }
