@@ -168,6 +168,40 @@ function getInstanceStatusLabel(statuscode: number | null | undefined, fallback?
 function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsService.getAll>>['data'][number]): DgeBudgetRecord | null {
   if (!record.dga_ict_budgetid) return null
 
+  const strategicPriorityName =
+    normalizeString(record.dga_strategic_priorityname) ||
+    normalizeString((record.dga_strategic_priority as { dga_name?: string } | null | undefined)?.dga_name) ||
+    null
+
+  const strategicPriorityClassificationName =
+    normalizeString(record.dga_strategic_priority_classificationname) ||
+    normalizeString(
+      (record.dga_strategic_priority_classification as { dga_name?: string } | null | undefined)?.dga_name
+    ) ||
+    null
+
+  const previousStrategicPriorityName =
+    normalizeString(record.dga_previous_strategic_priorityname) ||
+    normalizeString((record.dga_previous_strategic_priority as { dga_name?: string } | null | undefined)?.dga_name) ||
+    null
+
+  const previousStrategicPriorityClassificationName =
+    normalizeString(record.dga_previous_strategic_priorityclassificationname) ||
+    normalizeString(
+      (record.dga_previous_strategic_priorityclassification as { dga_name?: string } | null | undefined)?.dga_name
+    ) ||
+    null
+
+  const instanceName =
+    normalizeString(record.dga_ict_budget_instancename) ||
+    normalizeString((record.dga_ict_budget_instance as { dga_name?: string } | null | undefined)?.dga_name) ||
+    null
+
+  const smeReviewerTeamName =
+    normalizeString(record.dga_sme_reviewer_teamname) ||
+    normalizeString((record.dga_sme_reviewer_team as { name?: string } | null | undefined)?.name) ||
+    null
+
   return {
     id: record.dga_ict_budgetid,
     budgetRefId: normalizeString(record.dga_budget_ref_id) || record.dga_ict_budgetid,
@@ -177,14 +211,13 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     statusLabel: getBudgetStatusLabel(record.statuscode ?? null, record.statuscodename ?? null),
     statusForAdge: typeof record.dga_status_for_adge === 'number' ? record.dga_status_for_adge : null,
     strategicPriorityId: record._dga_strategic_priority_value ?? null,
-    strategicPriorityName: normalizeString(record.dga_strategic_priorityname) || null,
+    strategicPriorityName,
     strategicPriorityClassificationId: record._dga_strategic_priority_classification_value ?? null,
-    strategicPriorityClassificationName: normalizeString(record.dga_strategic_priority_classificationname) || null,
+    strategicPriorityClassificationName,
     previousStrategicPriorityId: record._dga_previous_strategic_priority_value ?? null,
-    previousStrategicPriorityName: normalizeString(record.dga_previous_strategic_priorityname) || null,
+    previousStrategicPriorityName,
     previousStrategicPriorityClassificationId: record._dga_previous_strategic_priorityclassification_value ?? null,
-    previousStrategicPriorityClassificationName:
-      normalizeString(record.dga_previous_strategic_priorityclassificationname) || null,
+    previousStrategicPriorityClassificationName,
     requestedBudget: Number(record.dga_total_budget_requested ?? 0),
     recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
     allocatedBudget: Number(record.dga_total_budget_allocated ?? 0),
@@ -194,10 +227,10 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     ownerId: record.ownerid ?? null,
     ownerName: normalizeString(record.owneridname) || null,
     instanceId: record._dga_ict_budget_instance_value ?? null,
-    instanceName: normalizeString(record.dga_ict_budget_instancename) || null,
-    entityName: normalizeString(record.dga_ict_budget_instancename) || null,
+    instanceName,
+    entityName: instanceName,
     smeReviewerTeamId: record._dga_sme_reviewer_team_value ?? null,
-    smeReviewerTeamName: normalizeString(record.dga_sme_reviewer_teamname) || null,
+    smeReviewerTeamName,
   }
 }
 
@@ -311,14 +344,38 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
     budgetsByInstance.set(budget.instanceId, current)
   })
 
+  const instanceLookup = new Map(
+    instances.map((instance) => [
+      instance.id,
+      { instanceName: instance.name, entityName: instance.entityName },
+    ])
+  )
+
+  const hydratedBudgets = budgets.map((budget) => {
+    const linkedInstance = budget.instanceId ? instanceLookup.get(budget.instanceId) : null
+    return {
+      ...budget,
+      instanceName: budget.instanceName || linkedInstance?.instanceName || null,
+      entityName: budget.entityName || linkedInstance?.entityName || linkedInstance?.instanceName || null,
+    }
+  })
+
+  const hydratedBudgetsByInstance = new Map<string, DgeBudgetRecord[]>()
+  hydratedBudgets.forEach((budget) => {
+    if (!budget.instanceId) return
+    const current = hydratedBudgetsByInstance.get(budget.instanceId) ?? []
+    current.push(budget)
+    hydratedBudgetsByInstance.set(budget.instanceId, current)
+  })
+
   const hydratedInstances = instances.map((instance) => ({
     ...instance,
-    budgets: budgetsByInstance.get(instance.id) ?? [],
+    budgets: hydratedBudgetsByInstance.get(instance.id) ?? [],
   }))
 
   return {
     instances: hydratedInstances,
-    budgets,
+    budgets: hydratedBudgets,
   }
 }
 

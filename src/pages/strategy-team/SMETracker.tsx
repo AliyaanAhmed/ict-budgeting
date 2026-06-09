@@ -321,7 +321,6 @@ export default function SMETracker() {
                   assigned > 0
                     ? Math.round(group.budgets.reduce((sum, budget) => sum + (budget.aiConfidenceScore ?? 0), 0) / assigned)
                     : 0
-                const statusTone = pending > reviewed ? 'amber' : reviewed > 0 ? 'teal' : 'blue'
 
                 return (
                   <Card
@@ -345,10 +344,10 @@ export default function SMETracker() {
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <StrategyPill tone={statusTone}>{pending > reviewed ? 'Backlog' : reviewed > 0 ? 'On Track' : 'Waiting'}</StrategyPill>
-                          <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                            {assigned} budgets
-                          </span>
+                          <div className="rounded-[16px] border border-[#DCE8F6] bg-[#F8FBFF] px-3 py-2 text-right dark:border-white/10 dark:bg-white/5">
+                            <p className="text-lg font-bold leading-none text-[#0F172A] dark:text-white">{assigned}</p>
+                            <p className="mt-1 text-[12px] font-medium text-[#64748B] dark:text-slate-300">Budgets</p>
+                          </div>
                         </div>
                       </div>
 

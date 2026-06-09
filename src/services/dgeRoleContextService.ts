@@ -42,6 +42,29 @@ function parseSessionJson<T>(key: string): T | null {
   }
 }
 
+async function getTeamNamesByIds(teamIds: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>()
+  const uniqueTeamIds = [...new Set(teamIds.filter(Boolean))]
+
+  if (!uniqueTeamIds.length) {
+    return result
+  }
+
+  const teamFilter = uniqueTeamIds.map((teamId) => `teamid eq ${teamId}`).join(' or ')
+  const teamsResult = await TeamsService.getAll({
+    select: ['teamid', 'name'],
+    filter: teamFilter,
+  })
+
+  for (const team of teamsResult.data ?? []) {
+    if (team.teamid) {
+      result.set(team.teamid, team.name ?? 'SME Team')
+    }
+  }
+
+  return result
+}
+
 async function getUsersForTeamIds(teamIds: string[]): Promise<Map<string, DgeRoleUser[]>> {
   const result = new Map<string, DgeRoleUser[]>()
   const uniqueTeamIds = [...new Set(teamIds.filter(Boolean))]
@@ -106,13 +129,16 @@ async function fetchAndStoreSmeAssignments(): Promise<DgeSmeAssignment[]> {
     )
 
     const teamIds = priorities.map((item) => item._dga_sme_group_value as string)
-    const usersByTeam = await getUsersForTeamIds(teamIds)
+    const [usersByTeam, teamNamesById] = await Promise.all([
+      getUsersForTeamIds(teamIds),
+      getTeamNamesByIds(teamIds),
+    ])
 
     const assignments = priorities.map((item) => ({
       strategicPriorityId: item.dga_strategic_prioritiesid,
       strategicPriorityName: item.dga_name,
       teamId: item._dga_sme_group_value as string,
-      teamName: item.dga_sme_groupname ?? 'SME Team',
+      teamName: teamNamesById.get(item._dga_sme_group_value as string) ?? item.dga_sme_groupname ?? 'SME Team',
       users: usersByTeam.get(item._dga_sme_group_value as string) ?? [],
     }))
 

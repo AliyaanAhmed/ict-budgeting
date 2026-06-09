@@ -104,7 +104,15 @@ export function StrategySectionCard({
   )
 }
 
-export function StrategyPill({ children, tone = 'blue' }: { children: ReactNode; tone?: 'blue' | 'teal' | 'violet' | 'amber' }) {
+export function StrategyPill({
+  children,
+  tone = 'blue',
+  className,
+}: {
+  children: ReactNode
+  tone?: 'blue' | 'teal' | 'violet' | 'amber'
+  className?: string
+}) {
   const styles = {
     blue: 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]',
     teal: 'bg-[#ECFEFF] text-[#0F9D8A] dark:bg-[#0F9D8A]/15 dark:text-[#99F6E4]',
@@ -112,7 +120,7 @@ export function StrategyPill({ children, tone = 'blue' }: { children: ReactNode;
     amber: 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]',
   }[tone]
 
-  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', styles)}>{children}</span>
+  return <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', styles, className)}>{children}</span>
 }
 
 export function StrategyProgressBar({ value, accent }: { value: number; accent: string }) {
