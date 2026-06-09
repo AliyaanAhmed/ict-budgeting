@@ -109,6 +109,7 @@ export function getStoredInstanceDetail(): AppInstanceDetail | null {
 }
 
 const INSTANCE_STATUS_PLANNING = 776140002
+const INSTANCE_STATUS_DGE_REVIEW = 776140003
 
 export async function markCurrentInstancePlanningIfFirstProject(): Promise<boolean> {
   const instanceId = getStoredInstanceId()
@@ -142,5 +143,6 @@ export async function updateCurrentInstanceSubmissionDate(submittedAt: Date = ne
 
   await Dga_ict_budget_instancesService.update(instanceId, {
     dga_entity_submission_date: submittedAt.toISOString(),
+    statuscode: INSTANCE_STATUS_DGE_REVIEW,
   })
 }

@@ -61,12 +61,14 @@ export default function App() {
                     {/* Strategy Team */}
                     <Route path="/strategy-team/dashboard" element={<StrategyTeamDashboard />} />
                     <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
+                    <Route path="/strategy-team/projects/:id" element={<ProjectDetail />} />
                     <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
                     <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
                     <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
                     {/* SME Team */}
                     <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
                     <Route path="/sme-team/reviews" element={<SmeTeamReviews />} />
+                    <Route path="/sme-team/reviews/:id" element={<ProjectDetail />} />
                     {/* ICT Admin */}
                     <Route path="/admin/assessment-cycles" element={<AssessmentCycles />} />
                     <Route path="/admin/cycles/:id" element={<CycleDetail />} />

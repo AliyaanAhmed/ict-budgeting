@@ -92,7 +92,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     ],
     'ICT - SME Team': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/sme-team/dashboard' },
-      { label: 'Reviews', icon: ClipboardList, href: '/sme-team/reviews' },
+      { label: 'SME Review Queue', icon: ClipboardList, href: '/sme-team/reviews' },
     ],
   }
 

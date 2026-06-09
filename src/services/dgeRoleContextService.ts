@@ -1,7 +1,13 @@
 import { Dga_strategic_prioritiesesService } from '@/generated/services/Dga_strategic_prioritiesesService'
+import { Dga_module_configurationsService } from '@/generated/services/Dga_module_configurationsService'
 import { SystemusersService } from '@/generated/services/SystemusersService'
 import { TeammembershipsService } from '@/generated/services/TeammembershipsService'
 import { TeamsService } from '@/generated/services/TeamsService'
+import {
+  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
+  SESSION_MODULE_TYPE_ID_KEY,
+  type ModuleConfigTeamIds,
+} from '@/services/userContextService'
 
 export const SESSION_DGE_SME_ASSIGNMENTS_KEY = 'dgeSmeAssignments'
 export const SESSION_DGE_STRATEGY_TEAM_KEY = 'dgeStrategyTeam'
@@ -39,6 +45,69 @@ function parseSessionJson<T>(key: string): T | null {
     return JSON.parse(raw) as T
   } catch {
     return null
+  }
+}
+
+function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds {
+  const parsed = parseSessionJson<Partial<ModuleConfigTeamIds>>(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  return {
+    respondentTeamId: parsed?.respondentTeamId ?? null,
+    reviewerTeamId: parsed?.reviewerTeamId ?? null,
+    approverTeamId: parsed?.approverTeamId ?? null,
+    strategyTeamId: parsed?.strategyTeamId ?? null,
+  }
+}
+
+async function seedAdgeModuleConfigTeamIdsForDgeUsers() {
+  const current = getStoredModuleConfigTeamIds()
+  const hasAdgeTeams = Boolean(
+    current.respondentTeamId?.trim() ||
+      current.reviewerTeamId?.trim() ||
+      current.approverTeamId?.trim()
+  )
+
+  if (hasAdgeTeams) {
+    return
+  }
+
+  const moduleTypeId = sessionStorage.getItem(SESSION_MODULE_TYPE_ID_KEY)?.trim() || ''
+  if (!moduleTypeId) {
+    return
+  }
+
+  try {
+    const result = await Dga_module_configurationsService.getAll({
+      select: [
+        'dga_module_configurationid',
+        '_dga_respondent_team_value',
+        '_dga_reviewer_team_value',
+        '_dga_approver_team_value',
+      ],
+      filter: `_dga_module_type_value eq ${moduleTypeId}`,
+      orderBy: ['dga_module_configurationid asc'],
+      top: 1,
+    })
+
+    const record = result.data?.[0]
+    if (!record) {
+      return
+    }
+
+    const nextValue: ModuleConfigTeamIds = {
+      respondentTeamId: record._dga_respondent_team_value ?? null,
+      reviewerTeamId: record._dga_reviewer_team_value ?? null,
+      approverTeamId: record._dga_approver_team_value ?? null,
+      strategyTeamId: current.strategyTeamId ?? null,
+    }
+
+    sessionStorage.setItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY, JSON.stringify(nextValue))
+
+    console.log('[DgeRoleContextService] Seeded ADGE moduleConfigTeamIDs for DGE user:', {
+      moduleTypeId,
+      nextValue,
+    })
+  } catch (error) {
+    console.warn('[DgeRoleContextService] Failed to seed ADGE moduleConfigTeamIDs for DGE user:', error)
   }
 }
 
@@ -184,6 +253,8 @@ export async function initDgeRoleContext(currentUserId: string | null): Promise<
     fetchAndStoreSmeAssignments(),
     fetchAndStoreStrategyTeam(),
   ])
+
+  await seedAdgeModuleConfigTeamIdsForDgeUsers()
 
   if (!currentUserId) {
     sessionStorage.removeItem(SESSION_CURRENT_SME_KEY)

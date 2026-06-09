@@ -102,6 +102,7 @@ import {
   getBudgetLineItemsByBudgetId,
   toBudgetItemDraft,
   updateBudgetLineItemAmount,
+  updateBudgetLineItemRecommendedAmount,
   type BudgetLineItemRecord,
 } from '@/services/budgetLineItemService'
 import {
@@ -111,6 +112,7 @@ import {
   updateIctBudgetStatus,
   updateIctBudgetDraft,
 } from '@/services/ictBudgetDraftService'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import {
   getStrategicPriorityOptions,
   type StrategicPriorityOption,
@@ -125,6 +127,7 @@ import {
   getWorkStreamOptions,
   type WorkStreamOption,
 } from '@/services/workStreamService'
+import { DGE_BUDGET_STATUS } from '@/services/dgePortfolioService'
 import { projectService } from '@/services/projectService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
@@ -136,6 +139,7 @@ import {
 } from '@/services/clarificationService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   associateTechnologyProduct,
   disassociateTechnologyProduct,
@@ -578,6 +582,7 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
     .map((item) => ({
       id: item.id,
       budgetRequested: item.budgetRequested,
+      budgetRecommended: item.budgetRecommended,
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }
@@ -749,6 +754,37 @@ function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null
   return <StatusBadge status={resolvedStatus as never} />
 }
 
+function getDgeHeaderStatusLabel(statusCode: number | null | undefined, fallbackStatus?: string | null) {
+  switch (statusCode) {
+    case DGE_BUDGET_STATUS.underStrategicAlignmentReview:
+      return 'Under Strategic Alignment Review'
+    case DGE_BUDGET_STATUS.underSmeReview:
+      return 'Under SME Review'
+    case DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview:
+      return 'Strategic Priority Change Under Review'
+    case DGE_BUDGET_STATUS.underQualityCheck:
+      return 'Under Quality Check'
+    case DGE_BUDGET_STATUS.underFinalReview:
+      return 'Under Final Review'
+    case DGE_BUDGET_STATUS.reviewCompleted:
+      return 'Review Completed'
+    case DGE_BUDGET_STATUS.clarificationPending:
+      return 'Clarification Pending'
+    case DGE_BUDGET_STATUS.allocationInProgress:
+      return 'Allocation in Progress'
+    case DGE_BUDGET_STATUS.allocationInReview:
+      return 'Allocation in Review'
+    case DGE_BUDGET_STATUS.allocationCompleted:
+      return 'Allocation Completed'
+    case DGE_BUDGET_STATUS.utilizationInProgress:
+      return 'Utilization in Progress'
+    case DGE_BUDGET_STATUS.utilizationCompleted:
+      return 'Utilization Completed'
+    default:
+      return fallbackStatus?.trim() || '-'
+  }
+}
+
 function EmptyAiActionCard({
   description,
   icon: Icon,
@@ -766,7 +802,7 @@ function EmptyAiActionCard({
   )
 }
 
-type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver'
+type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
 type WorkflowAction =
   | 'delete-project'
   | 'submit-reviewer'
@@ -777,7 +813,7 @@ type PendingClarificationReply = {
   clarificationId: string
   message: string
   files?: File[]
-  returnToRole: 'Reviewer' | 'Approver'
+  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
 }
 
 interface DetailSuggestionRow {
@@ -828,6 +864,8 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
 
 function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
   const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('strategy')) return 'Strategy Team'
+  if (value.includes('sme')) return 'SME Team'
   if (value.includes('review')) return 'Reviewer'
   if (value.includes('approv')) return 'Approver'
   if (value.includes('respond')) return 'Respondent'
@@ -847,6 +885,14 @@ function getStoredUserTeams(): UserTeam[] {
 }
 
 function getRoleTeamId(role: WorkflowRole): string | null {
+  if (role === 'Strategy Team') {
+    return getStoredStrategyTeam()?.teamId?.trim() || null
+  }
+
+  if (role === 'SME Team') {
+    return getStoredCurrentSme()?.teamId?.trim() || null
+  }
+
   return getStoredUserTeams().find((team) => team.role === role)?.teamid?.trim() || null
 }
 
@@ -869,6 +915,8 @@ function isProjectOwnedByCurrentContext(project: Project, role: WorkflowRole) {
 }
 
 function canRoleEdit(project: Project, role: WorkflowRole) {
+  if (role === 'Strategy Team') return true
+
   return (
     getWorkflowOwnerByStatusCode(project.statusCode, project.status) === role &&
     isProjectOwnedByCurrentContext(project, role)
@@ -1247,26 +1295,38 @@ function BudgetItemsTable({
   items,
   loading,
   error,
-  editable,
+  editableRequested,
+  editableRecommended,
+  showRecommendedBudget,
+  showActions,
   savingId,
   deletingId,
   onChangeBudgetRequested,
+  onChangeBudgetRecommended,
   onDelete,
 }: {
   items: BudgetLineItemRecord[]
   loading: boolean
   error: string | null
-  editable: boolean
+  editableRequested: boolean
+  editableRecommended: boolean
+  showRecommendedBudget: boolean
+  showActions: boolean
   savingId: string | null
   deletingId: string | null
   onChangeBudgetRequested: (lineItemId: string, amount: number) => void
+  onChangeBudgetRecommended: (lineItemId: string, amount: number) => void
   onDelete: (item: BudgetLineItemRecord) => void
 }) {
-  const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({})
+  const [draftRequestedAmounts, setDraftRequestedAmounts] = useState<Record<string, string>>({})
+  const [draftRecommendedAmounts, setDraftRecommendedAmounts] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setDraftAmounts(
+    setDraftRequestedAmounts(
       Object.fromEntries(items.map((item) => [item.id, item.budgetRequested > 0 ? formatAEDFull(item.budgetRequested) : '']))
+    )
+    setDraftRecommendedAmounts(
+      Object.fromEntries(items.map((item) => [item.id, item.budgetRecommended > 0 ? formatAEDFull(item.budgetRecommended) : '']))
     )
   }, [items])
 
@@ -1299,7 +1359,14 @@ function BudgetItemsTable({
       <table className="w-full text-sm">
         <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
           <tr>
-            {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'Action'].map((header) => (
+            {[
+              'Account Name',
+              'Classification',
+              'EBS Fusion Code',
+              'Budget Requested',
+              ...(showRecommendedBudget ? ['Recommended Budget'] : []),
+              ...(showActions ? ['Action'] : []),
+            ].map((header) => (
               <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
                 {header}
               </th>
@@ -1310,10 +1377,19 @@ function BudgetItemsTable({
           {items.map((item) => {
             const classificationLabel = item.expenseTypeLabel ?? 'Not Set'
             const isCapex = classificationLabel.toLowerCase() === 'capex'
-            const draftValue = draftAmounts[item.id] ?? String(item.budgetRequested)
-            const normalizedDraftValue = draftValue.replace(/,/g, '')
-            const parsedAmount = Number(normalizedDraftValue)
-            const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount > 0
+            const requestedDraftValue = draftRequestedAmounts[item.id] ?? String(item.budgetRequested)
+            const normalizedRequestedDraftValue = requestedDraftValue.replace(/,/g, '')
+            const parsedRequestedAmount = Number(normalizedRequestedDraftValue)
+            const isValidRequestedAmount =
+              requestedDraftValue.trim().length > 0 &&
+              Number.isFinite(parsedRequestedAmount) &&
+              parsedRequestedAmount > 0
+            const recommendedDraftValue = draftRecommendedAmounts[item.id] ?? String(item.budgetRecommended)
+            const normalizedRecommendedDraftValue = recommendedDraftValue.replace(/,/g, '')
+            const parsedRecommendedAmount = Number(normalizedRecommendedDraftValue)
+            const isValidRecommendedAmount =
+              recommendedDraftValue.trim().length === 0 ||
+              (Number.isFinite(parsedRecommendedAmount) && parsedRecommendedAmount >= 0)
             const isSaving = savingId === item.id
             const isDeleting = deletingId === item.id
 
@@ -1330,12 +1406,12 @@ function BudgetItemsTable({
                   EBS {item.ebsCode} / Fusion {item.fusionCode}
                 </td>
                 <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                  {editable ? (
+                  {editableRequested ? (
                     <div className="relative min-w-[190px]">
                       <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
                       <Input
                         inputMode="decimal"
-                        value={draftValue}
+                        value={requestedDraftValue}
                         onChange={(event) => {
                           const digitsAndDecimal = event.target.value.replace(/[^\d.]/g, '')
                           const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
@@ -1345,7 +1421,7 @@ function BudgetItemsTable({
                             ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
                             : formattedInteger
 
-                          setDraftAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                          setDraftRequestedAmounts((current) => ({ ...current, [item.id]: nextValue }))
                           const nextNumericValue = decimalPart !== undefined
                             ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
                             : Number(normalizedInteger || '0')
@@ -1354,7 +1430,7 @@ function BudgetItemsTable({
                         placeholder="-"
                         className={cn(
                           'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                          isValidAmount || draftValue.trim().length === 0 ? 'border-[#D9E6F7]' : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                          isValidRequestedAmount || requestedDraftValue.trim().length === 0 ? 'border-[#D9E6F7]' : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
                         )}
                       />
                     </div>
@@ -1366,9 +1442,49 @@ function BudgetItemsTable({
                     )
                   )}
                 </td>
-                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                {showRecommendedBudget ? (
+                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                    {editableRecommended ? (
+                      <div className="relative min-w-[190px]">
+                        <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Input
+                          inputMode="decimal"
+                          value={recommendedDraftValue}
+                          onChange={(event) => {
+                            const digitsAndDecimal = event.target.value.replace(/[^\d.]/g, '')
+                            const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
+                            const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '') || (integerPart ? '0' : '')
+                            const formattedInteger = normalizedInteger ? formatAEDFull(Number(normalizedInteger)) : ''
+                            const nextValue = decimalPart !== undefined
+                              ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
+                              : formattedInteger
+
+                            setDraftRecommendedAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                            const nextNumericValue = decimalPart !== undefined
+                              ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
+                              : Number(normalizedInteger || '0')
+                            onChangeBudgetRecommended(item.id, Number.isFinite(nextNumericValue) ? nextNumericValue : 0)
+                          }}
+                          placeholder="-"
+                          className={cn(
+                            'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                            isValidRecommendedAmount
+                              ? 'border-[#D9E6F7]'
+                              : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                          )}
+                        />
+                      </div>
+                    ) : item.budgetRecommended > 0 ? (
+                      <CurrencyAmount amount={item.budgetRecommended} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                    ) : (
+                      <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                    )}
+                  </td>
+                ) : null}
+                {showActions ? (
+                  <td className="block py-2 md:table-cell md:px-4 md:py-3">
                   <div className="flex items-center gap-2">
-                    {editable ? (
+                    {editableRequested ? (
                       <>
                         <Button
                           size="sm"
@@ -1388,7 +1504,8 @@ function BudgetItemsTable({
                       </span>
                     )}
                   </div>
-                </td>
+                  </td>
+                ) : null}
               </tr>
             )
           })}
@@ -1428,6 +1545,10 @@ const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
   totalBudgetPayableFutureYear: 'Total Budget Payable Future Years',
   totalBudgetPayableNextYear: 'Total Budget Payable Next Year',
   totalBudgetPayableForYearAfterNext: 'Total Budget Payable For Year After Next',
+  recommended: 'Recommended',
+  rejectionReason: 'Rejection Reason',
+  rejectionJustification: 'Rejection Justification',
+  rejectedById: 'Rejected By',
   budgetItems: 'Budget Account Codes',
 }
 
@@ -1981,7 +2102,7 @@ function InteractiveBudgetOverviewCard({
   record: StoredBudgetOverviewRecord | null
   loading: boolean
   error: string | null
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   confidenceScore: number
   isRefreshing: boolean
   policyLoading: boolean
@@ -2654,16 +2775,50 @@ export default function ProjectDetail() {
 
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
-  const isGovernanceView = isReviewerView || isApproverView
+  const isStrategyView = pathname.includes('/strategy-team/')
+  const isSmeView = pathname.includes('/sme-team/')
+  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isSmeView
 
-  const routeRole: WorkflowRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
+  const routeRole: WorkflowRole = isReviewerView
+    ? 'Reviewer'
+    : isApproverView
+      ? 'Approver'
+      : isStrategyView
+        ? 'Strategy Team'
+        : isSmeView
+          ? 'SME Team'
+          : 'Respondent'
   const currentRole = normalizeStoredRole(sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)) ?? routeRole
   const roleProjectScope =
     currentRole === 'Reviewer' ? 'reviewer' : currentRole === 'Approver' ? 'approver' : 'respondent'
   const { items: cycleProjects } = useRoleProjects(roleProjectScope, instanceId)
-  const backHref = isReviewerView ? '/reviewer/review-queue' : isApproverView ? '/approver/approval-queue' : '/respondent/projects'
-  const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
-  const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
+  const backHref = isReviewerView
+    ? '/reviewer/review-queue'
+    : isApproverView
+      ? '/approver/approval-queue'
+      : isStrategyView
+        ? '/strategy-team/strategic-alignment'
+        : isSmeView
+          ? '/sme-team/reviews'
+          : '/respondent/projects'
+  const homeHref = isReviewerView
+    ? '/reviewer/dashboard'
+    : isApproverView
+      ? '/approver/dashboard'
+      : isStrategyView
+        ? '/strategy-team/dashboard'
+        : isSmeView
+          ? '/sme-team/dashboard'
+          : '/respondent/dashboard'
+  const queueLabel = isReviewerView
+    ? 'Review Queue'
+    : isApproverView
+      ? 'Approval Queue'
+      : isStrategyView
+        ? 'Strategic Alignment'
+        : isSmeView
+          ? 'SME Review Queue'
+          : 'My Projects'
   const pageTitle = project.name
   const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
@@ -2677,7 +2832,23 @@ export default function ProjectDetail() {
   )
   const workflowOwner = getWorkflowOwnerByStatusCode(project.statusCode, project.status)
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
-  const canCurrentRoleEdit = canRoleEdit(project, currentRole)
+  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'SME Team'
+  const isSubmittedToDgeBudget = typeof project.statusCode === 'number' && project.statusCode >= 776140004
+  const [ictBudgetSmeReviewerTeamId, setIctBudgetSmeReviewerTeamId] = useState<string | null>(null)
+  const currentSmeTeamId = getStoredCurrentSme()?.teamId?.trim() || null
+  const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
+  const canSmeEditRecommendedOnly =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+  const canCurrentRoleEdit =
+    currentRole === 'Strategy Team'
+      ? true
+      : currentRole === 'SME Team'
+        ? canSmeEditRecommendedOnly
+        : canRoleEdit(project, currentRole)
+  const canEditFullForm = currentRole === 'Strategy Team' || (!isDgeRole && canCurrentRoleEdit)
+  const canEditDgeRecommendationOnly = currentRole === 'SME Team' && canSmeEditRecommendedOnly
   const canDeleteProject =
     currentRole === 'Respondent' &&
     isCurrentOwner &&
@@ -2715,7 +2886,10 @@ export default function ProjectDetail() {
       (currentRole === 'Approver' &&
         (project.statusCode === 776140002 ||
           project.statusCode === 776140003 ||
-          (project.statusCode == null && (project.status === 'Submitted to Approver' || project.status === 'Approved'))))) &&
+          (project.statusCode == null && (project.status === 'Submitted to Approver' || project.status === 'Approved')))) ||
+      (currentRole === 'Strategy Team' && project.statusCode === 776140004) ||
+      (currentRole === 'SME Team' &&
+        (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
     isCurrentOwner
   const approverUsesDirectDgeFlow =
     currentRole === 'Approver' &&
@@ -2797,6 +2971,8 @@ export default function ProjectDetail() {
   const [ictBudgetRespondentName, setIctBudgetRespondentName] = useState<string | null>(null)
   const [ictBudgetReviewerName, setIctBudgetReviewerName] = useState<string | null>(null)
   const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
+  const [ictBudgetRecommendedLabel, setIctBudgetRecommendedLabel] = useState<string | null>(null)
+  const [ictBudgetRejectedByName, setIctBudgetRejectedByName] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<IctBudgetFieldErrorMap>({})
   const [workStreamModalOpen, setWorkStreamModalOpen] = useState(false)
   const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
@@ -2942,7 +3118,12 @@ export default function ProjectDetail() {
     currentRole === 'Respondent' &&
     project.status === 'Clarification Required' &&
     latestOpenClarification &&
-    (latestOpenClarification.raisedBy === 'Reviewer' || latestOpenClarification.raisedBy === 'Approver')
+    (
+      latestOpenClarification.raisedBy === 'Reviewer' ||
+      latestOpenClarification.raisedBy === 'Approver' ||
+      latestOpenClarification.raisedBy === 'Strategy Team' ||
+      latestOpenClarification.raisedBy === 'SME Team'
+    )
       ? latestOpenClarification.raisedBy
       : null
   const showClarificationReturnNotice = Boolean(clarificationReturnRole)
@@ -3160,6 +3341,7 @@ export default function ProjectDetail() {
         ebsCode: item.ebsFusionCode,
         fusionCode: item.glCode,
         budgetRequested: item.budgetRequested,
+        budgetRecommended: 0,
       })),
     [project.budgetItems]
   )
@@ -4414,6 +4596,9 @@ export default function ProjectDetail() {
           setIctBudgetRespondentName(retrievedBudget.respondentName)
           setIctBudgetReviewerName(retrievedBudget.reviewerName)
           setIctBudgetApproverName(retrievedBudget.approverName)
+          setIctBudgetSmeReviewerTeamId(retrievedBudget.smeReviewerTeamId)
+          setIctBudgetRecommendedLabel(retrievedBudget.recommendedLabel)
+          setIctBudgetRejectedByName(retrievedBudget.rejectedByName)
           setIctBudgetError(null)
         } else {
           const fallbackFormValues: IctBudgetFormValues = {
@@ -4435,6 +4620,9 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(project.submittedBy)
           setIctBudgetCreatedOn(null)
           setIctBudgetModifiedOn(null)
+          setIctBudgetSmeReviewerTeamId(null)
+          setIctBudgetRecommendedLabel(null)
+          setIctBudgetRejectedByName(null)
         }
       } catch (error) {
         if (cancelled) return
@@ -4834,7 +5022,7 @@ export default function ProjectDetail() {
       return
     }
 
-    if (!validateForm()) {
+    if (!canEditDgeRecommendationOnly && !validateForm()) {
       return false
     }
 
@@ -4867,15 +5055,29 @@ export default function ProjectDetail() {
             const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
             return savedItem && savedItem.budgetRequested !== item.budgetRequested
           })
+          const changedRecommendedBudgetLineItems = budgetLineItems.filter((item) => {
+            const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
+            return savedItem && savedItem.budgetRecommended !== item.budgetRecommended
+          })
 
-          if (changedBudgetLineItems.length > 0) {
+          if (changedBudgetLineItems.length > 0 && canEditFullForm) {
             await Promise.all(
               changedBudgetLineItems.map((item) => updateBudgetLineItemAmount(item.id, item.budgetRequested))
             )
           }
 
+          if (changedRecommendedBudgetLineItems.length > 0 && (canEditFullForm || canEditDgeRecommendationOnly)) {
+            await Promise.all(
+              changedRecommendedBudgetLineItems.map((item) =>
+                updateBudgetLineItemRecommendedAmount(item.id, item.budgetRecommended)
+              )
+            )
+          }
+
           setSavedFormValues(formValues)
           setSavedBudgetLineItems(budgetLineItems)
+          setIctBudgetRecommendedLabel(formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : null)
+          setIctBudgetRejectedByName(formValues.recommended === 1 ? currentUser.name : null)
           setSavedTechnologyProductNames(
             selectedTechnologyCompany?.products
               .filter((product) => formValues.technologyProductIds.includes(product.id))
@@ -5440,6 +5642,7 @@ export default function ProjectDetail() {
         ebsCode: draft.ebsCode,
         fusionCode: draft.fusionCode,
         budgetRequested: suggestion.mappedBudget,
+        budgetRecommended: 0,
       }
 
       setBudgetLineItems((prev) => [...prev, nextBudgetLineItem])
@@ -5529,6 +5732,7 @@ export default function ProjectDetail() {
             ebsCode: draft.ebsCode,
             fusionCode: draft.fusionCode,
             budgetRequested: suggestion.mappedBudget,
+            budgetRecommended: 0,
           })
         })
 
@@ -5681,7 +5885,7 @@ export default function ProjectDetail() {
     clarificationId: string,
     message: string,
     files?: File[],
-    returnToRole?: 'Reviewer' | 'Approver'
+    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   ) => {
     if (!ictBudgetId) {
       setLocalClarifications((prev) =>
@@ -5718,6 +5922,39 @@ export default function ProjectDetail() {
         })
 
         if (currentRole === 'Respondent' && returnToRole) {
+          if (returnToRole !== 'Reviewer' && returnToRole !== 'Approver') {
+            const returnTeamId =
+              returnToRole === 'Strategy Team' ? strategyTeamId : ictBudgetSmeReviewerTeamId
+            const nextStatusCode =
+              returnToRole === 'Strategy Team'
+                ? DGE_BUDGET_STATUS.underStrategicAlignmentReview
+                : DGE_BUDGET_STATUS.underSmeReview
+
+            if (!returnTeamId) {
+              throw new Error(`Unable to resolve the ${returnToRole} team for clarification handoff.`)
+            }
+
+            const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+              statuscode: nextStatusCode,
+              dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+              'ownerid@odata.bind': `/teams(${returnTeamId})`,
+            } as never)
+
+            if (!handoffResult.success) {
+              throw new Error(handoffResult.error?.message || `Unable to return the clarification reply to ${returnToRole}.`)
+            }
+
+            await invalidateBudgetOverviewRecord(ictBudgetId)
+            syncLocalWorkflowState(
+              (returnToRole === 'Strategy Team' ? 'Under Strategic Alignment Review' : 'Under SME Review') as Project['status']
+            )
+
+            const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+            setLocalClarifications(clarifications)
+            if (files?.length) void refreshSharepointDocs()
+            return
+          }
+
           const nextStatus =
             returnToRole === 'Reviewer'
               ? ICT_BUDGET_STATUS.underReviewerReview
@@ -5767,7 +6004,10 @@ export default function ProjectDetail() {
   const handleClarificationReply = (clarificationId: string, message: string, files?: File[]) => {
     const clarification = localClarifications.find((item) => item.id === clarificationId)
     const firstReplyReturnToRole =
-      clarification?.raisedBy === 'Reviewer' || clarification?.raisedBy === 'Approver'
+      clarification?.raisedBy === 'Reviewer' ||
+      clarification?.raisedBy === 'Approver' ||
+      clarification?.raisedBy === 'Strategy Team' ||
+      clarification?.raisedBy === 'SME Team'
         ? clarification.raisedBy
         : null
     const isRespondentFirstReply =
@@ -5828,13 +6068,27 @@ export default function ProjectDetail() {
   }
 
   const handleRaiseClarification = ({ message, files }: { message: string; files?: File[] }) => {
-    const raisedByRole = isApproverView ? 'Approver' : 'Reviewer'
+    const raisedByRole =
+      currentRole === 'Approver'
+        ? 'Approver'
+        : currentRole === 'Strategy Team'
+          ? 'Strategy Team'
+          : currentRole === 'SME Team'
+            ? 'SME Team'
+            : 'Reviewer'
 
     if (!ictBudgetId) {
       const newClarification: Clarification = {
         id: `CLR-${Date.now()}`,
         raisedBy: raisedByRole,
-        raisedByLabel: raisedByRole === 'Reviewer' ? 'ICT - Reviewer' : 'Approver',
+        raisedByLabel:
+          raisedByRole === 'Reviewer'
+            ? 'ICT - Reviewer'
+            : raisedByRole === 'Approver'
+              ? 'Approver'
+              : raisedByRole === 'Strategy Team'
+                ? 'ICT - Strategy Team'
+                : 'ICT - SME Team',
         raisedByName: currentUser.name,
         raisedTo: 'Respondent',
         message,
@@ -5853,6 +6107,10 @@ export default function ProjectDetail() {
           budgetId: ictBudgetId,
           message,
           raisedByRole,
+          clarificationStage:
+            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 2 : 1,
+          scope:
+            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : 2,
           files,
         })
         console.log('[ProjectDetail] Raising clarification — assigning ICT budget back to Respondent team' + (raisedByRole === 'Approver' ? ', sharing ReadAccess with Approver team' : '') + ':', {
@@ -5861,16 +6119,33 @@ export default function ProjectDetail() {
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        await updateIctBudgetStatus(
-          ictBudgetId,
-          ICT_BUDGET_STATUS.clarificationPending,
-          'Respondent',
-          raisedByRole,
-          raisedByRole,
-          raisedByRole === 'Reviewer'
-            ? 'A budget item has been returned to Respondent for clarification.'
-            : 'A budget item has been returned to Respondent for approver clarification.'
-        )
+        if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
+          const respondentTeamId = JSON.parse(sessionStorage.getItem('moduleConfigTeamIDs') || '{}').respondentTeamId as string | undefined
+          if (!respondentTeamId) {
+            throw new Error('Respondent team id is missing for DGE clarification routing.')
+          }
+
+          const dgeClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
+            'ownerid@odata.bind': `/teams(${respondentTeamId})`,
+          } as never)
+
+          if (!dgeClarificationResult.success) {
+            throw new Error(dgeClarificationResult.error?.message || 'Unable to return the project to Respondent for clarification.')
+          }
+        } else {
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.clarificationPending,
+            'Respondent',
+            raisedByRole,
+            raisedByRole,
+            raisedByRole === 'Reviewer'
+              ? 'A budget item has been returned to Respondent for clarification.'
+              : 'A budget item has been returned to Respondent for approver clarification.'
+          )
+        }
         await invalidateBudgetOverviewRecord(ictBudgetId)
         const clarifications = await getClarificationsByBudgetId(ictBudgetId)
         setLocalClarifications(clarifications)
@@ -5961,6 +6236,7 @@ export default function ProjectDetail() {
           ebsCode: draft.ebsCode,
           fusionCode: draft.fusionCode,
           budgetRequested: suggestion.mappedBudget,
+          budgetRecommended: 0,
         })
       }
 
@@ -6161,6 +6437,14 @@ export default function ProjectDetail() {
     })
   }
 
+  const handleBudgetRecommendedChange = (lineItemId: string, amount: number) => {
+    setBudgetLineItems((current) =>
+      current.map((item) =>
+        item.id === lineItemId ? { ...item, budgetRecommended: amount } : item
+      )
+    )
+  }
+
   const handleConfirmDeleteBudgetLineItem = async () => {
     if (!lineItemToDelete) return
 
@@ -6274,7 +6558,20 @@ export default function ProjectDetail() {
   const creationModifiedOnLabel = ictBudgetModifiedOn
     ? ictBudgetModifiedOn
     : project.lastModified
-  const resolvedStatusLabel = project.status
+  const resolvedStatusLabel = isDgeRole
+    ? getDgeHeaderStatusLabel(project.statusCode ?? null, project.status)
+    : project.status
+  const showDgeRecommendationFields = isDgeRole && isSubmittedToDgeBudget
+  const recommendedChoiceLabel =
+    formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : '-'
+  const rejectionReasonLabel =
+    formValues.rejectionReason === 1
+      ? 'Not Advised'
+      : formValues.rejectionReason === 2
+        ? 'Not ICT Related'
+        : formValues.rejectionReason === 3
+          ? 'No Evidence Provided'
+          : '-'
 
   const display = {
     budgetRefId: project.id,
@@ -6298,6 +6595,9 @@ export default function ProjectDetail() {
     createdBy: headerCreatedBy,
     createdOn: creationCreatedOnLabel,
     modifiedOn: creationModifiedOnLabel,
+    recommended: ictBudgetRecommendedLabel || recommendedChoiceLabel,
+    rejectionReason: rejectionReasonLabel,
+    rejectionJustification: formValues.rejectionJustification.trim() || '-',
   }
 
   if (projectLoading && !projectData) {
@@ -6586,206 +6886,232 @@ export default function ProjectDetail() {
             /* ════ EDIT MODE SECTIONS ════════════════════════════════════════ */
             <>
               <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                  <EditField
-                    label="Initiative / Budget Item Name"
-                    required
-                    error={fieldErrors.initiativeName}
-                    aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
-                    highlighted={animatedAiFields.includes('initiativeName')}
-                  >
-                      <Input
-                        value={formValues.initiativeName}
-                        onChange={(e) => updateField('initiativeName', e.target.value)}
-                        onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
-                        className={cn(
-                          'h-10 rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                          fieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]'
-                        )}
+                {canEditDgeRecommendationOnly ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="Initiative / Budget Item Name" value={display.name} />
+                    <Field label="Strategic Priority" value={display.strategicPriority} />
+                    <Field label="Strategic Priority Classifications" value={display.classification} />
+                    <Field label="Work Stream" value={display.workStream} />
+                    <Field label="ICT Budget Item Type" value={display.budgetType} />
+                    <Field label="Category" value={display.category} />
+                    <Field label="Technology (Company)" value={display.technologyCompany} />
+                    <Field label="Technology (Product)" value={display.technologyProduct} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                    <EditField
+                      label="Initiative / Budget Item Name"
+                      required
+                      error={fieldErrors.initiativeName}
+                      aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
+                      highlighted={animatedAiFields.includes('initiativeName')}
+                    >
+                        <Input
+                          value={formValues.initiativeName}
+                          onChange={(e) => updateField('initiativeName', e.target.value)}
+                          onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
+                          className={cn(
+                            'h-10 rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                            fieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+                          )}
+                        />
+                      </EditField>
+                    </div>
+                    <EditField
+                      label="Strategic Priority"
+                      required
+                      error={fieldErrors.strategicPriorityId}
+                    >
+                      <LookupSelect
+                        value={formValues.strategicPriorityId}
+                        onChange={handleStrategicPriorityChange}
+                        placeholder="Select strategic priority"
+                        options={topLevelStrategicPriorities.map((priority) => ({
+                          value: priority.id,
+                          label: priority.name,
+                        }))}
+                        icon={Layers}
+                        disabled={lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.strategicPriorityId)}
                       />
                     </EditField>
-                  </div>
-                  <EditField
-                    label="Strategic Priority"
-                    required
-                    error={fieldErrors.strategicPriorityId}
-                  >
-                    <LookupSelect
-                      value={formValues.strategicPriorityId}
-                      onChange={handleStrategicPriorityChange}
-                      placeholder="Select strategic priority"
-                      options={topLevelStrategicPriorities.map((priority) => ({
-                        value: priority.id,
-                        label: priority.name,
-                      }))}
-                      icon={Layers}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.strategicPriorityId)}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Strategic Priority Classifications"
-                    required
-                    error={fieldErrors.strategicPriorityClassificationId}
-                  >
-                    <LookupSelect
-                      value={formValues.strategicPriorityClassificationId}
-                      onChange={(value) => updateField('strategicPriorityClassificationId', value)}
-                      placeholder={
-                        formValues.strategicPriorityId
-                          ? 'Select strategic priority classification'
-                          : 'Select strategic priority first'
-                      }
-                      options={strategicPriorityClassifications.map((priority) => ({
-                        value: priority.id,
-                        label: priority.name,
-                      }))}
-                      icon={FolderKanban}
-                      disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
-                    />
-                  </EditField>
-                  <div className="md:col-span-2">
-                    {detailAiSuggestionCard}
-                  </div>
-                  <EditField label="Work Stream" error={fieldErrors.workStreamId}>
-                    <div className="space-y-2">
+                    <EditField
+                      label="Strategic Priority Classifications"
+                      required
+                      error={fieldErrors.strategicPriorityClassificationId}
+                    >
                       <LookupSelect
-                        value={formValues.workStreamId}
-                        onChange={(value) => updateField('workStreamId', value)}
-                        placeholder="Select work stream"
-                        options={workStreams.map((workStream) => ({
-                          value: workStream.id,
-                          label: workStream.name,
+                        value={formValues.strategicPriorityClassificationId}
+                        onChange={(value) => updateField('strategicPriorityClassificationId', value)}
+                        placeholder={
+                          formValues.strategicPriorityId
+                            ? 'Select strategic priority classification'
+                            : 'Select strategic priority first'
+                        }
+                        options={strategicPriorityClassifications.map((priority) => ({
+                          value: priority.id,
+                          label: priority.name,
                         }))}
-                        icon={Briefcase}
-                        disabled={lookupLoading || ictBudgetLoading}
-                        invalid={Boolean(fieldErrors.workStreamId)}
+                        icon={FolderKanban}
+                        disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                       />
-                      <Button
-                        variant="ghost"
-                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
-                        onClick={() => setWorkStreamModalOpen(true)}
+                    </EditField>
+                    <div className="md:col-span-2">
+                      {detailAiSuggestionCard}
+                    </div>
+                    <EditField label="Work Stream" error={fieldErrors.workStreamId}>
+                      <div className="space-y-2">
+                        <LookupSelect
+                          value={formValues.workStreamId}
+                          onChange={(value) => updateField('workStreamId', value)}
+                          placeholder="Select work stream"
+                          options={workStreams.map((workStream) => ({
+                            value: workStream.id,
+                            label: workStream.name,
+                          }))}
+                          icon={Briefcase}
+                          disabled={lookupLoading || ictBudgetLoading}
+                          invalid={Boolean(fieldErrors.workStreamId)}
+                        />
+                        <Button
+                          variant="ghost"
+                          className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
+                          onClick={() => setWorkStreamModalOpen(true)}
+                          disabled={lookupLoading || ictBudgetLoading}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create Work Stream
+                        </Button>
+                      </div>
+                    </EditField>
+                    <EditField label="ICT Budget Items Type" required error={fieldErrors.budgetItemType}>
+                      <LookupSelect
+                        value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
+                        onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
+                        placeholder="Select ICT budget item type"
+                        options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({
+                          value: String(option.value),
+                          label: option.label,
+                        }))}
+                        icon={Package}
                         disabled={lookupLoading || ictBudgetLoading}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Create Work Stream
-                      </Button>
-                    </div>
-                  </EditField>
-                  <EditField label="ICT Budget Items Type" required error={fieldErrors.budgetItemType}>
-                    <LookupSelect
-                      value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
-                      onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
-                      placeholder="Select ICT budget item type"
-                      options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({
-                        value: String(option.value),
-                        label: option.label,
-                      }))}
-                      icon={Package}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.budgetItemType)}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Category"
-                    aiAssist={buildAiAssist('category', 'Category')}
-                    highlighted={animatedAiFields.includes('category')}
-                  >
-                    <LookupSelect
-                      value={formValues.category ? String(formValues.category) : ''}
-                      onChange={(value) => updateField('category', Number(value) as CategoryType)}
-                      placeholder="Select category"
-                      options={CATEGORY_OPTIONS.map((option) => ({
-                        value: String(option.value),
-                        label: option.label,
-                      }))}
-                      icon={FolderKanban}
-                      disabled={lookupLoading || ictBudgetLoading}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Technology (Company)"
-                    error={fieldErrors.technologyCompanyId}
-                    aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
-                    highlighted={animatedAiFields.includes('technologyCompany')}
-                  >
-                    <LookupSelect
-                      value={formValues.technologyCompanyId}
-                      onChange={handleTechnologyCompanyChange}
-                      placeholder="Select technology company"
-                      options={technologyCompanies.map((company) => ({
-                        value: company.id,
-                        label: company.name,
-                      }))}
-                      icon={Building2}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.technologyCompanyId)}
-                    />
-                  </EditField>
-                  <EditField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
-                    <div className="space-y-2">
-                      <ProductMultiSelect
-                        products={selectedTechnologyCompany?.products ?? []}
-                        selectedIds={formValues.technologyProductIds}
-                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
-                        onToggle={toggleTechnologyProduct}
-                        invalid={Boolean(fieldErrors.technologyProductIds)}
+                        invalid={Boolean(fieldErrors.budgetItemType)}
                       />
-                      <Button
-                        variant="ghost"
-                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
-                        onClick={() => setTechnologyProductModalOpen(true)}
-                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Create Technology Product
-                      </Button>
-                    </div>
-                  </EditField>
-                </div>
+                    </EditField>
+                    <EditField
+                      label="Category"
+                      aiAssist={buildAiAssist('category', 'Category')}
+                      highlighted={animatedAiFields.includes('category')}
+                    >
+                      <LookupSelect
+                        value={formValues.category ? String(formValues.category) : ''}
+                        onChange={(value) => updateField('category', Number(value) as CategoryType)}
+                        placeholder="Select category"
+                        options={CATEGORY_OPTIONS.map((option) => ({
+                          value: String(option.value),
+                          label: option.label,
+                        }))}
+                        icon={FolderKanban}
+                        disabled={lookupLoading || ictBudgetLoading}
+                      />
+                    </EditField>
+                    <EditField
+                      label="Technology (Company)"
+                      error={fieldErrors.technologyCompanyId}
+                      aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
+                      highlighted={animatedAiFields.includes('technologyCompany')}
+                    >
+                      <LookupSelect
+                        value={formValues.technologyCompanyId}
+                        onChange={handleTechnologyCompanyChange}
+                        placeholder="Select technology company"
+                        options={technologyCompanies.map((company) => ({
+                          value: company.id,
+                          label: company.name,
+                        }))}
+                        icon={Building2}
+                        disabled={lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.technologyCompanyId)}
+                      />
+                    </EditField>
+                    <EditField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
+                      <div className="space-y-2">
+                        <ProductMultiSelect
+                          products={selectedTechnologyCompany?.products ?? []}
+                          selectedIds={formValues.technologyProductIds}
+                          disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                          onToggle={toggleTechnologyProduct}
+                          invalid={Boolean(fieldErrors.technologyProductIds)}
+                        />
+                        <Button
+                          variant="ghost"
+                          className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
+                          onClick={() => setTechnologyProductModalOpen(true)}
+                          disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create Technology Product
+                        </Button>
+                      </div>
+                    </EditField>
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <EditField label="Planned Start Date" required error={fieldErrors.plannedStartDate}>
-                    <EditDatePickerField
-                      value={formValues.plannedStartDate}
-                      onChange={(value) => updateField('plannedStartDate', value)}
-                      invalid={Boolean(fieldErrors.plannedStartDate)}
-                    />
-                  </EditField>
-                  <EditField label="Planned End Date" required error={fieldErrors.plannedEndDate}>
-                    <EditDatePickerField
-                      value={formValues.plannedEndDate}
-                      onChange={(value) => updateField('plannedEndDate', value)}
-                      invalid={Boolean(fieldErrors.plannedEndDate)}
-                      minDate={formValues.plannedStartDate || undefined}
-                    />
-                  </EditField>
-                </div>
+                {canEditDgeRecommendationOnly ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="Planned Start Date" value={display.plannedStartDate} />
+                    <Field label="Planned End Date" value={display.plannedEndDate} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <EditField label="Planned Start Date" required error={fieldErrors.plannedStartDate}>
+                      <EditDatePickerField
+                        value={formValues.plannedStartDate}
+                        onChange={(value) => updateField('plannedStartDate', value)}
+                        invalid={Boolean(fieldErrors.plannedStartDate)}
+                      />
+                    </EditField>
+                    <EditField label="Planned End Date" required error={fieldErrors.plannedEndDate}>
+                      <EditDatePickerField
+                        value={formValues.plannedEndDate}
+                        onChange={(value) => updateField('plannedEndDate', value)}
+                        invalid={Boolean(fieldErrors.plannedEndDate)}
+                        minDate={formValues.plannedStartDate || undefined}
+                      />
+                    </EditField>
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                <EditField
-                  label="Summary / Description"
-                  required
-                  error={fieldErrors.summary}
-                  aiAssist={buildAiAssist('summary', 'Summary / Description')}
-                  highlighted={animatedAiFields.includes('summary')}
-                >
-                  <Textarea
-                    rows={6}
-                    value={formValues.summary}
-                    onChange={(e) => updateField('summary', e.target.value)}
-                    onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
-                    className={cn(
-                      'resize-none rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                      fieldErrors.summary ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : 'border-[#D9E6F7]'
-                    )}
-                  />
-                </EditField>
+                {canEditDgeRecommendationOnly ? (
+                  <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm leading-7 text-[#0F172A] dark:text-white">{display.summary}</p>
+                  </div>
+                ) : (
+                  <EditField
+                    label="Summary / Description"
+                    required
+                    error={fieldErrors.summary}
+                    aiAssist={buildAiAssist('summary', 'Summary / Description')}
+                    highlighted={animatedAiFields.includes('summary')}
+                  >
+                    <Textarea
+                      rows={6}
+                      value={formValues.summary}
+                      onChange={(e) => updateField('summary', e.target.value)}
+                      onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
+                      className={cn(
+                        'resize-none rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                        fieldErrors.summary ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : 'border-[#D9E6F7]'
+                      )}
+                    />
+                  </EditField>
+                )}
               </DetailSection>
 
               {/* Budget line items are editable through the classification picker modal */}
@@ -6803,64 +7129,160 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <EditField
-                    label="Project Budget Type"
-                    required
-                    error={fieldErrors.activityType}
-                    aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
-                  >
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {ACTIVITY_TYPE_OPTIONS.map((option) => {
-                        const selected = formValues.activityType === option.value
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => handleActivityTypeChange(option.value)}
-                            className={cn(
-                              'rounded-2xl border p-4 text-left transition-colors',
-                              selected
-                                ? 'border-[#286CFF] bg-[#EEF4FF]'
-                                : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
-                            )}
-                          >
-                            <div className="flex w-full items-center justify-between gap-3">
-                              <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>{option.title}</p>
-                              <div
+                  {canEditDgeRecommendationOnly ? (
+                    <>
+                      <Field label="Project Budget Type" value={display.budgetActivityType} />
+                      {visibleBudgetFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {visibleBudgetFields.map((field) => (
+                            <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+                              <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
+                                {toCurrencyFieldLabel(field)}
+                              </p>
+                              <CurrencyAmount
+                                amount={Number(savedFormValues[field].replace(/,/g, '') || 0)}
+                                full
+                                className="text-sm font-semibold text-[#0F172A] dark:text-white"
+                                iconSize={14}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <EditField
+                        label="Project Budget Type"
+                        required
+                        error={fieldErrors.activityType}
+                        aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
+                      >
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {ACTIVITY_TYPE_OPTIONS.map((option) => {
+                            const selected = formValues.activityType === option.value
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => handleActivityTypeChange(option.value)}
                                 className={cn(
-                                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                                  'rounded-2xl border p-4 text-left transition-colors',
                                   selected
-                                    ? 'border-[#286CFF] bg-[#286CFF] text-white'
-                                    : 'border-[#CBD5E1] text-transparent'
+                                    ? 'border-[#286CFF] bg-[#EEF4FF]'
+                                    : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
                                 )}
                               >
-                                <Check className="h-3.5 w-3.5" />
-                              </div>
-                            </div>
-                            <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">
-                              {option.description}
-                            </p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </EditField>
+                                <div className="flex w-full items-center justify-between gap-3">
+                                  <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>{option.title}</p>
+                                  <div
+                                    className={cn(
+                                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                                      selected
+                                        ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                                        : 'border-[#CBD5E1] text-transparent'
+                                    )}
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </div>
+                                </div>
+                                <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                                  {option.description}
+                                </p>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </EditField>
 
-                  {visibleBudgetFields.length > 0 && (
+                      {visibleBudgetFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          {visibleBudgetFields.map((field) => (
+                            <EditField key={field} label={toCurrencyFieldLabel(field)} required>
+                              <CurrencyField
+                                value={formValues[field]}
+                                onChange={(value) => updateField(field, value)}
+                                invalid={Boolean(fieldErrors[field])}
+                              />
+                            </EditField>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {showDgeRecommendationFields && (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {visibleBudgetFields.map((field) => (
-                        <EditField key={field} label={toCurrencyFieldLabel(field)} required>
-                          <CurrencyField
-                            value={formValues[field]}
-                            onChange={(value) => updateField(field, value)}
-                            invalid={Boolean(fieldErrors[field])}
-                          />
-                        </EditField>
-                      ))}
+                      <EditField label="Recommended">
+                        <Select
+                          value={formValues.recommended ? String(formValues.recommended) : ''}
+                          onValueChange={(value) => {
+                            const nextRecommended = Number(value) as 1 | 2
+                            setFormValues((prev) => ({
+                              ...prev,
+                              recommended: nextRecommended,
+                              rejectionReason: nextRecommended === 1 ? prev.rejectionReason : null,
+                              rejectionJustification: nextRecommended === 1 ? prev.rejectionJustification : '',
+                              rejectedById: nextRecommended === 1 ? prev.rejectedById : '',
+                            }))
+                          }}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-[#1E293B]">
+                            <SelectValue placeholder="Select recommendation" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="2">Yes</SelectItem>
+                            <SelectItem value="1">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </EditField>
+
+                      {formValues.recommended === 1 ? (
+                        <>
+                          <EditField label="Rejection Reason">
+                            <Select
+                              value={formValues.rejectionReason ? String(formValues.rejectionReason) : ''}
+                              onValueChange={(value) =>
+                                setFormValues((prev) => ({
+                                  ...prev,
+                                  rejectionReason: Number(value) as 1 | 2 | 3,
+                                  rejectedById: sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="h-11 rounded-xl border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-[#1E293B]">
+                                <SelectValue placeholder="Select rejection reason" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">Not Advised</SelectItem>
+                                <SelectItem value="2">Not ICT Related</SelectItem>
+                                <SelectItem value="3">No Evidence Provided</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </EditField>
+                          <div className="md:col-span-2">
+                            <EditField label="Rejection Justification">
+                              <Textarea
+                                value={formValues.rejectionJustification}
+                                onChange={(event) =>
+                                  setFormValues((prev) => ({
+                                    ...prev,
+                                    rejectionJustification: event.target.value,
+                                    rejectedById: sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById,
+                                  }))
+                                }
+                                rows={4}
+                                className="rounded-2xl border-[#D7E4F4] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1E293B]"
+                                placeholder="Add the rejection justification for this budget recommendation"
+                              />
+                            </EditField>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   )}
                 </div>
-                {hasDataverseBudgetProject && (
+                {hasDataverseBudgetProject && canEditFullForm && (
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Layers className="h-4 w-4" />
@@ -6872,10 +7294,14 @@ export default function ProjectDetail() {
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editable
+                  editableRequested={canEditFullForm}
+                  editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
+                  showRecommendedBudget={showDgeRecommendationFields}
+                  showActions={canEditFullForm}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
+                  onChangeBudgetRecommended={handleBudgetRecommendedChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -7110,15 +7536,33 @@ export default function ProjectDetail() {
                       </div>
                     ))}
                   </div>
+
+                  {showDgeRecommendationFields ? (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <Field label="Recommended" value={display.recommended} />
+                      {formValues.recommended === 1 ? (
+                        <>
+                          <Field label="Rejection Reason" value={display.rejectionReason} />
+                          <div className="md:col-span-2">
+                            <Field label="Rejection Justification" value={display.rejectionJustification} />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <BudgetItemsTable
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editable={false}
+                  editableRequested={false}
+                  editableRecommended={false}
+                  showRecommendedBudget={showDgeRecommendationFields}
+                  showActions={false}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
+                  onChangeBudgetRecommended={handleBudgetRecommendedChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -7641,7 +8085,15 @@ export default function ProjectDetail() {
         title={`Send Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}?`}
         description={
           pendingClarificationReply
-            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${pendingClarificationReply.returnToRole === 'Reviewer' ? 'reviewer review' : 'approver review'}.`
+            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
+                pendingClarificationReply.returnToRole === 'Reviewer'
+                  ? 'reviewer review'
+                  : pendingClarificationReply.returnToRole === 'Approver'
+                    ? 'approver review'
+                    : pendingClarificationReply.returnToRole === 'Strategy Team'
+                      ? 'strategic alignment review'
+                      : 'SME review'
+              }.`
             : 'After this reply is submitted, the ICT budget will be reassigned in the workflow.'
         }
         confirmLabel={`Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}`}

@@ -13,6 +13,7 @@ import type {
 const SELECT_FIELDS = [
   'dga_ict_budget_line_itemid',
   'dga_budget_requested',
+  'dga_budget_recommended',
   '_dga_classification_value',
   'dga_ebs_account_code',
   'dga_fusion_account_code',
@@ -35,6 +36,7 @@ export interface BudgetLineItemRecord {
   ebsCode: string
   fusionCode: string
   budgetRequested: number
+  budgetRecommended: number
 }
 
 function asString(value: unknown): string | null {
@@ -99,6 +101,7 @@ function normalizeLineItem(
     ebsCode: asString(record.dga_ebs_account_code) ?? glNode?.ebsCode ?? 'N/A',
     fusionCode: asString(record.dga_fusion_account_code) ?? glNode?.fusionCode ?? 'N/A',
     budgetRequested: asNumber(record.dga_budget_requested) ?? 0,
+    budgetRecommended: asNumber(record.dga_budget_recommended) ?? 0,
   }
 }
 
@@ -109,6 +112,15 @@ export async function createBudgetLineItems(projectId: string, items: BudgetItem
 export async function updateBudgetLineItemAmount(lineItemId: string, budgetRequested: number) {
   await Dga_ict_budget_line_itemsService.update(lineItemId, {
     dga_budget_requested: Number(budgetRequested.toFixed(4)),
+  } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
+}
+
+export async function updateBudgetLineItemRecommendedAmount(
+  lineItemId: string,
+  budgetRecommended: number
+) {
+  await Dga_ict_budget_line_itemsService.update(lineItemId, {
+    dga_budget_recommended: Number(budgetRecommended.toFixed(4)),
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
 }
 

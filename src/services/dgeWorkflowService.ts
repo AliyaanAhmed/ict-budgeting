@@ -1,5 +1,5 @@
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
-import { getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
   getSmeAssignmentByPriorityId,
@@ -75,6 +75,21 @@ export async function reviewStrategicPriorityChange(
     throw new Error('Unable to resolve the target SME team for the selected strategic priority.')
   }
 
+  console.log('[DgeWorkflowService] Reviewing strategic priority change:', {
+    budgetId: budget.id,
+    budgetName: budget.name,
+    decision,
+    currentPriorityId: budget.strategicPriorityId,
+    currentPriorityName: budget.strategicPriorityName,
+    requestedPriorityId: budget.previousStrategicPriorityId,
+    requestedPriorityName: budget.previousStrategicPriorityName,
+    currentSmeAssignment,
+    requestedSmeAssignment,
+    nextPriorityId,
+    nextClassificationId,
+    nextSmeAssignment,
+  })
+
   const payload: Record<string, unknown> = {
     statuscode: DGE_BUDGET_STATUS.underSmeReview,
     dga_status_for_adge: 6,
@@ -99,9 +114,89 @@ export async function reviewStrategicPriorityChange(
 
   const previousTeamId =
     decision === 'approve' ? currentSmeAssignment?.teamId ?? null : requestedSmeAssignment?.teamId ?? null
+  console.log('[DgeWorkflowService] Strategic priority change sharing resolution:', {
+    budgetId: budget.id,
+    decision,
+    previousTeamId,
+    nextTeamId: nextSmeAssignment.teamId,
+    willRevoke: Boolean(previousTeamId && previousTeamId !== nextSmeAssignment.teamId),
+  })
+
   if (previousTeamId && previousTeamId !== nextSmeAssignment.teamId) {
     await revokeIctBudgetAccessFromTeam(budget.id, previousTeamId)
+  } else {
+    console.log('[DgeWorkflowService] Revoke skipped for strategic priority change:', {
+      budgetId: budget.id,
+      previousTeamId,
+      nextTeamId: nextSmeAssignment.teamId,
+      reason: previousTeamId ? 'same-team' : 'missing-previous-team',
+    })
   }
 
   await grantIctBudgetAccessToTeam(budget.id, nextSmeAssignment.teamId)
+}
+
+export async function requestStrategicPriorityChange(
+  budget: DgeBudgetRecord,
+  strategicPriorityId: string,
+  strategicPriorityClassificationId: string
+) {
+  const strategyTeam = getStoredStrategyTeam()
+  const currentSme = getStoredCurrentSme()
+
+  if (!strategyTeam?.teamId) {
+    throw new Error('Strategy Team is not configured for this workspace.')
+  }
+
+  if (!currentSme?.teamId) {
+    throw new Error('Current SME domain is missing from session storage.')
+  }
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+    dga_status_for_adge: 6,
+    'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+    'dga_previous_strategic_priority@odata.bind': `/dga_strategic_prioritieses(${strategicPriorityId})`,
+    'dga_previous_strategic_priorityclassification@odata.bind': `/dga_strategic_prioritieses(${strategicPriorityClassificationId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to submit strategic priority change request.', result.error ?? null)
+
+  await Promise.all([
+    grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId),
+    grantIctBudgetAccessToTeam(budget.id, currentSme.teamId),
+  ])
+}
+
+export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
+  const strategyTeam = getStoredStrategyTeam()
+  const currentSme = getStoredCurrentSme()
+  const currentUserId = sessionStorage.getItem('userID')?.trim() || ''
+
+  if (!strategyTeam?.teamId) {
+    throw new Error('Strategy Team is not configured for this workspace.')
+  }
+
+  if (!currentSme?.teamId) {
+    throw new Error('Current SME domain is missing from session storage.')
+  }
+
+  if (!currentUserId) {
+    throw new Error('Current user id is missing from session storage.')
+  }
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.underQualityCheck,
+    dga_status_for_adge: 6,
+    'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+    'dga_strategic_alignment_reviewer_systemuser@odata.bind': `/systemusers(${currentUserId})`,
+    'dga_sme_reviewer_user@odata.bind': `/systemusers(${currentUserId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to route project to quality check.', result.error ?? null)
+
+  await Promise.all([
+    grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId),
+    grantIctBudgetAccessToTeam(budget.id, currentSme.teamId),
+  ])
 }

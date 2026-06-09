@@ -67,6 +67,7 @@ export interface DgeBudgetRecord {
   entityName: string | null
   smeReviewerTeamId: string | null
   smeReviewerTeamName: string | null
+  sharePointUrl: string | null
 }
 
 export interface DgeInstanceRecord {
@@ -231,6 +232,7 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     entityName: instanceName,
     smeReviewerTeamId: record._dga_sme_reviewer_team_value ?? null,
     smeReviewerTeamName,
+    sharePointUrl: normalizeString(record.dga_share_point_url) || null,
   }
 }
 
@@ -261,6 +263,7 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     'dga_budget_ref_id',
     'dga_initiative_project_requirement_name',
     'dga_summary',
+    'dga_share_point_url',
     'dga_status_for_adge',
     'statuscode',
     '_dga_strategic_priority_value',

@@ -53,7 +53,7 @@ export interface BudgetItem {
 
 export interface ClarificationReply {
   id: string
-  fromRole: 'Respondent' | 'Reviewer' | 'Approver'
+  fromRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   fromRoleLabel?: string
   fromName: string
   message: string
@@ -63,7 +63,7 @@ export interface ClarificationReply {
 
 export interface Clarification {
   id: string
-  raisedBy: 'Respondent' | 'Reviewer' | 'Approver'
+  raisedBy: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   raisedByLabel?: string
   raisedByName: string
   raisedTo: string

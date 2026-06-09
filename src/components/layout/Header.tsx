@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Bell,
   Sun,
@@ -110,6 +111,7 @@ export function Header({
   const [markingAllRead, setMarkingAllRead] = useState(false)
   const unreadCount = notifications.filter((n) => !closingNotificationIds.includes(n.id)).length
   const notificationContainerRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
 
   // Resolve display name from stored user context (falls back to placeholder)
   const storedUser = getStoredUserContext()
@@ -422,6 +424,10 @@ export function Header({
                       setActiveRole(role)
                     }
                     setRoleMenuOpen(false)
+
+                    if (option.role === 'ICT - SME Team') {
+                      navigate('/sme-team/dashboard')
+                    }
                   }}
                   className={cn(
                     'rounded-xl p-3 mb-1 items-start',

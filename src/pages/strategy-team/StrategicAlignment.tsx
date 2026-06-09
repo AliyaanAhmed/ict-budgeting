@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  ArrowRightLeft,
   Building2,
   CheckCircle2,
   CheckSquare,
@@ -432,10 +434,28 @@ export default function StrategicAlignment() {
     setSaving(true)
     setError(null)
     try {
-      await reviewStrategicPriorityChange(selectedChangeRequestBudget, decision)
-      await refreshData()
-      setChangeRequestModalOpen(false)
-      setSelectedIds([])
+      await runActionToast(
+        async () => {
+          await reviewStrategicPriorityChange(selectedChangeRequestBudget, decision)
+          await refreshData()
+          setChangeRequestModalOpen(false)
+          setSelectedIds([])
+        },
+        {
+          processingTitle: decision === 'approve' ? 'Approving requested change' : 'Rejecting requested change',
+          processingDescription:
+            decision === 'approve'
+              ? 'Updating the project mapping and routing it back to the correct SME team...'
+              : 'Clearing the requested change and returning the project to SME review...',
+          successTitle: decision === 'approve' ? 'Change approved' : 'Change rejected',
+          successDescription:
+            decision === 'approve'
+              ? 'The new strategic priority mapping is now active.'
+              : 'The requested change was cleared and the project was returned to SME review.',
+          errorTitle: 'Unable to process strategic change review',
+          minDurationMs: 1400,
+        }
+      )
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Unable to process the strategic priority change request.')
     } finally {
@@ -477,6 +497,31 @@ export default function StrategicAlignment() {
   const readyProjectCount = modalProjects.filter(
     (project) => project.draft.priorityId && project.draft.classificationId
   ).length
+
+  const selectedChangeRequestDetails = selectedChangeRequestBudget
+    ? {
+        currentPriority:
+          trimPriorityLabel(
+            priorityLookup.get(selectedChangeRequestBudget.strategicPriorityId ?? '') ||
+              selectedChangeRequestBudget.strategicPriorityName
+          ) || '-',
+        currentClassification:
+          trimPriorityLabel(
+            priorityLookup.get(selectedChangeRequestBudget.strategicPriorityClassificationId ?? '') ||
+              selectedChangeRequestBudget.strategicPriorityClassificationName
+          ) || '-',
+        requestedPriority:
+          trimPriorityLabel(
+            priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityId ?? '') ||
+              selectedChangeRequestBudget.previousStrategicPriorityName
+          ) || '-',
+        requestedClassification:
+          trimPriorityLabel(
+            priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityClassificationId ?? '') ||
+              selectedChangeRequestBudget.previousStrategicPriorityClassificationName
+          ) || '-',
+      }
+    : null
 
   return (
     <StrategyPageShell
@@ -682,7 +727,12 @@ export default function StrategicAlignment() {
                               />
                             </div>
                             <div>
-                              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{budget.name}</p>
+                              <Link
+                                to={`/strategy-team/projects/${budget.id}`}
+                                className="text-sm font-semibold text-[#0F172A] transition-colors hover:text-[#286CFF] dark:text-white dark:hover:text-[#93C5FD]"
+                              >
+                                {budget.name}
+                              </Link>
                               <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
                                 {budget.budgetRefId} · {entityLabel}
                               </p>
@@ -851,32 +901,115 @@ export default function StrategicAlignment() {
       </Dialog>
 
       <Dialog open={changeRequestModalOpen} onOpenChange={setChangeRequestModalOpen}>
-        <DialogContent className="max-w-2xl overflow-hidden p-0">
-          <div className="border-b border-[#EEF3F8] px-6 py-5 dark:border-white/10">
-            <DialogHeader className="space-y-1">
-              <DialogTitle>Strategic Priority Change Request</DialogTitle>
-              <DialogDescription>
-                Review the current and requested strategic priority mapping before returning the project to SME review.
-              </DialogDescription>
+        <DialogContent className="max-w-5xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+          <div className="border-b border-[#EEF3F8] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] px-7 py-6 dark:border-white/10 dark:bg-[linear-gradient(180deg,#1B2A41_0%,#162339_100%)]">
+            <DialogHeader className="space-y-0">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_14px_28px_rgba(40,108,255,0.18)]">
+                  <Workflow className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Strategic Priority Change Request</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                    Compare the active mapping with the SME-requested mapping before sending the project back into SME review.
+                  </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
           </div>
           {selectedChangeRequestBudget ? (
-            <div className="space-y-4 px-6 py-5">
-              <div>
-                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestBudget.name}</p>
-                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{selectedChangeRequestBudget.budgetRefId}</p>
-              </div>
-              {[
-                ['Strategic Priority', selectedChangeRequestBudget.strategicPriorityName || '-'],
-                ['Strategic Priority Classification', selectedChangeRequestBudget.strategicPriorityClassificationName || '-'],
-                ['Requested Strategic Priority', selectedChangeRequestBudget.previousStrategicPriorityName || '-'],
-                ['Requested Strategic Priority Classification', selectedChangeRequestBudget.previousStrategicPriorityClassificationName || '-'],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">{label}</p>
-                  <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{value}</p>
+            <div className="max-h-[72vh] overflow-y-auto px-7 py-6">
+              <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-5 dark:border-white/10 dark:bg-white/5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-base font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestBudget.name}</p>
+                  <span className="rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                    {selectedChangeRequestBudget.budgetRefId}
+                  </span>
+                  <StrategyPill tone="violet" className="whitespace-nowrap">
+                    {selectedChangeRequestBudget.statusLabel}
+                  </StrategyPill>
                 </div>
-              ))}
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                  {selectedChangeRequestBudget.entityName || selectedChangeRequestBudget.instanceName || 'Unknown Entity'}
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-4 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
+                <div className="rounded-[24px] border border-[#DCE8F6] bg-white p-5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                      <Layers className="h-4.5 w-4.5" />
+                    </div>
+                    <div>
+                      <p className="text-base font-semibold text-[#0F172A] dark:text-white">Current Mapping</p>
+                      <p className="text-sm text-[#64748B] dark:text-slate-300">What is active on the project now</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Strategic Priority</p>
+                      <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestDetails?.currentPriority || '-'}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Strategic Priority Classification</p>
+                      <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestDetails?.currentClassification || '-'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#EEF5FF_0%,#FFFFFF_100%)] text-[#286CFF] shadow-[0_12px_24px_rgba(40,108,255,0.14)] dark:bg-[linear-gradient(135deg,rgba(40,108,255,0.18)_0%,rgba(255,255,255,0.02)_100%)] dark:text-[#BFDBFE]">
+                    <ArrowRightLeft className="h-5 w-5 animate-pulse" />
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border border-[#DCE8F6] bg-white p-5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                      <Layers className="h-4.5 w-4.5" />
+                    </div>
+                    <div>
+                      <p className="text-base font-semibold text-[#0F172A] dark:text-white">Requested Mapping</p>
+                      <p className="text-sm text-[#64748B] dark:text-slate-300">What the SME asked Strategy Team to approve</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 space-y-4">
+                    <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority</p>
+                      <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestDetails?.requestedPriority || '-'}</p>
+                    </div>
+                    <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority Classification</p>
+                      <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{selectedChangeRequestDetails?.requestedClassification || '-'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 overflow-hidden rounded-[22px] border border-[#DCE8F6] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+                <div className="flex items-center gap-2 bg-gradient-to-b from-[#F8FBFF] to-white px-5 py-4 dark:from-[#1B2A41] dark:to-[#1E293B]">
+                  <Workflow className="h-4 w-4 text-[#286CFF]" />
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Guidance</p>
+                </div>
+                <div className="border-t border-[#DCE8F6] px-5 py-4 dark:border-white/10">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Approve if</p>
+                      <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                        The SME-requested mapping better reflects the project scope, routing, and strategic fit than the current assignment.
+                      </p>
+                    </div>
+                    <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Reject if</p>
+                      <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                        The current mapping is already correct and the requested change would route the project away from the right SME domain.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
           <DialogFooter className="border-t border-[#EEF3F8] px-6 pb-6 pt-4 dark:border-white/10">

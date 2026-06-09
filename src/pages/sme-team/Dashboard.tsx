@@ -1,39 +1,68 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  BadgeDollarSign,
-  CalendarClock,
+  ArrowRight,
+  CheckCircle2,
   ClipboardCheck,
-  Eye,
+  Clock3,
   FileText,
   FileWarning,
+  FolderSearch,
+  Layers,
   MessageSquareDot,
-  Radar,
-  Scale,
-  ShieldAlert,
+  PieChart,
+  ShieldCheck,
   Sparkles,
-  Users,
-  WandSparkles,
+  Wallet,
+  Workflow,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { useCycle } from '@/context/CycleContext'
+import { useRole } from '@/context/RoleContext'
 import { cn } from '@/lib/utils'
 import {
-  StrategyAiPanel,
   StrategyPageShell,
   StrategyPill,
   StrategyProgressBar,
   StrategySectionCard,
 } from '@/pages/strategy-team/StrategyTeamShell'
+import { getStoredCurrentSme } from '@/services/dgeRoleContextService'
 import {
-  budgetDocumentSummary,
-  clarificationMonitor,
-  smeActionCards,
-  smeAiSignals,
-  smeSummaryStrip,
-} from './smeTeamData'
+  DGE_BUDGET_STATUS,
+  getCurrentSmeBudgets,
+  getDgePortfolioData,
+  type DgeBudgetRecord,
+} from '@/services/dgePortfolioService'
 
-function SmeActionCard({
+const SME_QUEUE_VISIBLE_STATUSES = new Set<number>([
+  DGE_BUDGET_STATUS.underSmeReview,
+  DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+  DGE_BUDGET_STATUS.underQualityCheck,
+])
+
+function SkeletonPanel() {
+  return (
+    <div className="space-y-5">
+      <div className="animate-pulse rounded-[24px] border border-[#D9E6F5] bg-white p-5 dark:border-white/10 dark:bg-[#162339]">
+        <div className="h-5 w-40 rounded bg-[#EAF0F6] dark:bg-white/10" />
+        <div className="mt-4 h-4 w-full max-w-3xl rounded bg-[#EAF0F6] dark:bg-white/10" />
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="animate-pulse rounded-[20px] border border-[#D9E6F5] bg-white p-5 dark:border-white/10 dark:bg-[#162339]">
+            <div className="h-4 w-24 rounded bg-[#EAF0F6] dark:bg-white/10" />
+            <div className="mt-4 h-10 w-20 rounded bg-[#EAF0F6] dark:bg-white/10" />
+            <div className="mt-4 h-4 w-full rounded bg-[#EAF0F6] dark:bg-white/10" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ActionCard({
   title,
   value,
   budgetLabel,
@@ -59,23 +88,15 @@ function SmeActionCard({
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <div className="min-h-[3rem]">
-            <p className="text-base font-semibold text-[#0F172A] dark:text-white">{title}</p>
-          </div>
+          <p className="min-h-[3rem] text-base font-semibold text-[#0F172A] dark:text-white">{title}</p>
           <div className="mt-3 text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</div>
           <div className="mt-3">
-            <span
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-              style={{ backgroundColor: `${accent}14`, color: accent }}
-            >
+            <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: `${accent}14`, color: accent }}>
               {badge}
             </span>
           </div>
         </div>
-        <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105"
-          style={{ backgroundColor: `${accent}14`, color: accent }}
-        >
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105" style={{ backgroundColor: `${accent}14`, color: accent }}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -91,372 +112,498 @@ function SmeActionCard({
   )
 }
 
-function AssignedReviewsPanel() {
-  const projects = [
-    {
-      id: 'BI-1103',
-      name: 'Cloud Infrastructure Modernization',
-      status: 'To Review',
-      risk: 'Medium',
-      entity: 'Digital Services',
-      priority: 'Digital Transformation',
-      budget: 4500000,
-      assigned: '2026-04-10',
-      due: '2026-04-28',
-      ai: '87%',
-      tone: 'border-l-[#286CFF]',
-      mismatch: false,
-    },
-    {
-      id: 'BI-1104',
-      name: 'AI Analytics Platform',
-      status: 'To Review',
-      risk: 'High Risk',
-      entity: 'Innovation Hub',
-      priority: 'AI & Innovation',
-      budget: 3200000,
-      assigned: '2026-04-08',
-      due: '2026-04-25',
-      ai: '72%',
-      tone: 'border-l-[#A855F7]',
-      mismatch: true,
-    },
-    {
-      id: 'BI-1105',
-      name: 'Enterprise Resource Planning',
-      status: 'To Review',
-      risk: 'High Risk',
-      entity: 'Corporate Services',
-      priority: 'Operational Excellence',
-      budget: 5100000,
-      assigned: '2026-04-12',
-      due: '2026-04-30',
-      ai: '68%',
-      tone: 'border-l-[#A855F7]',
-      mismatch: true,
-    },
-  ]
-
-  const filterChips = [
-    { label: 'To Review', count: 11, active: true },
-    { label: 'Clarify', count: 4 },
-    { label: 'Reviewed', count: 24 },
-    { label: 'High Risk', count: 5 },
-    { label: 'Mismatch', count: 3 },
-  ]
-
-  return (
-    <Card className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-      <div className="border-b border-[#EEF3F8] p-4 dark:border-white/10">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <ClipboardCheck className="mt-0.5 h-6 w-6 shrink-0 text-[#286CFF]" />
-            <div className="min-w-0">
-              <div className="truncate text-xl font-bold text-[#0F172A] dark:text-white">Assigned Reviews</div>
-              <p className="mt-1 truncate text-sm text-[#64748B] dark:text-slate-300">Projects for SME review</p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="inline-flex items-center justify-center rounded-md bg-[#EEF5FF] px-2 py-0.5 text-xs font-medium text-[#286CFF]">3</span>
-          </div>
-        </div>
-      </div>
-
-      <CardContent className="p-4">
-        <div className="mb-4 flex flex-wrap gap-2">
-          {filterChips.map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
-                chip.active
-                  ? 'bg-[var(--primary)] text-white'
-                  : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
-              )}
-            >
-              <span>{chip.label}</span>
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.5 text-xs font-bold',
-                  chip.active ? 'bg-white/20 text-current' : 'bg-[#F1F5F9] dark:bg-white/10'
-                )}
-              >
-                {chip.count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          {projects.map((project) => (
-            <div
-              key={project.id}
-              className={cn(
-                'overflow-hidden rounded-[20px] border border-[#DCE8F6] bg-[#FBFDFF] p-4 transition-all hover:-translate-y-0.5 hover:border-[#BFD8FF] hover:shadow-[0_14px_28px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5'
-              )}
-            >
-              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="truncate text-base font-semibold text-[#0F172A] dark:text-white">{project.name}</h4>
-                    <span className="inline-flex items-center rounded-md bg-[#FFF8E8] px-2 py-0.5 text-xs font-medium text-[#B45309]">
-                      <Eye className="mr-1 h-3 w-3" />
-                      {project.status}
-                    </span>
-                    <span className="inline-flex items-center rounded-md bg-[#FEF2F2] px-2 py-0.5 text-xs font-medium text-[#DC2626]">
-                      <ShieldAlert className="mr-1 h-3 w-3" />
-                      {project.risk}
-                    </span>
-                    {project.mismatch && (
-                      <span className="inline-flex items-center rounded-md bg-[#F5EEFF] px-2 py-0.5 text-xs font-medium text-[#A855F7]">
-                        <Scale className="mr-1 h-3 w-3" />
-                        Mismatch
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#64748B] dark:text-slate-300">
-                    <span>{project.entity}</span>
-                    <span>{project.priority}</span>
-                    <CurrencyAmount amount={project.budget} className="text-sm font-semibold text-[#286CFF]" iconSize={12} />
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#94A3B8]">
-                    <span>Assigned: {project.assigned}</span>
-                    <span className="font-medium text-red-600">Due: {project.due}</span>
-                    <span className="inline-flex items-center gap-1">
-                      <WandSparkles className="h-3 w-3" />
-                      AI: {project.ai}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" className="h-8 border-orange-200 px-3 text-xs text-orange-600 hover:bg-orange-50">
-                    <MessageSquareDot className="h-3.5 w-3.5 sm:mr-1" />
-                    <span className="hidden sm:inline">Clarify</span>
-                  </Button>
-                  {project.mismatch && (
-                    <Button variant="outline" size="sm" className="h-8 border-purple-200 px-3 text-xs text-purple-600 hover:bg-purple-50">
-                      <Scale className="h-3.5 w-3.5 sm:mr-1" />
-                      <span className="hidden sm:inline">Reassign</span>
-                    </Button>
-                  )}
-                  <Button size="sm" className="h-8 bg-[#286CFF] px-3 text-xs text-white hover:bg-[#0C65F5]">
-                    <Eye className="h-3.5 w-3.5 sm:mr-1" />
-                    <span className="hidden sm:inline">Review</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function SmeTeamDashboard() {
+  const { selectedCycle } = useCycle()
+  const { activeRoleOptionKey } = useRole()
+  const currentSme = useMemo(() => getStoredCurrentSme(), [activeRoleOptionKey])
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [budgets, setBudgets] = useState<DgeBudgetRecord[]>([])
+  const [assignedFilter, setAssignedFilter] = useState<'all' | 'review' | 'change' | 'quality'>('all')
+  const [assignedPage, setAssignedPage] = useState(1)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      if (!selectedCycle?.id) {
+        if (!cancelled) {
+          setBudgets([])
+          setLoading(false)
+        }
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+
+      try {
+        const portfolio = await getDgePortfolioData(selectedCycle.id)
+        if (!cancelled) {
+          setBudgets(getCurrentSmeBudgets(portfolio, currentSme))
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load SME dashboard.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentSme?.strategicPriorityId, selectedCycle?.id])
+
+  const metrics = useMemo(() => {
+    const totalBudget = budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0)
+    const toReview = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview)
+    const reviewed = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck)
+    const changeRequests = budgets.filter(
+      (budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+    )
+    const clarifications = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending)
+    const missingDocs = budgets.filter((budget) => !budget.sharePointUrl)
+
+    return {
+      totalBudget,
+      toReview,
+      reviewed,
+      changeRequests,
+      clarifications,
+      missingDocs,
+    }
+  }, [budgets])
+
+  const actionCards = useMemo(
+    () => [
+      {
+        title: 'To Review',
+        value: metrics.toReview.length,
+        budgetLabel: 'Budget to Review',
+        budget: metrics.toReview.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+        badge: 'Live queue',
+        accent: '#286CFF',
+        icon: ClipboardCheck,
+        href: '/sme-team/reviews',
+      },
+      {
+        title: 'Reviewed',
+        value: metrics.reviewed.length,
+        budgetLabel: 'Budget Reviewed',
+        budget: metrics.reviewed.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+        badge: 'Quality check',
+        accent: '#10B981',
+        icon: CheckCircle2,
+        href: '/sme-team/reviews',
+      },
+      {
+        title: 'Clarifications Raised',
+        value: metrics.clarifications.length,
+        budgetLabel: 'Awaiting ADGE response',
+        budget: null,
+        badge: 'Pending response',
+        accent: '#A855F7',
+        icon: MessageSquareDot,
+        href: '/sme-team/reviews',
+      },
+      {
+        title: 'Priority Mismatch',
+        value: metrics.changeRequests.length,
+        budgetLabel: 'Strategy review needed',
+        budget: null,
+        badge: 'Review routing',
+        accent: '#F97316',
+        icon: Workflow,
+        href: '/sme-team/reviews',
+      },
+    ],
+    [metrics]
+  )
+
+  const assignedTabs = useMemo(
+    () => [
+      {
+        key: 'all' as const,
+        label: 'All',
+        count: budgets.filter((budget) => SME_QUEUE_VISIBLE_STATUSES.has(budget.statuscode)).length,
+      },
+      { key: 'review' as const, label: 'Under SME Review', count: metrics.toReview.length },
+      {
+        key: 'change' as const,
+        label: 'Strategic Priority Change Under Review',
+        count: metrics.changeRequests.length,
+      },
+      { key: 'quality' as const, label: 'Under Quality Check', count: metrics.reviewed.length },
+    ],
+    [budgets.length, metrics.changeRequests.length, metrics.reviewed.length, metrics.toReview.length]
+  )
+
+  const assignedProjects = useMemo(() => {
+    const filtered = budgets.filter((budget) => {
+      if (!SME_QUEUE_VISIBLE_STATUSES.has(budget.statuscode)) return false
+      if (assignedFilter === 'review') return budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
+      if (assignedFilter === 'change') {
+        return budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+      }
+      if (assignedFilter === 'quality') return budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
+      return true
+    })
+    return filtered
+  }, [assignedFilter, budgets])
+
+  const assignedPageSize = 4
+  const assignedTotalPages = Math.max(1, Math.ceil(assignedProjects.length / assignedPageSize))
+  const assignedVisible = assignedProjects.slice((assignedPage - 1) * assignedPageSize, assignedPage * assignedPageSize)
+
+  useEffect(() => {
+    setAssignedPage(1)
+  }, [assignedFilter])
+
+  const entityCount = new Set(
+    budgets.map((budget) => budget.entityName || budget.instanceName).filter((value): value is string => Boolean(value))
+  ).size
+
+  const reviewProgress = budgets.length ? Math.round((metrics.reviewed.length / budgets.length) * 100) : 0
+  const outstandingProgress = budgets.length ? Math.round((metrics.toReview.length / budgets.length) * 100) : 0
+  const changeRequestProgress = budgets.length ? Math.round((metrics.changeRequests.length / budgets.length) * 100) : 0
+
   return (
     <StrategyPageShell
       eyebrow="ICT - SME Team"
       title="SME Dashboard"
-      description="A domain review workspace for SME teams to assess assigned budgets, manage clarifications, and move high-confidence recommendations into strategy quality check."
+      description="A live domain workspace for assigned SME reviews, strategic change requests, quality-check routing, and budget-document posture across all entities in the selected cycle."
     >
-      <Card className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-        <CardContent className="p-4 sm:p-5">
-          <div className="flex flex-wrap items-center gap-3 lg:gap-6">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-bold text-[#0F172A] dark:text-white">{smeSummaryStrip.cycle}</p>
-                  <StrategyPill tone="blue">{smeSummaryStrip.stage}</StrategyPill>
-                </div>
-              </div>
-            </div>
-            <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
-                <CalendarClock className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Review Deadline</p>
-                <p className="mt-1 text-sm font-bold text-[#D97706] dark:text-[#FCD34D]">
-                  {smeSummaryStrip.deadline} • {smeSummaryStrip.daysLeft} days left
-                </p>
-              </div>
-            </div>
-            <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                <Users className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">SME Team</p>
-                <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{smeSummaryStrip.team}</p>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
-            <div className="flex items-start gap-2">
-              <WandSparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
-              <p className="text-sm text-[#475569] dark:text-slate-200">
-                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> {smeSummaryStrip.summary}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {error ? (
+        <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+          {error}
+        </div>
+      ) : null}
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {smeActionCards.map((card) => (
-          <SmeActionCard key={card.title} {...card} />
-        ))}
-      </section>
-
-      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
-        <AssignedReviewsPanel />
-        <StrategySectionCard
-          title="Budget And Documents"
-          description="Portfolio-level budget posture for the SME lane, including reviewed volume, pending value, and documentation blockers."
-          className="h-full"
-          headingIcon={<BadgeDollarSign className="h-5 w-5 text-[#286CFF]" />}
-        >
-          <div className="flex h-full flex-col justify-center">
-            <div className="rounded-[24px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_100%)] p-5 dark:border-white/10 dark:bg-[linear-gradient(135deg,#162339_0%,#1B2A41_100%)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Total Budget</p>
-                  <CurrencyAmount amount={budgetDocumentSummary.totalBudget} className="mt-2 text-2xl font-bold" iconSize={16} />
-                  <p className="mt-2 text-sm text-[#64748B] dark:text-slate-300">{budgetDocumentSummary.totalProjects} projects in the SME lane</p>
-                </div>
-                <div className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]">
-                  63% reviewed
-                </div>
-              </div>
-
-              <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
-                <div className="flex h-full">
-                  <div className="flex h-full items-center justify-center bg-[#286CFF] text-[11px] font-semibold text-white" style={{ width: '63%' }}>
-                    24
+      {loading ? (
+        <SkeletonPanel />
+      ) : (
+        <>
+          <Card className="overflow-hidden rounded-[24px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex flex-wrap items-center gap-3 lg:gap-6">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                    <FileText className="h-5 w-5" />
                   </div>
-                  <div className="flex h-full items-center justify-center bg-[#7C3AED] text-[11px] font-semibold text-white" style={{ width: '37%' }}>
-                    14
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
-                <div className="inline-flex items-center gap-2 text-[#286CFF] dark:text-[#BFDBFE]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#286CFF]" />
-                  Reviewed 24
-                </div>
-                <div className="inline-flex items-center gap-2 text-[#7C3AED] dark:text-[#E9D5FF]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#7C3AED]" />
-                  Pending 14
-                </div>
-                <div className="inline-flex items-center gap-2 text-[#D97706] dark:text-[#FCD34D]">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#D97706]" />
-                  Missing Docs 4
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
-                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Reviewed Budget</p>
-                <CurrencyAmount amount={budgetDocumentSummary.reviewedBudget} className="mt-2 text-lg font-bold" iconSize={14} />
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{budgetDocumentSummary.reviewedProjects} projects</p>
-              </div>
-              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
-                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Pending Budget</p>
-                <CurrencyAmount amount={budgetDocumentSummary.pendingBudget} className="mt-2 text-lg font-bold" iconSize={14} />
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{budgetDocumentSummary.pendingProjects} projects</p>
-              </div>
-              <div className="rounded-[20px] border border-[#FDE68A] bg-[#FFF8E8] p-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] dark:border-[#D97706]/30 dark:bg-[#3A2810]">
-                <p className="text-sm font-semibold text-[#B45309] dark:text-[#FCD34D]">Missing Docs</p>
-                <p className="mt-2 text-2xl font-bold text-[#B45309] dark:text-[#FCD34D]">{budgetDocumentSummary.missingDocs}</p>
-                <p className="mt-1 text-sm text-[#B45309] dark:text-[#FDE68A]">{budgetDocumentSummary.blockedLabel}</p>
-              </div>
-            </div>
-          </div>
-        </StrategySectionCard>
-      </section>
-
-      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
-        <StrategySectionCard
-          title="Clarifications Monitor"
-          description="Keep the most active clarification-linked projects visible so recommendation flow does not stall."
-          className="h-full"
-          headingIcon={<MessageSquareDot className="h-5 w-5 text-[#286CFF]" />}
-        >
-          <div className="flex h-full flex-col justify-center">
-          <div className="space-y-3">
-            {clarificationMonitor.slice(0, 3).map((item) => (
-              <div key={item.id} className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-[#94A3B8]">{item.id}</span>
-                      <span
-                        className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
-                        style={{ backgroundColor: `${item.accent}14`, color: item.accent }}
-                      >
-                        {item.state}
-                      </span>
+                    <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-bold text-[#0F172A] dark:text-white">{selectedCycle?.name || 'No active cycle'}</p>
+                      <StrategyPill tone="blue">Under DGE Review</StrategyPill>
                     </div>
-                    <p className="mt-2 text-base font-semibold text-[#0F172A] dark:text-white">{item.title}</p>
-                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{item.entity}</p>
                   </div>
-                  <Link
-                    to="/sme-team/reviews"
-                    className="shrink-0 text-sm font-semibold text-[#286CFF] transition-colors hover:text-[#0C65F5] dark:text-[#BFDBFE] dark:hover:text-white"
-                  >
-                    View Detail
-                  </Link>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">{item.note}</p>
-              </div>
-            ))}
-          </div>
-          </div>
-        </StrategySectionCard>
-
-        <StrategyAiPanel title="AI Review Guidance">
-          <div className="flex h-full flex-col justify-center space-y-3">
-            {smeAiSignals.map((signal) => (
-              <div key={signal.title} className="rounded-[18px] border border-[#E9D5FF] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-white"
-                    style={{ backgroundColor: signal.accent }}
-                  >
-                    <signal.icon className="h-3.5 w-3.5" />
+                <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
+                    <Clock3 className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-base font-semibold text-[#0F172A] dark:text-white">{signal.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">{signal.detail}</p>
+                    <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Domain Scope</p>
+                    <p className="mt-1 text-sm font-bold text-[#D97706] dark:text-[#FCD34D]">{trimTitle(currentSme?.strategicPriorityName || 'No SME domain')}</p>
+                  </div>
+                </div>
+                <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">SME Team</p>
+                    <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{currentSme?.teamName || '-'}</p>
                   </div>
                 </div>
               </div>
-            ))}
-            <div className="rounded-[18px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Review Momentum</p>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">24 of 38 projects already reviewed</p>
+              <div className="mt-4 rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                  <p className="text-sm text-[#475569] dark:text-slate-200">
+                    <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> {budgets.length} projects across {entityCount} entities are currently in your SME lane. {metrics.toReview.length} still need review, {metrics.changeRequests.length} are waiting for strategy confirmation, and {metrics.reviewed.length} have already moved to quality check.
+                  </p>
                 </div>
-                <span className="text-lg font-bold text-[#286CFF] dark:text-[#BFDBFE]">63%</span>
               </div>
-              <div className="mt-3">
-                <StrategyProgressBar value={63} accent="#286CFF" />
+            </CardContent>
+          </Card>
+
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {actionCards.map((card) => (
+              <ActionCard key={card.title} {...card} />
+            ))}
+          </section>
+
+          <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+            <StrategySectionCard
+              title="Assigned Reviews"
+              description="Active projects in the SME domain across review, strategic change, and quality-check states."
+              className="h-full"
+              headingIcon={<ClipboardCheck className="h-5 w-5 text-[#286CFF]" />}
+            >
+              <div className="flex h-full flex-col">
+                <div className="flex flex-wrap gap-2">
+                  {assignedTabs.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setAssignedFilter(tab.key)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+                        assignedFilter === tab.key
+                          ? 'bg-[var(--primary)] text-white'
+                          : 'border border-[#E2E8F0] bg-white text-[#0F172A] hover:bg-[#F1F5F9] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5'
+                      )}
+                    >
+                      {tab.label}
+                      <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-bold', assignedFilter === tab.key ? 'bg-white/20' : 'bg-[#F1F5F9] dark:bg-white/10')}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex-1 space-y-3">
+                  {assignedVisible.length === 0 ? (
+                    <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[20px] border border-dashed border-[#D9E6F5] px-5 py-10 text-center dark:border-white/10">
+                      <FolderSearch className="h-6 w-6 text-[#94A3B8]" />
+                      <p className="mt-3 text-sm font-semibold text-[#0F172A] dark:text-white">No assigned projects</p>
+                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">No projects matched this SME review filter.</p>
+                    </div>
+                  ) : (
+                    assignedVisible.map((budget) => (
+                      <div key={budget.id} className="rounded-[20px] border border-[#DCE8F6] bg-[#FBFDFF] p-4 transition-all hover:-translate-y-0.5 hover:border-[#BFD8FF] hover:shadow-[0_14px_28px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-base font-semibold text-[#0F172A] dark:text-white">{budget.name}</p>
+                              <StrategyPill
+                                tone={
+                                  budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
+                                    ? 'amber'
+                                    : budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+                                      ? 'violet'
+                                      : 'blue'
+                                }
+                                className="whitespace-nowrap"
+                              >
+                                {budget.statusLabel}
+                              </StrategyPill>
+                            </div>
+                            <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                              {budget.budgetRefId} • {budget.entityName || budget.instanceName || 'Unknown Entity'}
+                            </p>
+                            <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                              {budget.summary || 'No summary available for this project.'}
+                            </p>
+                          </div>
+                          <Button size="sm" className="h-8 bg-[#286CFF] px-3 text-xs text-white hover:bg-[#0C65F5]" asChild>
+                            <Link to="/sme-team/reviews">
+                              Review
+                            </Link>
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between border-t border-[#EEF3F8] pt-4 dark:border-white/10">
+                  <p className="text-sm text-[#64748B] dark:text-slate-300">
+                    Showing {(assignedPage - 1) * assignedPageSize + (assignedVisible.length ? 1 : 0)}-{(assignedPage - 1) * assignedPageSize + assignedVisible.length} of {assignedProjects.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-3" disabled={assignedPage <= 1} onClick={() => setAssignedPage((current) => Math.max(1, current - 1))}>
+                      Previous
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-3" disabled={assignedPage >= assignedTotalPages} onClick={() => setAssignedPage((current) => Math.min(assignedTotalPages, current + 1))}>
+                      Next
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        </StrategyAiPanel>
-      </section>
+            </StrategySectionCard>
+
+            <StrategySectionCard
+              title="Budget And Documents"
+              description="Budget value and document posture across every project in this SME domain."
+              className="h-full"
+              headingIcon={<Wallet className="h-5 w-5 text-[#286CFF]" />}
+            >
+              <div className="flex h-full flex-col justify-center">
+                <div className="rounded-[24px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_100%)] p-5 dark:border-white/10 dark:bg-[linear-gradient(135deg,#162339_0%,#1B2A41_100%)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Total Budget</p>
+                      <CurrencyAmount amount={metrics.totalBudget} className="mt-2 text-2xl font-bold" iconSize={16} />
+                      <p className="mt-2 text-sm text-[#64748B] dark:text-slate-300">{budgets.length} projects in the SME lane</p>
+                    </div>
+                    <div className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]">
+                      {reviewProgress}% reviewed
+                    </div>
+                  </div>
+
+                  <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
+                    <div className="flex h-full">
+                      <div className="flex h-full items-center justify-center bg-[#286CFF] text-[11px] font-semibold text-white" style={{ width: `${Math.max(reviewProgress, metrics.reviewed.length ? 8 : 0)}%` }}>
+                        {metrics.reviewed.length}
+                      </div>
+                      <div className="flex h-full items-center justify-center bg-[#7C3AED] text-[11px] font-semibold text-white" style={{ width: `${Math.max(outstandingProgress, metrics.toReview.length ? 8 : 0)}%` }}>
+                        {metrics.toReview.length}
+                      </div>
+                      <div className="flex h-full items-center justify-center bg-[#F97316] text-[11px] font-semibold text-white" style={{ width: `${Math.max(changeRequestProgress, metrics.changeRequests.length ? 8 : 0)}%` }}>
+                        {metrics.changeRequests.length}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                    <div className="inline-flex items-center gap-2 text-[#286CFF] dark:text-[#BFDBFE]">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#286CFF]" />
+                      Reviewed {metrics.reviewed.length}
+                    </div>
+                    <div className="inline-flex items-center gap-2 text-[#7C3AED] dark:text-[#E9D5FF]">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#7C3AED]" />
+                      To Review {metrics.toReview.length}
+                    </div>
+                    <div className="inline-flex items-center gap-2 text-[#F97316] dark:text-[#FDBA74]">
+                      <span className="h-2.5 w-2.5 rounded-full bg-[#F97316]" />
+                      Change Review {metrics.changeRequests.length}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Reviewed Budget</p>
+                    <CurrencyAmount amount={metrics.reviewed.reduce((sum, budget) => sum + budget.requestedBudget, 0)} className="mt-2 text-lg font-bold" iconSize={14} />
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{metrics.reviewed.length} projects</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#1B2A41]">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Pending Budget</p>
+                    <CurrencyAmount amount={metrics.toReview.reduce((sum, budget) => sum + budget.requestedBudget, 0)} className="mt-2 text-lg font-bold" iconSize={14} />
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{metrics.toReview.length} projects</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#FDE68A] bg-[#FFF8E8] p-4 dark:border-[#D97706]/30 dark:bg-[#3A2810]">
+                    <p className="text-sm font-semibold text-[#B45309] dark:text-[#FCD34D]">Missing Docs</p>
+                    <p className="mt-2 text-2xl font-bold text-[#B45309] dark:text-[#FCD34D]">{metrics.missingDocs.length}</p>
+                    <p className="mt-1 text-sm text-[#B45309] dark:text-[#FDE68A]">Blocked by document posture</p>
+                  </div>
+                </div>
+              </div>
+            </StrategySectionCard>
+          </section>
+
+          <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+            <StrategySectionCard
+              title="SME Progress"
+              description="Live progress snapshot for the current domain, covering throughput, routed items, and strategy-review exceptions."
+              className="h-full"
+              headingIcon={<PieChart className="h-5 w-5 text-[#286CFF]" />}
+            >
+              <div className="flex h-full flex-col space-y-5">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Projects</p>
+                    <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{budgets.length}</p>
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Across {entityCount} entities</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Quality Check</p>
+                    <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{metrics.reviewed.length}</p>
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Already routed forward</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Mismatch Requests</p>
+                    <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">{metrics.changeRequests.length}</p>
+                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Waiting on Strategy Team</p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-semibold text-[#0F172A] dark:text-white">Review completion</span>
+                      <span className="text-[#286CFF] dark:text-[#BFDBFE]">{reviewProgress}%</span>
+                    </div>
+                    <StrategyProgressBar value={reviewProgress} accent="#286CFF" />
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-semibold text-[#0F172A] dark:text-white">Still under SME review</span>
+                      <span className="text-[#7C3AED] dark:text-[#E9D5FF]">{outstandingProgress}%</span>
+                    </div>
+                    <StrategyProgressBar value={outstandingProgress} accent="#7C3AED" />
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-semibold text-[#0F172A] dark:text-white">Strategic change under review</span>
+                      <span className="text-[#F97316] dark:text-[#FDBA74]">{changeRequestProgress}%</span>
+                    </div>
+                    <StrategyProgressBar value={changeRequestProgress} accent="#F97316" />
+                  </div>
+                </div>
+              </div>
+            </StrategySectionCard>
+
+            <StrategySectionCard
+              title="AI Review Guidance"
+              description="AI signals for this SME domain, based on queue state, document posture, and strategic mapping exceptions."
+              className="h-full"
+              headingIcon={<Sparkles className="h-5 w-5 text-[#A855F7]" />}
+            >
+              <div className="flex h-full flex-col justify-center space-y-3">
+                <div className="overflow-hidden rounded-[18px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+                  <div className="flex items-center gap-2 bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:from-[#2A123D] dark:to-[#1E293B]">
+                    <Sparkles className="h-4 w-4 text-[#A855F7]" />
+                    <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Review Guidance</span>
+                  </div>
+                  <div className="space-y-3 border-t border-[#E9D5FF] px-4 py-4 dark:border-white/10">
+                    <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2">
+                        <ClipboardCheck className="h-4 w-4 text-[#286CFF]" />
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Queue focus</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                        {metrics.toReview.length} items still need SME review in {currentSme?.teamName || 'this domain'}. Move the cleanest evidence sets first to keep quality check flowing.
+                      </p>
+                    </div>
+                    <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2">
+                        <Workflow className="h-4 w-4 text-[#A855F7]" />
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Routing risk</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                        {metrics.changeRequests.length} projects are already asking for strategic remapping. Review similar items early to avoid sending misclassified budgets deeper into the flow.
+                      </p>
+                    </div>
+                    <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2">
+                        <FileWarning className="h-4 w-4 text-[#F97316]" />
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Document posture</p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                        {metrics.missingDocs.length} projects in this domain do not yet have a linked document path, which may weaken confidence during SME review and quality check.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </StrategySectionCard>
+          </section>
+        </>
+      )}
     </StrategyPageShell>
   )
+}
+
+function trimTitle(value: string) {
+  return value.split(' - ')[0]?.trim() || value
 }
