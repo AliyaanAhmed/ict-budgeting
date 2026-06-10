@@ -28,17 +28,19 @@ import {
   TrendingUp,
   TriangleAlert,
   Users,
+  WalletCards,
 } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
+import { AccountCodesBreakdown } from '@/components/charts/AccountCodesBreakdown'
 import { Card, CardContent } from '@/components/ui/card'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import { PortfolioInsightCharts } from '@/components/shared/PortfolioInsightCharts'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
-import { useBudgetByCategoryChart } from '@/hooks/useDashboardBudgetCharts'
+import { useAccountCodesBreakdown, useBudgetByCategoryChart } from '@/hooks/useDashboardBudgetCharts'
 import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
 import {
   getAiReviewFlags,
@@ -53,6 +55,8 @@ import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import { useToast } from '@/context/ToastContext'
+import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
 
 const LOCAL_STATUSCODE_BY_STATUS = {
   Approved: 776140003,
@@ -116,7 +120,7 @@ function MetricCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-semibold tracking-[0.04em] text-[#64748B] dark:text-slate-100">{title}</p>
+          <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           <div className="mt-4 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">{value}</div>
         </div>
         <div
@@ -150,6 +154,22 @@ function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; icon
   )
 }
 
+function truncateAtWordBoundary(value: string, maxCharacters: number) {
+  const trimmed = value.trim()
+  if (trimmed.length <= maxCharacters) {
+    return { text: trimmed, truncated: false }
+  }
+
+  const clipped = trimmed.slice(0, maxCharacters)
+  const lastSpace = clipped.lastIndexOf(' ')
+  const nextText = (lastSpace > 40 ? clipped.slice(0, lastSpace) : clipped).trimEnd()
+
+  return {
+    text: nextText,
+    truncated: true,
+  }
+}
+
 function ActionMetricCard({
   title,
   value,
@@ -175,7 +195,7 @@ function ActionMetricCard({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="min-h-[3.25rem]">
-            <p className="text-sm font-semibold tracking-[0.04em] text-[#334155] dark:text-slate-50">{title}</p>
+            <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{title}</p>
           </div>
           <div className="mt-3 mb-2">
             <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{value}</span>
@@ -264,6 +284,7 @@ function computeDaysRemaining(endDate?: string | null): number {
 
 export default function ApproverDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
+  const [planningExpanded, setPlanningExpanded] = useState(false)
   const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
   const [statusOverrides, setStatusOverrides] = useState<Record<string, 'Approved' | 'Submitted to DGE'>>({})
   const { selectedCycle } = useCycle()
@@ -286,8 +307,14 @@ export default function ApproverDashboard() {
     [liveProjects, statusOverrides]
   )
   const budgetByCategory = useBudgetByCategoryChart(effectiveLiveProjects)
+  const {
+    items: accountBreakdown,
+    loading: accountBreakdownLoading,
+    error: accountBreakdownError,
+  } = useAccountCodesBreakdown(effectiveLiveProjects)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
+  const storedInstanceDetail = getStoredInstanceDetail()
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
   const dueDateLabel = selectedCycle?.endDate
     ? new Date(selectedCycle.endDate).toLocaleDateString('en-AE', {
@@ -382,6 +409,10 @@ export default function ApproverDashboard() {
   const planningSummary = useMemo(
     () => resolvePortfolioTemplate(getPortfolioSummaryRoleView(portfolioSummary, 'approver')?.planning_cycle_summary_template, portfolioSummary),
     [portfolioSummary]
+  )
+  const planningSummaryPreview = useMemo(
+    () => truncateAtWordBoundary(planningSummary || 'Current cycle status: final approval is in progress, reviewer-cleared projects are being checked for DGE readiness, and clarification loops remain open where evidence is incomplete.', 210),
+    [planningSummary]
   )
   const approverProgressAssigned = pendingApproval + approvedCount + submittedToDgeCount
   const approverProgressValue = approverProgressAssigned > 0 ? Math.round(((approvedCount + submittedToDgeCount) / approverProgressAssigned) * 100) : 0
@@ -539,6 +570,7 @@ export default function ApproverDashboard() {
     await runActionToast(
       async () => {
         await projectService.approverSubmitToDge(projectIds)
+        await updateCurrentInstanceSubmissionDate()
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
           const next = { ...prev }
@@ -579,9 +611,21 @@ export default function ApproverDashboard() {
             <h1 className="text-3xl font-bold tracking-tight text-[#0F172A] dark:text-white">
               {cycleName}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#475569] dark:text-slate-100">
-              {planningSummary || 'Current cycle status: final approval is in progress, reviewer-cleared projects are being checked for DGE readiness, and clarification loops remain open where evidence is incomplete.'}
+            <p className="mt-1 text-sm font-medium text-[#64748B] dark:text-slate-200">
+              {instanceDetail?.name ?? storedInstanceDetail?.name ?? 'Entity'}
             </p>
+            <span className="relative mt-3 inline-flex max-w-2xl items-end gap-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
+              <span className={planningExpanded ? 'block' : 'block line-clamp-2'}>
+                {planningExpanded ? (planningSummary || planningSummaryPreview.text) : planningSummaryPreview.text}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPlanningExpanded((current) => !current)}
+                className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[#D8E7FF] bg-[#EEF5FF] px-2 py-0.5 text-[11px] font-semibold leading-none text-[#286CFF] transition-colors hover:border-[#BFD4FF] hover:bg-[#E7F0FF] hover:text-[#0C65F5] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                {planningExpanded ? 'Less' : '..'}
+              </button>
+            </span>
             <div className="mt-5 space-y-3">
               <div className="flex flex-wrap items-center gap-3 text-sm">
                 <span className="inline-flex items-center gap-2 rounded-full border border-[#D8E7FF] bg-white px-3.5 py-2 font-medium text-[#2563EB] shadow-[0_10px_22px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#1B2A41] dark:text-[#DBEAFE]">
@@ -609,7 +653,7 @@ export default function ApproverDashboard() {
       </section>
 
       <section
-        title="Portfolio-level deadline, AI summary, and final submission progress for the approver."
+        title="Once all created projects are reviewed and approved, you can submit them all to DGE."
         className="overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(40,108,255,0.05)] dark:border-white/10 dark:bg-[#18263F]"
       >
         <div className="overflow-x-auto">
@@ -641,20 +685,6 @@ export default function ApproverDashboard() {
               </div>
             </div>
 
-            <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
-
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
-                <BrainCircuit className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Entity Progress</p>
-                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
-                  <span className="text-[#7C3AED]">1</span> of {portfolioAlreadySubmittedToDge ? 1 : 0}
-                </p>
-              </div>
-            </div>
-
             {portfolioAlreadySubmittedToDge ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                 <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
@@ -680,7 +710,7 @@ export default function ApproverDashboard() {
       </section>
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <ActionMetricCard
             title={<><span className="block">Pending</span><span className="block">Approval</span></>}
             value={pendingApproval}
@@ -708,23 +738,14 @@ export default function ApproverDashboard() {
             href="/approver/projects?tab=approved"
             description="Approved items held until the entity moves onward to DGE."
           />
-          <ActionMetricCard
-            title={<><span className="block">Submitted</span><span className="block">DGE</span></>}
-            value={submittedToDgeCount}
-            accent="#7C3AED"
-            badge="Forwarded"
-            icon={<Send className="h-5 w-5" />}
-            href="/approver/projects?tab=submitted-dge"
-            description="Portfolio items already handed off for strategic review."
-          />
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="p-5 sm:p-6">
+          <CardContent className="flex h-full flex-col justify-center p-5 sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Approval Snapshot</h3>
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
                   <InfoHint text="Consolidated approver view of total requested budget, approved value, and portfolio confidence." />
                 </div>
               </div>
@@ -913,10 +934,14 @@ export default function ApproverDashboard() {
             </div>
           </CardContent>
         </Card>
-        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['budgetConsideration']} />
+        <PortfolioInsightCharts
+          summary={portfolioSummary}
+          chartKeys={['aiReviewFlags']}
+          projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+        />
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
         <Card
           title="Budget distribution across ICT strategic categories for the current approval cycle."
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
@@ -940,7 +965,11 @@ export default function ApproverDashboard() {
             <BudgetByCategory data={budgetByCategory} />
           </CardContent>
         </Card>
-        <PortfolioInsightCharts summary={portfolioSummary} chartKeys={['issues']} />
+        <PortfolioInsightCharts
+          summary={portfolioSummary}
+          chartKeys={['budgetConsideration']}
+          projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+        />
 
         <Card
           title="Requested budget distribution across approver-visible workflow stages."
@@ -1011,8 +1040,84 @@ export default function ApproverDashboard() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-        {clarificationCount > 0 ? (
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+        <PortfolioInsightCharts
+          summary={portfolioSummary}
+          chartKeys={['issues']}
+          projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+        />
+
+        <Card
+          title="Cycle Workspace"
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+        >
+          <CardContent className="flex h-full flex-col p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Send className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Cycle Workspace</h3>
+                  <InfoHint text="A role-specific workspace showing the current cycle states and the next actions needed before DGE submission." />
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                  Review the current cycle states before moving the portfolio forward
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              {[
+                { label: 'Pending with Respondent', value: respondentProjects.length, tone: '#286CFF' },
+                { label: 'Pending with Reviewer', value: reviewerProjects.length, tone: '#4F98FF' },
+                { label: 'Pending with Approver', value: pendingApproval, tone: '#7C3AED' },
+                { label: 'Clarification', value: clarificationCount, tone: '#F97316' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 dark:border-[#37547A] dark:bg-[#20314D]">
+                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.tone }} />
+                    <span className="text-2xl font-bold text-[#0F172A] dark:text-[#E2E8F0]">{item.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white/70 p-4 dark:border-[#315389] dark:bg-white/5">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="font-semibold text-[#0F172A] dark:text-white">Recommended Review Actions</p>
+                  <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
+                    {portfolioAlreadySubmittedToDge
+                      ? 'The full portfolio has already moved to DGE. Keep monitoring downstream progress and any returned clarifications.'
+                      : pendingApproval > 0
+                        ? 'Approve reviewer-cleared low-risk items first, then resolve any active clarifications before assembling the final DGE package.'
+                        : allProjectsApproved
+                          ? 'All approver-stage work is complete. Submit the full ADGE portfolio to DGE when ready.'
+                          : 'No items are pending your approval right now. Keep tracking reviewer handoffs and clarification closures for final readiness.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-auto flex flex-col gap-3 pt-5">
+              <Button
+                className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
+                disabled={!allProjectsApproved}
+                onClick={() => void handleSubmitToDge()}
+              >
+                Submit to DGE
+                <MoveRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {clarificationCount > 0 && (
+        <section>
           <Card
             title="Tracks clarifications that are currently open and blocking final approval."
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
@@ -1074,193 +1179,36 @@ export default function ApproverDashboard() {
               </div>
             </CardContent>
           </Card>
-        ) : (
-          <Card
-            title="Fast access to actions the approver takes most often."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
-          >
-            <CardContent className="p-6">
-              <div className="mb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Radar className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Quick Actions</h3>
-                  <InfoHint text="Shortcuts into queue review, readiness checks, notifications, and AI-assisted triage." />
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {quickActions.map((action) => (
-                  <Link
-                    key={action.label}
-                    to={action.to}
-                    className={cn(
-                      'group relative flex min-h-[118px] items-start justify-between gap-3 overflow-hidden rounded-[22px] border border-[#E4ECF7] bg-white px-4 py-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#1B2A41]',
-                      action.rowClass
-                    )}
-                  >
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ backgroundColor: action.accent }} />
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style={{ backgroundColor: `${action.accent}14`, color: action.accent }}>
-                        {action.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="block text-sm font-semibold text-[#0F172A] dark:text-white">{action.label}</span>
-                        <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-200">
-                          {action.label === 'Approval Queue' && 'Open pending approvals and review final-stage items.'}
-                          {action.label === 'Submission Readiness' && 'Check if the portfolio is clear to move to DGE.'}
-                          {action.label === 'Notify Reviewer' && 'Follow up with reviewers on items still upstream.'}
-                          {action.label === 'Notify Respondent' && 'Prompt respondents to resolve open clarifications.'}
-                          {action.label === 'High Risk Items' && 'Jump into the most critical submissions first.'}
-                          {action.label === 'Ask AI Assistant' && 'Open AI-guided triage for final approval decisions.'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 self-center">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200" style={{ backgroundColor: `${action.accent}14`, color: action.accent }}>
-                        {action.endIcon}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card
-          title="Shows whether the portfolio is ready for final onward submission to DGE."
-          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
-        >
-          <CardContent className="flex h-full flex-col p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Send className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Final Approval Readiness</h3>
-                  <InfoHint text="A role-specific readiness board showing what still blocks the portfolio from moving to DGE." />
-                </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Review the current blockers before moving the portfolio forward
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              {[
-                { label: 'Approved', value: approvedCount, tone: '#16A34A' },
-                { label: 'Pending Approval', value: pendingApproval, tone: '#D97706' },
-                { label: 'Pending with Reviewer', value: reviewerProjects.length, tone: '#286CFF' },
-                { label: 'Pending with Respondent', value: respondentProjects.length, tone: '#F97316' },
-                { label: 'Submitted to DGE', value: submittedToDgeCount, tone: '#7C3AED' },
-              ].map((item) => (
-                <div key={item.label} className="rounded-[20px] border border-[#DCE8F6] bg-[#F3F8FF] p-4 dark:border-[#37547A] dark:bg-[#20314D]">
-                  <p className="text-xs font-semibold tracking-[0.1em] text-[#64748B] dark:text-slate-100">{item.label}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.tone }} />
-                    <span className="text-2xl font-bold text-[#0F172A] dark:text-[#E2E8F0]">{item.value}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 rounded-[24px] border border-dashed border-[#BED3F3] bg-white/70 p-4 dark:border-[#315389] dark:bg-white/5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-white">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="font-semibold text-[#0F172A] dark:text-white">Suggested next move</p>
-                  <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                    {portfolioAlreadySubmittedToDge
-                      ? 'The full portfolio has already moved to DGE. Keep monitoring downstream progress and any returned clarifications.'
-                      : pendingApproval > 0
-                        ? 'Approve reviewer-cleared low-risk items first, then resolve any active clarifications before assembling the final DGE package.'
-                        : allProjectsApproved
-                          ? 'All approver-stage work is complete. Submit the full ADGE portfolio to DGE when ready.'
-                          : 'No items are pending your approval right now. Keep tracking reviewer handoffs and clarification closures for final readiness.'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-auto flex flex-col gap-3 pt-5">
-              {portfolioAlreadySubmittedToDge ? (
-                <div className="rounded-[22px] border border-[#DDD6FE] bg-[#F5F3FF] px-4 py-4 dark:border-[#5B3AA8] dark:bg-[#2A1C4A]">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white">
-                      <Send className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-[#5B21B6] dark:text-[#DDD6FE]">Submitted to DGE</p>
-                      <p className="mt-1 text-xs leading-5 text-[#6D28D9] dark:text-slate-100">
-                        The portfolio has already been forwarded for strategic alignment review.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
-                  disabled={!allProjectsApproved}
-                  onClick={() => void handleSubmitToDge()}
-                >
-                  Submit to DGE
-                  <MoveRight className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+        </section>
+      )}
 
       {clarificationCount > 0 && (
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
           <Card
-            title="Fast access to actions the approver takes most often."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+            title="Account codes receiving the largest share of budget across approver-stage projects."
+            className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
-            <CardContent className="p-6">
-              <div className="mb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Radar className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Quick Actions</h3>
-                  <InfoHint text="Shortcuts into queue review, readiness checks, notifications, and AI-assisted triage." />
+            <CardContent className="flex h-full flex-col justify-center p-6">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
+                    <InfoHint text="Highlights which account codes are drawing the largest share of budget across approver-stage projects." />
+                  </div>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                    Most-funded budget accounts across the approver workspace
+                  </p>
                 </div>
+                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#286CFE]/18 dark:text-[#C6DBFF]">
+                  Top accounts
+                </span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {quickActions.map((action) => (
-                  <Link
-                    key={action.label}
-                    to={action.to}
-                    className={cn(
-                      'group relative flex min-h-[118px] items-start justify-between gap-3 overflow-hidden rounded-[22px] border border-[#E4ECF7] bg-white px-4 py-4 shadow-none transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#1B2A41]',
-                      action.rowClass
-                    )}
-                  >
-                    <div className="pointer-events-none absolute inset-x-0 top-0 h-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ backgroundColor: action.accent }} />
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style={{ backgroundColor: `${action.accent}14`, color: action.accent }}>
-                        {action.icon}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="block text-sm font-semibold text-[#0F172A] dark:text-white">{action.label}</span>
-                        <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-200">
-                          {action.label === 'Approval Queue' && 'Open pending approvals and review final-stage items.'}
-                          {action.label === 'Submission Readiness' && 'Check if the portfolio is clear to move to DGE.'}
-                          {action.label === 'Notify Reviewer' && 'Follow up with reviewers on items still upstream.'}
-                          {action.label === 'Notify Respondent' && 'Prompt respondents to resolve open clarifications.'}
-                          {action.label === 'High Risk Items' && 'Jump into the most critical submissions first.'}
-                          {action.label === 'Ask AI Assistant' && 'Open AI-guided triage for final approval decisions.'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 self-center">
-                      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-200" style={{ backgroundColor: `${action.accent}14`, color: action.accent }}>
-                        {action.endIcon}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+              <AccountCodesBreakdown
+                items={accountBreakdown}
+                loading={accountBreakdownLoading}
+                error={accountBreakdownError}
+              />
             </CardContent>
           </Card>
           <Card
@@ -1334,7 +1282,26 @@ export default function ApproverDashboard() {
       )}
 
       {clarificationCount > 0 ? null : (
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+          <Card
+            title="Fast access to actions the approver takes most often."
+            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+          >
+            <CardContent className="p-6">
+              <div className="mb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Radar className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
+                  <InfoHint text="Highlights which account codes are drawing the largest share of budget across approver-stage projects." />
+                </div>
+              </div>
+              <AccountCodesBreakdown
+                items={accountBreakdown}
+                loading={accountBreakdownLoading}
+                error={accountBreakdownError}
+              />
+            </CardContent>
+          </Card>
           <Card
             title="Requested budget distribution across approver-visible workflow stages."
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"

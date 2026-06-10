@@ -2,16 +2,19 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  BadgeCheck,
   ChevronDown,
   CircleAlert,
   Clock3,
   CopyPlus,
+  Handshake,
   Info,
   MessageSquare,
   RefreshCcw,
   Scale,
   ShieldAlert,
   Sparkles,
+  TriangleAlert,
 } from 'lucide-react'
 import {
   Bar,
@@ -140,6 +143,28 @@ function shortenLabel(value: string, max = 24) {
   const trimmed = value.trim()
   if (trimmed.length <= max) return trimmed
   return `${trimmed.slice(0, max - 1).trimEnd()}…`
+}
+
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toDisplayText(item))
+      .filter(Boolean)
+      .join(', ')
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+    if (typeof record.label === 'string') return record.label.trim()
+  }
+  return ''
+}
+
+function extractBudgetReferenceIds(value: string) {
+  return Array.from(new Set((value.match(/\bBID-\d+\b/gi) ?? []).map((item) => item.toUpperCase())))
 }
 
 function ChartCard({
@@ -326,15 +351,15 @@ export function AiPortfolioSummary({
   const counts = useMemo(() => getPortfolioCounts(summary), [summary])
   const roleView = useMemo(() => getPortfolioSummaryRoleView(summary, role), [summary, role])
   const roleSummary = useMemo(
-    () => resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary),
+    () => toDisplayText(resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary)),
     [roleView?.summary_template, roleView?.summary, summary]
   )
   const planningSummary = useMemo(
-    () => resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary),
+    () => toDisplayText(resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary)),
     [roleView?.planning_cycle_summary_template, summary]
   )
   const recommendedActions = useMemo(
-    () => getRoleRecommendedActions(summary, role),
+    () => getRoleRecommendedActions(summary, role).map((action) => toDisplayText(action)).filter(Boolean),
     [summary, role]
   )
   const issueCategories = useMemo(
@@ -385,7 +410,8 @@ export function AiPortfolioSummary({
           key,
           label: formatFlagLabel(key),
           count: bucket?.project_ids?.length ?? 0,
-          summary: resolvePortfolioTemplate(bucket?.summary_template, summary),
+          summary: toDisplayText(resolvePortfolioTemplate(bucket?.summary_template, summary)),
+          projectIds: bucket?.project_ids ?? [],
         }))
         .filter((e) => e.count > 0),
     [summary]
@@ -395,15 +421,16 @@ export function AiPortfolioSummary({
       summary?.calculation_sources?.budget_consideration_flag_project_ids ??
       summary?.portfolio_statistics?.ai_review_flags?.dge_budget_consideration_risk?.budget_consideration_flag_project_ids
 
-    const summaryText = resolvePortfolioTemplate(
+    const summaryText = toDisplayText(resolvePortfolioTemplate(
       summary?.portfolio_statistics?.ai_review_flags?.dge_budget_consideration_risk?.summary_template,
       summary
-    )
+    ))
 
     const groups = [
       {
         key: 'has_potential_conflict',
         label: 'Potential Conflict',
+        icon: TriangleAlert,
         description: 'These projects may have direct overlap or policy conflict with DGE-managed scope.',
         projectIds: source?.has_potential_conflict ?? [],
         tone:
@@ -412,6 +439,7 @@ export function AiPortfolioSummary({
       {
         key: 'has_coordination_required',
         label: 'Coordination Required',
+        icon: Handshake,
         description: 'These projects can move forward, but DGE coordination is expected before final approval.',
         projectIds: source?.has_coordination_required ?? [],
         tone:
@@ -420,6 +448,7 @@ export function AiPortfolioSummary({
       {
         key: 'has_allowed_with_conditions',
         label: 'Allowed With Conditions',
+        icon: BadgeCheck,
         description: 'These projects appear supportable when the stated conditions are documented and satisfied.',
         projectIds: source?.has_allowed_with_conditions ?? [],
         tone:
@@ -916,7 +945,7 @@ export function AiPortfolioSummary({
                   <div className="grid gap-4 sm:grid-cols-2">
                     {aiFlags.map((flag) => {
                       const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                      const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
+                      const relatedProjectIds = flag.projectIds ?? []
                       return (
                         <div key={flag.key} className="flex items-start gap-3">
                           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
@@ -927,15 +956,37 @@ export function AiPortfolioSummary({
                               <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
                                 {formatSectionHeading(flag.label)}:
                               </p>
-                              <span className="rounded-full border border-[#E9D5FF] bg-[#FDF8FF] px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                                {severityLabel}
-                              </span>
                               <span className="rounded-full border border-[#E2E8F0] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                                 {flag.count} project{flag.count !== 1 ? 's' : ''}
                               </span>
                             </div>
-                            {flag.summary && (
-                              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{flag.summary}</p>
+                            {toDisplayText(flag.summary) && (
+                              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
+                            )}
+                            {relatedProjectIds.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                                  Related Projects
+                                </p>
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {relatedProjectIds.map((projectId) => {
+                                    const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                    const project = findProject(projects, projectId)
+                                    const label = project?.id ?? projectId
+                                    const cls =
+                                      'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                    return href ? (
+                                      <Link key={projectId} to={href} className={cls}>
+                                        {label}
+                                      </Link>
+                                    ) : (
+                                      <span key={projectId} className={cls}>
+                                        {label}
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -954,12 +1005,42 @@ export function AiPortfolioSummary({
               <div className="space-y-3">
                 {hasActions ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {recommendedActions.slice(0, 6).map((action, i) => (
-                      <div key={i} className="flex items-start gap-2.5">
-                        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" aria-hidden="true" />
-                        <span className="text-sm leading-6 text-[#475569] dark:text-slate-200">{action}</span>
-                      </div>
-                    ))}
+                    {recommendedActions.slice(0, 6).map((action, i) => {
+                      const relatedProjectIds = extractBudgetReferenceIds(action)
+                      return (
+                        <div key={i} className="rounded-2xl border border-[#F0D9FF] bg-[#FDF8FF]/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-start gap-2.5">
+                            <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" aria-hidden="true" />
+                            <span className="text-sm leading-6 text-[#475569] dark:text-slate-200">{action}</span>
+                          </div>
+                          {relatedProjectIds.length > 0 && (
+                            <div className="mt-2 pl-6">
+                              <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                                Related Projects
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {relatedProjectIds.map((projectId) => {
+                                  const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                  const project = findProject(projects, projectId)
+                                  const label = project?.id ?? projectId
+                                  const cls =
+                                    'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                  return href ? (
+                                    <Link key={projectId} to={href} className={cls}>
+                                      {label}
+                                    </Link>
+                                  ) : (
+                                    <span key={projectId} className={cls}>
+                                      {label}
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="py-3 text-center text-sm text-[#64748B] dark:text-slate-400">
@@ -985,7 +1066,10 @@ export function AiPortfolioSummary({
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{group.label}</p>
+                            <div className="flex items-center gap-2">
+                              <group.icon className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{group.label}</p>
+                            </div>
                             <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">
                               {group.description}
                             </p>
@@ -1003,7 +1087,7 @@ export function AiPortfolioSummary({
                         </div>
 
                         <div className="mt-4">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-400">
+                          <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
                             Affected Projects
                           </p>
                           {group.projectIds.length > 0 ? (
@@ -1048,7 +1132,6 @@ export function AiPortfolioSummary({
                   <div className="space-y-2">
                     {aiFlags.map((flag) => {
                       const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                      const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
                       const titleText =
                         FLAG_TITLE_FN[flag.key]?.(flag.count) ??
                         `${flag.count} project${flag.count !== 1 ? 's' : ''} flagged for ${flag.label.toLowerCase()}.`
@@ -1063,14 +1146,11 @@ export function AiPortfolioSummary({
                             </div>
                             <div>
                               <p className="text-xs font-semibold text-[#0F172A] dark:text-white">{titleText}</p>
-                              {flag.summary && (
-                                <p className="mt-0.5 text-[11px] leading-4 text-[#64748B] dark:text-slate-400">{flag.summary}</p>
+                              {toDisplayText(flag.summary) && (
+                                <p className="mt-0.5 text-[11px] leading-4 text-[#64748B] dark:text-slate-400">{toDisplayText(flag.summary)}</p>
                               )}
                             </div>
                           </div>
-                          <span className="shrink-0 rounded-full bg-[#FDF8FF] px-2 py-0.5 text-[10px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                            {severityLabel}
-                          </span>
                         </div>
                       )
                     })}
@@ -1208,7 +1288,6 @@ export function AiPortfolioSummary({
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 {aiFlags.map((flag) => {
                   const IconComp = FLAG_ICONS[flag.key] ?? ShieldAlert
-                  const severityLabel = FLAG_SEVERITY[flag.key] ?? 'Warning'
                   return (
                     <div key={flag.key} className="flex items-start gap-3">
                       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
@@ -1219,12 +1298,34 @@ export function AiPortfolioSummary({
                           <p className="text-sm font-semibold text-[#0F172A] dark:text-white">
                             {formatSectionHeading(flag.label)}:
                           </p>
-                          <span className="rounded-full border border-[#E9D5FF] bg-[#FDF8FF] px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-                            {severityLabel}
-                          </span>
                         </div>
-                        {flag.summary && (
-                          <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{flag.summary}</p>
+                        {toDisplayText(flag.summary) && (
+                          <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{toDisplayText(flag.summary)}</p>
+                        )}
+                        {flag.projectIds.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">
+                              Related Projects
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              {flag.projectIds.map((projectId) => {
+                                const href = projectHrefBuilder ? projectHrefBuilder(projectId) : null
+                                const project = findProject(projects, projectId)
+                                const label = project?.id ?? projectId
+                                const cls =
+                                  'rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]'
+                                return href ? (
+                                  <Link key={projectId} to={href} className={cls}>
+                                    {label}
+                                  </Link>
+                                ) : (
+                                  <span key={projectId} className={cls}>
+                                    {label}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1258,140 +1359,7 @@ export function AiPortfolioSummary({
             </div>
           )}
 
-          {/* ── 4. Charts 2×2 grid ── */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {/* Risk Distribution */}
-            <ChartCard
-              title="Risk Distribution"
-              description={`${counts.totalProjects} projects · risk breakdown`}
-            >
-              {riskChartData.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="h-[180px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={riskChartData}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={48}
-                          outerRadius={72}
-                          paddingAngle={3}
-                          stroke="none"
-                        >
-                          {riskChartData.map((entry) => (
-                            <Cell key={entry.key} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<RiskDistributionTooltip />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="space-y-1.5">
-                    {riskChartData.map((entry) => (
-                      <div
-                        key={entry.key}
-                        className="flex items-center justify-between rounded-xl border border-[#F0D9FF] bg-[#FDF8FF]/60 px-3 py-2 dark:border-white/10 dark:bg-white/5"
-                      >
-                        <span className="inline-flex items-center gap-2 text-sm text-[#475569] dark:text-slate-300">
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.fill }} />
-                          {entry.name}
-                        </span>
-                        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">
-                          {entry.value} · {entry.share}%
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="py-4 text-sm text-[#64748B] dark:text-slate-300">No risk signals yet.</p>
-              )}
-            </ChartCard>
-
-            {/* Workflow Pipeline */}
-            {workflowStatuses.length > 0 && (
-              <ChartCard
-                title="Workflow Pipeline"
-                description="Projects by workflow stage"
-              >
-                <div style={{ height: Math.max(180, workflowChartData.length * 40 + 20) }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={workflowChartData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
-                    >
-                      <CartesianGrid horizontal={false} stroke="#F3E8FF" />
-                      <XAxis
-                        type="number"
-                        allowDecimals={false}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="shortLabel"
-                        width={88}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#475569', fontSize: 12 }}
-                      />
-                      <Tooltip content={<SimpleBarTooltip />} cursor={{ fill: '#F5EEFF' }} />
-                      <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={28}>
-                        {workflowChartData.map((entry) => (
-                          <Cell key={entry.label} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-
-            {/* Issue Categories */}
-            {issueCategories.length > 0 && (
-              <ChartCard
-                title="Issue Categories"
-                description="Top issue groups across the portfolio"
-              >
-                <div style={{ height: Math.max(180, issueCategoryChartData.length * 40 + 20) }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={issueCategoryChartData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 12, left: 0, bottom: 4 }}
-                    >
-                      <CartesianGrid horizontal={false} stroke="#F3E8FF" />
-                      <XAxis
-                        type="number"
-                        allowDecimals={false}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="shortLabel"
-                        width={104}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#475569', fontSize: 12 }}
-                      />
-                      <Tooltip content={<SimpleBarTooltip />} cursor={{ fill: '#F5EEFF' }} />
-                      <Bar dataKey="count" radius={[0, 8, 8, 0]} maxBarSize={28}>
-                        {issueCategoryChartData.map((entry) => (
-                          <Cell key={entry.label} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-
-          {/* ── 5. Priority Focus (compact pills) ── */}
+          {/* ── 4. Priority Focus (compact pills) ── */}
           {focusProjects.length > 0 && (
             <div className="rounded-[22px] border border-[#E9D5FF] bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -1441,7 +1409,6 @@ export function AiPortfolioSummary({
               </div>
             </div>
           )}
-          </div>
 
         </div>
       )}

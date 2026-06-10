@@ -55,6 +55,13 @@ export interface RetrievedIctBudgetDraft {
   respondentName: string | null
   reviewerName: string | null
   approverName: string | null
+  smeReviewerTeamId: string | null
+  recommendedLabel: string | null
+  rejectedByName: string | null
+  previousStrategicPriorityId: string | null
+  previousStrategicPriorityName: string | null
+  previousStrategicPriorityClassificationId: string | null
+  previousStrategicPriorityClassificationName: string | null
 }
 
 export interface CreatedIctBudgetDraft {
@@ -308,6 +315,10 @@ function mapRetrievedBudgetRecord(
     summary: stripRichTextHtml(record.dga_summary),
     activityType: record.dga_activity_type ?? null,
     totalBudgetPaidPreviousYear: toCurrencyInputValue(record.dga_total_budget_paid_previous_year),
+    recommended: record.dga_recommended ?? null,
+    rejectionReason: record.dga_rejection_reason ?? null,
+    rejectionJustification: record.dga_rejection_justification ?? '',
+    rejectedById: record._dga_rejected_by_value ?? '',
     totalBudgetPayableFutureYear: toCurrencyInputValue(record.dga_total_budget_payable_future_year),
     totalBudgetPayableNextYear: toCurrencyInputValue(record.dga_total_budget_payable_next_year),
     totalBudgetPayableForYearAfterNext: toCurrencyInputValue(
@@ -358,6 +369,35 @@ function mapRetrievedBudgetRecord(
       getFormattedAnnotation(record, '_dga_reviewer_value@OData.Community.Display.V1.FormattedValue') ?? null,
     approverName:
       getFormattedAnnotation(record, '_dga_approver_value@OData.Community.Display.V1.FormattedValue') ?? null,
+    smeReviewerTeamId: record._dga_sme_reviewer_team_value ?? null,
+    recommendedLabel:
+      getFormattedAnnotation(
+        record,
+        'dga_recommended@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_recommendedname ??
+      null,
+    rejectedByName:
+      getFormattedAnnotation(record, '_dga_rejected_by_value@OData.Community.Display.V1.FormattedValue') ??
+      record.dga_rejected_byname ??
+      null,
+    previousStrategicPriorityId: record._dga_previous_strategic_priority_value ?? null,
+    previousStrategicPriorityName:
+      getFormattedAnnotation(
+        record,
+        '_dga_previous_strategic_priority_value@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_previous_strategic_priorityname ??
+      null,
+    previousStrategicPriorityClassificationId:
+      record._dga_previous_strategic_priorityclassification_value ?? null,
+    previousStrategicPriorityClassificationName:
+      getFormattedAnnotation(
+        record,
+        '_dga_previous_strategic_priorityclassification_value@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_previous_strategic_priorityclassificationname ??
+      null,
   } satisfies RetrievedIctBudgetDraft
 }
 
@@ -453,6 +493,11 @@ export async function getIctBudgetDraftById(
         'dga_budget_item_type',
         'dga_category',
         'dga_status_for_adge',
+        'dga_recommended',
+        'dga_rejection_reason',
+        'dga_rejection_justification',
+        '_dga_rejected_by_value',
+        '_dga_sme_reviewer_team_value',
         'dga_total_budget_paid_previous_year',
         'dga_total_budget_payable_future_year',
         'dga_total_budget_payable_next_year',
@@ -481,6 +526,8 @@ export async function updateIctBudgetDraft(
   ictBudgetId: string,
   formValues: IctBudgetFormValues
 ) {
+  const currentUserId = sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || ''
+  const recommendedNo = formValues.recommended === 1
   const payload = {
     dga_initiative_project_requirement_name: formValues.initiativeName.trim(),
     'dga_strategic_priority@odata.bind': toBoundLookupValue(
@@ -503,6 +550,11 @@ export async function updateIctBudgetDraft(
     dga_activity_type: formValues.activityType ?? undefined,
     dga_budget_item_type: formValues.budgetItemType ?? undefined,
     dga_category: formValues.category ?? undefined,
+    dga_recommended: formValues.recommended ?? undefined,
+    dga_rejection_reason: recommendedNo ? formValues.rejectionReason ?? undefined : null,
+    dga_rejection_justification: recommendedNo ? formValues.rejectionJustification.trim() : null,
+    'dga_rejected_by@odata.bind':
+      recommendedNo && currentUserId ? toBoundLookupValue('systemusers', currentUserId) : null,
     dga_total_budget_paid_previous_year: parseCurrencyValue(
       formValues.totalBudgetPaidPreviousYear
     ) ?? undefined,

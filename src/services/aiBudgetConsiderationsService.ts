@@ -72,6 +72,21 @@ function tryParseJson(value: string) {
   }
 }
 
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplayText(item)).filter(Boolean).join(', ')
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.text === 'string') return record.text.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+  }
+  return ''
+}
+
 function extractJsonCandidate(value: string) {
   const trimmed = value.trim()
   const direct = tryParseJson(trimmed)
@@ -111,8 +126,8 @@ function normalizePolicyAssessmentItem(item: Record<string, unknown>) {
     return null
   }
 
-  const policyNumber = String(item['Policy Number'] ?? item.policyNumber ?? '').trim()
-  const policyName = String(item['Policy Name'] ?? item.policyName ?? '').trim()
+  const policyNumber = toDisplayText(item['Policy Number'] ?? item.policyNumber)
+  const policyName = toDisplayText(item['Policy Name'] ?? item.policyName)
   if (!policyNumber || !policyName) {
     return null
   }
@@ -128,12 +143,12 @@ function normalizePolicyAssessmentItem(item: Record<string, unknown>) {
   return {
     policyNumber,
     policyName,
-    strategicArea: String(item['Strategic Area'] ?? item.strategicArea ?? '').trim(),
+    strategicArea: toDisplayText(item['Strategic Area'] ?? item.strategicArea),
     matchType,
     relevanceScore: Number(item['Relevance Score'] ?? item.relevanceScore ?? 0) || 0,
-    reason: String(item.Reason ?? item.reason ?? '').trim(),
+    reason: toDisplayText(item.Reason ?? item.reason),
     evidenceFromProject: evidence,
-    requiredAction: String(item['Required Action'] ?? item.requiredAction ?? '').trim(),
+    requiredAction: toDisplayText(item['Required Action'] ?? item.requiredAction),
   } satisfies PolicyAssessmentItem
 }
 
@@ -147,7 +162,7 @@ function normalizeOverallAssessment(value: Record<string, unknown> | null) {
     hasAllowedWithConditions: Boolean(
       value?.['Has Allowed With Conditions'] ?? value?.hasAllowedWithConditions
     ),
-    summary: String(value?.Summary ?? value?.summary ?? '').trim(),
+    summary: toDisplayText(value?.Summary ?? value?.summary),
   } satisfies PolicyOverallAssessment
 }
 

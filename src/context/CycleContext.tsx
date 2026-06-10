@@ -9,22 +9,28 @@ import {
 interface CycleContextType {
   cyclesData: CyclesSessionData | null
   selectedCycle: AppCycle | null
+  hasCycles: boolean
+  cyclesResolved: boolean
   setSelectedCycle: (cycle: AppCycle) => void
 }
 
 const CycleContext = createContext<CycleContextType>({
   cyclesData: null,
   selectedCycle: null,
+  hasCycles: false,
+  cyclesResolved: false,
   setSelectedCycle: () => {},
 })
 
 export function CycleProvider({ children }: { children: React.ReactNode }) {
   const [cyclesData, setCyclesData] = useState<CyclesSessionData | null>(null)
   const [selectedCycle, setSelectedCycleState] = useState<AppCycle | null>(null)
+  const [cyclesResolved, setCyclesResolved] = useState(false)
 
   useEffect(() => {
     setCyclesData(getStoredCycles())
     setSelectedCycleState(getStoredCurrentCycle())
+    setCyclesResolved(true)
   }, [])
 
   const setSelectedCycle = (cycle: AppCycle) => {
@@ -33,7 +39,15 @@ export function CycleProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <CycleContext.Provider value={{ cyclesData, selectedCycle, setSelectedCycle }}>
+    <CycleContext.Provider
+      value={{
+        cyclesData,
+        selectedCycle,
+        hasCycles: (cyclesData?.allCycles?.length ?? 0) > 0,
+        cyclesResolved,
+        setSelectedCycle,
+      }}
+    >
       {children}
     </CycleContext.Provider>
   )

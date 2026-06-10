@@ -2,6 +2,7 @@ import {
   PowerAppV2_GetCumulativeDocumentSummaryfromCompassService,
   PowerAppV2_GetDocumentSummaryfromCompassService,
 } from '@/generated'
+import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
 
 export interface SupportingDocumentProfile {
   document_type?: string
@@ -69,6 +70,7 @@ export interface SupportingDocumentAccountCodeSuggestion {
   account_code?: string
   classification_path?: SupportingDocumentClassificationPath
   expense_type?: string
+  mapped_budget_line_numbers?: number[]
   requested_budget?: number
   currency?: string
   account_code_confidence?: number
@@ -134,6 +136,39 @@ function tryParseJson(value: string): unknown {
   } catch {
     return null
   }
+}
+
+function sanitizeTemplateTextNodes(value: unknown, visited = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeTemplateTextNodes(item, visited))
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  if (visited.has(value)) {
+    return value
+  }
+  visited.add(value)
+
+  const record = value as Record<string, unknown>
+  if (typeof record.text_template === 'string') {
+    return record.text_template.trim()
+  }
+  if (typeof record.text === 'string') {
+    return record.text.trim()
+  }
+  if (typeof record.value === 'string') {
+    return record.value.trim()
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, nestedValue]) => [
+      key,
+      sanitizeTemplateTextNodes(nestedValue, visited),
+    ])
+  )
 }
 
 function hasMajorHeadings(value: unknown): value is SupportingDocumentEvaluationSummary {
@@ -235,14 +270,15 @@ export function parseSupportingDocumentEvaluationSummary(value: unknown): Suppor
   if (!value) return null
 
   try {
-    return findStructuredSummary(value)
+    const parsed = findStructuredSummary(value)
+    return parsed ? (sanitizeTemplateTextNodes(parsed) as SupportingDocumentEvaluationSummary) : null
   } catch (error) {
     console.warn('[AiSupportingDocumentEvaluationService] Failed to parse document evaluation summary:', error)
     return null
   }
 }
 
-function fileToBase64(file: File): Promise<string> {
+function blobToBase64(blob: Blob, readErrorLabel: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -253,10 +289,10 @@ function fileToBase64(file: File): Promise<string> {
     }
 
     reader.onerror = () => {
-      reject(new Error(`Failed to read supporting document: ${file.name}`))
+      reject(new Error(readErrorLabel))
     }
 
-    reader.readAsDataURL(file)
+    reader.readAsDataURL(blob)
   })
 }
 
@@ -265,13 +301,17 @@ export async function evaluateSupportingDocument(input: {
 }) {
   const file = input.file
   const fileName = normalizeText(file.name)
-  const base64Content = await fileToBase64(file)
-  const mimeType = normalizeText(file.type || 'application/octet-stream')
+  const { preparedFile: fileForAnalysis } = await prepareSupportingDocumentFile(file)
+  const mimeType = normalizeText(fileForAnalysis.type || 'application/octet-stream')
+  const base64Content = await blobToBase64(
+    fileForAnalysis,
+    `Failed to prepare supporting document for AI analysis: ${file.name}`
+  )
   const startedAt = Date.now()
 
   const flowInput = {
     fileContent: {
-      name: file.name,
+      name: fileForAnalysis.name,
       contentBytes: base64Content,
       mimeType,
     },
@@ -279,6 +319,7 @@ export async function evaluateSupportingDocument(input: {
 
   console.log('[AiSupportingDocumentEvaluationService] Calling Power Automate flow with file payload:', {
     fileName,
+    analysisFileName: fileForAnalysis.name,
     mimeType,
     base64Length: base64Content.length,
     flowInput,
@@ -303,6 +344,7 @@ export async function evaluateSupportingDocument(input: {
 
   return {
     fileName: file.name,
+    analysisFileName: fileForAnalysis.name,
     mimeType,
     base64Length: base64Content.length,
     responseTimeMs,

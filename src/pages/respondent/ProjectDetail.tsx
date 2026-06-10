@@ -4,6 +4,7 @@ import { useBeforeUnload, useLocation, useParams, Link, useNavigate } from 'reac
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Bot,
   Briefcase,
@@ -23,6 +24,7 @@ import {
   FileText,
   FolderKanban,
   History,
+  Info,
   Layers,
   Lightbulb,
   Loader2,
@@ -38,6 +40,8 @@ import {
   Upload,
   UserCheck,
   WalletCards,
+  Workflow,
+  X,
   Zap,
   BarChart2,
 } from 'lucide-react'
@@ -100,6 +104,7 @@ import {
   getBudgetLineItemsByBudgetId,
   toBudgetItemDraft,
   updateBudgetLineItemAmount,
+  updateBudgetLineItemRecommendedAmount,
   type BudgetLineItemRecord,
 } from '@/services/budgetLineItemService'
 import {
@@ -109,6 +114,7 @@ import {
   updateIctBudgetStatus,
   updateIctBudgetDraft,
 } from '@/services/ictBudgetDraftService'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import {
   getStrategicPriorityOptions,
   type StrategicPriorityOption,
@@ -123,6 +129,7 @@ import {
   getWorkStreamOptions,
   type WorkStreamOption,
 } from '@/services/workStreamService'
+import { DGE_BUDGET_STATUS } from '@/services/dgePortfolioService'
 import { projectService } from '@/services/projectService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
@@ -132,8 +139,16 @@ import {
   getClarificationsByBudgetId,
   raiseBudgetClarification,
 } from '@/services/clarificationService'
+import {
+  requestStrategicPriorityChange,
+  reviewStrategicPriorityChange,
+  routeBudgetToQualityCheck,
+  sendBudgetsToSme,
+  validateBudgetReadyForQualityCheck,
+} from '@/services/dgeWorkflowService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   associateTechnologyProduct,
   disassociateTechnologyProduct,
@@ -141,7 +156,6 @@ import {
   type WebApiPortalDocument,
 } from '@/services/webApiForPortalService'
 import { deleteSharePointDocument } from '@/services/fileDeleteService'
-import { SupportingDocuments } from '@/components/shared/SupportingDocuments'
 import { getAuditLogsByBudgetId, type AuditLogEntry } from '@/services/auditLogService'
 import {
   SupportingDocumentAiInsights,
@@ -154,6 +168,12 @@ import {
   type SupportingDocumentEvaluationSummary,
   type SupportingDocumentSuggestedProjectField,
 } from '@/services/aiSupportingDocumentEvaluationService'
+import {
+  buildBudgetItemDraftFromSuggestedAccountCode,
+  getComputedSupportingDocumentAccountCodeSuggestions,
+  type ComputedSupportingDocumentAccountCodeSuggestion,
+} from '@/features/supportingDocumentAccountCodes'
+import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
 import {
   createDocumentSummaryRecords,
   deleteDocumentSummaryRecordsByDocumentName,
@@ -231,6 +251,146 @@ function truncatePolicyCopy(text: string, maxCharacters: number) {
   }
 }
 
+function BudgetConsiderationCompactCards({
+  groups,
+}: {
+  groups: PolicyMatchGroup[]
+}) {
+  const [tooltip, setTooltip] = useState<null | {
+    top: number
+    left: number
+    title: string
+    reason: string
+    action: string
+  }>(null)
+  const closeTimerRef = useRef<number | null>(null)
+
+  const clearCloseTimer = () => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
+
+  const scheduleClose = () => {
+    clearCloseTimer()
+    closeTimerRef.current = window.setTimeout(() => setTooltip(null), 120)
+  }
+
+  useEffect(() => {
+    if (!tooltip) return
+    const handle = () => setTooltip(null)
+    window.addEventListener('scroll', handle, true)
+    window.addEventListener('resize', handle)
+    return () => {
+      window.removeEventListener('scroll', handle, true)
+      window.removeEventListener('resize', handle)
+    }
+  }, [tooltip])
+
+  const tooltipNode = tooltip
+    ? createPortal(
+        <div
+          className="fixed z-[1000] w-80 rounded-2xl border border-[#E9D5FF] bg-white px-4 py-3 text-left shadow-[0_18px_45px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#10203A]/95"
+          style={{ top: tooltip.top, left: tooltip.left }}
+          onMouseEnter={clearCloseTimer}
+          onMouseLeave={scheduleClose}
+        >
+          <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Reason</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.reason || 'No reason provided.'}</p>
+          <p className="mt-3 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Recommended Action</p>
+          <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">{tooltip.action || 'No recommended action provided.'}</p>
+        </div>,
+        document.body
+      )
+    : null
+
+  return (
+    <div className="grid gap-3 lg:grid-cols-3">
+      {tooltipNode}
+      {groups.flatMap((group) => {
+        const accent = toMatchTypeAccent(group.matchType)
+
+        return group.items.map((item) => (
+          <article
+            key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
+            className="group relative z-0 overflow-visible rounded-2xl border border-[#E9D5FF] bg-white px-4 py-4 shadow-sm transition-transform duration-200 hover:z-20 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <div className={cn('mt-0.5 shrink-0', accent.text)}>
+                    {group.matchType === 'Potential Conflict' ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : group.matchType === 'Coordination Required' ? (
+                      <Layers className="h-4 w-4" />
+                    ) : (
+                      <Lightbulb className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
+                      {toDisplayText(item.policyName) || 'Policy match'}
+                    </p>
+                    <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                      Policy {item.policyNumber}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold', accent.sofbadge)}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
+                    {item.matchType}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-[#D7E4F4] bg-white px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                    Probability {item.relevanceScore ?? '-'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative shrink-0">
+                <span className="sr-only">{toDisplayText(item.policyName) || 'policy match'}</span>
+                <button
+                  type="button"
+                  className="peer inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]"
+                  aria-label={`View details for ${toDisplayText(item.policyName) || 'policy match'}`}
+                  onMouseEnter={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      title: toDisplayText(item.policyName) || 'policy match',
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onMouseLeave={scheduleClose}
+                  onFocus={(event) => {
+                    clearCloseTimer()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    setTooltip({
+                      top: Math.max(8, rect.top - 16 - 180),
+                      left: Math.min(window.innerWidth - 336, Math.max(8, rect.right - 320)),
+                      title: toDisplayText(item.policyName) || 'policy match',
+                      reason: toDisplayText(item.reason),
+                      action: toDisplayText(item.requiredAction),
+                    })
+                  }}
+                  onBlur={scheduleClose}
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </article>
+        ))
+      })}
+    </div>
+  )
+}
+
 type AiFieldAssistProps = {
   fieldLabel: string
   suggestedValue: string
@@ -282,12 +442,11 @@ function AiFieldAssistTrigger({
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI suggested this field</p>
-              <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
             </div>
           </div>
           <div className="mt-3">
-            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Suggested Value</p>
-            <p className="mt-1 text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
+            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{fieldLabel}</p>
+            <p className="mt-1 whitespace-pre-line text-sm text-[#0F172A] dark:text-white">{suggestedValue}</p>
           </div>
           {canApply ? (
             <button
@@ -353,6 +512,7 @@ function DetailSection({
   icon,
   children,
   action,
+  titleAdornment,
   noShadow = false,
 }: {
   id?: string
@@ -361,6 +521,7 @@ function DetailSection({
   icon: React.ElementType
   children: React.ReactNode
   action?: React.ReactNode
+  titleAdornment?: React.ReactNode
   noShadow?: boolean
 }) {
   return (
@@ -375,7 +536,10 @@ function DetailSection({
         <div className="flex items-start gap-2.5">
           <SectionIcon icon={icon} />
           <div>
-            <h3 className="text-lg font-bold text-[var(--foreground)]">{title}</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-bold text-[var(--foreground)]">{title}</h3>
+              {titleAdornment}
+            </div>
             {description && <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--muted-foreground)]">{description}</p>}
           </div>
         </div>
@@ -427,6 +591,7 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
     .map((item) => ({
       id: item.id,
       budgetRequested: item.budgetRequested,
+      budgetRecommended: item.budgetRecommended,
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }
@@ -436,17 +601,20 @@ function EditDatePickerField({
   onChange,
   placeholder = 'Pick a date',
   invalid,
+  minDate,
 }: {
   value: string
   onChange: (value: string) => void
   placeholder?: string
   invalid?: boolean
+  minDate?: string
 }) {
   const pickerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [viewMonth, setViewMonth] = useState(() => (value ? new Date(`${value}T00:00:00`) : new Date()))
 
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null
+  const minimumDate = minDate ? new Date(`${minDate}T00:00:00`) : null
   const today = new Date()
   const calendarStart = startOfWeek(startOfMonth(viewMonth))
   const calendarEnd = endOfWeek(endOfMonth(viewMonth))
@@ -454,7 +622,16 @@ function EditDatePickerField({
   const weekDays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
   const formattedValue = selectedDate ? format(selectedDate, 'MMM d, yyyy') : placeholder
 
+  useEffect(() => {
+    if (!open || !minimumDate) return
+    const selectedMonth = selectedDate ?? viewMonth
+    if (selectedMonth < startOfMonth(minimumDate)) {
+      setViewMonth(minimumDate)
+    }
+  }, [minimumDate, open, selectedDate, viewMonth])
+
   const selectDate = (date: Date) => {
+    if (minimumDate && date < minimumDate) return
     onChange(format(date, 'yyyy-MM-dd'))
     setViewMonth(date)
     setOpen(false)
@@ -473,7 +650,7 @@ function EditDatePickerField({
           selectedDate ? 'text-[#0F172A] dark:text-white' : 'text-[#64748B]'
         )}
       >
-        <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-[var(--primary)]" />
+        <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
         <span>{formattedValue}</span>
       </button>
 
@@ -518,15 +695,18 @@ function EditDatePickerField({
                   const selected = selectedDate ? isSameDay(date, selectedDate) : false
                   const currentMonth = isSameMonth(date, viewMonth)
                   const isToday = isSameDay(date, today)
+                  const disabledDate = Boolean(minimumDate && date < minimumDate)
 
                   return (
                     <button
                       key={date.toISOString()}
                       type="button"
+                      disabled={disabledDate}
                       onClick={() => selectDate(date)}
                       className={cn(
                         'flex h-8 w-8 items-center justify-center rounded-lg p-2 text-sm font-normal leading-none text-[#286CFF] transition-colors outline-none hover:bg-[#E7F5FF] active:bg-[#D3EDFF] focus-visible:ring-2 focus-visible:ring-[#286CFF] focus-visible:ring-offset-2 dark:hover:bg-white/10',
                         !currentMonth && 'text-[#94A3B8]',
+                        disabledDate && 'cursor-not-allowed text-[#CBD5E1] hover:bg-transparent dark:text-slate-600',
                         isToday && !selected && 'bg-[#E7F5FF] text-[#043DFF]',
                         selected && 'bg-[#286CFF] text-white hover:bg-[#286CFF] hover:text-white'
                       )}
@@ -583,6 +763,37 @@ function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null
   return <StatusBadge status={resolvedStatus as never} />
 }
 
+function getDgeHeaderStatusLabel(statusCode: number | null | undefined, fallbackStatus?: string | null) {
+  switch (statusCode) {
+    case DGE_BUDGET_STATUS.underStrategicAlignmentReview:
+      return 'Under Strategic Alignment Review'
+    case DGE_BUDGET_STATUS.underSmeReview:
+      return 'Under SME Review'
+    case DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview:
+      return 'Strategic Priority Change Under Review'
+    case DGE_BUDGET_STATUS.underQualityCheck:
+      return 'Under Quality Check'
+    case DGE_BUDGET_STATUS.underFinalReview:
+      return 'Under Final Review'
+    case DGE_BUDGET_STATUS.reviewCompleted:
+      return 'Review Completed'
+    case DGE_BUDGET_STATUS.clarificationPending:
+      return 'Clarification Pending'
+    case DGE_BUDGET_STATUS.allocationInProgress:
+      return 'Allocation in Progress'
+    case DGE_BUDGET_STATUS.allocationInReview:
+      return 'Allocation in Review'
+    case DGE_BUDGET_STATUS.allocationCompleted:
+      return 'Allocation Completed'
+    case DGE_BUDGET_STATUS.utilizationInProgress:
+      return 'Utilization in Progress'
+    case DGE_BUDGET_STATUS.utilizationCompleted:
+      return 'Utilization Completed'
+    default:
+      return fallbackStatus?.trim() || '-'
+  }
+}
+
 function EmptyAiActionCard({
   description,
   icon: Icon,
@@ -600,7 +811,7 @@ function EmptyAiActionCard({
   )
 }
 
-type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver'
+type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
 type WorkflowAction =
   | 'delete-project'
   | 'submit-reviewer'
@@ -611,7 +822,20 @@ type PendingClarificationReply = {
   clarificationId: string
   message: string
   files?: File[]
-  returnToRole: 'Reviewer' | 'Approver'
+  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+}
+
+interface DetailSuggestionRow {
+  id: string
+  section: string
+  title: string
+  value: string
+  detail?: string
+  confidence?: number | null
+  kind: 'summary' | 'field' | 'account-code'
+  field?: SupportingDocumentSuggestedProjectField
+  accountCodeSuggestion?: ComputedSupportingDocumentAccountCodeSuggestion
+  actionable: boolean
 }
 
 const WORKFLOW_STATUSCODE_BY_STATUS: Partial<Record<Project['status'], number>> = {
@@ -649,6 +873,8 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
 
 function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
   const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('strategy')) return 'Strategy Team'
+  if (value.includes('sme')) return 'SME Team'
   if (value.includes('review')) return 'Reviewer'
   if (value.includes('approv')) return 'Approver'
   if (value.includes('respond')) return 'Respondent'
@@ -668,6 +894,14 @@ function getStoredUserTeams(): UserTeam[] {
 }
 
 function getRoleTeamId(role: WorkflowRole): string | null {
+  if (role === 'Strategy Team') {
+    return getStoredStrategyTeam()?.teamId?.trim() || null
+  }
+
+  if (role === 'SME Team') {
+    return getStoredCurrentSme()?.teamId?.trim() || null
+  }
+
   return getStoredUserTeams().find((team) => team.role === role)?.teamid?.trim() || null
 }
 
@@ -690,6 +924,8 @@ function isProjectOwnedByCurrentContext(project: Project, role: WorkflowRole) {
 }
 
 function canRoleEdit(project: Project, role: WorkflowRole) {
+  if (role === 'Strategy Team') return true
+
   return (
     getWorkflowOwnerByStatusCode(project.statusCode, project.status) === role &&
     isProjectOwnedByCurrentContext(project, role)
@@ -735,10 +971,10 @@ function workflowActionDetails(
 
   if (action === 'complete-review') {
     return {
-      title: 'Complete Review?',
+      title: 'Mark as Reviewed?',
       description:
         'This will mark the reviewer assessment as completed and keep the project with the reviewer until it is submitted to the approver.',
-      confirmLabel: 'Complete Review',
+      confirmLabel: 'Mark as Reviewed',
       tone: 'primary' as const,
     }
   }
@@ -909,7 +1145,7 @@ function LookupSelect({
             value ? 'font-semibold text-[#0F172A] dark:text-white' : 'text-[#64748B]'
           )}
         >
-          <Icon className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Icon className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <SelectValue placeholder={placeholder} />
         </span>
       </SelectTrigger>
@@ -1009,7 +1245,7 @@ function ProductMultiSelect({
         )}
       >
         <span className="inline-flex min-w-0 items-center gap-5">
-          <Package className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+          <Package className="h-4 w-4 shrink-0 text-[#0F172A] dark:text-white" />
           <span className={cn('truncate text-sm', selectedProducts.length === 0 && 'text-[#64748B]')}>
             {disabled ? 'Select technology company first' : triggerLabel}
           </span>
@@ -1068,26 +1304,38 @@ function BudgetItemsTable({
   items,
   loading,
   error,
-  editable,
+  editableRequested,
+  editableRecommended,
+  showRecommendedBudget,
+  showActions,
   savingId,
   deletingId,
   onChangeBudgetRequested,
+  onChangeBudgetRecommended,
   onDelete,
 }: {
   items: BudgetLineItemRecord[]
   loading: boolean
   error: string | null
-  editable: boolean
+  editableRequested: boolean
+  editableRecommended: boolean
+  showRecommendedBudget: boolean
+  showActions: boolean
   savingId: string | null
   deletingId: string | null
   onChangeBudgetRequested: (lineItemId: string, amount: number) => void
+  onChangeBudgetRecommended: (lineItemId: string, amount: number) => void
   onDelete: (item: BudgetLineItemRecord) => void
 }) {
-  const [draftAmounts, setDraftAmounts] = useState<Record<string, string>>({})
+  const [draftRequestedAmounts, setDraftRequestedAmounts] = useState<Record<string, string>>({})
+  const [draftRecommendedAmounts, setDraftRecommendedAmounts] = useState<Record<string, string>>({})
 
   useEffect(() => {
-    setDraftAmounts(
+    setDraftRequestedAmounts(
       Object.fromEntries(items.map((item) => [item.id, item.budgetRequested > 0 ? formatAEDFull(item.budgetRequested) : '']))
+    )
+    setDraftRecommendedAmounts(
+      Object.fromEntries(items.map((item) => [item.id, item.budgetRecommended > 0 ? formatAEDFull(item.budgetRecommended) : '']))
     )
   }, [items])
 
@@ -1120,7 +1368,14 @@ function BudgetItemsTable({
       <table className="w-full text-sm">
         <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
           <tr>
-            {['Account Name', 'Classification', 'EBS Fusion Code', 'Budget Requested', 'Action'].map((header) => (
+            {[
+              'Account Name',
+              'Classification',
+              'EBS Fusion Code',
+              'Budget Requested',
+              ...(showRecommendedBudget ? ['Recommended Budget'] : []),
+              ...(showActions ? ['Action'] : []),
+            ].map((header) => (
               <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
                 {header}
               </th>
@@ -1131,10 +1386,19 @@ function BudgetItemsTable({
           {items.map((item) => {
             const classificationLabel = item.expenseTypeLabel ?? 'Not Set'
             const isCapex = classificationLabel.toLowerCase() === 'capex'
-            const draftValue = draftAmounts[item.id] ?? String(item.budgetRequested)
-            const normalizedDraftValue = draftValue.replace(/,/g, '')
-            const parsedAmount = Number(normalizedDraftValue)
-            const isValidAmount = draftValue.trim().length > 0 && Number.isFinite(parsedAmount) && parsedAmount > 0
+            const requestedDraftValue = draftRequestedAmounts[item.id] ?? String(item.budgetRequested)
+            const normalizedRequestedDraftValue = requestedDraftValue.replace(/,/g, '')
+            const parsedRequestedAmount = Number(normalizedRequestedDraftValue)
+            const isValidRequestedAmount =
+              requestedDraftValue.trim().length > 0 &&
+              Number.isFinite(parsedRequestedAmount) &&
+              parsedRequestedAmount > 0
+            const recommendedDraftValue = draftRecommendedAmounts[item.id] ?? String(item.budgetRecommended)
+            const normalizedRecommendedDraftValue = recommendedDraftValue.replace(/,/g, '')
+            const parsedRecommendedAmount = Number(normalizedRecommendedDraftValue)
+            const isValidRecommendedAmount =
+              recommendedDraftValue.trim().length === 0 ||
+              (Number.isFinite(parsedRecommendedAmount) && parsedRecommendedAmount >= 0)
             const isSaving = savingId === item.id
             const isDeleting = deletingId === item.id
 
@@ -1151,12 +1415,12 @@ function BudgetItemsTable({
                   EBS {item.ebsCode} / Fusion {item.fusionCode}
                 </td>
                 <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                  {editable ? (
+                  {editableRequested ? (
                     <div className="relative min-w-[190px]">
                       <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
                       <Input
                         inputMode="decimal"
-                        value={draftValue}
+                        value={requestedDraftValue}
                         onChange={(event) => {
                           const digitsAndDecimal = event.target.value.replace(/[^\d.]/g, '')
                           const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
@@ -1166,7 +1430,7 @@ function BudgetItemsTable({
                             ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
                             : formattedInteger
 
-                          setDraftAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                          setDraftRequestedAmounts((current) => ({ ...current, [item.id]: nextValue }))
                           const nextNumericValue = decimalPart !== undefined
                             ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
                             : Number(normalizedInteger || '0')
@@ -1175,7 +1439,7 @@ function BudgetItemsTable({
                         placeholder="-"
                         className={cn(
                           'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                          isValidAmount || draftValue.trim().length === 0 ? 'border-[#D9E6F7]' : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                          isValidRequestedAmount || requestedDraftValue.trim().length === 0 ? 'border-[#D9E6F7]' : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
                         )}
                       />
                     </div>
@@ -1187,9 +1451,49 @@ function BudgetItemsTable({
                     )
                   )}
                 </td>
-                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                {showRecommendedBudget ? (
+                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                    {editableRecommended ? (
+                      <div className="relative min-w-[190px]">
+                        <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Input
+                          inputMode="decimal"
+                          value={recommendedDraftValue}
+                          onChange={(event) => {
+                            const digitsAndDecimal = event.target.value.replace(/[^\d.]/g, '')
+                            const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
+                            const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '') || (integerPart ? '0' : '')
+                            const formattedInteger = normalizedInteger ? formatAEDFull(Number(normalizedInteger)) : ''
+                            const nextValue = decimalPart !== undefined
+                              ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
+                              : formattedInteger
+
+                            setDraftRecommendedAmounts((current) => ({ ...current, [item.id]: nextValue }))
+                            const nextNumericValue = decimalPart !== undefined
+                              ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
+                              : Number(normalizedInteger || '0')
+                            onChangeBudgetRecommended(item.id, Number.isFinite(nextNumericValue) ? nextNumericValue : 0)
+                          }}
+                          placeholder="-"
+                          className={cn(
+                            'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                            isValidRecommendedAmount
+                              ? 'border-[#D9E6F7]'
+                              : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                          )}
+                        />
+                      </div>
+                    ) : item.budgetRecommended > 0 ? (
+                      <CurrencyAmount amount={item.budgetRecommended} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                    ) : (
+                      <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                    )}
+                  </td>
+                ) : null}
+                {showActions ? (
+                  <td className="block py-2 md:table-cell md:px-4 md:py-3">
                   <div className="flex items-center gap-2">
-                    {editable ? (
+                    {editableRequested ? (
                       <>
                         <Button
                           size="sm"
@@ -1209,7 +1513,8 @@ function BudgetItemsTable({
                       </span>
                     )}
                   </div>
-                </td>
+                  </td>
+                ) : null}
               </tr>
             )
           })}
@@ -1234,7 +1539,7 @@ const FORM_SECTIONS = [
 
 const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
   initiativeName: 'Initiative / Budget Item Name',
-  strategicPriorityId: 'Strategic Priorities',
+  strategicPriorityId: 'Strategic Priority',
   strategicPriorityClassificationId: 'Strategic Priority Classifications',
   workStreamId: 'Work Stream',
   technologyCompanyId: 'Technology (Company)',
@@ -1249,6 +1554,10 @@ const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
   totalBudgetPayableFutureYear: 'Total Budget Payable Future Years',
   totalBudgetPayableNextYear: 'Total Budget Payable Next Year',
   totalBudgetPayableForYearAfterNext: 'Total Budget Payable For Year After Next',
+  recommended: 'Recommended',
+  rejectionReason: 'Rejection Reason',
+  rejectionJustification: 'Rejection Justification',
+  rejectedById: 'Rejected By',
   budgetItems: 'Budget Account Codes',
 }
 
@@ -1310,16 +1619,40 @@ function formatAiFieldValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value.join(', ') : value
 }
 
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplayText(item)).filter(Boolean).join(', ')
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.text === 'string') return record.text.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+  }
+  return ''
+}
+
 function getDocumentSummaryBudgetTotal(summary: SupportingDocumentEvaluationSummary | null) {
   return (summary?.budget_lines ?? []).reduce((sum, line) => sum + (line.amount ?? 0), 0)
 }
 
 function resolveAiFieldMapping(field: SupportingDocumentSuggestedProjectField) {
   const key = field.field_key?.trim().toLowerCase() ?? ''
+  const label = field.field_label?.trim().toLowerCase() ?? ''
   if (key === 'project_name') return 'initiativeName' as const
   if (key === 'project_description') return 'summary' as const
   if (key === 'category') return 'category' as const
   if (key === 'technology_company') return 'technologyCompany' as const
+  if (
+    key === 'activity_type' ||
+    key === 'project_budget_type' ||
+    key === 'budget_type' ||
+    label === 'project budget type'
+  ) {
+    return 'activityType' as const
+  }
   return null
 }
 
@@ -1387,6 +1720,23 @@ function resolveManualAiFieldSuggestion(
       : {
           patch: {},
           error: `Technology Company "${rawValue}" does not match any available option.`,
+        }
+  }
+
+  if (mapping === 'activityType') {
+    const normalized = rawValue.trim().toLowerCase()
+    const matched = ACTIVITY_TYPE_OPTIONS.find(
+      (option) =>
+        option.title.toLowerCase() === normalized ||
+        option.title.toLowerCase().includes(normalized) ||
+        normalized.includes(option.title.toLowerCase())
+    )
+
+    return matched
+      ? { patch: { activityType: matched.value as ActivityType } }
+      : {
+          patch: {},
+          error: `Project Budget Type "${rawValue}" does not match any available option.`,
         }
   }
 
@@ -1588,13 +1938,15 @@ function BudgetOverviewCard({
   const assessment = data?.overall_assessment
   const scores = data?.score_inputs
   const technicalScore = data?.strategic_alignment?.recommended_options?.[0]?.relevance_score ?? null
-  const strengths = assessment?.primary_strengths ?? []
-  const risks = assessment?.primary_risks ?? []
+  const strengths = (assessment?.primary_strengths ?? []).map((item) => toDisplayText(item)).filter(Boolean)
+  const risks = (assessment?.primary_risks ?? []).map((item) => toDisplayText(item)).filter(Boolean)
+  const executiveSummary = toDisplayText(assessment?.executive_summary)
+  const readinessStatus = toDisplayText(assessment?.readiness_status)
 
   const pf = scores?.project_fields
   const pfTotal = (pf?.evaluated_count ?? 0)
   const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
-
+  const pfPercentage = pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0
   const ba = scores?.budget_account
   const baLabel = !ba
     ? null
@@ -1616,7 +1968,7 @@ function BudgetOverviewCard({
     return { dot: 'bg-[#EF4444]', badge: 'border-[#FECACA] bg-[#FEF2F2] text-[#991B1B] dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300' }
   }
 
-  const readiness = readinessAccent(assessment?.readiness_status)
+  const readiness = readinessAccent(readinessStatus)
 
   return (
     <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
@@ -1646,13 +1998,13 @@ function BudgetOverviewCard({
         />
       ) : (
         <div className="space-y-3">
-          {assessment?.readiness_status && (
+          {readinessStatus && (
             <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="mb-2 text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Readiness Status</p>
               <div className="flex items-center gap-2">
                 <div className={`h-2 w-2 shrink-0 rounded-full ${readiness.dot}`} />
                 <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${readiness.badge}`}>
-                  {assessment.readiness_status}
+                  {readinessStatus}
                 </span>
               </div>
             </div>
@@ -1668,7 +2020,7 @@ function BudgetOverviewCard({
             {pfTotal > 0 && (
               <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                 <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Project Fields</p>
-                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+                <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">{pfPercentage}%</p>
               </div>
             )}
             {baLabel && (
@@ -1700,10 +2052,10 @@ function BudgetOverviewCard({
             </div>
           )}
 
-          {assessment?.executive_summary && (
+          {executiveSummary && (
             <div className="rounded-xl border border-[#A855F726] bg-[#FDF8FF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
               <p className="mb-1.5 text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Executive Summary</p>
-              <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">{assessment.executive_summary}</p>
+              <p className="text-xs leading-5 text-[#475569] dark:text-slate-200">{executiveSummary}</p>
             </div>
           )}
 
@@ -1748,6 +2100,7 @@ function InteractiveBudgetOverviewCard({
   loading,
   error,
   currentRole,
+  confidenceScore,
   isRefreshing,
   policyLoading,
   policyError,
@@ -1758,7 +2111,8 @@ function InteractiveBudgetOverviewCard({
   record: StoredBudgetOverviewRecord | null
   loading: boolean
   error: string | null
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  confidenceScore: number
   isRefreshing: boolean
   policyLoading: boolean
   policyError: string | null
@@ -1771,18 +2125,20 @@ function InteractiveBudgetOverviewCard({
   const data = record?.parsedData ?? null
   const assessment = data?.overall_assessment
   const scores = data?.score_inputs
-  const strengths = assessment?.primary_strengths ?? []
-  const risks = assessment?.primary_risks ?? []
+  const strengths = (assessment?.primary_strengths ?? []).map((item) => toDisplayText(item)).filter(Boolean)
+  const risks = (assessment?.primary_risks ?? []).map((item) => toDisplayText(item)).filter(Boolean)
   const issues = data?.issues ?? []
   const nextActions = data?.recommended_next_actions ?? []
   const reviewFlags = data?.ai_review_flags
+  const readinessStatus = toDisplayText(assessment?.readiness_status)
+  const policyOverallSummary = toDisplayText(policyResult?.overallAssessment.summary)
 
   const roleSummary =
     currentRole === 'Reviewer'
-      ? data?.role_views?.reviewer?.summary
+      ? toDisplayText(data?.role_views?.reviewer?.summary)
       : currentRole === 'Approver'
-        ? data?.role_views?.approver?.executive_summary
-        : data?.role_views?.respondent?.summary
+        ? toDisplayText(data?.role_views?.approver?.executive_summary)
+        : toDisplayText(data?.role_views?.respondent?.summary)
 
   const roleBullets =
     currentRole === 'Respondent'
@@ -1799,11 +2155,12 @@ function InteractiveBudgetOverviewCard({
             ...(data?.role_views?.approver?.approval_conditions ?? []).map((item) => item.message).filter(Boolean),
             ...(data?.role_views?.approver?.material_risks ?? []).map((item) => item.message).filter(Boolean),
           ]
+  const normalizedRoleBullets = roleBullets.map((item) => toDisplayText(item)).filter(Boolean)
 
   const pf = scores?.project_fields
   const pfTotal = pf?.evaluated_count ?? 0
   const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
-
+  const pfPercentage = pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0
   const ba = scores?.budget_account
   const baLabel = !ba
     ? null
@@ -1825,7 +2182,9 @@ function InteractiveBudgetOverviewCard({
     return { dot: 'bg-[#EF4444]', badge: 'border-[#FECACA] bg-[#FEF2F2] text-[#991B1B] dark:border-red-500/30 dark:bg-red-900/20 dark:text-red-300' }
   }
 
-  const readiness = readinessAccent(assessment?.readiness_status)
+  const readiness = readinessAccent(readinessStatus)
+  const confidenceTone =
+    confidenceScore >= 80 ? 'green' : confidenceScore >= 60 ? 'amber' : 'red'
   const hasPolicyMatch = policyResult?.overallAssessment.hasPolicyMatch ?? false
   const hasExpandablePolicyContent = policyLoading || Boolean(policyError) || Boolean(policyResult)
   const canExpand = Boolean(data) || hasExpandablePolicyContent
@@ -1886,12 +2245,14 @@ function InteractiveBudgetOverviewCard({
           reason: reviewFlags.clarification_required.reason || '',
         }
       : null,
-  ].filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
+  ]
+    .filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
+    .filter((flag) => flag.severity.trim().toLowerCase() !== 'low')
 
   function aiFlagTone(severity?: string) {
     const normalized = severity?.toLowerCase()
     if (normalized === 'high') {
-      return 'border-[#E2E8F0] bg-white text-[#7F1D1D] dark:border-white/10 dark:bg-white/5 dark:text-[#FCA5A5]'
+      return 'border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
     }
     if (normalized === 'medium') {
       return 'border-[#E2E8F0] bg-white text-[#92400E] dark:border-white/10 dark:bg-white/5 dark:text-[#F6D28A]'
@@ -1906,82 +2267,7 @@ function InteractiveBudgetOverviewCard({
     }))
   }
 
-  const renderPolicyCards = () => (
-    <div className="grid items-stretch gap-4 lg:grid-cols-3">
-      {policyMatchGroups.flatMap((group) => {
-        const accent = toMatchTypeAccent(group.matchType)
-        const progressColor =
-          group.matchType === 'Potential Conflict'
-            ? '#DC2626'
-            : group.matchType === 'Coordination Required'
-              ? '#B45309'
-              : '#16A34A'
-
-        return group.items.map((item) => (
-          <article
-            key={`${item.policyNumber}-${item.policyName}-${group.matchType}`}
-            className="flex h-full min-h-[22rem] flex-col rounded-2xl border border-[#E9D5FF] bg-white p-4 transition-transform duration-300 hover:-translate-y-0.5 dark:border-white/10 dark:bg-[#1E293B]"
-          >
-            <div className="flex min-h-[8.5rem] items-start gap-3">
-              <div className={cn('mt-0.5 shrink-0', accent.text)}>
-                {group.matchType === 'Potential Conflict' ? (
-                  <AlertTriangle className="h-5 w-5" />
-                ) : group.matchType === 'Coordination Required' ? (
-                  <Layers className="h-5 w-5" />
-                ) : (
-                  <Lightbulb className="h-5 w-5" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]', accent.sofbadge)}>
-                    <span className={cn('h-1.5 w-1.5 rounded-full', accent.dot)} />
-                    {item.matchType}
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">
-                      {item.policyName}
-                    </h3>
-                    <p className="mt-2 text-xs leading-5 text-[#64748B] dark:text-slate-300">
-                      Policy Area: <span className="font-medium text-[#475569] dark:text-slate-200">{item.strategicArea}</span>
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-center gap-1 text-right">
-                    <div
-                      className="relative flex h-12 w-12 items-center justify-center rounded-full"
-                      style={{
-                        background: `conic-gradient(${progressColor} 0deg ${Math.max(0, Math.min(100, Number(item.relevanceScore) || 0)) * 3.6}deg, #F3E8FF ${Math.max(0, Math.min(100, Number(item.relevanceScore) || 0)) * 3.6}deg 360deg)`,
-                      }}
-                    >
-                      <div className="flex h-[2.35rem] w-[2.35rem] items-center justify-center rounded-full bg-white text-sm font-semibold text-[#A855F7] dark:bg-[#1E293B] dark:text-[#E9D5FF]">
-                        {item.relevanceScore}
-                      </div>
-                    </div>
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-slate-400">
-                      Probability
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-1 flex-col gap-3 text-sm leading-6 text-[#475569] dark:text-slate-200">
-              <div>
-                <p className="font-semibold text-[#0F172A] dark:text-white">Reason</p>
-                <p className="mt-1">{item.reason}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-[#0F172A] dark:text-white">Recommended Action</p>
-                <p className="mt-1">{item.requiredAction}</p>
-              </div>
-            </div>
-          </article>
-        ))
-      })}
-    </div>
-  )
+  const renderPolicyCards = () => <BudgetConsiderationCompactCards groups={policyMatchGroups} />
 
   function fileEvidenceTone(score: number | null, status: SupportingDocumentAiInsightItem['status']) {
     if (status === 'analyzing' || status === 'queued') {
@@ -2015,25 +2301,35 @@ function InteractiveBudgetOverviewCard({
   }
 
   const overviewMetricCards = (
-    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
       {typeof scores?.document_evidence?.evidence_score === 'number' && (
         <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
           <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Document Evidence</p>
           <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{scores.document_evidence.evidence_score}%</p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
-            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${Math.min(100, scores.document_evidence.evidence_score)}%` }} />
+            <div
+              className="h-full rounded-full bg-[#A855F7]"
+              style={{ width: `${Math.min(100, scores.document_evidence.evidence_score)}%` }}
+            />
           </div>
         </div>
       )}
       {pfTotal > 0 && (
         <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
           <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Project Fields</p>
-          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{pfMatched}/{pfTotal}</p>
+          <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{pfPercentage}%</p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
-            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0}%` }} />
+            <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${pfPercentage}%` }} />
           </div>
         </div>
       )}
+      <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+        <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">AI Confidence</p>
+        <p className="mt-2 text-lg font-bold text-[#0F172A] dark:text-white">{confidenceScore}%</p>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#F3E8FF] dark:bg-white/10">
+          <div className="h-full rounded-full bg-[#A855F7]" style={{ width: `${Math.min(100, confidenceScore)}%` }} />
+        </div>
+      </div>
       {baLabel && (
         <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
           <p className="text-[11px] font-semibold text-[#0F172A] dark:text-white">Budget Account</p>
@@ -2070,7 +2366,7 @@ function InteractiveBudgetOverviewCard({
                 ? 'Policy results are temporarily unavailable.'
                 : hasPolicyMatch
                   ? 'Policy counts are shown here. Expand to review the matched policies.'
-                  : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
+                  : policyOverallSummary || 'No policy result available yet.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -2097,7 +2393,7 @@ function InteractiveBudgetOverviewCard({
               )}
               {policyConditionalCount > 0 && (
                 <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
-                  Allowed With Conditions ({policyConditionalCount})
+                  Allowed Conditions ({policyConditionalCount})
                 </span>
               )}
             </>
@@ -2167,7 +2463,7 @@ function InteractiveBudgetOverviewCard({
                 ? 'Policy results are temporarily unavailable.'
                 : hasPolicyMatch
                   ? 'Matched policy guidance is shown below for review.'
-                  : policyResult?.overallAssessment.summary ?? 'No policy result available yet.'}
+                  : policyOverallSummary || 'No policy result available yet.'}
           </p>
         </div>
 
@@ -2187,7 +2483,7 @@ function InteractiveBudgetOverviewCard({
                 )}
                 {policyConditionalCount > 0 && (
                   <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
-                    Allowed With Conditions ({policyConditionalCount})
+                    Allowed Conditions ({policyConditionalCount})
                   </span>
                 )}
               </>
@@ -2222,7 +2518,7 @@ function InteractiveBudgetOverviewCard({
             <div>
               <p className="font-semibold text-[#0F172A] dark:text-white">No policy conflict detected</p>
               <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                {policyResult.overallAssessment.summary}
+                {policyOverallSummary}
               </p>
             </div>
           </div>
@@ -2232,11 +2528,11 @@ function InteractiveBudgetOverviewCard({
   )
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+    <div className="relative overflow-visible rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
       <button
         type="button"
         onClick={() => canExpand && setExpanded((value) => !value)}
-        className="relative block w-full bg-gradient-to-b from-[#FDF7FF] to-white px-8 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
+        className="relative block w-full rounded-[28px] bg-gradient-to-b from-[#FDF7FF] to-white px-8 py-5 text-left transition-colors hover:bg-white/30 dark:from-[#2A123D] dark:to-[#1E293B] dark:hover:bg-white/5"
       >
         <div className="flex items-start gap-3 pr-14">
           <div className="mt-1 shrink-0 text-[#A855F7]">
@@ -2265,7 +2561,7 @@ function InteractiveBudgetOverviewCard({
                     </span>
                     {flag.reason ? (
                       <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 w-72 -translate-x-1/2 rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2 text-xs leading-5 text-[#475569] opacity-0 shadow-[0_18px_45px_rgba(15,23,42,0.12)] transition-all duration-200 group-hover:translate-y-1 group-hover:opacity-100 dark:border-white/10 dark:bg-[#10203A]/95 dark:text-slate-100">
-                        {flag.reason}
+                        {toDisplayText(flag.reason)}
                       </span>
                     ) : null}
                   </span>
@@ -2288,7 +2584,6 @@ function InteractiveBudgetOverviewCard({
               </div>
             ) : null}
             {!expanded ? collapsedPolicySummary : null}
-            {!expanded ? fileEvidenceSummary : null}
           </div>
         </div>
         <div className="absolute right-8 top-5 flex flex-col items-end gap-2">
@@ -2345,14 +2640,14 @@ function InteractiveBudgetOverviewCard({
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-[#A855F7] dark:text-[#E9D5FF]" />
-                    <p className={cn('font-semibold text-[#0F172A] dark:text-white', currentRole === 'Approver' ? 'text-base' : 'text-lg')}>
+                    <p className="text-base font-semibold text-[#0F172A] dark:text-white">
                       {currentRole} View
                     </p>
                   </div>
                   <div className="rounded-2xl border border-[#EAF0F6] bg-white px-4 py-4 dark:border-white/10 dark:bg-white/5">
-                    {roleBullets.length > 0 && (
+                    {normalizedRoleBullets.length > 0 && (
                       <ul className="space-y-2">
-                        {roleBullets.slice(0, 6).map((message, index) => (
+                        {normalizedRoleBullets.slice(0, 6).map((message, index) => (
                           <li key={`${currentRole}-view-${index}`} className="flex items-start gap-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
                             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#A855F7] dark:bg-[#E9D5FF]" />
                             <span>{message}</span>
@@ -2408,7 +2703,7 @@ function InteractiveBudgetOverviewCard({
                         {issues.slice(0, 4).map((issue) => (
                           <li key={issue.issue_id ?? issue.title} className="flex items-start gap-2 text-sm leading-6 text-[#334155] dark:text-slate-100">
                             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0F172A] dark:bg-white" />
-                            <span>{issue.title}</span>
+                            <span>{toDisplayText(issue.title)}</span>
                           </li>
                         ))}
                       </ul>
@@ -2422,7 +2717,7 @@ function InteractiveBudgetOverviewCard({
                         {nextActions.slice(0, 4).map((action) => (
                           <li key={`${action.priority ?? 'p'}-${action.action ?? 'action'}`} className="flex items-start gap-2 text-sm leading-6 text-[#334155] dark:text-slate-100">
                             <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0F172A] dark:bg-white" />
-                            <span>{action.action}</span>
+                            <span>{toDisplayText(action.action)}</span>
                           </li>
                         ))}
                       </ul>
@@ -2489,16 +2784,50 @@ export default function ProjectDetail() {
 
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
-  const isGovernanceView = isReviewerView || isApproverView
+  const isStrategyView = pathname.includes('/strategy-team/')
+  const isSmeView = pathname.includes('/sme-team/')
+  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isSmeView
 
-  const routeRole: WorkflowRole = isReviewerView ? 'Reviewer' : isApproverView ? 'Approver' : 'Respondent'
+  const routeRole: WorkflowRole = isReviewerView
+    ? 'Reviewer'
+    : isApproverView
+      ? 'Approver'
+      : isStrategyView
+        ? 'Strategy Team'
+        : isSmeView
+          ? 'SME Team'
+          : 'Respondent'
   const currentRole = normalizeStoredRole(sessionStorage.getItem(SESSION_CURRENT_ROLE_KEY)) ?? routeRole
   const roleProjectScope =
     currentRole === 'Reviewer' ? 'reviewer' : currentRole === 'Approver' ? 'approver' : 'respondent'
   const { items: cycleProjects } = useRoleProjects(roleProjectScope, instanceId)
-  const backHref = isReviewerView ? '/reviewer/review-queue' : isApproverView ? '/approver/approval-queue' : '/respondent/projects'
-  const homeHref = isReviewerView ? '/reviewer/dashboard' : isApproverView ? '/approver/dashboard' : '/respondent/dashboard'
-  const queueLabel = isReviewerView ? 'Review Queue' : isApproverView ? 'Approval Queue' : 'My Projects'
+  const backHref = isReviewerView
+    ? '/reviewer/review-queue'
+    : isApproverView
+      ? '/approver/approval-queue'
+      : isStrategyView
+        ? '/strategy-team/strategic-alignment'
+        : isSmeView
+          ? '/sme-team/reviews'
+          : '/respondent/projects'
+  const homeHref = isReviewerView
+    ? '/reviewer/dashboard'
+    : isApproverView
+      ? '/approver/dashboard'
+      : isStrategyView
+        ? '/strategy-team/dashboard'
+        : isSmeView
+          ? '/sme-team/dashboard'
+          : '/respondent/dashboard'
+  const queueLabel = isReviewerView
+    ? 'Review Queue'
+    : isApproverView
+      ? 'Approval Queue'
+      : isStrategyView
+        ? 'Strategic Alignment'
+        : isSmeView
+          ? 'SME Review Queue'
+          : 'My Projects'
   const pageTitle = project.name
   const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
@@ -2512,7 +2841,35 @@ export default function ProjectDetail() {
   )
   const workflowOwner = getWorkflowOwnerByStatusCode(project.statusCode, project.status)
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
-  const canCurrentRoleEdit = canRoleEdit(project, currentRole)
+  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'SME Team'
+  const isSubmittedToDgeBudget = typeof project.statusCode === 'number' && project.statusCode >= 776140004
+  const statusForAdgeLabel = (project.statusForAdgeLabel ?? '').trim().toLowerCase()
+  const isAdgeClarificationPending =
+    statusForAdgeLabel === 'clarification pending' ||
+    statusForAdgeLabel === 'clarification required'
+  const isInternalDgeClarificationForCurrentRole =
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    !isAdgeClarificationPending &&
+    isCurrentOwner &&
+    (currentRole === 'SME Team' || currentRole === 'Strategy Team')
+  const isStrategyClarificationRequiredForSme =
+    currentRole === 'SME Team' && isInternalDgeClarificationForCurrentRole
+  const effectiveWorkflowOwner = isInternalDgeClarificationForCurrentRole ? currentRole : workflowOwner
+  const [ictBudgetSmeReviewerTeamId, setIctBudgetSmeReviewerTeamId] = useState<string | null>(null)
+  const currentSmeTeamId = getStoredCurrentSme()?.teamId?.trim() || null
+  const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
+  const canSmeEditRecommendedOnly =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+  const canCurrentRoleEdit =
+    currentRole === 'Strategy Team'
+      ? true
+      : currentRole === 'SME Team'
+        ? canSmeEditRecommendedOnly
+        : canRoleEdit(project, currentRole)
+  const canEditFullForm = currentRole === 'Strategy Team' || (!isDgeRole && canCurrentRoleEdit)
+  const canEditDgeRecommendationOnly = currentRole === 'SME Team' && canSmeEditRecommendedOnly
   const canDeleteProject =
     currentRole === 'Respondent' &&
     isCurrentOwner &&
@@ -2550,17 +2907,50 @@ export default function ProjectDetail() {
       (currentRole === 'Approver' &&
         (project.statusCode === 776140002 ||
           project.statusCode === 776140003 ||
-          (project.statusCode == null && (project.status === 'Submitted to Approver' || project.status === 'Approved'))))) &&
+          (project.statusCode == null && (project.status === 'Submitted to Approver' || project.status === 'Approved')))) ||
+      (currentRole === 'Strategy Team' &&
+        (
+          project.statusCode === 776140004 ||
+          project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
+          project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
+          project.statusCode === DGE_BUDGET_STATUS.clarificationPending
+        )) ||
+      (currentRole === 'SME Team' &&
+        (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
     isCurrentOwner
+  const canRouteToQualityCheck =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    (project.statusCode === DGE_BUDGET_STATUS.underSmeReview ||
+      project.statusCode === DGE_BUDGET_STATUS.clarificationPending)
+  const canRequestStrategicPriorityChange =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underSmeReview
+  const canSendToSmeFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+  const canReviewStrategicPriorityChangeFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+  const canRouteToDirectorFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    (
+      project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
+      project.statusCode === DGE_BUDGET_STATUS.underFinalReview
+    )
   const approverUsesDirectDgeFlow =
     currentRole === 'Approver' &&
     hasCycleDgeSubmission &&
     isCurrentOwner &&
     (project.statusCode === 776140002 ||
       (project.statusCode == null && project.status === 'Submitted to Approver'))
-  const showPendingNotice = workflowOwner !== null && (workflowOwner !== currentRole || !isCurrentOwner)
-  const pendingNoticeText = workflowOwner
-    ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
+  const showPendingNotice = effectiveWorkflowOwner !== null && (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
+  const pendingNoticeText = effectiveWorkflowOwner
+    ? `This project is currently pending with ${effectiveWorkflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
     : 'This project has completed the current workflow stage and is now read-only.'
 
   useEffect(() => {
@@ -2632,6 +3022,12 @@ export default function ProjectDetail() {
   const [ictBudgetRespondentName, setIctBudgetRespondentName] = useState<string | null>(null)
   const [ictBudgetReviewerName, setIctBudgetReviewerName] = useState<string | null>(null)
   const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
+  const [ictBudgetRecommendedLabel, setIctBudgetRecommendedLabel] = useState<string | null>(null)
+  const [ictBudgetRejectedByName, setIctBudgetRejectedByName] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityId, setIctBudgetPreviousStrategicPriorityId] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityName, setIctBudgetPreviousStrategicPriorityName] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityClassificationId, setIctBudgetPreviousStrategicPriorityClassificationId] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityClassificationName, setIctBudgetPreviousStrategicPriorityClassificationName] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<IctBudgetFieldErrorMap>({})
   const [workStreamModalOpen, setWorkStreamModalOpen] = useState(false)
   const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
@@ -2647,6 +3043,11 @@ export default function ProjectDetail() {
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null)
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
+  const [detailChangeRequestModalOpen, setDetailChangeRequestModalOpen] = useState(false)
+  const [detailChangePriorityId, setDetailChangePriorityId] = useState('')
+  const [detailChangeClassificationId, setDetailChangeClassificationId] = useState('')
+  const [detailReviewChangeModalOpen, setDetailReviewChangeModalOpen] = useState(false)
+  const [detailSendToSmeConfirmOpen, setDetailSendToSmeConfirmOpen] = useState(false)
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
@@ -2682,10 +3083,90 @@ export default function ProjectDetail() {
   const [aiApplyingAccountCode, setAiApplyingAccountCode] = useState(false)
   const [openAiAssistField, setOpenAiAssistField] = useState<string | null>(null)
   const [animatedAiFields, setAnimatedAiFields] = useState<string[]>([])
+  const [selectedDetailSuggestionIds, setSelectedDetailSuggestionIds] = useState<string[]>([])
+  const [detailSuggestionApplyLoading, setDetailSuggestionApplyLoading] = useState(false)
+  const detailSuggestionAutoSelectionKeyRef = useRef<string | null>(null)
   const [localClarifications, setLocalClarifications] = useState<Clarification[]>(project.clarifications)
   const [clarificationsLoading, setClarificationsLoading] = useState(false)
   const [clarificationModalOpen, setClarificationModalOpen] = useState(false)
   const [pendingClarificationReply, setPendingClarificationReply] = useState<PendingClarificationReply | null>(null)
+
+  const applyBudgetOverviewAiInsights = useCallback((overview: StoredBudgetOverviewRecord['parsedData']) => {
+    const strategicAlignment = overview?.strategic_alignment
+    const recommendedOptions = strategicAlignment?.recommended_options ?? []
+    const mappedSuggestions = recommendedOptions
+      .map((option, index) => ({
+        rank: Number(option.rank ?? index + 1) || index + 1,
+        strategicPriority: toDisplayText(option.strategic_priority) || 'Unknown',
+        strategicPriorityClassification: toDisplayText(option.strategic_priority_classification) || 'Unknown',
+        relevanceScore: Number(option.relevance_score ?? 0) || 0,
+        reason: toDisplayText(option.reason),
+      }))
+      .filter((suggestion) => suggestion.strategicPriority && suggestion.strategicPriorityClassification)
+      .sort((left, right) => left.rank - right.rank)
+
+    const policyAlignment = (overview as {
+      budget_policy_alignment?: {
+        has_potential_conflict?: boolean
+        has_coordination_requirement?: boolean
+        has_allowed_with_conditions?: boolean
+        summary?: string
+        policy_matches?: Array<{
+          policy_number?: string
+          dge_budget_consideration?: string
+          match_type?: string
+          relevance_score?: number
+          required_action?: string
+          strategic_area?: string
+          evidence_from_project?: string[]
+          reason?: string
+        }>
+      }
+    })?.budget_policy_alignment
+
+    const mappedAssessmentItems = (policyAlignment?.policy_matches ?? [])
+      .map((item) => {
+        const matchType = String(item.match_type ?? '').trim()
+        return {
+          policyNumber: toDisplayText(item.policy_number),
+          policyName: toDisplayText(item.dge_budget_consideration),
+          strategicArea: toDisplayText(item.strategic_area),
+          matchType:
+            matchType === 'Potential Conflict'
+              ? ('Potential Conflict' as const)
+              : matchType === 'Allowed With Conditions'
+                ? ('Allowed With Conditions' as const)
+                : ('Coordination Required' as const),
+          relevanceScore: Number(item.relevance_score ?? 0) || 0,
+          reason: toDisplayText(item.reason || item.required_action),
+          evidenceFromProject: Array.isArray(item.evidence_from_project)
+            ? item.evidence_from_project.map((value) => toDisplayText(value)).filter(Boolean)
+            : [],
+          requiredAction: toDisplayText(item.required_action),
+        } satisfies PolicyAssessmentItem
+      })
+      .filter((item) => item.policyNumber && item.policyName)
+
+    setDetailAiSuggestions(mappedSuggestions)
+    setDetailPolicyEvaluationResult({
+      assessmentItems: mappedAssessmentItems,
+      overallAssessment: {
+        hasPolicyMatch: Boolean(policyAlignment?.has_potential_conflict || policyAlignment?.has_coordination_requirement || policyAlignment?.has_allowed_with_conditions),
+        hasPotentialConflict: Boolean(policyAlignment?.has_potential_conflict),
+        hasCoordinationRequirement: Boolean(policyAlignment?.has_coordination_requirement),
+        hasAllowedWithConditions: Boolean(policyAlignment?.has_allowed_with_conditions),
+        summary: toDisplayText(policyAlignment?.summary),
+      },
+      promptId: '',
+      promptUsecase: '',
+      formattedPrompt: '',
+      rawResponse: overview ?? null,
+    })
+    setDetailAiSuggestionError(null)
+    setDetailPolicyEvaluationError(null)
+    setDetailAiSuggestionLoading(false)
+    setDetailPolicyEvaluationLoading(false)
+  }, [])
 
   // ── SharePoint documents ─────────────────────────────────────────────────────
   const [sharepointDocs, setSharepointDocs] = useState<WebApiPortalDocument[]>([])
@@ -2697,7 +3178,12 @@ export default function ProjectDetail() {
     currentRole === 'Respondent' &&
     project.status === 'Clarification Required' &&
     latestOpenClarification &&
-    (latestOpenClarification.raisedBy === 'Reviewer' || latestOpenClarification.raisedBy === 'Approver')
+    (
+      latestOpenClarification.raisedBy === 'Reviewer' ||
+      latestOpenClarification.raisedBy === 'Approver' ||
+      latestOpenClarification.raisedBy === 'Strategy Team' ||
+      latestOpenClarification.raisedBy === 'SME Team'
+    )
       ? latestOpenClarification.raisedBy
       : null
   const showClarificationReturnNotice = Boolean(clarificationReturnRole)
@@ -2764,6 +3250,16 @@ export default function ProjectDetail() {
       }),
     [clarificationFileUrls, supportingDocuments]
   )
+  const aiSupportingDocumentByName = useMemo(
+    () =>
+      new Map(
+        aiSupportingDocuments.map((doc) => [
+          (doc.fullname || doc.title || 'Document').trim().toLowerCase(),
+          doc,
+        ])
+      ),
+    [aiSupportingDocuments]
+  )
   const clarificationDocumentNames = useMemo(
     () =>
       new Set(
@@ -2781,7 +3277,6 @@ export default function ProjectDetail() {
   const documentStatus = sharepointDocsLoading ? 'Loading' : hasSupportingDocuments ? 'Complete' : 'Missing'
   const documentTone =
     documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
-  const canDeleteDocuments = currentRole === 'Respondent' && isEditMode
   const detailEntityName = getStoredInstanceDetail()?.name?.trim() || currentUser.entity
 
   const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean }) => {
@@ -2865,6 +3360,13 @@ export default function ProjectDetail() {
         }
       })
 
+      if (id) {
+        const refreshedProject = await projectService.getProjectById(id)
+        if (refreshedProject) {
+          setProjectData(refreshedProject)
+        }
+      }
+
       return {
         documentSummaries,
         cumulativeRecord,
@@ -2879,7 +3381,7 @@ export default function ProjectDetail() {
         setPersistedDocumentSummariesLoading(false)
       }
     }
-  }, [ictBudgetId, pendingBudgetOverviewRefreshModifiedOn, pendingCumulativeRefreshModifiedOn])
+  }, [id, ictBudgetId, pendingBudgetOverviewRefreshModifiedOn, pendingCumulativeRefreshModifiedOn])
 
 
   const fallbackBudgetItems = useMemo<BudgetLineItemRecord[]>(
@@ -2899,6 +3401,7 @@ export default function ProjectDetail() {
         ebsCode: item.ebsFusionCode,
         fusionCode: item.glCode,
         budgetRequested: item.budgetRequested,
+        budgetRecommended: 0,
       })),
     [project.budgetItems]
   )
@@ -3083,7 +3586,9 @@ export default function ProjectDetail() {
   )
 
   const actionSupportingDocumentSummary = useMemo(() => {
-    if (supportingDocumentCumulativeAnalysis.status === 'analyzing') {
+    const hasMultipleCompletedFiles = completedPersistedDocumentInputs.length > 1
+
+    if (hasMultipleCompletedFiles && supportingDocumentCumulativeAnalysis.status === 'analyzing') {
       return {
         type: 'cumulative' as const,
         fileCount: Math.max(
@@ -3097,7 +3602,7 @@ export default function ProjectDetail() {
       }
     }
 
-    if (resolvedCumulativeParsedSummary) {
+    if (hasMultipleCompletedFiles && resolvedCumulativeParsedSummary) {
       return {
         type: 'cumulative' as const,
         fileCount: Math.max(completedPersistedDocumentInputs.length, 1),
@@ -3122,27 +3627,108 @@ export default function ProjectDetail() {
 
   const actionSummary = actionSupportingDocumentSummary.parsedSummary
   const actionSuggestedFields = actionSummary?.suggested_project_fields ?? []
-  const actionBudgetLines = actionSummary?.budget_lines ?? []
+  const actionAccountCodes = getComputedSupportingDocumentAccountCodeSuggestions(actionSummary)
+  const actionBudgetLines: SupportingDocumentBudgetLine[] = []
   const actionAccountCode = actionSummary?.account_code_suggestions?.[0] ?? null
   const actionDocumentSummary = actionSummary?.file_summary ?? null
   const actionEvidenceAssessment = actionSummary?.evidence_assessment ?? null
   const actionBudgetTotal = getDocumentSummaryBudgetTotal(actionSummary ?? null)
+  const detailSuggestionRows = useMemo<DetailSuggestionRow[]>(() => {
+    const rows: DetailSuggestionRow[] = []
+    actionSuggestedFields.forEach((field, index) => {
+      rows.push({
+        id: `field-${field.field_key ?? field.field_label ?? index}-${index}`,
+        section: 'Suggested Fields',
+        title: field.field_label ?? field.field_key ?? 'Suggested Field',
+        value: formatAiFieldValue(field.suggested_value),
+        confidence: typeof field.confidence === 'number' ? field.confidence : null,
+        kind: 'field',
+        field,
+        actionable: resolveAiFieldMapping(field) !== null,
+      })
+    })
+
+    actionAccountCodes.forEach((suggestion, index) => {
+      const classificationPath = [
+        suggestion.classificationPath?.l1,
+        suggestion.classificationPath?.l2,
+        suggestion.classificationPath?.l3,
+      ]
+        .filter(Boolean)
+        .join(' / ')
+      const mappedLinesLabel =
+        suggestion.mappedLineNumbers.length > 0
+          ? `Mapped lines ${suggestion.mappedLineNumbers.join(', ')}`
+          : 'Mapped amount pending confirmation'
+
+      rows.push({
+        id: `account-code-${suggestion.accountCode || index}-${index}`,
+        section: 'Account Codes',
+        title: suggestion.displayLabel,
+        value: classificationPath || suggestion.reason || 'AI mapped this spend to a suggested account code.',
+        detail: [
+          suggestion.expenseType || null,
+          mappedLinesLabel,
+          suggestion.mappedBudget > 0 ? formatAEDFull(suggestion.mappedBudget) : null,
+        ]
+          .filter(Boolean)
+          .join(' • '),
+        confidence: suggestion.confidence,
+        kind: 'account-code',
+        accountCodeSuggestion: suggestion,
+        actionable: true,
+      })
+    })
+
+    return rows
+  }, [
+    actionAccountCodes,
+    actionDocumentSummary,
+    actionEvidenceAssessment,
+    actionSuggestedFields,
+  ])
+  const detailReadOnlyRows = useMemo(
+    () => detailSuggestionRows.filter((row) => row.kind === 'summary'),
+    [detailSuggestionRows]
+  )
+  const detailSelectableRows = useMemo(
+    () => detailSuggestionRows.filter((row) => row.actionable),
+    [detailSuggestionRows]
+  )
+  const detailSuggestionSelectionKey = useMemo(
+    () => detailSelectableRows.map((row) => row.id).join('|'),
+    [detailSelectableRows]
+  )
   const detailActionSummaryText =
-    actionDocumentSummary?.short_summary
-    ?? actionDocumentSummary?.detailed_summary
-    ?? actionEvidenceAssessment?.reason
-    ?? 'AI summary is available.'
+    toDisplayText(actionDocumentSummary?.short_summary) ||
+    toDisplayText(actionDocumentSummary?.detailed_summary) ||
+    toDisplayText(actionEvidenceAssessment?.reason) ||
+    ''
   const detailActionSummaryPreview = truncateAiText(detailActionSummaryText, 220)
   const detailActionSummaryCanExpand = detailActionSummaryPreview.length < detailActionSummaryText.length
   const canApplyDetailAi = currentRole === 'Respondent' && isEditMode && canCurrentRoleEdit
   const isActionSummaryCombined =
     actionSupportingDocumentSummary.type === 'cumulative' &&
     actionSupportingDocumentSummary.fileCount > 1
-  const actionSummarySourceLabel = isActionSummaryCombined
-    ? `Cumulative summary across ${actionSupportingDocumentSummary.fileCount} files`
-    : actionSupportingDocumentSummary.fileCount > 0
-      ? 'Single file summary'
-      : 'Upload or persist documents to activate AI guidance'
+  const showDetailSupportingDocumentSummary =
+    isActionSummaryCombined && detailActionSummaryText.trim().length > 0
+
+  useEffect(() => {
+    const nextSelectedIds = detailSelectableRows.map((row) => row.id)
+
+    if (!detailSuggestionSelectionKey) {
+      detailSuggestionAutoSelectionKeyRef.current = null
+      setSelectedDetailSuggestionIds((current) => (current.length === 0 ? current : []))
+      return
+    }
+
+    if (detailSuggestionAutoSelectionKeyRef.current === detailSuggestionSelectionKey) {
+      return
+    }
+
+    detailSuggestionAutoSelectionKeyRef.current = detailSuggestionSelectionKey
+    setSelectedDetailSuggestionIds(nextSelectedIds)
+  }, [detailSelectableRows, detailSuggestionSelectionKey])
 
   useEffect(() => {
     if (animatedAiFields.length === 0) return
@@ -3188,6 +3774,14 @@ export default function ProjectDetail() {
       return selectedName === normalized || selectedName.includes(normalized) || normalized.includes(selectedName)
     }
 
+    if (mapping === 'activityType') {
+      const selectedActivityType = ACTIVITY_TYPE_OPTIONS.find(
+        (option) => option.value === formValues.activityType
+      )
+      const selectedTitle = selectedActivityType?.title.trim().toLowerCase() ?? ''
+      return selectedTitle === normalized || selectedTitle.includes(normalized) || normalized.includes(selectedTitle)
+    }
+
     return false
   }
 
@@ -3218,6 +3812,43 @@ export default function ProjectDetail() {
         canApply={isEditMode}
         onToggle={() => setOpenAiAssistField((current) => (current === fieldKey ? null : fieldKey))}
         onApply={() => applyAiAssistField(fieldKey, field)}
+      />
+    )
+  }
+
+  function buildStrategicAiAssist(type: 'priority' | 'classification') {
+    const suggestion = topDetailAiSuggestion
+    if (!suggestion) return null
+
+    const fieldLabel =
+      type === 'priority' ? 'Strategic Priority' : 'Strategic Priority Classifications'
+    const suggestedValue =
+      type === 'priority'
+        ? suggestion.strategicPriority
+        : suggestion.strategicPriorityClassification
+
+    if (!suggestedValue?.trim()) return null
+
+    const isApplied =
+      type === 'priority'
+        ? formValues.strategicPriorityId === suggestion.priorityId
+        : formValues.strategicPriorityClassificationId === suggestion.classificationId
+
+    if (isApplied) return null
+
+    return (
+      <AiFieldAssistTrigger
+        fieldLabel={fieldLabel}
+        suggestedValue={suggestedValue}
+        isOpen={openAiAssistField === `strategic-${type}`}
+        canApply={false}
+        onToggle={() =>
+          setOpenAiAssistField((current) =>
+            current === `strategic-${type}` ? null : `strategic-${type}`
+          )
+        }
+        onApply={() => {}}
+        helperText="Switch the form to Edit mode to apply this AI recommendation from the Strategic Priority section."
       />
     )
   }
@@ -3324,6 +3955,7 @@ export default function ProjectDetail() {
                   const isApplied =
                     formValues.strategicPriorityId === suggestion.priorityId &&
                     formValues.strategicPriorityClassificationId === suggestion.classificationId
+                  const canApplySuggestion = Boolean(suggestion.priorityId) && Boolean(suggestion.classificationId)
 
                   return (
                     <div
@@ -3357,8 +3989,19 @@ export default function ProjectDetail() {
                         </div>
                       </div>
                       <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
-                        {suggestion.reason || 'AI identified this as a likely strategic match.'}
+                        {toDisplayText(suggestion.reason) || 'AI identified this as a likely strategic match.'}
                       </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          className="h-10 rounded-xl bg-[#A855F7] px-4 text-sm text-white hover:bg-[#9333EA]"
+                          onClick={() => applyAiSuggestion(suggestion, 'both')}
+                          disabled={!canApplySuggestion}
+                        >
+                          <Sparkles className="h-4 w-4" />
+                          {isApplied ? 'Applied' : 'Apply'}
+                        </Button>
+                      </div>
                     </div>
                   )
                 })}
@@ -3374,12 +4017,27 @@ export default function ProjectDetail() {
     </div>
   )
 
+  const detailAiSuggestionStatusCard =
+    detailAiSuggestionError ? (
+      <div className="rounded-2xl border border-[#FFD4D1] bg-[#FFF5F5] px-4 py-3 text-sm text-[#B42318] dark:border-[#EA4F49]/40 dark:bg-[#EA4F49]/10">
+        {detailAiSuggestionError}
+      </div>
+    ) : detailAiSuggestionLoading ? (
+      <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF7FF] px-4 py-3 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Retrieving Strategic Priority and Classification recommendations...
+        </div>
+      </div>
+    ) : null
+
   const detailBudgetOverviewCard = (
     <InteractiveBudgetOverviewCard
       record={budgetOverviewRecord}
       loading={persistedDocumentSummariesLoading}
       error={persistedDocumentSummariesError}
       currentRole={currentRole}
+      confidenceScore={confidence}
       isRefreshing={pendingBudgetOverviewRefreshModifiedOn !== null}
       policyLoading={detailPolicyEvaluationLoading}
       policyError={detailPolicyEvaluationError}
@@ -3389,9 +4047,176 @@ export default function ProjectDetail() {
     />
   )
 
-  const detailDocumentActionCards = (
+  const clarificationQuickPrompts = useMemo(() => {
+    const clarificationData = budgetOverviewRecord?.parsedData?.clarifications
+    const prompts = [
+      clarificationData?.summary_message ?? '',
+      ...(clarificationData?.items?.map((item) => item.message ?? '') ?? []),
+    ]
+
+    return Array.from(new Set(prompts.map((prompt) => prompt.trim()).filter(Boolean))).slice(0, 4)
+  }, [budgetOverviewRecord])
+
+  const detailDocumentActionCards = isEditMode ? (
       <div className="space-y-4">
-        {currentRole === 'Respondent' && (
+        <div className="rounded-2xl border border-[#E9D5FF] bg-white shadow-sm dark:border-white/10 dark:bg-[#1E293B]">
+          <div className="flex items-center justify-between gap-3 border-b border-[#F1E4FF] px-4 py-4 dark:border-white/10">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-[#0F172A] dark:text-white" style={{fontSize: 15}}>Suggested Project Fields</p>
+               
+              </div>
+            </div>
+            {canApplyDetailAi && detailSelectableRows.length > 0 && !actionSupportingDocumentSummary.loading ? (
+              <button
+                type="button"
+                onClick={() => void applySelectedDetailSuggestions()}
+                disabled={selectedDetailSuggestionIds.length === 0 || detailSuggestionApplyLoading}
+                className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-[linear-gradient(135deg,#A855F7_0%,#8B5CF6_100%)] px-4 py-2.5 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {detailSuggestionApplyLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                Apply Suggestions
+              </button>
+            ) : null}
+          </div>
+
+          {actionSupportingDocumentSummary.loading ? (
+            <div className="flex items-center gap-2 px-4 py-4 text-sm text-[#64748B] dark:text-slate-300">
+              <Loader2 className="h-4 w-4 animate-spin text-[#A855F7] dark:text-[#E9D5FF]" />
+              Analyzing the uploaded document and preparing suggestions...
+            </div>
+          ) : actionSupportingDocumentSummary.error ? (
+            <div className="mx-4 my-4 rounded-xl border border-[#F5C2C7] bg-[#FFF1F3] px-3 py-3 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]">
+              {actionSupportingDocumentSummary.error}
+            </div>
+          ) : detailSuggestionRows.length > 0 ? (
+            <div className="space-y-4 px-4 py-4">
+              {detailReadOnlyRows.length > 0 ? (
+                <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="space-y-4">
+                    {detailReadOnlyRows.map((row) => (
+                      <div key={row.id} className="border-b border-[#E5EDF6] pb-4 last:border-b-0 last:pb-0 dark:border-white/10">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{row.section}</p>
+                            <p className="mt-0.5 text-sm font-medium text-[#0F172A] dark:text-white">{row.title}</p>
+                          </div>
+                          {typeof row.confidence === 'number' && (
+                            <span className="rounded-full border border-[#D7E4F4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                              {row.confidence}%
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">{row.value}</p>
+                        {row.detail ? (
+                          <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">{row.detail}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {detailSelectableRows.length > 0 ? (
+                canApplyDetailAi ? (
+                  <div className="divide-y divide-[#EEF2F7] bg-white px-4 dark:divide-white/10 dark:bg-[#1E293B]">
+                      {detailSelectableRows.map((row) => {
+                        const checked = selectedDetailSuggestionIds.includes(row.id)
+
+                        return (
+                          <label key={row.id} className="flex items-start gap-3 py-3 cursor-pointer">
+                            <span className="relative mt-0.5 shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => {
+                                  setSelectedDetailSuggestionIds((current) =>
+                                    event.target.checked
+                                      ? [...current, row.id]
+                                      : current.filter((item) => item !== row.id)
+                                  )
+                                }}
+                                className="sr-only"
+                              />
+                              <span
+                                className={cn(
+                                  'flex h-5 w-5 items-center justify-center rounded-md border transition-colors',
+                                  checked
+                                    ? 'border-[#A855F7] bg-[#A855F7] text-white'
+                                    : 'border-[#CBD5E1] bg-white text-transparent dark:border-white/15 dark:bg-white/5'
+                                )}
+                              >
+                                <Check className={cn('h-3.5 w-3.5', checked ? 'opacity-100' : 'opacity-0')} />
+                              </span>
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  {row.kind !== 'field' ? (
+                                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{row.section}</p>
+                                  ) : null}
+                                  <p className="mt-0.5 text-sm font-medium text-[#0F172A] dark:text-white">{row.title}</p>
+                                </div>
+                                {typeof row.confidence === 'number' && (
+                                  <span className="rounded-full border border-[#D7E4F4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                                    {row.confidence}%
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">{row.value}</p>
+                              {row.detail ? (
+                                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">{row.detail}</p>
+                              ) : null}
+                            </div>
+                          </label>
+                        )
+                      })}
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#EEF2F7] bg-white px-4 dark:divide-white/10 dark:bg-[#1E293B]">
+                      {detailSelectableRows.map((row) => (
+                        <div key={row.id} className="flex items-start gap-3 py-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                {row.kind !== 'field' ? (
+                                  <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{row.section}</p>
+                                ) : null}
+                                <p className="mt-0.5 text-sm font-medium text-[#0F172A] dark:text-white">{row.title}</p>
+                              </div>
+                              {typeof row.confidence === 'number' && (
+                                <span className="rounded-full border border-[#D7E4F4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/10 dark:text-[#BFDBFE]">
+                                  {row.confidence}%
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">{row.value}</p>
+                            {row.detail ? (
+                              <p className="mt-1 text-xs text-[#64748B] dark:text-slate-400">{row.detail}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )
+              ) : null}
+            </div>
+          ) : (
+            <EmptyAiActionCard
+              description="Upload a supporting document to review one consolidated set of suggested summary details, fields, and account guidance."
+              icon={Sparkles}
+            />
+          )}
+        </div>
+
+        {false && currentRole === 'Respondent' && (
           <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -3470,6 +4295,97 @@ export default function ProjectDetail() {
           </div>
         )}
 
+        {false && (
+        <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Account Code Suggestions</p>
+                <p className="text-xs text-[#64748B] dark:text-slate-300">Mapped AI account guidance with summed budget amounts</p>
+              </div>
+            </div>
+          </div>
+          {actionSupportingDocumentSummary.loading ? (
+            <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Resolving account code suggestions...
+            </div>
+          ) : actionAccountCodes.length > 0 ? (
+            <div className="space-y-3">
+              {actionAccountCodes.map((suggestion) => {
+                const classificationPath = [
+                  suggestion.classificationPath?.l1,
+                  suggestion.classificationPath?.l2,
+                  suggestion.classificationPath?.l3,
+                ]
+                  .filter(Boolean)
+                  .join(' / ')
+
+                return (
+                  <div
+                    key={`${suggestion.accountCode}-${suggestion.displayLabel}`}
+                    className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{suggestion.displayLabel}</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                          {[suggestion.expenseType || null, classificationPath || null]
+                            .filter(Boolean)
+                            .join(' • ') || 'Suggested account classification'}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {suggestion.confidence !== null && (
+                          <span className="inline-flex rounded-full border border-[#E9D5FF] bg-white px-2 py-0.5 text-[11px] font-bold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
+                            {suggestion.confidence}%
+                          </span>
+                        )}
+                        <p className="mt-2 text-sm font-bold text-[#A855F7] dark:text-[#E9D5FF]">
+                          {suggestion.mappedBudget > 0 ? formatAEDFull(suggestion.mappedBudget) : '-'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs text-[#64748B] dark:text-slate-300">
+                      {suggestion.mappedLineNumbers.length > 0
+                        ? `Mapped from budget lines ${suggestion.mappedLineNumbers.join(', ')}`
+                        : 'Mapped amount pending confirmation.'}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-200">
+                      {truncateAiText(toDisplayText(suggestion.reason), 200) || 'AI account-code rationale will appear here.'}
+                    </p>
+                    {canApplyDetailAi && (
+                      <Button
+                        type="button"
+                        className="mt-3 w-full gap-2 rounded-xl bg-[#A855F7] text-white hover:bg-[#9333EA]"
+                        onClick={() => void applyAiAccountCodeSuggestion(suggestion)}
+                        disabled={aiApplyingAccountCode}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {aiApplyingAccountCode ? 'Applying...' : 'Add to Budget Line Items'}
+                      </Button>
+                    )}
+                  </div>
+                )
+              })}
+              <div className="rounded-xl border border-[#E9D5FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Total Mapped Amount</p>
+                <CurrencyAmount amount={actionBudgetTotal} full className="mt-1 text-sm font-bold text-[#A855F7]" />
+              </div>
+            </div>
+          ) : (
+            <EmptyAiActionCard
+              description="When the AI can infer likely GL/account-code matches, they will appear here with mapped budget totals."
+              icon={Sparkles}
+            />
+          )}
+        </div>
+        )}
+
+        {false && (
         <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -3516,8 +4432,9 @@ export default function ProjectDetail() {
             />
           )}
         </div>
+        )}
 
-        {currentRole === 'Respondent' && (
+        {false && currentRole === 'Respondent' && (
           <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
             <div className="mb-3 flex items-center gap-3">
               <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
@@ -3539,17 +4456,17 @@ export default function ProjectDetail() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">Primary Account Code</p>
-                      <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{actionAccountCode.account_code ?? '-'}</p>
-                      {typeof actionAccountCode.requested_budget === 'number' && (
+                      <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{actionAccountCode?.account_code ?? '-'}</p>
+                      {typeof actionAccountCode?.requested_budget === 'number' && (
                         <div className="mt-1.5 flex items-center gap-1.5">
                           <p className="text-[10px] font-semibold text-[#64748B] dark:text-slate-300">Requested</p>
-                          <CurrencyAmount amount={actionAccountCode.requested_budget} full className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]" />
+                          <CurrencyAmount amount={actionAccountCode?.requested_budget ?? 0} full className="text-xs font-bold text-[#A855F7] dark:text-[#E9D5FF]" />
                         </div>
                       )}
                     </div>
-                    {typeof actionAccountCode.account_code_confidence === 'number' && (
+                    {typeof actionAccountCode?.account_code_confidence === 'number' && (
                       <span className="rounded-full border border-[#E9D5FF] bg-white px-2 py-1 text-[11px] font-bold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
-                        {actionAccountCode.account_code_confidence}%
+                        {actionAccountCode?.account_code_confidence}%
                       </span>
                     )}
                   </div>
@@ -3559,13 +4476,13 @@ export default function ProjectDetail() {
                     <div key={level} className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                       <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-300">{level.replace(/^l/i, 'L')}</p>
                       <p className="mt-1 text-xs font-semibold text-[#0F172A] dark:text-white">
-                        {actionAccountCode.classification_path?.[level] ?? '-'}
+                        {actionAccountCode?.classification_path?.[level] ?? '-'}
                       </p>
                     </div>
                   ))}
                 </div>
                 <div className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 text-sm text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                  {truncateAiText(actionAccountCode.reason, 180) || 'AI account-code rationale will appear here.'}
+                  {truncateAiText(toDisplayText(actionAccountCode?.reason), 180) || 'AI account-code rationale will appear here.'}
                 </div>
                 {canApplyDetailAi && (
                   <Button
@@ -3588,63 +4505,8 @@ export default function ProjectDetail() {
           </div>
         )}
 
-        <div className="group rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-white/10 dark:bg-[#1E293B]">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Summary</p>
-              <p className="text-xs text-[#64748B] dark:text-slate-300">Condensed cumulative AI readout</p>
-            </div>
-          </div>
-          {actionSupportingDocumentSummary.loading ? (
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#E9D5FF] bg-[#FDF7FF] px-3 py-4 text-sm text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Preparing document summary...
-            </div>
-          ) : actionDocumentSummary || actionEvidenceAssessment ? (
-            <div className="space-y-3">
-              <div className="relative rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">
-                  {detailActionSummaryExpanded || !detailActionSummaryCanExpand
-                    ? detailActionSummaryText
-                    : detailActionSummaryPreview}
-                </p>
-                {detailActionSummaryCanExpand && (
-                  <button
-                    type="button"
-                    onClick={() => setDetailActionSummaryExpanded((current) => !current)}
-                    className="mt-2 inline-flex text-xs font-semibold text-[#A855F7] hover:underline dark:text-[#E9D5FF]"
-                  >
-                    {detailActionSummaryExpanded ? 'Less' : 'More'}
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Evidence Score</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">
-                    {actionEvidenceAssessment?.evidence_score ?? '-'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-[#F0D9FF] bg-white px-3 py-3 dark:border-white/10 dark:bg-white/5">
-                  <p className="text-[11px] font-semibold text-[#A855F7] dark:text-[#E9D5FF]">Total Budget</p>
-                  <p className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white">
-                    {actionBudgetTotal > 0 ? formatAEDFull(actionBudgetTotal) : '-'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <EmptyAiActionCard
-              description="As soon as the first document finishes analysis, the current AI summary will appear here."
-              icon={Sparkles}
-            />
-          )}
-        </div>
       </div>
-  )
+  ) : null
 
   useBeforeUnload((event) => {
     if (!isEditMode || !hasUnsavedChanges) return
@@ -3794,6 +4656,13 @@ export default function ProjectDetail() {
           setIctBudgetRespondentName(retrievedBudget.respondentName)
           setIctBudgetReviewerName(retrievedBudget.reviewerName)
           setIctBudgetApproverName(retrievedBudget.approverName)
+          setIctBudgetSmeReviewerTeamId(retrievedBudget.smeReviewerTeamId)
+          setIctBudgetRecommendedLabel(retrievedBudget.recommendedLabel)
+          setIctBudgetRejectedByName(retrievedBudget.rejectedByName)
+          setIctBudgetPreviousStrategicPriorityId(retrievedBudget.previousStrategicPriorityId)
+          setIctBudgetPreviousStrategicPriorityName(retrievedBudget.previousStrategicPriorityName)
+          setIctBudgetPreviousStrategicPriorityClassificationId(retrievedBudget.previousStrategicPriorityClassificationId)
+          setIctBudgetPreviousStrategicPriorityClassificationName(retrievedBudget.previousStrategicPriorityClassificationName)
           setIctBudgetError(null)
         } else {
           const fallbackFormValues: IctBudgetFormValues = {
@@ -3815,6 +4684,13 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(project.submittedBy)
           setIctBudgetCreatedOn(null)
           setIctBudgetModifiedOn(null)
+          setIctBudgetSmeReviewerTeamId(null)
+          setIctBudgetRecommendedLabel(null)
+          setIctBudgetRejectedByName(null)
+          setIctBudgetPreviousStrategicPriorityId(null)
+          setIctBudgetPreviousStrategicPriorityName(null)
+          setIctBudgetPreviousStrategicPriorityClassificationId(null)
+          setIctBudgetPreviousStrategicPriorityClassificationName(null)
         }
       } catch (error) {
         if (cancelled) return
@@ -3941,12 +4817,15 @@ export default function ProjectDetail() {
 
       void (async () => {
         try {
+          const preparedUpload = await prepareSupportingDocumentFile(file)
+          const uploadedFileName = preparedUpload.preparedFile.name.trim().toLowerCase()
+
           await uploadFilesToRecord(ictBudgetId, [file])
 
           const refreshedDocs = await refreshSharepointDocs()
           const uploadedDocumentConfirmed = (refreshedDocs ?? []).some((doc) => {
             const name = (doc.fullname || doc.title || '').trim().toLowerCase()
-            return name === file.name.trim().toLowerCase()
+            return name === uploadedFileName
           })
 
           setSupportingDocumentAnalyses((current) => ({
@@ -3988,7 +4867,7 @@ export default function ProjectDetail() {
             await createDocumentSummaryRecords([
               {
                 budgetId: ictBudgetId,
-                documentName: file.name,
+                documentName: response.analysisFileName ?? preparedUpload.preparedFile.name,
                 documentSummary: response.summary,
               },
             ])
@@ -4068,6 +4947,33 @@ export default function ProjectDetail() {
   )
 
   useEffect(() => {
+    if (persistedDocumentSummariesLoading) {
+      return
+    }
+
+    const overviewAiData = budgetOverviewRecord?.parsedData as (StoredBudgetOverviewRecord['parsedData'] & {
+      budget_policy_alignment?: {
+        has_potential_conflict?: boolean
+        has_coordination_requirement?: boolean
+        has_allowed_with_conditions?: boolean
+        summary?: string
+        policy_matches?: Array<{
+          policy_number?: string
+          dge_budget_consideration?: string
+          match_type?: string
+          relevance_score?: number
+          required_action?: string
+          strategic_area?: string
+          evidence_from_project?: string[]
+          reason?: string
+        }>
+      }
+    }) | null
+    if (overviewAiData?.strategic_alignment || overviewAiData?.budget_policy_alignment) {
+      applyBudgetOverviewAiInsights(overviewAiData)
+      return
+    }
+
     const name = formValues.initiativeName.trim()
     const desc = formValues.summary.trim()
     if (!name || !desc) {
@@ -4119,7 +5025,7 @@ export default function ProjectDetail() {
     }
     // Only re-fire on page load (savedFormValues) or explicit blur triggers
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailEntityName, savedFormValues.initiativeName, savedFormValues.summary])
+  }, [applyBudgetOverviewAiInsights, budgetOverviewRecord, detailEntityName, formValues.initiativeName, formValues.summary, persistedDocumentSummariesLoading, savedFormValues.initiativeName, savedFormValues.summary])
 
   const validateForm = () => {
     const nextErrors: IctBudgetFieldErrorMap = {}
@@ -4128,7 +5034,7 @@ export default function ProjectDetail() {
       nextErrors.initiativeName = 'Initiative / Budget Item Name is required.'
     }
     if (!formValues.strategicPriorityId) {
-      nextErrors.strategicPriorityId = 'Strategic Priorities is required.'
+      nextErrors.strategicPriorityId = 'Strategic Priority is required.'
     }
     if (!formValues.strategicPriorityClassificationId) {
       nextErrors.strategicPriorityClassificationId =
@@ -4184,7 +5090,7 @@ export default function ProjectDetail() {
       return
     }
 
-    if (!validateForm()) {
+    if (!canEditDgeRecommendationOnly && !validateForm()) {
       return false
     }
 
@@ -4217,15 +5123,29 @@ export default function ProjectDetail() {
             const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
             return savedItem && savedItem.budgetRequested !== item.budgetRequested
           })
+          const changedRecommendedBudgetLineItems = budgetLineItems.filter((item) => {
+            const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
+            return savedItem && savedItem.budgetRecommended !== item.budgetRecommended
+          })
 
-          if (changedBudgetLineItems.length > 0) {
+          if (changedBudgetLineItems.length > 0 && canEditFullForm) {
             await Promise.all(
               changedBudgetLineItems.map((item) => updateBudgetLineItemAmount(item.id, item.budgetRequested))
             )
           }
 
+          if (changedRecommendedBudgetLineItems.length > 0 && (canEditFullForm || canEditDgeRecommendationOnly)) {
+            await Promise.all(
+              changedRecommendedBudgetLineItems.map((item) =>
+                updateBudgetLineItemRecommendedAmount(item.id, item.budgetRecommended)
+              )
+            )
+          }
+
           setSavedFormValues(formValues)
           setSavedBudgetLineItems(budgetLineItems)
+          setIctBudgetRecommendedLabel(formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : null)
+          setIctBudgetRejectedByName(formValues.recommended === 1 ? currentUser.name : null)
           setSavedTechnologyProductNames(
             selectedTechnologyCompany?.products
               .filter((product) => formValues.technologyProductIds.includes(product.id))
@@ -4626,6 +5546,10 @@ export default function ProjectDetail() {
       handleTechnologyCompanyChange(result.patch.technologyCompanyId)
     }
 
+    if (result.patch.activityType !== undefined) {
+      handleActivityTypeChange(result.patch.activityType as ActivityType)
+    }
+
     if (!suppressRefresh && result.appliedName?.trim() && formValues.summary.trim()) {
       setSavedFormValues((prev) => ({ ...prev, initiativeName: result.appliedName ?? prev.initiativeName }))
     }
@@ -4645,10 +5569,37 @@ export default function ProjectDetail() {
     }
 
     if (Object.keys(aggregatedPatch).length > 0) {
-      setFormValues((prev) => ({
-        ...prev,
-        ...aggregatedPatch,
-      }))
+      setFormValues((prev) => {
+        if (aggregatedPatch.activityType === undefined) {
+          return {
+            ...prev,
+            ...aggregatedPatch,
+          }
+        }
+
+        const nextVisibleFields = getVisibleBudgetFields(
+          aggregatedPatch.activityType as ActivityType
+        )
+
+        return {
+          ...prev,
+          ...aggregatedPatch,
+          totalBudgetPaidPreviousYear: nextVisibleFields.includes('totalBudgetPaidPreviousYear')
+            ? prev.totalBudgetPaidPreviousYear
+            : '',
+          totalBudgetPayableFutureYear: nextVisibleFields.includes('totalBudgetPayableFutureYear')
+            ? prev.totalBudgetPayableFutureYear
+            : '',
+          totalBudgetPayableNextYear: nextVisibleFields.includes('totalBudgetPayableNextYear')
+            ? prev.totalBudgetPayableNextYear
+            : '',
+          totalBudgetPayableForYearAfterNext: nextVisibleFields.includes(
+            'totalBudgetPayableForYearAfterNext'
+          )
+            ? prev.totalBudgetPayableForYearAfterNext
+            : '',
+        }
+      })
 
       setFieldErrors((prev) => {
         const nextErrors = { ...prev }
@@ -4657,6 +5608,13 @@ export default function ProjectDetail() {
         })
         if (aggregatedPatch.technologyCompanyId !== undefined) {
           delete nextErrors.technologyProductIds
+        }
+        if (aggregatedPatch.activityType !== undefined) {
+          delete nextErrors.activityType
+          delete nextErrors.totalBudgetPaidPreviousYear
+          delete nextErrors.totalBudgetPayableFutureYear
+          delete nextErrors.totalBudgetPayableNextYear
+          delete nextErrors.totalBudgetPayableForYearAfterNext
         }
         return nextErrors
       })
@@ -4714,58 +5672,20 @@ export default function ProjectDetail() {
     })
   }
 
-  async function applyAiAccountCodeSuggestion() {
-    if (!actionAccountCode?.account_code) return
+  async function applyAiAccountCodeSuggestion(suggestion?: (typeof actionAccountCodes)[number]) {
+    if (!suggestion) return
 
     setAiApplyingAccountCode(true)
 
     try {
       const classificationRecords = await getClassificationRecords()
       const { nodeMap } = buildClassificationTree(classificationRecords)
-      const searchTerm = actionAccountCode.account_code.trim().toLowerCase()
-
-      let matchedId: string | null = null
-
-      for (const [id, node] of nodeMap.entries()) {
-        if (node.level !== 4) continue
-        const nodeName = (node.name ?? '').toLowerCase()
-        if (
-          nodeName.includes(searchTerm) ||
-          searchTerm.includes(nodeName) ||
-          (node.ebsCode ?? '').toLowerCase() === searchTerm ||
-          (node.fusionCode ?? '').toLowerCase() === searchTerm
-        ) {
-          matchedId = id
-          break
-        }
-      }
-
-      if (!matchedId) {
-        const segments = searchTerm.split(/\s*-\s*/).filter((segment: string) => segment.length >= 2)
-        for (const segment of segments) {
-          if (matchedId) break
-          for (const [id, node] of nodeMap.entries()) {
-            if (node.level !== 4) continue
-            const nodeName = (node.name ?? '').toLowerCase()
-            if (nodeName.includes(segment) || segment.includes(nodeName)) {
-              matchedId = id
-              break
-            }
-          }
-        }
-      }
-
-      if (!matchedId) {
+      const draft = buildBudgetItemDraftFromSuggestedAccountCode(suggestion, nodeMap)
+      if (!draft) {
         showErrorToast(
           'Account code not found',
-          `No GL account matching "${actionAccountCode.account_code}" was found in the classification tree.`
+          `No GL account matching "${suggestion.rawAccountLabel}" was found in the classification tree.`
         )
-        return
-      }
-
-      const draft = buildBudgetItemDraft(matchedId, nodeMap)
-      if (!draft) {
-        showErrorToast('Apply failed', 'Could not build a budget item from the matched account code.')
         return
       }
 
@@ -4789,7 +5709,8 @@ export default function ProjectDetail() {
         expenseTypeLabel: draft.expenseTypeLabel,
         ebsCode: draft.ebsCode,
         fusionCode: draft.fusionCode,
-        budgetRequested: actionAccountCode.requested_budget ?? 0,
+        budgetRequested: suggestion.mappedBudget,
+        budgetRecommended: 0,
       }
 
       setBudgetLineItems((prev) => [...prev, nextBudgetLineItem])
@@ -4806,6 +5727,104 @@ export default function ProjectDetail() {
       )
     } finally {
       setAiApplyingAccountCode(false)
+    }
+  }
+
+  async function applySelectedDetailSuggestions() {
+    const selectedRows = detailSuggestionRows.filter((row) => selectedDetailSuggestionIds.includes(row.id))
+    if (selectedRows.length === 0) {
+      showErrorToast('No suggestions selected', 'Select at least one suggestion before applying.')
+      return
+    }
+
+    setDetailSuggestionApplyLoading(true)
+
+    try {
+      const selectedFields = selectedRows
+        .filter((row): row is DetailSuggestionRow & { field: SupportingDocumentSuggestedProjectField } => row.kind === 'field' && Boolean(row.field))
+        .map((row) => row.field)
+      const selectedAccountCodes = selectedRows
+        .filter((row): row is DetailSuggestionRow & { accountCodeSuggestion: ComputedSupportingDocumentAccountCodeSuggestion } => row.kind === 'account-code' && Boolean(row.accountCodeSuggestion))
+        .map((row) => row.accountCodeSuggestion)
+      const failedMessages: string[] = []
+
+      selectedFields.forEach((field) => {
+        const result = resolveManualAiFieldSuggestion(field, technologyCompanies)
+        if (result.error) {
+          failedMessages.push(result.error)
+          return
+        }
+
+        if (result.patch.initiativeName !== undefined) {
+          updateField('initiativeName', result.patch.initiativeName)
+        }
+        if (result.patch.summary !== undefined) {
+          updateField('summary', result.patch.summary)
+        }
+        if (result.patch.category !== undefined) {
+          updateField('category', result.patch.category)
+        }
+        if (result.patch.technologyCompanyId !== undefined) {
+          handleTechnologyCompanyChange(result.patch.technologyCompanyId)
+        }
+      })
+
+      if (selectedAccountCodes.length > 0) {
+        const classificationRecords = await getClassificationRecords()
+        const { nodeMap } = buildClassificationTree(classificationRecords)
+        const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+        const draftsToAdd: BudgetLineItemRecord[] = []
+
+        selectedAccountCodes.forEach((suggestion) => {
+          const draft = buildBudgetItemDraftFromSuggestedAccountCode(suggestion, nodeMap)
+          if (!draft) {
+            failedMessages.push(`No GL account matching "${suggestion.rawAccountLabel}" was found in the classification tree.`)
+            return
+          }
+          if (existingIds.has(draft.id) || draftsToAdd.some((item) => item.id === draft.id)) {
+            return
+          }
+
+          draftsToAdd.push({
+            id: draft.id,
+            budgetId: ictBudgetId ?? null,
+            classificationId: draft.id,
+            accountName: draft.accountName,
+            l1: draft.l1,
+            l2: draft.l2,
+            l3: draft.l3,
+            accountGroup: draft.accountGroup,
+            description: draft.description,
+            expenseTypeValue: draft.expenseTypeValue,
+            expenseTypeLabel: draft.expenseTypeLabel,
+            ebsCode: draft.ebsCode,
+            fusionCode: draft.fusionCode,
+            budgetRequested: suggestion.mappedBudget,
+            budgetRecommended: 0,
+          })
+        })
+
+        if (draftsToAdd.length > 0) {
+          setBudgetLineItems((prev) => [...prev, ...draftsToAdd])
+          setBudgetItemsError(null)
+          setFieldErrors((prev) => {
+            const next = { ...prev }
+            delete next.budgetItems
+            return next
+          })
+        }
+      }
+
+      if (failedMessages.length > 0) {
+        showErrorToast('Some suggestions could not be applied', failedMessages.join('\n'))
+      }
+    } catch (error) {
+      showErrorToast(
+        'Suggestions not applied',
+        error instanceof Error ? error.message : 'Could not apply the selected suggestions.'
+      )
+    } finally {
+      setDetailSuggestionApplyLoading(false)
     }
   }
 
@@ -4905,6 +5924,19 @@ export default function ProjectDetail() {
     setSharepointDocs((prev) => prev.filter((d) => d.sharepointdocumentid !== doc.sharepointdocumentid))
   }
 
+  const handleDeleteDetailInsightItem = useCallback(
+    async (item: SupportingDocumentAiInsightItem) => {
+      const documentName = item.file.name.trim().toLowerCase()
+      const mappedDoc = aiSupportingDocumentByName.get(documentName)
+      if (!mappedDoc) {
+        return
+      }
+
+      await handleDeleteDocument(mappedDoc)
+    },
+    [aiSupportingDocumentByName, handleDeleteDocument]
+  )
+
   const refreshSharepointDocs = async () => {
     if (!ictBudgetId) return []
     try {
@@ -4921,7 +5953,7 @@ export default function ProjectDetail() {
     clarificationId: string,
     message: string,
     files?: File[],
-    returnToRole?: 'Reviewer' | 'Approver'
+    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   ) => {
     if (!ictBudgetId) {
       setLocalClarifications((prev) =>
@@ -4958,6 +5990,32 @@ export default function ProjectDetail() {
         })
 
         if (currentRole === 'Respondent' && returnToRole) {
+          if (returnToRole !== 'Reviewer' && returnToRole !== 'Approver') {
+            const nextStatusCode =
+              returnToRole === 'Strategy Team'
+                ? DGE_BUDGET_STATUS.underStrategicAlignmentReview
+                : DGE_BUDGET_STATUS.underSmeReview
+
+            const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+              statuscode: nextStatusCode,
+              dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            } as never)
+
+            if (!handoffResult.success) {
+              throw new Error(handoffResult.error?.message || `Unable to return the clarification reply to ${returnToRole}.`)
+            }
+
+            await invalidateBudgetOverviewRecord(ictBudgetId)
+            syncLocalWorkflowState(
+              (returnToRole === 'Strategy Team' ? 'Under Strategic Alignment Review' : 'Under SME Review') as Project['status']
+            )
+
+            const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+            setLocalClarifications(clarifications)
+            if (files?.length) void refreshSharepointDocs()
+            return
+          }
+
           const nextStatus =
             returnToRole === 'Reviewer'
               ? ICT_BUDGET_STATUS.underReviewerReview
@@ -5007,7 +6065,10 @@ export default function ProjectDetail() {
   const handleClarificationReply = (clarificationId: string, message: string, files?: File[]) => {
     const clarification = localClarifications.find((item) => item.id === clarificationId)
     const firstReplyReturnToRole =
-      clarification?.raisedBy === 'Reviewer' || clarification?.raisedBy === 'Approver'
+      clarification?.raisedBy === 'Reviewer' ||
+      clarification?.raisedBy === 'Approver' ||
+      clarification?.raisedBy === 'Strategy Team' ||
+      clarification?.raisedBy === 'SME Team'
         ? clarification.raisedBy
         : null
     const isRespondentFirstReply =
@@ -5068,13 +6129,27 @@ export default function ProjectDetail() {
   }
 
   const handleRaiseClarification = ({ message, files }: { message: string; files?: File[] }) => {
-    const raisedByRole = isApproverView ? 'Approver' : 'Reviewer'
+    const raisedByRole =
+      currentRole === 'Approver'
+        ? 'Approver'
+        : currentRole === 'Strategy Team'
+          ? 'Strategy Team'
+          : currentRole === 'SME Team'
+            ? 'SME Team'
+            : 'Reviewer'
 
     if (!ictBudgetId) {
       const newClarification: Clarification = {
         id: `CLR-${Date.now()}`,
         raisedBy: raisedByRole,
-        raisedByLabel: raisedByRole === 'Reviewer' ? 'ICT - Reviewer' : 'Approver',
+        raisedByLabel:
+          raisedByRole === 'Reviewer'
+            ? 'ICT - Reviewer'
+            : raisedByRole === 'Approver'
+              ? 'Approver'
+              : raisedByRole === 'Strategy Team'
+                ? 'ICT - Strategy Team'
+                : 'ICT - SME Team',
         raisedByName: currentUser.name,
         raisedTo: 'Respondent',
         message,
@@ -5093,24 +6168,39 @@ export default function ProjectDetail() {
           budgetId: ictBudgetId,
           message,
           raisedByRole,
+          clarificationStage:
+            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 2 : 1,
+          scope:
+            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : 2,
           files,
         })
-        console.log('[ProjectDetail] Raising clarification — assigning ICT budget back to Respondent team' + (raisedByRole === 'Approver' ? ', sharing ReadAccess with Approver team' : '') + ':', {
+        console.log('[ProjectDetail] Raising clarification — updating ICT budget to clarification pending:', {
           ictBudgetId,
           raisedByRole,
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        await updateIctBudgetStatus(
-          ictBudgetId,
-          ICT_BUDGET_STATUS.clarificationPending,
-          'Respondent',
-          raisedByRole,
-          raisedByRole,
-          raisedByRole === 'Reviewer'
-            ? 'A budget item has been returned to Respondent for clarification.'
-            : 'A budget item has been returned to Respondent for approver clarification.'
-        )
+        if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
+          const dgeClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
+          } as never)
+
+          if (!dgeClarificationResult.success) {
+            throw new Error(dgeClarificationResult.error?.message || 'Unable to return the project to Respondent for clarification.')
+          }
+        } else {
+          await updateIctBudgetStatus(
+            ictBudgetId,
+            ICT_BUDGET_STATUS.clarificationPending,
+            'Respondent',
+            raisedByRole,
+            raisedByRole,
+            raisedByRole === 'Reviewer'
+              ? 'A budget item has been returned to Respondent for clarification.'
+              : 'A budget item has been returned to Respondent for approver clarification.'
+          )
+        }
         await invalidateBudgetOverviewRecord(ictBudgetId)
         const clarifications = await getClarificationsByBudgetId(ictBudgetId)
         setLocalClarifications(clarifications)
@@ -5119,7 +6209,7 @@ export default function ProjectDetail() {
       },
       {
         processingTitle: 'Raising clarification',
-        processingDescription: 'Opening the clarification thread and returning the project to the respondent...',
+        processingDescription: 'Opening the clarification thread and updating the project to clarification pending...',
         successTitle: 'Clarification raised',
         successDescription: 'The respondent has been notified and the project is now awaiting clarification.',
         errorTitle: 'Unable to raise clarification',
@@ -5132,6 +6222,125 @@ export default function ProjectDetail() {
 
   // ── Section navigation ───────────────────────────────────────────────────────
   const displayedBudgetItems = hasDataverseBudgetProject ? budgetLineItems : fallbackBudgetItems
+  const pendingActionAccountCodes = useMemo(
+    () =>
+      actionAccountCodes.filter((suggestion) => {
+        const normalizedAccountName = suggestion.accountName.trim().toLowerCase()
+        const normalizedAccountCode = suggestion.accountCode.trim().toLowerCase()
+        const normalizedRawLabel = suggestion.rawAccountLabel.trim().toLowerCase()
+        const normalizedDisplayLabel = suggestion.displayLabel.trim().toLowerCase()
+
+        return !displayedBudgetItems.some((item) => {
+          const accountName = item.accountName.trim().toLowerCase()
+          const ebsCode = (item.ebsCode ?? '').trim().toLowerCase()
+          const fusionCode = (item.fusionCode ?? '').trim().toLowerCase()
+
+          return (
+            accountName === normalizedAccountName ||
+            accountName === normalizedRawLabel ||
+            accountName === normalizedDisplayLabel ||
+            accountName.includes(normalizedAccountName) ||
+            normalizedAccountName.includes(accountName) ||
+            accountName.includes(normalizedDisplayLabel) ||
+            normalizedDisplayLabel.includes(accountName) ||
+            ebsCode === normalizedAccountCode ||
+            fusionCode === normalizedAccountCode ||
+            ebsCode === normalizedDisplayLabel ||
+            fusionCode === normalizedDisplayLabel
+          )
+        })
+      }),
+    [actionAccountCodes, displayedBudgetItems]
+  )
+
+  async function applyPendingAiAccountCodeSuggestions() {
+    if (pendingActionAccountCodes.length === 0) return
+
+    setAiApplyingAccountCode(true)
+
+    try {
+      const classificationRecords = await getClassificationRecords()
+      const { nodeMap } = buildClassificationTree(classificationRecords)
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const nextBudgetLineItems: BudgetLineItemRecord[] = []
+      const failedMessages: string[] = []
+
+      for (const suggestion of pendingActionAccountCodes) {
+        const draft = buildBudgetItemDraftFromSuggestedAccountCode(suggestion, nodeMap)
+        if (!draft) {
+          failedMessages.push(`No GL account matching "${suggestion.rawAccountLabel}" was found.`)
+          continue
+        }
+        if (existingIds.has(draft.id)) {
+          continue
+        }
+
+        existingIds.add(draft.id)
+        nextBudgetLineItems.push({
+          id: draft.id,
+          budgetId: ictBudgetId ?? null,
+          classificationId: draft.id,
+          accountName: draft.accountName,
+          l1: draft.l1,
+          l2: draft.l2,
+          l3: draft.l3,
+          accountGroup: draft.accountGroup,
+          description: draft.description,
+          expenseTypeValue: draft.expenseTypeValue,
+          expenseTypeLabel: draft.expenseTypeLabel,
+          ebsCode: draft.ebsCode,
+          fusionCode: draft.fusionCode,
+          budgetRequested: suggestion.mappedBudget,
+          budgetRecommended: 0,
+        })
+      }
+
+      if (nextBudgetLineItems.length > 0) {
+        setBudgetLineItems((prev) => [...prev, ...nextBudgetLineItems])
+        setBudgetItemsError(null)
+        setFieldErrors((prev) => {
+          const next = { ...prev }
+          delete next.budgetItems
+          return next
+        })
+      }
+
+      if (nextBudgetLineItems.length === 0 && failedMessages.length === 0) {
+        showErrorToast('Already added', 'All suggested account codes are already in the budget line items.')
+      } else if (failedMessages.length > 0) {
+        showErrorToast('Some account codes could not be applied', failedMessages.join('\n'))
+      }
+    } catch (error) {
+      showErrorToast(
+        'Apply failed',
+        error instanceof Error ? error.message : 'Could not apply the account code suggestions.'
+      )
+    } finally {
+      setAiApplyingAccountCode(false)
+      setOpenAiAssistField(null)
+    }
+  }
+
+  function buildBudgetAccountCodesAssist() {
+    const firstPendingSuggestion = pendingActionAccountCodes[0]
+    if (!firstPendingSuggestion) return null
+
+    const suggestionLabel = pendingActionAccountCodes
+      .map((suggestion) => suggestion.displayLabel)
+      .join('\n')
+
+    return (
+      <AiFieldAssistTrigger
+        fieldLabel="Budget Account Codes"
+        suggestedValue={suggestionLabel}
+        isOpen={openAiAssistField === 'budgetItems'}
+        canApply={isEditMode}
+        onToggle={() => setOpenAiAssistField((current) => (current === 'budgetItems' ? null : 'budgetItems'))}
+        onApply={() => void applyPendingAiAccountCodeSuggestions()}
+        helperText="Switch the form to Edit mode to add the AI-suggested account codes from here."
+      />
+    )
+  }
   const budgetTotal = hasDataverseBudgetProject
     ? displayedBudgetItems.reduce((total, item) => total + item.budgetRequested, 0)
     : project.requestedBudget
@@ -5283,6 +6492,253 @@ export default function ProjectDetail() {
     })
   }
 
+  const applyRecommendedDecisionToBudgetLines = (decision: 1 | 2) => {
+    setBudgetLineItems((current) =>
+      current.map((item) => ({
+        ...item,
+        budgetRecommended: decision === 2 ? item.budgetRequested : 0,
+      }))
+    )
+  }
+
+  const handleBudgetRecommendedChange = (lineItemId: string, amount: number) => {
+    setBudgetLineItems((current) =>
+      current.map((item) =>
+        item.id === lineItemId ? { ...item, budgetRecommended: amount } : item
+      )
+    )
+  }
+
+  const validateSmeRecommendationForQualityCheck = () => {
+    if (formValues.recommended == null) {
+      showErrorToast('Recommendation required', 'Select Recommended before routing this project to quality check.')
+      return false
+    }
+
+    if (formValues.recommended === 1) {
+      if (!formValues.rejectionReason) {
+        showErrorToast('Rejection reason required', 'Select Rejection Reason before routing this project to quality check.')
+        return false
+      }
+      if (!formValues.rejectionJustification.trim()) {
+        showErrorToast('Rejection justification required', 'Add Rejection Justification before routing this project to quality check.')
+        return false
+      }
+    }
+
+    return true
+  }
+
+  const handleRouteToQualityCheck = async () => {
+    if (!ictBudgetId || !projectData || !canRouteToQualityCheck) return
+    if (!validateSmeRecommendationForQualityCheck()) return
+    await validateBudgetReadyForQualityCheck(ictBudgetId)
+
+    if (isEditMode) {
+      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+      if (!saveSucceeded) return
+    }
+
+    const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
+    const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
+    const storedInstance = getStoredInstanceDetail()
+
+    const workflowBudget = {
+      id: ictBudgetId,
+      budgetRefId: projectData.id,
+      name: display.name,
+      summary: display.summary,
+      statuscode: project.statusCode ?? DGE_BUDGET_STATUS.underSmeReview,
+      statusLabel: display.status,
+      statusForAdge: null,
+      strategicPriorityId: formValues.strategicPriorityId || null,
+      strategicPriorityName: display.strategicPriority,
+      strategicPriorityClassificationId: formValues.strategicPriorityClassificationId || null,
+      strategicPriorityClassificationName: display.classification,
+      previousStrategicPriorityId: null,
+      previousStrategicPriorityName: null,
+      previousStrategicPriorityClassificationId: null,
+      previousStrategicPriorityClassificationName: null,
+      requestedBudget: totalRequestedBudget,
+      recommendedBudget: totalRecommendedBudget,
+      allocatedBudget: 0,
+      utilizedBudget: 0,
+      aiConfidenceScore: project.aiScore ?? null,
+      ownerId: project.ownerId ?? null,
+      ownerName: null,
+      instanceId: null,
+      instanceName: storedInstance?.name ?? null,
+      entityName: storedInstance?.name ?? null,
+      smeReviewerTeamId: ictBudgetSmeReviewerTeamId,
+      smeReviewerTeamName: null,
+      sharePointUrl: null,
+    }
+
+    await runActionToast(
+      async () => {
+        await routeBudgetToQualityCheck(workflowBudget)
+        await invalidateBudgetOverviewRecord(ictBudgetId)
+        syncLocalWorkflowState('Under Quality Check' as Project['status'])
+        setIsEditMode(false)
+      },
+      {
+        processingTitle: 'Routing to quality check',
+        processingDescription: 'Validating SME recommendation fields and sending this project to quality check...',
+        successTitle: 'Routed to quality check',
+        successDescription: 'The project is now under quality check.',
+        errorTitle: 'Unable to route to quality check',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const buildCurrentWorkflowBudget = () => {
+    const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
+    const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
+    const storedInstance = getStoredInstanceDetail()
+
+    return {
+      id: ictBudgetId!,
+      budgetRefId: projectData?.id ?? project.id,
+      name: display.name,
+      summary: display.summary,
+      statuscode: project.statusCode ?? DGE_BUDGET_STATUS.underSmeReview,
+      statusLabel: display.status,
+      statusForAdge: null,
+      strategicPriorityId: formValues.strategicPriorityId || null,
+      strategicPriorityName: display.strategicPriority,
+      strategicPriorityClassificationId: formValues.strategicPriorityClassificationId || null,
+      strategicPriorityClassificationName: display.classification,
+      previousStrategicPriorityId: ictBudgetPreviousStrategicPriorityId,
+      previousStrategicPriorityName: ictBudgetPreviousStrategicPriorityName,
+      previousStrategicPriorityClassificationId: ictBudgetPreviousStrategicPriorityClassificationId,
+      previousStrategicPriorityClassificationName: ictBudgetPreviousStrategicPriorityClassificationName,
+      requestedBudget: totalRequestedBudget,
+      recommendedBudget: totalRecommendedBudget,
+      allocatedBudget: 0,
+      utilizedBudget: 0,
+      aiConfidenceScore: project.aiScore ?? null,
+      ownerId: project.ownerId ?? null,
+      ownerName: null,
+      instanceId: null,
+      instanceName: storedInstance?.name ?? null,
+      entityName: storedInstance?.name ?? null,
+      smeReviewerTeamId: ictBudgetSmeReviewerTeamId,
+      smeReviewerTeamName: null,
+      sharePointUrl: null,
+    }
+  }
+
+  const detailChangeClassificationOptions = useMemo(
+    () => strategicPriorities.filter((option) => option.parentId === detailChangePriorityId),
+    [detailChangePriorityId, strategicPriorities]
+  )
+
+  const openDetailChangeRequestModal = () => {
+    setDetailChangePriorityId(formValues.strategicPriorityId || '')
+    setDetailChangeClassificationId(formValues.strategicPriorityClassificationId || '')
+    setDetailChangeRequestModalOpen(true)
+  }
+
+  const handleDetailSubmitChangeRequest = async () => {
+    if (!ictBudgetId || !projectData || !detailChangePriorityId || !detailChangeClassificationId) return
+
+    if (isEditMode) {
+      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+      if (!saveSucceeded) return
+    }
+
+    await runActionToast(
+      async () => {
+        await requestStrategicPriorityChange(
+          buildCurrentWorkflowBudget(),
+          detailChangePriorityId,
+          detailChangeClassificationId
+        )
+        setDetailChangeRequestModalOpen(false)
+        syncLocalWorkflowState('Strategic Priority Change Under Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Submitting change request',
+        processingDescription: 'Sending the strategic priority change back to Strategy Team for review...',
+        successTitle: 'Change request submitted',
+        successDescription: 'The project is now waiting for Strategy Team review.',
+        errorTitle: 'Unable to submit change request',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
+    if (!ictBudgetId) return
+
+    await runActionToast(
+      async () => {
+        await reviewStrategicPriorityChange(buildCurrentWorkflowBudget(), decision)
+        setDetailReviewChangeModalOpen(false)
+        syncLocalWorkflowState('Under SME Review' as Project['status'])
+      },
+      {
+        processingTitle: decision === 'approve' ? 'Approving requested change' : 'Rejecting requested change',
+        processingDescription:
+          decision === 'approve'
+            ? 'Updating the project mapping and routing it back to the correct SME team...'
+            : 'Clearing the requested change and returning the project to SME review...',
+        successTitle: decision === 'approve' ? 'Change approved' : 'Change rejected',
+        successDescription:
+          decision === 'approve'
+            ? 'The new strategic priority mapping is now active.'
+            : 'The requested change was cleared and the project was returned to SME review.',
+        errorTitle: 'Unable to process strategic change review',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailSendToSme = async () => {
+    if (!ictBudgetId) return
+
+    await runActionToast(
+      async () => {
+        await sendBudgetsToSme([buildCurrentWorkflowBudget()])
+        setDetailSendToSmeConfirmOpen(false)
+        syncLocalWorkflowState('Under SME Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Sending to SME',
+        processingDescription: 'Routing this project to the mapped SME team...',
+        successTitle: 'Project sent to SME',
+        successDescription: 'The project was routed successfully.',
+        errorTitle: 'Unable to send to SME',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailRouteToDirector = async () => {
+    if (!ictBudgetId) return
+    await runActionToast(
+      async () => {
+        const result = await Dga_ict_budgetsService.update(ictBudgetId, {
+          statuscode: DGE_BUDGET_STATUS.underFinalReview,
+          dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+        } as never)
+        if (!result.success) {
+          throw new Error(result.error?.message || 'Unable to route project to director review.')
+        }
+        syncLocalWorkflowState('Under Final Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Routing to director',
+        processingDescription: 'Moving this project into final review...',
+        successTitle: 'Routed to director',
+        successDescription: 'The project is now under final review.',
+        errorTitle: 'Unable to route to director',
+        minDurationMs: 1200,
+      }
+    )
+  }
+
   const handleConfirmDeleteBudgetLineItem = async () => {
     if (!lineItemToDelete) return
 
@@ -5396,7 +6852,20 @@ export default function ProjectDetail() {
   const creationModifiedOnLabel = ictBudgetModifiedOn
     ? ictBudgetModifiedOn
     : project.lastModified
-  const resolvedStatusLabel = project.status
+  const resolvedStatusLabel = isDgeRole
+    ? getDgeHeaderStatusLabel(project.statusCode ?? null, project.status)
+    : project.status
+  const showDgeRecommendationFields = isDgeRole && isSubmittedToDgeBudget
+  const recommendedChoiceLabel =
+    formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : '-'
+  const rejectionReasonLabel =
+    formValues.rejectionReason === 1
+      ? 'Not Advised'
+      : formValues.rejectionReason === 2
+        ? 'Not ICT Related'
+        : formValues.rejectionReason === 3
+          ? 'No Evidence Provided'
+          : '-'
 
   const display = {
     budgetRefId: project.id,
@@ -5420,6 +6889,9 @@ export default function ProjectDetail() {
     createdBy: headerCreatedBy,
     createdOn: creationCreatedOnLabel,
     modifiedOn: creationModifiedOnLabel,
+    recommended: ictBudgetRecommendedLabel || recommendedChoiceLabel,
+    rejectionReason: rejectionReasonLabel,
+    rejectionJustification: formValues.rejectionJustification.trim() || '-',
   }
 
   if (projectLoading && !projectData) {
@@ -5630,8 +7102,10 @@ export default function ProjectDetail() {
               >
                 {showClarificationReturnNotice
                   ? `Reply Returns To ${clarificationReturnRole}`
+                  : isStrategyClarificationRequiredForSme
+                    ? 'Clarification Required by Strategy Team'
                   : showPendingNotice
-                  ? `Pending with ${workflowOwner}`
+                  ? `Pending with ${effectiveWorkflowOwner}`
                   : canCurrentRoleEdit
                     ? `${currentRole} actions available`
                     : 'Read-only workflow state'}
@@ -5639,6 +7113,8 @@ export default function ProjectDetail() {
               <p className="text-xs text-[#64748B] dark:text-slate-300">
                 {showClarificationReturnNotice
                   ? `Reply to the latest clarification below and this ICT budget will automatically be assigned back to ${clarificationReturnRole}. You do not need to submit it manually from Quick Actions.`
+                  : isStrategyClarificationRequiredForSme
+                    ? 'Strategy Team requested clarification from SME on this project. You can update the recommendation fields, reply in the clarification thread, and still route the project to quality check once it is ready.'
                   : showPendingNotice
                   ? pendingNoticeText
                   : canCurrentRoleEdit
@@ -5708,205 +7184,232 @@ export default function ProjectDetail() {
             /* ════ EDIT MODE SECTIONS ════════════════════════════════════════ */
             <>
               <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                  <EditField
-                    label="Initiative / Budget Item Name"
-                    required
-                    error={fieldErrors.initiativeName}
-                    aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
-                    highlighted={animatedAiFields.includes('initiativeName')}
-                  >
-                      <Input
-                        value={formValues.initiativeName}
-                        onChange={(e) => updateField('initiativeName', e.target.value)}
-                        onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
-                        className={cn(
-                          'h-10 rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                          fieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]'
-                        )}
+                {canEditDgeRecommendationOnly ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="Initiative / Budget Item Name" value={display.name} />
+                    <Field label="Strategic Priority" value={display.strategicPriority} />
+                    <Field label="Strategic Priority Classifications" value={display.classification} />
+                    <Field label="Work Stream" value={display.workStream} />
+                    <Field label="ICT Budget Item Type" value={display.budgetType} />
+                    <Field label="Category" value={display.category} />
+                    <Field label="Technology (Company)" value={display.technologyCompany} />
+                    <Field label="Technology (Product)" value={display.technologyProduct} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                    <EditField
+                      label="Initiative / Budget Item Name"
+                      required
+                      error={fieldErrors.initiativeName}
+                      aiAssist={buildAiAssist('initiativeName', 'Initiative / Budget Item Name')}
+                      highlighted={animatedAiFields.includes('initiativeName')}
+                    >
+                        <Input
+                          value={formValues.initiativeName}
+                          onChange={(e) => updateField('initiativeName', e.target.value)}
+                          onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
+                          className={cn(
+                            'h-10 rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                            fieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+                          )}
+                        />
+                      </EditField>
+                    </div>
+                    <EditField
+                      label="Strategic Priority"
+                      required
+                      error={fieldErrors.strategicPriorityId}
+                    >
+                      <LookupSelect
+                        value={formValues.strategicPriorityId}
+                        onChange={handleStrategicPriorityChange}
+                        placeholder="Select strategic priority"
+                        options={topLevelStrategicPriorities.map((priority) => ({
+                          value: priority.id,
+                          label: priority.name,
+                        }))}
+                        icon={Layers}
+                        disabled={lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.strategicPriorityId)}
                       />
                     </EditField>
-                  </div>
-                  <EditField
-                    label="Strategic Priorities"
-                    required
-                    error={fieldErrors.strategicPriorityId}
-                  >
-                    <LookupSelect
-                      value={formValues.strategicPriorityId}
-                      onChange={handleStrategicPriorityChange}
-                      placeholder="Select strategic priority"
-                      options={topLevelStrategicPriorities.map((priority) => ({
-                        value: priority.id,
-                        label: priority.name,
-                      }))}
-                      icon={Layers}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.strategicPriorityId)}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Strategic Priority Classifications"
-                    required
-                    error={fieldErrors.strategicPriorityClassificationId}
-                  >
-                    <LookupSelect
-                      value={formValues.strategicPriorityClassificationId}
-                      onChange={(value) => updateField('strategicPriorityClassificationId', value)}
-                      placeholder={
-                        formValues.strategicPriorityId
-                          ? 'Select strategic priority classification'
-                          : 'Select strategic priority first'
-                      }
-                      options={strategicPriorityClassifications.map((priority) => ({
-                        value: priority.id,
-                        label: priority.name,
-                      }))}
-                      icon={FolderKanban}
-                      disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
-                    />
-                  </EditField>
-                  <div className="md:col-span-2">
-                    {detailAiSuggestionCard}
-                  </div>
-                  <EditField label="Work Stream" error={fieldErrors.workStreamId}>
-                    <div className="space-y-2">
+                    <EditField
+                      label="Strategic Priority Classifications"
+                      required
+                      error={fieldErrors.strategicPriorityClassificationId}
+                    >
                       <LookupSelect
-                        value={formValues.workStreamId}
-                        onChange={(value) => updateField('workStreamId', value)}
-                        placeholder="Select work stream"
-                        options={workStreams.map((workStream) => ({
-                          value: workStream.id,
-                          label: workStream.name,
+                        value={formValues.strategicPriorityClassificationId}
+                        onChange={(value) => updateField('strategicPriorityClassificationId', value)}
+                        placeholder={
+                          formValues.strategicPriorityId
+                            ? 'Select strategic priority classification'
+                            : 'Select strategic priority first'
+                        }
+                        options={strategicPriorityClassifications.map((priority) => ({
+                          value: priority.id,
+                          label: priority.name,
                         }))}
-                        icon={Briefcase}
-                        disabled={lookupLoading || ictBudgetLoading}
-                        invalid={Boolean(fieldErrors.workStreamId)}
+                        icon={FolderKanban}
+                        disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                       />
-                      <Button
-                        variant="ghost"
-                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
-                        onClick={() => setWorkStreamModalOpen(true)}
+                    </EditField>
+                    <div className="md:col-span-2">
+                      {detailAiSuggestionCard}
+                    </div>
+                    <EditField label="Work Stream" error={fieldErrors.workStreamId}>
+                      <div className="space-y-2">
+                        <LookupSelect
+                          value={formValues.workStreamId}
+                          onChange={(value) => updateField('workStreamId', value)}
+                          placeholder="Select work stream"
+                          options={workStreams.map((workStream) => ({
+                            value: workStream.id,
+                            label: workStream.name,
+                          }))}
+                          icon={Briefcase}
+                          disabled={lookupLoading || ictBudgetLoading}
+                          invalid={Boolean(fieldErrors.workStreamId)}
+                        />
+                        <Button
+                          variant="ghost"
+                          className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
+                          onClick={() => setWorkStreamModalOpen(true)}
+                          disabled={lookupLoading || ictBudgetLoading}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create Work Stream
+                        </Button>
+                      </div>
+                    </EditField>
+                    <EditField label="ICT Budget Items Type" required error={fieldErrors.budgetItemType}>
+                      <LookupSelect
+                        value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
+                        onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
+                        placeholder="Select ICT budget item type"
+                        options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({
+                          value: String(option.value),
+                          label: option.label,
+                        }))}
+                        icon={Package}
                         disabled={lookupLoading || ictBudgetLoading}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Create Work Stream
-                      </Button>
-                    </div>
-                  </EditField>
-                  <EditField label="ICT Budget Items Type" required error={fieldErrors.budgetItemType}>
-                    <LookupSelect
-                      value={formValues.budgetItemType ? String(formValues.budgetItemType) : ''}
-                      onChange={(value) => updateField('budgetItemType', Number(value) as BudgetItemType)}
-                      placeholder="Select ICT budget item type"
-                      options={BUDGET_ITEM_TYPE_OPTIONS.map((option) => ({
-                        value: String(option.value),
-                        label: option.label,
-                      }))}
-                      icon={Package}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.budgetItemType)}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Category"
-                    aiAssist={buildAiAssist('category', 'Category')}
-                    highlighted={animatedAiFields.includes('category')}
-                  >
-                    <LookupSelect
-                      value={formValues.category ? String(formValues.category) : ''}
-                      onChange={(value) => updateField('category', Number(value) as CategoryType)}
-                      placeholder="Select category"
-                      options={CATEGORY_OPTIONS.map((option) => ({
-                        value: String(option.value),
-                        label: option.label,
-                      }))}
-                      icon={FolderKanban}
-                      disabled={lookupLoading || ictBudgetLoading}
-                    />
-                  </EditField>
-                  <EditField
-                    label="Technology (Company)"
-                    error={fieldErrors.technologyCompanyId}
-                    aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
-                    highlighted={animatedAiFields.includes('technologyCompany')}
-                  >
-                    <LookupSelect
-                      value={formValues.technologyCompanyId}
-                      onChange={handleTechnologyCompanyChange}
-                      placeholder="Select technology company"
-                      options={technologyCompanies.map((company) => ({
-                        value: company.id,
-                        label: company.name,
-                      }))}
-                      icon={Building2}
-                      disabled={lookupLoading || ictBudgetLoading}
-                      invalid={Boolean(fieldErrors.technologyCompanyId)}
-                    />
-                  </EditField>
-                  <EditField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
-                    <div className="space-y-2">
-                      <ProductMultiSelect
-                        products={selectedTechnologyCompany?.products ?? []}
-                        selectedIds={formValues.technologyProductIds}
-                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
-                        onToggle={toggleTechnologyProduct}
-                        invalid={Boolean(fieldErrors.technologyProductIds)}
+                        invalid={Boolean(fieldErrors.budgetItemType)}
                       />
-                      <Button
-                        variant="ghost"
-                        className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
-                        onClick={() => setTechnologyProductModalOpen(true)}
-                        disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
-                      >
-                        <Plus className="h-4 w-4" />
-                        Create Technology Product
-                      </Button>
-                    </div>
-                  </EditField>
-                </div>
+                    </EditField>
+                    <EditField
+                      label="Category"
+                      aiAssist={buildAiAssist('category', 'Category')}
+                      highlighted={animatedAiFields.includes('category')}
+                    >
+                      <LookupSelect
+                        value={formValues.category ? String(formValues.category) : ''}
+                        onChange={(value) => updateField('category', Number(value) as CategoryType)}
+                        placeholder="Select category"
+                        options={CATEGORY_OPTIONS.map((option) => ({
+                          value: String(option.value),
+                          label: option.label,
+                        }))}
+                        icon={FolderKanban}
+                        disabled={lookupLoading || ictBudgetLoading}
+                      />
+                    </EditField>
+                    <EditField
+                      label="Technology (Company)"
+                      error={fieldErrors.technologyCompanyId}
+                      aiAssist={buildAiAssist('technologyCompany', 'Technology (Company)')}
+                      highlighted={animatedAiFields.includes('technologyCompany')}
+                    >
+                      <LookupSelect
+                        value={formValues.technologyCompanyId}
+                        onChange={handleTechnologyCompanyChange}
+                        placeholder="Select technology company"
+                        options={technologyCompanies.map((company) => ({
+                          value: company.id,
+                          label: company.name,
+                        }))}
+                        icon={Building2}
+                        disabled={lookupLoading || ictBudgetLoading}
+                        invalid={Boolean(fieldErrors.technologyCompanyId)}
+                      />
+                    </EditField>
+                    <EditField label="Technology (Product)" error={fieldErrors.technologyProductIds}>
+                      <div className="space-y-2">
+                        <ProductMultiSelect
+                          products={selectedTechnologyCompany?.products ?? []}
+                          selectedIds={formValues.technologyProductIds}
+                          disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                          onToggle={toggleTechnologyProduct}
+                          invalid={Boolean(fieldErrors.technologyProductIds)}
+                        />
+                        <Button
+                          variant="ghost"
+                          className="h-auto justify-start rounded-none px-0 py-0 text-[var(--primary)] hover:bg-transparent hover:text-[#043DFF] hover:underline disabled:text-[#94A3B8] disabled:no-underline"
+                          onClick={() => setTechnologyProductModalOpen(true)}
+                          disabled={!selectedTechnologyCompany || lookupLoading || ictBudgetLoading}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Create Technology Product
+                        </Button>
+                      </div>
+                    </EditField>
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <EditField label="Planned Start Date" required error={fieldErrors.plannedStartDate}>
-                    <EditDatePickerField
-                      value={formValues.plannedStartDate}
-                      onChange={(value) => updateField('plannedStartDate', value)}
-                      invalid={Boolean(fieldErrors.plannedStartDate)}
-                    />
-                  </EditField>
-                  <EditField label="Planned End Date" required error={fieldErrors.plannedEndDate}>
-                    <EditDatePickerField
-                      value={formValues.plannedEndDate}
-                      onChange={(value) => updateField('plannedEndDate', value)}
-                      invalid={Boolean(fieldErrors.plannedEndDate)}
-                    />
-                  </EditField>
-                </div>
+                {canEditDgeRecommendationOnly ? (
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="Planned Start Date" value={display.plannedStartDate} />
+                    <Field label="Planned End Date" value={display.plannedEndDate} />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <EditField label="Planned Start Date" required error={fieldErrors.plannedStartDate}>
+                      <EditDatePickerField
+                        value={formValues.plannedStartDate}
+                        onChange={(value) => updateField('plannedStartDate', value)}
+                        invalid={Boolean(fieldErrors.plannedStartDate)}
+                      />
+                    </EditField>
+                    <EditField label="Planned End Date" required error={fieldErrors.plannedEndDate}>
+                      <EditDatePickerField
+                        value={formValues.plannedEndDate}
+                        onChange={(value) => updateField('plannedEndDate', value)}
+                        invalid={Boolean(fieldErrors.plannedEndDate)}
+                        minDate={formValues.plannedStartDate || undefined}
+                      />
+                    </EditField>
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                <EditField
-                  label="Summary / Description"
-                  required
-                  error={fieldErrors.summary}
-                  aiAssist={buildAiAssist('summary', 'Summary / Description')}
-                  highlighted={animatedAiFields.includes('summary')}
-                >
-                  <Textarea
-                    rows={6}
-                    value={formValues.summary}
-                    onChange={(e) => updateField('summary', e.target.value)}
-                    onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
-                    className={cn(
-                      'resize-none rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
-                      fieldErrors.summary ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : 'border-[#D9E6F7]'
-                    )}
-                  />
-                </EditField>
+                {canEditDgeRecommendationOnly ? (
+                  <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                    <p className="text-sm leading-7 text-[#0F172A] dark:text-white">{display.summary}</p>
+                  </div>
+                ) : (
+                  <EditField
+                    label="Summary / Description"
+                    required
+                    error={fieldErrors.summary}
+                    aiAssist={buildAiAssist('summary', 'Summary / Description')}
+                    highlighted={animatedAiFields.includes('summary')}
+                  >
+                    <Textarea
+                      rows={6}
+                      value={formValues.summary}
+                      onChange={(e) => updateField('summary', e.target.value)}
+                      onBlur={() => void runDetailAiEvaluations(formValues.initiativeName, formValues.summary)}
+                      className={cn(
+                        'resize-none rounded-xl bg-white focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                        fieldErrors.summary ? 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]' : 'border-[#D9E6F7]'
+                      )}
+                    />
+                  </EditField>
+                )}
               </DetailSection>
 
               {/* Budget line items are editable through the classification picker modal */}
@@ -5915,6 +7418,7 @@ export default function ProjectDetail() {
                 id="sec-budget"
                 description="Create and review project budget line items from the classification hierarchy."
                 icon={WalletCards}
+                titleAdornment={buildBudgetAccountCodesAssist()}
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
@@ -5923,59 +7427,161 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <EditField label="Project Budget Type" required error={fieldErrors.activityType}>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {ACTIVITY_TYPE_OPTIONS.map((option) => {
-                        const selected = formValues.activityType === option.value
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => handleActivityTypeChange(option.value)}
-                            className={cn(
-                              'rounded-2xl border p-4 text-left transition-colors',
-                              selected
-                                ? 'border-[#286CFF] bg-[#EEF4FF]'
-                                : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
-                            )}
-                          >
-                            <div className="flex w-full items-center justify-between gap-3">
-                              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{option.title}</p>
-                              <div
+                  {canEditDgeRecommendationOnly ? (
+                    <>
+                      <Field label="Project Budget Type" value={display.budgetActivityType} />
+                      {visibleBudgetFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {visibleBudgetFields.map((field) => (
+                            <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
+                              <p className="mb-1 text-xs font-semibold text-[#64748B] dark:text-slate-200">
+                                {toCurrencyFieldLabel(field)}
+                              </p>
+                              <CurrencyAmount
+                                amount={Number(savedFormValues[field].replace(/,/g, '') || 0)}
+                                full
+                                className="text-sm font-semibold text-[#0F172A] dark:text-white"
+                                iconSize={14}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <EditField
+                        label="Project Budget Type"
+                        required
+                        error={fieldErrors.activityType}
+                        aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
+                      >
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          {ACTIVITY_TYPE_OPTIONS.map((option) => {
+                            const selected = formValues.activityType === option.value
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                onClick={() => handleActivityTypeChange(option.value)}
                                 className={cn(
-                                  'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                                  'rounded-2xl border p-4 text-left transition-colors',
                                   selected
-                                    ? 'border-[#286CFF] bg-[#286CFF] text-white'
-                                    : 'border-[#CBD5E1] text-transparent'
+                                    ? 'border-[#286CFF] bg-[#EEF4FF]'
+                                    : 'border-[#DDEBFF] bg-white hover:border-[#B0DBFF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-[#0F172A]/20 dark:hover:bg-white/5'
                                 )}
                               >
-                                <Check className="h-3.5 w-3.5" />
-                              </div>
-                            </div>
-                            <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">
-                              {option.description}
-                            </p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </EditField>
+                                <div className="flex w-full items-center justify-between gap-3">
+                                  <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>{option.title}</p>
+                                  <div
+                                    className={cn(
+                                      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
+                                      selected
+                                        ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                                        : 'border-[#CBD5E1] text-transparent'
+                                    )}
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </div>
+                                </div>
+                                <p className="mt-1.5 text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                                  {option.description}
+                                </p>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </EditField>
 
-                  {visibleBudgetFields.length > 0 && (
+                      {visibleBudgetFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          {visibleBudgetFields.map((field) => (
+                            <EditField key={field} label={toCurrencyFieldLabel(field)} required>
+                              <CurrencyField
+                                value={formValues[field]}
+                                onChange={(value) => updateField(field, value)}
+                                invalid={Boolean(fieldErrors[field])}
+                              />
+                            </EditField>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {showDgeRecommendationFields && (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {visibleBudgetFields.map((field) => (
-                        <EditField key={field} label={toCurrencyFieldLabel(field)} required>
-                          <CurrencyField
-                            value={formValues[field]}
-                            onChange={(value) => updateField(field, value)}
-                            invalid={Boolean(fieldErrors[field])}
-                          />
-                        </EditField>
-                      ))}
+                      <EditField label="Recommended">
+                        <Select
+                          value={formValues.recommended ? String(formValues.recommended) : ''}
+                          onValueChange={(value) => {
+                            const nextRecommended = Number(value) as 1 | 2
+                            applyRecommendedDecisionToBudgetLines(nextRecommended)
+                            setFormValues((prev) => ({
+                              ...prev,
+                              recommended: nextRecommended,
+                              rejectionReason: nextRecommended === 1 ? prev.rejectionReason : null,
+                              rejectionJustification: nextRecommended === 1 ? prev.rejectionJustification : '',
+                              rejectedById: nextRecommended === 1 ? prev.rejectedById : '',
+                            }))
+                          }}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-[#1E293B]">
+                            <SelectValue placeholder="Select recommendation" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="2">Yes</SelectItem>
+                            <SelectItem value="1">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </EditField>
+
+                      {formValues.recommended === 1 ? (
+                        <>
+                          <EditField label="Rejection Reason">
+                            <Select
+                              value={formValues.rejectionReason ? String(formValues.rejectionReason) : ''}
+                              onValueChange={(value) =>
+                                setFormValues((prev) => ({
+                                  ...prev,
+                                  rejectionReason: Number(value) as 1 | 2 | 3,
+                                  rejectedById: sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="h-11 rounded-xl border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-[#1E293B]">
+                                <SelectValue placeholder="Select rejection reason" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">Not Advised</SelectItem>
+                                <SelectItem value="2">Not ICT Related</SelectItem>
+                                <SelectItem value="3">No Evidence Provided</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </EditField>
+                          <div className="md:col-span-2">
+                            <EditField label="Rejection Justification">
+                              <Textarea
+                                value={formValues.rejectionJustification}
+                                onChange={(event) =>
+                                  setFormValues((prev) => ({
+                                    ...prev,
+                                    rejectionJustification: event.target.value,
+                                    rejectedById: sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById,
+                                  }))
+                                }
+                                rows={4}
+                                className="rounded-2xl border-[#D7E4F4] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1E293B]"
+                                placeholder="Add the rejection justification for this budget recommendation"
+                              />
+                            </EditField>
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   )}
                 </div>
-                {hasDataverseBudgetProject && (
+                {hasDataverseBudgetProject && canEditFullForm && (
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Layers className="h-4 w-4" />
@@ -5987,10 +7593,14 @@ export default function ProjectDetail() {
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editable
+                  editableRequested={canEditFullForm}
+                  editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
+                  showRecommendedBudget={showDgeRecommendationFields}
+                  showActions={canEditFullForm}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
+                  onChangeBudgetRecommended={handleBudgetRecommendedChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -6005,24 +7615,29 @@ export default function ProjectDetail() {
                 icon={FileCheck2}
                 noShadow
               >
-                {(sharepointDocsLoading || supportingDocuments.length > 0) && (
-                  <div className="mb-4">
-                    <SupportingDocuments
-                      docs={supportingDocuments}
-                      loading={sharepointDocsLoading}
-                      clarificationFileUrls={clarificationFileUrls}
-                      alwaysShowDeleteButton={currentRole === 'Respondent'}
-                      onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                    />
-                  </div>
-                )}
                 {currentRole === 'Respondent' && (
                   <FileUploadDropzone
                     files={uploadedFiles}
                     onChange={setUploadedFiles}
                     compact={supportingDocuments.length > 0}
+                    hideFileList
                     fileStatuses={detailUploadedFileStatuses}
                   />
+                )}
+                {showDetailSupportingDocumentSummary && (
+                  <div className="mt-4 rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Documents Summary</p>
+                        <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                          {detailActionSummaryText}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {(detailSupportingDocumentInsightItems.length > 0 || persistedDocumentSummariesLoading || persistedDocumentSummariesError) && (
                   <div className="mt-4">
@@ -6031,7 +7646,10 @@ export default function ProjectDetail() {
                         {persistedDocumentSummariesError}
                       </div>
                     ) : (
-                      <SupportingDocumentAiInsights items={detailSupportingDocumentInsightItems} />
+                      <SupportingDocumentAiInsights
+                        items={detailSupportingDocumentInsightItems}
+                        onDeleteItem={currentRole === 'Respondent' && isEditMode ? handleDeleteDetailInsightItem : undefined}
+                      />
                     )}
                   </div>
                 )}
@@ -6082,7 +7700,7 @@ export default function ProjectDetail() {
                         onClick={() => void prepareWorkflowAction('complete-review')}
                       >
                         <Check className="h-4 w-4" />
-                        Complete Review
+                        Mark as Reviewed
                       </Button>
                     )}
                     {canSubmitToApprover && (
@@ -6128,12 +7746,14 @@ export default function ProjectDetail() {
                     highlighted={animatedAiFields.includes('initiativeName')}
                   />
                   <Field
-                    label="Strategic Priorities"
+                    label="Strategic Priority"
                     value={display.strategicPriority}
+                    aiAssist={buildStrategicAiAssist('priority')}
                   />
                   <Field
                     label="Strategic Priority Classifications"
                     value={display.classification}
+                    aiAssist={buildStrategicAiAssist('classification')}
                   />
                   <Field label="Work Stream" value={display.workStream} />
                   <Field label="ICT Budget Item Type" value={display.budgetType} />
@@ -6151,9 +7771,11 @@ export default function ProjectDetail() {
                   />
                   <Field label="Technology (Product)" value={display.technologyProduct} />
                 </div>
-                <div className="mt-4">
-                  {detailAiSuggestionCard}
-                </div>
+                {detailAiSuggestionStatusCard && (
+                  <div className="mt-4">
+                    {detailAiSuggestionStatusCard}
+                  </div>
+                )}
               </DetailSection>
 
               <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
@@ -6183,6 +7805,7 @@ export default function ProjectDetail() {
                 id="sec-budget"
                 description="Account-level spend breakdown for review validation."
                 icon={WalletCards}
+                titleAdornment={buildBudgetAccountCodesAssist()}
                 action={
                   <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
                     <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
@@ -6191,7 +7814,12 @@ export default function ProjectDetail() {
                 }
               >
                 <div className="mb-6 space-y-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <Field label="Project Budget Type" value={display.budgetActivityType} />
+                  <Field
+                    label="Project Budget Type"
+                    value={display.budgetActivityType}
+                    aiAssist={buildAiAssist('activityType', 'Project Budget Type')}
+                    highlighted={animatedAiFields.includes('activityType')}
+                  />
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {getVisibleBudgetFields(savedFormValues.activityType).map((field) => (
                       <div key={field} className="rounded-xl border border-[#EAF0F6] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#1E293B]">
@@ -6207,15 +7835,33 @@ export default function ProjectDetail() {
                       </div>
                     ))}
                   </div>
+
+                  {showDgeRecommendationFields ? (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <Field label="Recommended" value={display.recommended} />
+                      {formValues.recommended === 1 ? (
+                        <>
+                          <Field label="Rejection Reason" value={display.rejectionReason} />
+                          <div className="md:col-span-2">
+                            <Field label="Rejection Justification" value={display.rejectionJustification} />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <BudgetItemsTable
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editable={false}
+                  editableRequested={false}
+                  editableRecommended={false}
+                  showRecommendedBudget={showDgeRecommendationFields}
+                  showActions={false}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
+                  onChangeBudgetRecommended={handleBudgetRecommendedChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -6224,14 +7870,23 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-documents" title="Supporting Documents" description="Evidence attached to support budget, procurement, and delivery assumptions." icon={FileCheck2}>
-                <SupportingDocuments
-                  docs={supportingDocuments}
-                  loading={sharepointDocsLoading}
-                  clarificationFileUrls={clarificationFileUrls}
-                  onDelete={canDeleteDocuments ? handleDeleteDocument : undefined}
-                />
+                {showDetailSupportingDocumentSummary && (
+                  <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Supporting Documents Summary</p>
+                        <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                          {detailActionSummaryText}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {(detailSupportingDocumentInsightItems.length > 0 || persistedDocumentSummariesLoading || persistedDocumentSummariesError) && (
-                  <div className="mt-4">
+                  <div className={cn(showDetailSupportingDocumentSummary && 'mt-4')}>
                     {persistedDocumentSummariesError && detailSupportingDocumentInsightItems.length === 0 ? (
                       <div className="rounded-xl border border-[#F5C2C7] bg-[#FFF1F3] px-4 py-3 text-sm text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118]">
                         {persistedDocumentSummariesError}
@@ -6296,6 +7951,7 @@ export default function ProjectDetail() {
                           className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={handleCancelEdit}
                         >
+                          <X className="h-4 w-4" />
                           Cancel
                         </Button>
                       </>
@@ -6320,13 +7976,50 @@ export default function ProjectDetail() {
                         Raise Clarification
                       </Button>
                     )}
+                    {canRequestStrategicPriorityChange && (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 border-blue-300 text-blue-700 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF]"
+                        onClick={openDetailChangeRequestModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Request Strategic Priority Change
+                      </Button>
+                    )}
+                    {canSendToSmeFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setDetailSendToSmeConfirmOpen(true)}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Send to SME
+                      </Button>
+                    )}
+                    {canReviewStrategicPriorityChangeFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setDetailReviewChangeModalOpen(true)}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        Review Change Request
+                      </Button>
+                    )}
+                    {canRouteToDirectorFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailRouteToDirector()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Director
+                      </Button>
+                    )}
                     {canCompleteReview && (
                       <Button
                         className="w-full justify-start gap-2"
                         onClick={() => void prepareWorkflowAction('complete-review')}
                       >
                         <Check className="h-4 w-4" />
-                        Complete Review
+                        Mark as Reviewed
                       </Button>
                     )}
                     {canSubmitToApprover && (
@@ -6417,6 +8110,7 @@ export default function ProjectDetail() {
                           className="w-full justify-start gap-2 border-slate-300 dark:border-slate-500/50"
                           onClick={handleCancelEdit}
                         >
+                          <X className="h-4 w-4" />
                           Cancel
                       </Button>
                     </>
@@ -6450,6 +8144,15 @@ export default function ProjectDetail() {
                         >
                           <Trash2 className="h-4 w-4" />
                           Delete Project
+                        </Button>
+                      )}
+                      {canRouteToQualityCheck && (
+                        <Button
+                          className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                          onClick={() => void handleRouteToQualityCheck()}
+                        >
+                          <Send className="h-4 w-4" />
+                          Route to Quality Check
                         </Button>
                       )}
                     </>
@@ -6727,7 +8430,15 @@ export default function ProjectDetail() {
         title={`Send Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}?`}
         description={
           pendingClarificationReply
-            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${pendingClarificationReply.returnToRole === 'Reviewer' ? 'reviewer review' : 'approver review'}.`
+            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
+                pendingClarificationReply.returnToRole === 'Reviewer'
+                  ? 'reviewer review'
+                  : pendingClarificationReply.returnToRole === 'Approver'
+                    ? 'approver review'
+                    : pendingClarificationReply.returnToRole === 'Strategy Team'
+                      ? 'strategic alignment review'
+                      : 'SME review'
+              }.`
             : 'After this reply is submitted, the ICT budget will be reassigned in the workflow.'
         }
         confirmLabel={`Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}`}
@@ -6745,6 +8456,7 @@ export default function ProjectDetail() {
         onOpenChange={setClarificationModalOpen}
         projectName={display.name}
         onSubmit={handleRaiseClarification}
+        quickPrompts={clarificationQuickPrompts}
       />
       <Dialog open={workStreamModalOpen} onOpenChange={setWorkStreamModalOpen}>
         <DialogContent className="max-w-[520px] p-0">
@@ -6811,6 +8523,142 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={detailChangeRequestModalOpen} onOpenChange={setDetailChangeRequestModalOpen}>
+        <DialogContent className="max-w-4xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+          <div className="border-b border-[#EEF3F8] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] px-7 py-6 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0.02)_100%)]">
+            <DialogHeader className="space-y-0">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_14px_28px_rgba(40,108,255,0.18)]">
+                  <Workflow className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Request Strategic Priority Change</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                    Submit a revised strategic priority and classification to Strategy Team without changing the live mapping yet.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto px-7 py-6">
+            <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-5 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-base font-semibold text-[#0F172A] dark:text-white">{display.name}</p>
+                <span className="rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                  {project.id}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{project.id}</p>
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Requested Strategic Priority</p>
+                  <Select
+                    value={detailChangePriorityId}
+                    onValueChange={(value) => {
+                      setDetailChangePriorityId(value)
+                      setDetailChangeClassificationId('')
+                    }}
+                  >
+                    <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2 text-left">
+                        <Layers className="h-4 w-4 text-[#286CFF]" />
+                        <SelectValue placeholder="Select strategic priority" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {strategicPriorities
+                        .filter((option) => !option.parentId)
+                        .map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Requested Classification</p>
+                  <Select value={detailChangeClassificationId} onValueChange={setDetailChangeClassificationId}>
+                    <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2 text-left">
+                        <Workflow className="h-4 w-4 text-[#286CFF]" />
+                        <SelectValue placeholder="Select classification" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {detailChangeClassificationOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 pb-6 pt-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => setDetailChangeRequestModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+              disabled={!detailChangePriorityId || !detailChangeClassificationId}
+              onClick={() => void handleDetailSubmitChangeRequest()}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={detailReviewChangeModalOpen} onOpenChange={setDetailReviewChangeModalOpen}>
+        <DialogContent className="max-w-[620px] rounded-[28px] border border-[#D9E6F5] p-0 dark:border-white/10">
+          <div className="border-b border-[#EEF3F8] bg-white px-6 py-5 dark:border-white/10 dark:bg-[#162339]">
+            <DialogHeader>
+              <DialogTitle>Strategic Priority Change Request</DialogTitle>
+              <DialogDescription>
+                Review the SME requested strategic priority change and approve or reject it.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Current Strategic Priority</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{display.strategicPriority || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Current Strategic Priority Classification</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{display.classification || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{ictBudgetPreviousStrategicPriorityName || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority Classification</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{ictBudgetPreviousStrategicPriorityClassificationName || '-'}</p>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 pb-6 pt-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => void handleDetailReviewChangeRequest('reject')}>
+              Reject
+            </Button>
+            <Button className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]" onClick={() => void handleDetailReviewChangeRequest('approve')}>
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmationModal
+        open={detailSendToSmeConfirmOpen}
+        onOpenChange={setDetailSendToSmeConfirmOpen}
+        title="Send to SME?"
+        description="This will route the project to the mapped SME team for domain review."
+        confirmLabel="Send to SME"
+        cancelLabel="Cancel"
+        onConfirm={() => void handleDetailSendToSme()}
+        tone="primary"
+      />
     </div>
   )
 }

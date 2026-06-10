@@ -19,6 +19,26 @@ interface GrantAccessRequestBody {
   fetchXml: 'read'
 }
 
+interface DirectGrantAccessRequestBody {
+  actionName: 'grandaccess'
+  isAdmin: boolean
+  userId: string
+  tableName: 'dga_ict_budget'
+  relatedId: string
+  targetId: string
+  fetchXml: 'read'
+}
+
+interface DirectRevokeAccessRequestBody {
+  actionName: 'revokeaccess'
+  isAdmin: boolean
+  userId: string
+  tableName: 'dga_ict_budget'
+  relatedId: string
+  targetId: string
+  fetchXml: 'read'
+}
+
 function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
   const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
   if (!raw) return null
@@ -90,5 +110,85 @@ export async function shareIctBudgetWithRoleTeam(
         ? result.error.message
         : String(result.error?.message ?? result.error ?? 'Unknown custom API error')
     throw new Error(`Failed to share ICT budget with ${role.toLowerCase()} team: ${errMsg}`)
+  }
+}
+
+export async function grantIctBudgetAccessToTeam(budgetId: string, teamId: string): Promise<void> {
+  if (!teamId?.trim()) {
+    throw new Error('Unable to share ICT budget because the target team id is missing.')
+  }
+
+  const client = getClient(dataSourcesInfo)
+  const requestBody: DirectGrantAccessRequestBody = {
+    actionName: 'grandaccess',
+    isAdmin: true,
+    userId: '',
+    tableName: 'dga_ict_budget',
+    relatedId: budgetId,
+    targetId: teamId,
+    fetchXml: 'read',
+  }
+
+  const result = await client.executeAsync<DirectGrantAccessRequestBody, unknown>({
+    dataverseRequest: {
+      action: 'customapi',
+      parameters: {
+        operationName: OPERATION_NAME,
+        tableName: DATA_SOURCE_KEY,
+        body: requestBody,
+      },
+    },
+  })
+
+  if (!result.success) {
+    const errMsg =
+      result.error instanceof Error
+        ? result.error.message
+        : String(result.error?.message ?? result.error ?? 'Unknown custom API error')
+    throw new Error(`Failed to grant ICT budget access to team ${teamId}: ${errMsg}`)
+  }
+}
+
+export async function revokeIctBudgetAccessFromTeam(budgetId: string, teamId: string): Promise<void> {
+  if (!teamId?.trim()) {
+    throw new Error('Unable to revoke ICT budget access because the target team id is missing.')
+  }
+
+  const client = getClient(dataSourcesInfo)
+  const requestBody: DirectRevokeAccessRequestBody = {
+    actionName: 'revokeaccess',
+    isAdmin: true,
+    userId: '',
+    tableName: 'dga_ict_budget',
+    relatedId: budgetId,
+    targetId: teamId,
+    fetchXml: 'read',
+  }
+
+  console.log('[RecordShareService] Revoking ICT budget access from team:', {
+    budgetId,
+    teamId,
+    requestBody,
+  })
+
+  const result = await client.executeAsync<DirectRevokeAccessRequestBody, unknown>({
+    dataverseRequest: {
+      action: 'customapi',
+      parameters: {
+        operationName: OPERATION_NAME,
+        tableName: DATA_SOURCE_KEY,
+        body: requestBody,
+      },
+    },
+  })
+
+  console.log('[RecordShareService] Revoke access response:', result)
+
+  if (!result.success) {
+    const errMsg =
+      result.error instanceof Error
+        ? result.error.message
+        : String(result.error?.message ?? result.error ?? 'Unknown custom API error')
+    throw new Error(`Failed to revoke ICT budget access from team ${teamId}: ${errMsg}`)
   }
 }

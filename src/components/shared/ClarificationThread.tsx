@@ -9,7 +9,7 @@ import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
 
 interface ClarificationThreadProps {
   clarifications: Clarification[]
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   isEditMode: boolean
   onReply: (clarificationId: string, message: string, files?: File[]) => void
   onClose: (clarificationId: string) => void
@@ -36,6 +36,18 @@ const ROLE_STYLE = {
     badge: 'bg-[#DCFCE7] text-[#166534] dark:bg-emerald-900/40 dark:text-emerald-300',
     avatarBg: 'bg-[#059669]',
     bubble: 'border border-[#A7F3D0] bg-white text-[#0F172A] dark:border-emerald-700/25 dark:bg-[#052E16] dark:text-white',
+  },
+  'Strategy Team': {
+    headerBg: 'bg-[#F5EEFF] dark:bg-[#211136]',
+    badge: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#E9D5FF]',
+    avatarBg: 'bg-[#7C3AED]',
+    bubble: 'border border-[#D8B4FE] bg-white text-[#0F172A] dark:border-[#7C3AED]/25 dark:bg-[#211136] dark:text-white',
+  },
+  'SME Team': {
+    headerBg: 'bg-[#EEF5FF] dark:bg-[#0D1E35]',
+    badge: 'bg-[#DBEAFE] text-[#1D4ED8] dark:bg-[#1D4ED8]/20 dark:text-[#BFDBFE]',
+    avatarBg: 'bg-[#286CFF]',
+    bubble: 'border border-[#BFD8FF] bg-white text-[#0F172A] dark:border-[#286CFF]/25 dark:bg-[#0D1E35] dark:text-white',
   },
 }
 
@@ -159,7 +171,7 @@ function ClarificationCard({
 }: {
   clarification: Clarification
   index: number
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   isEditMode: boolean
   isExpanded: boolean
   onToggle: () => void
@@ -174,7 +186,14 @@ function ClarificationCard({
   const style = ROLE_STYLE[clarification.raisedBy]
   const isOpen = clarification.status === 'Open'
   const isRaiser = currentRole === clarification.raisedBy
+  const isAdgeRole =
+    currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
+  const isDgeInternal = clarification.scope === 'Internal (DGE)'
   const canReply = isOpen
+    ? isDgeInternal
+      ? currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      : currentRole === 'Respondent' || isRaiser
+    : false
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length
   const clarificationFileUrls = getFileUrls(clarification.fileUrl)
@@ -215,6 +234,11 @@ function ClarificationCard({
             {clarification.raisedByLabel ?? clarification.raisedBy}
           </span>
           <span className="text-xs text-[#94A3B8]">{formatDisplayDate(clarification.date)}</span>
+          {isAdgeRole && clarification.scope === 'External' ? (
+            <span className="rounded-full bg-[#EEF5FF] px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+              External
+            </span>
+          ) : null}
           {clarification.dueDate && (
             <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#475569] dark:bg-white/10 dark:text-slate-300">
               Due {formatDisplayDate(clarification.dueDate)}
@@ -367,10 +391,19 @@ export function ClarificationThread({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
-  const openList = [...clarifications]
+  const visibleClarifications = clarifications.filter((clarification) => {
+    const isAdgeRole =
+      currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
+    if (isAdgeRole && clarification.scope === 'Internal (DGE)') {
+      return false
+    }
+    return true
+  })
+
+  const openList = [...visibleClarifications]
     .filter((clarification) => clarification.status === 'Open')
     .sort((left, right) => toSortTime(right.date) - toSortTime(left.date))
-  const closedList = [...clarifications]
+  const closedList = [...visibleClarifications]
     .filter((clarification) => clarification.status === 'Closed')
     .sort((left, right) => toSortTime(right.closedAt ?? right.date) - toSortTime(left.closedAt ?? left.date))
 

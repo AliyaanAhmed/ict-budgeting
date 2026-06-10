@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Bell,
   Sun,
@@ -46,6 +47,8 @@ const roleMeta: Record<Role, { sub: string; icon: React.ElementType }> = {
   Reviewer: { sub: 'Review submissions', icon: ClipboardCheck },
   Approver: { sub: 'Approve for DGE', icon: ShieldAlert },
   'ICT Admin': { sub: 'Manage assessment cycles', icon: Settings2 },
+  'ICT - Strategy Team': { sub: 'Strategic alignment and governance', icon: ShieldCheck },
+  'ICT - SME Team': { sub: 'Domain review and recommendation', icon: ClipboardCheck },
 }
 
 function getInitials(name: string): string {
@@ -91,7 +94,14 @@ export function Header({
   onToggleRTL,
   isTranslating,
 }: HeaderProps) {
-  const { activeRole, setActiveRole, availableRoles } = useRole()
+  const {
+    activeRole,
+    activeRoleOptionKey,
+    setActiveRole,
+    setActiveRoleOption,
+    availableRoles,
+    availableRoleOptions,
+  } = useRole()
   const [notifOpen, setNotifOpen] = useState(false)
   const [roleMenuOpen, setRoleMenuOpen] = useState(false)
   const [notifications, setNotifications] = useState<AppNotificationItem[]>([])
@@ -101,6 +111,7 @@ export function Header({
   const [markingAllRead, setMarkingAllRead] = useState(false)
   const unreadCount = notifications.filter((n) => !closingNotificationIds.includes(n.id)).length
   const notificationContainerRef = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
 
   // Resolve display name from stored user context (falls back to placeholder)
   const storedUser = getStoredUserContext()
@@ -387,52 +398,68 @@ export function Header({
             </div>
 
             {/* Role switcher — only shows roles available from the user's teams */}
-            {availableRoles.length > 1 && (
+            {availableRoleOptions.length > 1 && (
               <DropdownMenuLabel className="px-2">Switch Role</DropdownMenuLabel>
             )}
-            {availableRoles.length === 1 && (
+            {availableRoleOptions.length === 1 && (
               <DropdownMenuLabel className="px-2">Current Role</DropdownMenuLabel>
             )}
 
-            {availableRoles.map(role => {
+            <div className="max-h-[320px] overflow-y-auto pr-1">
+            {availableRoleOptions.map((option) => {
+              const role = option.role
               const RoleIcon = roleMeta[role].icon
+              const isActive =
+                option.role === 'ICT - SME Team'
+                  ? activeRole === option.role && activeRoleOptionKey === option.key
+                  : activeRole === role
+
               return (
                 <DropdownMenuItem
-                  key={role}
+                  key={option.key}
                   onClick={() => {
-                    setActiveRole(role)
+                    if (option.role === 'ICT - SME Team' || option.role === 'ICT - Strategy Team' || option.role === 'ICT Admin') {
+                      setActiveRoleOption(option.key)
+                    } else {
+                      setActiveRole(role)
+                    }
                     setRoleMenuOpen(false)
+
+                    if (option.role === 'ICT - SME Team') {
+                      navigate('/sme-team/dashboard')
+                    }
                   }}
                   className={cn(
                     'rounded-xl p-3 mb-1 items-start',
-                    activeRole === role &&
+                    isActive &&
                       'bg-[var(--primary-light)] text-[var(--primary)] dark:bg-[#286CFF]/25 dark:text-white'
                   )}
                 >
                   <div
                     className={cn(
                       'h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5',
-                      activeRole === role &&
+                      isActive &&
                         'dark:bg-[#286CFF]/30 dark:border-[#4F98FF]/50 dark:text-white'
                     )}
                   >
                     <RoleIcon className="h-4 w-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold leading-tight">{role}</p>
+                    <p className="text-sm font-semibold leading-tight">{option.label}</p>
                     <p
                       className={cn(
                         'text-xs text-[var(--muted-foreground)] leading-tight mt-1',
-                        activeRole === role && 'dark:text-slate-100'
+                        isActive && 'dark:text-slate-100'
                       )}
                     >
-                      {roleMeta[role].sub}
+                      {option.subtitle || roleMeta[role].sub}
                     </p>
                   </div>
-                  {activeRole === role && <Check className="ml-auto h-4 w-4 mt-1" />}
+                  {isActive && <Check className="ml-auto h-4 w-4 mt-1" />}
                 </DropdownMenuItem>
               )
             })}
+            </div>
 
             <DropdownMenuSeparator />
             <DropdownMenuItem className="rounded-xl py-2.5">

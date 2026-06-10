@@ -1,3 +1,5 @@
+import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
+
 export const currentCycle = {
   id: 'CY-2026',
   name: 'ICT Budget Planning 2026',
@@ -17,7 +19,13 @@ export const currentUser = {
   activeRole: 'Respondent' as Role,
 }
 
-export type Role = 'Respondent' | 'Reviewer' | 'Approver' | 'ICT Admin'
+export type Role =
+  | 'Respondent'
+  | 'Reviewer'
+  | 'Approver'
+  | 'ICT Admin'
+  | 'ICT - Strategy Team'
+  | 'ICT - SME Team'
 
 export type ProjectStatus =
   | 'Draft'
@@ -45,7 +53,7 @@ export interface BudgetItem {
 
 export interface ClarificationReply {
   id: string
-  fromRole: 'Respondent' | 'Reviewer' | 'Approver'
+  fromRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   fromRoleLabel?: string
   fromName: string
   message: string
@@ -55,10 +63,11 @@ export interface ClarificationReply {
 
 export interface Clarification {
   id: string
-  raisedBy: 'Respondent' | 'Reviewer' | 'Approver'
+  raisedBy: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
   raisedByLabel?: string
   raisedByName: string
   raisedTo: string
+  scope?: 'External' | 'Internal (Entity)' | 'Internal (DGE)'
   message: string
   fileUrl?: string
   status: 'Open' | 'Closed'
@@ -77,9 +86,11 @@ export interface ProjectDocument {
 export interface Project {
   id: string
   ictBudgetId?: string
+  aiReviewFlags?: Dga_ict_budgetsdga_ai_flags[]
   ownerId?: string | null
   ownerType?: string | null
   statusCode?: number | null
+  statusForAdgeLabel?: string
   submittedById?: string | null
   name: string
   strategicPriority: string

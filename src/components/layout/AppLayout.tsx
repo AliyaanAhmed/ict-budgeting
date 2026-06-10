@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { AppEmptyState } from './AppEmptyState'
 import { useRole } from '@/context/RoleContext'
+import { useCycle } from '@/context/CycleContext'
 import { translatePage } from '@/lib/pageTranslator'
 
 export function AppLayout() {
@@ -10,7 +12,14 @@ export function AppLayout() {
   const [isDark, setIsDark] = useState(false)
   const [isRTL, setIsRTL] = useState(false)
   const [isTranslating, setIsTranslating] = useState(false)
-  const { activeRole } = useRole()
+  const {
+    activeRole,
+    availableRoleOptions,
+    hasAnyRole,
+    rolesResolved,
+    setActiveRoleOption,
+  } = useRole()
+  const { cyclesResolved, hasCycles } = useCycle()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -92,23 +101,67 @@ export function AppLayout() {
 
   // When role changes, redirect to that role's landing page
   useEffect(() => {
+    if (!activeRole) return
     const rolePaths: Record<string, string> = {
       Respondent: '/respondent/dashboard',
       Reviewer: '/reviewer/dashboard',
       Approver: '/approver/dashboard',
       'ICT Admin': '/admin/assessment-cycles',
+      'ICT - Strategy Team': '/strategy-team/dashboard',
+      'ICT - SME Team': '/sme-team/dashboard',
     }
     const roleBasePaths: Record<string, string> = {
       Respondent: '/respondent',
       Reviewer: '/reviewer',
       Approver: '/approver',
       'ICT Admin': '/admin',
+      'ICT - Strategy Team': '/strategy-team',
+      'ICT - SME Team': '/sme-team',
     }
     const targetBase = roleBasePaths[activeRole]
     if (!location.pathname.startsWith(targetBase)) {
       navigate(rolePaths[activeRole])
     }
   }, [activeRole]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const adminOption = availableRoleOptions.find((option) => option.role === 'ICT Admin')
+
+  if (rolesResolved && !hasAnyRole) {
+    return (
+      <AppEmptyState
+        variant="role"
+        title="No workspace role is assigned"
+        description="Your account is active, but it is not linked to any ADGE or DGE budgeting role for this workspace yet."
+        supportingText="Once a role is assigned, your dashboards, queues, and actions will appear automatically the next time the workspace is opened."
+      />
+    )
+  }
+
+  if (rolesResolved && cyclesResolved && hasAnyRole && !hasCycles) {
+    return (
+      <AppEmptyState
+        variant="cycle"
+        title="No budgeting cycle is available"
+        description="There is currently no active ICT budgeting cycle available for this workspace, so the application cannot open a role dashboard yet."
+        supportingText={
+          adminOption
+            ? 'You can switch to the ICT Admin workspace to create or manage a cycle, then return here once the cycle is available.'
+            : 'Please contact the ICT Admin team to create or reopen a cycle for this environment.'
+        }
+        primaryAction={
+          adminOption
+            ? {
+                label: 'Open ICT Admin Workspace',
+                onClick: () => {
+                  setActiveRoleOption(adminOption.key)
+                  navigate('/admin/assessment-cycles')
+                },
+              }
+            : undefined
+        }
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)]" dir={isRTL ? 'rtl' : 'ltr'}>

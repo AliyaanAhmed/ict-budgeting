@@ -4,8 +4,7 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
-  ChevronDown,
-  Download,
+  BrainCircuit,
   Eye,
   Inbox,
   ListFilter,
@@ -33,7 +32,21 @@ import { useInstance } from '@/context/InstanceContext'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
 import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
+import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
 import type { ApprovalQueueProject, ClarificationPayload } from '@/domain/types'
+
+function toDisplayText(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map((item) => toDisplayText(item)).filter(Boolean).join(', ')
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    if (typeof record.text_template === 'string') return record.text_template.trim()
+    if (typeof record.text === 'string') return record.text.trim()
+    if (typeof record.value === 'string') return record.value.trim()
+  }
+  return ''
+}
 
 type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification' | 'submitted-dge'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
@@ -109,6 +122,89 @@ function QueueStat({ label, value, icon: Icon, tone = 'blue', sub, onClick, acti
   )
 }
 
+function AiInsightRow({ confidence, children }: {
+  confidence: number
+  children: React.ReactNode
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+      <div className="flex items-center gap-3 bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:from-[#2A123D] dark:to-[#1E293B]">
+        <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+        <span className="text-sm font-semibold text-[#0F172A] dark:text-white">Approval Insights</span>
+        {confidence > 0 && (
+          <span className="rounded-full border border-[#E9D5FF] bg-white px-2.5 py-1 text-xs font-medium text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+            {confidence}% confidence
+          </span>
+        )}
+      </div>
+      <div className="border-t border-[#E9D5FF] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#1E293B]">{children}</div>
+    </div>
+  )
+}
+
+function QueueSummaryChip({
+  label,
+  value,
+  accent = '#286CFF',
+}: {
+  label: string
+  value: React.ReactNode
+  accent?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-[#DDEBFF] bg-white px-4 py-3 shadow-[0_10px_22px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#162339]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#64748B] dark:text-slate-300">{label}</p>
+      <div className="mt-1 text-lg font-bold leading-none" style={{ color: accent }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function normalizePolicyMatchType(value: unknown) {
+  const normalized = toDisplayText(value).trim().toLowerCase()
+  if (normalized === 'potential conflict') return 'Potential Conflict' as const
+  if (normalized === 'coordination required') return 'Coordination Required' as const
+  if (normalized === 'allowed with conditions') return 'Allowed With Conditions' as const
+  return null
+}
+
+function getBudgetOverviewPolicyCounts(parsed: StoredBudgetOverviewRecord['parsedData']) {
+  const counts = {
+    potentialConflict: 0,
+    coordinationRequired: 0,
+    allowedWithConditions: 0,
+  }
+
+  const visited = new Set<unknown>()
+
+  const visit = (value: unknown) => {
+    if (!value || visited.has(value)) return
+    if (typeof value !== 'object') return
+    visited.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        const matchType = normalizePolicyMatchType(
+          (item as Record<string, unknown>)?.matchType ?? (item as Record<string, unknown>)?.['Match Type']
+        )
+        if (matchType === 'Potential Conflict') counts.potentialConflict += 1
+        if (matchType === 'Coordination Required') counts.coordinationRequired += 1
+        if (matchType === 'Allowed With Conditions') counts.allowedWithConditions += 1
+        visit(item)
+      })
+      return
+    }
+
+    const record = value as Record<string, unknown>
+    Object.values(record).forEach(visit)
+  }
+
+  visit(parsed)
+
+  return counts
+}
+
 function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
   const [data, setData] = useState<StoredBudgetOverviewRecord | null>(null)
   const [loadingData, setLoadingData] = useState(true)
@@ -143,35 +239,54 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
   }
 
   const overall = parsed.overall_assessment
-  const readiness = overall?.readiness_status
-  const summary = overall?.executive_summary
-  const strengths = (overall?.primary_strengths ?? []).slice(0, 2)
-  const risks = (overall?.primary_risks ?? []).slice(0, 2)
+  const summary = toDisplayText(overall?.executive_summary)
   const evidenceScore = parsed.score_inputs?.document_evidence?.evidence_score
-  const alignmentScore = parsed.strategic_alignment?.recommended_options?.[0]?.relevance_score
-
-  const isReady = readiness && !readiness.toLowerCase().includes('not') && !readiness.toLowerCase().includes('partial') && readiness.toLowerCase().includes('ready')
-  const isPartial = readiness?.toLowerCase().includes('partial')
-  const readinessCfg = isReady
-    ? { bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' }
-    : isPartial
-      ? { bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' }
-      : { bg: 'bg-red-50 dark:bg-red-900/20', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500' }
+  const pf = parsed.score_inputs?.project_fields
+  const pfTotal = pf?.evaluated_count ?? 0
+  const pfMatched = (pf?.match_count ?? 0) + (pf?.close_match_count ?? 0)
+  const pfPercentage = pfTotal > 0 ? Math.min(100, Math.round((pfMatched / pfTotal) * 100)) : 0
+  const strategicFit = toDisplayText(parsed.score_inputs?.strategic_alignment?.match_type)
+  const budgetAccount = parsed.score_inputs?.budget_account
+  const budgetAccountLabel = !budgetAccount
+    ? '-'
+    : (budgetAccount.account_code_match_count ?? 0) >= (budgetAccount.line_item_count ?? 1) &&
+        (budgetAccount.amount_match_count ?? 0) >= (budgetAccount.line_item_count ?? 1)
+      ? 'Full'
+      : (budgetAccount.account_code_match_count ?? 0) > 0 || (budgetAccount.amount_match_count ?? 0) > 0
+        ? 'Partial'
+        : 'Missing'
+  const aiFlags = [
+    parsed.ai_review_flags?.evidence_risk?.flag
+      ? { key: 'evidence_risk', label: toDisplayText(parsed.ai_review_flags.evidence_risk.label) || 'Evidence Risk', severity: toDisplayText(parsed.ai_review_flags.evidence_risk.severity) || 'High' }
+      : null,
+    parsed.ai_review_flags?.dge_budget_consideration_risk?.flag
+      ? { key: 'dge_budget_consideration_risk', label: toDisplayText(parsed.ai_review_flags.dge_budget_consideration_risk.label) || 'DGE Budget Consideration Risk', severity: toDisplayText(parsed.ai_review_flags.dge_budget_consideration_risk.severity) || 'Medium' }
+      : null,
+    parsed.ai_review_flags?.strategic_alignment_risk?.flag
+      ? { key: 'strategic_alignment_risk', label: toDisplayText(parsed.ai_review_flags.strategic_alignment_risk.label) || 'Strategic Alignment Risk', severity: toDisplayText(parsed.ai_review_flags.strategic_alignment_risk.severity) || 'Medium' }
+      : null,
+    parsed.ai_review_flags?.budget_accuracy_risk?.flag
+      ? { key: 'budget_accuracy_risk', label: toDisplayText(parsed.ai_review_flags.budget_accuracy_risk.label) || 'Budget Accuracy Risk', severity: toDisplayText(parsed.ai_review_flags.budget_accuracy_risk.severity) || 'High' }
+      : null,
+    parsed.ai_review_flags?.clarification_required?.flag
+      ? { key: 'clarification_required', label: 'May Require Clarification', severity: toDisplayText(parsed.ai_review_flags.clarification_required.severity) || 'High' }
+      : null,
+  ].filter((flag): flag is { key: string; label: string; severity: string } => Boolean(flag))
+    .filter((flag) => flag.severity.toLowerCase() !== 'low')
+  const policyCounts = getBudgetOverviewPolicyCounts(parsed)
 
   return (
     <div className="space-y-3">
-      {readiness && (
-        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', readinessCfg.bg, readinessCfg.text)}>
-          <span className={cn('h-1.5 w-1.5 rounded-full', readinessCfg.dot)} />
-          {readiness}
-        </span>
+      {summary && (
+        <div className="rounded-2xl border border-[#EAF0F6] bg-[#F8FBFF] px-3.5 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="line-clamp-3 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
+        </div>
       )}
 
-      {(evidenceScore !== undefined || alignmentScore !== undefined) && (
-        <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {evidenceScore !== undefined && (
-            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Doc Evidence</p>
+            <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+              <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Document Evidence</p>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
                   <div className="h-full rounded-full bg-[#286CFF] transition-all" style={{ width: `${Math.min(100, Math.round(evidenceScore))}%` }} />
@@ -180,54 +295,68 @@ function BudgetOverviewInsight({ ictBudgetId }: { ictBudgetId: string }) {
               </div>
             </div>
           )}
-          {alignmentScore !== undefined && (
-            <div className="rounded-xl border border-[#E7EEF8] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748B] dark:text-slate-400">Alignment</p>
+          {pfTotal > 0 && (
+            <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+              <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Project Fields</p>
               <div className="flex items-center gap-2">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E7EEF8] dark:bg-white/10">
-                  <div className="h-full rounded-full bg-[#16A34A] transition-all" style={{ width: `${Math.min(100, Math.round(alignmentScore))}%` }} />
+                  <div className="h-full rounded-full bg-[#A855F7] transition-all" style={{ width: `${pfPercentage}%` }} />
                 </div>
-                <span className="tabular-nums text-xs font-bold text-[#16A34A]">{Math.round(alignmentScore)}%</span>
+                <span className="tabular-nums text-xs font-bold text-[#A855F7]">{pfPercentage}%</span>
               </div>
             </div>
           )}
+          <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+            <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Budget Account</p>
+            <p className="text-xs font-bold text-[#0F172A] dark:text-white">{budgetAccountLabel}</p>
+          </div>
+          <div className="rounded-2xl border border-[#E7EEF8] bg-white px-3 py-3 dark:border-white/10 dark:bg-[#243248]">
+            <p className="mb-2 text-xs font-semibold text-[#0F172A] dark:text-white">Strategic Fit</p>
+            <p className="text-xs font-bold text-[#0F172A] dark:text-white">{strategicFit || '-'}</p>
+          </div>
+      </div>
+
+      {aiFlags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {aiFlags.map((flag) => (
+            <span
+              key={flag.key}
+              className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
+                flag.severity.toLowerCase() === 'high'
+                  ? 'border-[#FECACA] bg-[#FEF2F2] text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]'
+                  : 'border-[#FDE68A] bg-[#FFF8E8] text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]'
+              )}
+            >
+              {flag.label}
+            </span>
+          ))}
         </div>
       )}
 
-      {summary && (
-        <p className="line-clamp-2 text-xs leading-5 text-[#475569] dark:text-slate-300">{summary}</p>
-      )}
-
-      {(strengths.length > 0 || risks.length > 0) && (
-        <div className="grid grid-cols-2 gap-2">
-          {strengths.length > 0 && (
-            <div className="rounded-xl border border-green-100 bg-green-50/60 px-2.5 py-2 dark:border-green-900/30 dark:bg-green-900/10">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-green-600 dark:text-green-400">Strengths</p>
-              <div className="space-y-1">
-                {strengths.map((s, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
-                    <span className="text-[11px] leading-4 text-green-800 dark:text-green-300">{s}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <div className="rounded-2xl border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+        <div className="flex items-center gap-2.5">
+          <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Budget Consideration</p>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {policyCounts.potentialConflict > 0 && (
+            <span className="rounded-full border border-[#FECACA] bg-[#FEF2F2] px-3 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#DC2626]/30 dark:bg-[#DC2626]/12 dark:text-[#FCA5A5]">
+              Potential Conflict ({policyCounts.potentialConflict})
+            </span>
           )}
-          {risks.length > 0 && (
-            <div className="rounded-xl border border-red-100 bg-red-50/60 px-2.5 py-2 dark:border-red-900/30 dark:bg-red-900/10">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Risks</p>
-              <div className="space-y-1">
-                {risks.map((r, i) => (
-                  <div key={i} className="flex items-start gap-1.5">
-                    <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                    <span className="text-[11px] leading-4 text-red-800 dark:text-red-300">{r}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {policyCounts.coordinationRequired > 0 && (
+            <span className="rounded-full border border-[#FDE68A] bg-[#FFF8E8] px-3 py-1 text-xs font-semibold text-[#B45309] dark:border-[#B45309]/30 dark:bg-[#3A2810] dark:text-[#F6D28A]">
+              Coordination Required ({policyCounts.coordinationRequired})
+            </span>
+          )}
+          {policyCounts.allowedWithConditions > 0 && (
+            <span className="rounded-full border border-[#BBF7D0] bg-[#EEF9F1] px-3 py-1 text-xs font-semibold text-[#16A34A] dark:border-[#16A34A]/30 dark:bg-[#123123] dark:text-[#86EFAC]">
+              Allowed With Conditions ({policyCounts.allowedWithConditions})
+            </span>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -312,7 +441,6 @@ export default function ApprovalQueue() {
   const [search, setSearch] = useState('')
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
-  const [expandedAiId, setExpandedAiId] = useState<string | null>(null)
   const [clarificationProject, setClarificationProject] = useState<ApprovalQueueProject | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -367,6 +495,10 @@ export default function ApprovalQueue() {
   const respondentCount = effectiveLiveProjects.filter((project) => project.status === 'Draft' || project.status === 'Clarification Required').length
   const reviewerCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed').length
   const approverOwnedCount = effectiveLiveProjects.filter((project) => project.status === 'Submitted to Approver' || project.status === 'Approved').length
+  const aiSummaryProjectCount = cycleProjectCount
+  const aiSummaryRespondentCount = respondentCount
+  const aiSummaryReviewerCount = reviewerCount
+  const aiSummaryApproverCount = approverOwnedCount
   const allProjectsApproved = cycleProjectCount > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
   const hasCycleDgeSubmission = effectiveLiveProjects.some(
     (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
@@ -482,6 +614,7 @@ export default function ApprovalQueue() {
     await runActionToast(
       async () => {
         await projectService.approverSubmitToDge(projectIds)
+        await updateCurrentInstanceSubmissionDate()
         await Promise.allSettled(projectIds.map(id => invalidateBudgetOverviewRecord(id)))
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
@@ -553,68 +686,7 @@ export default function ApprovalQueue() {
               Review reviewer-cleared submissions, decide final approvals, and return items that need clarification.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white px-4 py-3 dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B]">
-            <div className="flex items-center gap-3">
-              <Sparkles className="h-5 w-5 shrink-0 text-[#A855F7]" />
-              <div>
-                <p className="text-sm font-bold text-[#0F172A] dark:text-white">AI Approval Summary</p>
-                <p className="text-xs text-[#64748B] dark:text-slate-200">
-                  {loading ? '—' : `${pendingCount} pending / ${approvedCount} approved`}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
-      </div>
-
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat
-          label="Amount Requested"
-          value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-3xl font-bold leading-none" iconSize={18} />}
-          icon={WalletCards}
-          tone="blue"
-          sub="Current value in approver scope"
-        />
-        <QueueStat
-          label="Pending Approval"
-          value={loading ? '—' : pendingCount}
-          icon={AlertTriangle}
-          tone="amber"
-          sub="Awaiting final decision"
-          onClick={() => setActiveFilter('pending')}
-          active={activeFilter === 'pending'}
-        />
-        <QueueStat
-          label="Approved"
-          value={loading ? '—' : approvedCount}
-          icon={CheckCircle2}
-          tone="green"
-          sub="Ready for DGE handoff"
-          onClick={() => setActiveFilter('approved')}
-          active={activeFilter === 'approved'}
-        />
-        <QueueStat
-          label="Submitted to DGE"
-          value={loading ? '—' : submittedToDgeCount}
-          icon={Sparkles}
-          tone="red"
-          sub="Already with strategy team"
-          onClick={() => setActiveFilter('submitted-dge')}
-          active={activeFilter === 'submitted-dge'}
-        />
-      </div>
-
-      <div className="hidden grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <QueueStat
-          label="Amount Requested"
-          value={loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-2xl font-bold" iconSize={16} />}
-          icon={WalletCards}
-          tone="blue"
-        />
-        <QueueStat label="Pending Approval" value={loading ? '—' : pendingCount} icon={AlertTriangle} tone="amber" sub="Action needed" />
-        <QueueStat label="Approved" value={loading ? '—' : approvedCount} icon={CheckCircle2} tone="green" />
-        <QueueStat label="Clarification" value={loading ? '—' : clarificationCount} icon={Sparkles} tone="amber" />
       </div>
 
       {/* ── AI Portfolio Panel ── */}
@@ -628,59 +700,63 @@ export default function ApprovalQueue() {
         projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
       />
 
-      <div className="rounded-[26px] border border-[#D9E6F5] bg-white p-5 shadow-none dark:border-white/10 dark:bg-[#162339]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white">
-              <Send className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-[#0F172A] dark:text-white">Submit To DGE</p>
-              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-100">
-                Once every project in {selectedCycle?.name ?? 'this cycle'} is approved, move the full ADGE portfolio to the strategy team for DGE review.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium">
-                <span className="rounded-full bg-[#EEF5FF] px-3 py-1 text-[#286CFF]">{cycleProjectCount} total projects</span>
-                <span className="rounded-full bg-[#F0FDF4] px-3 py-1 text-[#16A34A]">{approvedCount} approved</span>
-                <span className="rounded-full bg-[#F8FAFC] px-3 py-1 text-[#64748B] dark:bg-white/5 dark:text-slate-100">{respondentCount} respondent / {reviewerCount} reviewer / {approverOwnedCount} approver</span>
+      <section
+        title="Once all created projects are reviewed and approved, you can submit them all to DGE."
+        className="overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(40,108,255,0.05)] dark:border-white/10 dark:bg-[#18263F]"
+      >
+        <div className="overflow-x-auto">
+          <div className="flex min-w-[980px] items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFE] dark:bg-[#1E3A68] dark:text-[#DBEAFE]">
+                <Sparkles className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
+                  {loading
+                    ? '—'
+                    : `${aiSummaryProjectCount} projects in cycle, ${aiSummaryRespondentCount} with Respondent, ${aiSummaryReviewerCount} with Reviewer, ${aiSummaryApproverCount} with Approver`}
+                </p>
               </div>
             </div>
-          </div>
-          <div className="flex flex-col gap-2 lg:min-w-[250px]">
+
+            <div className="h-12 w-px shrink-0 bg-[#D9E6F5] dark:bg-white/10" />
+
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F3E8FF] text-[#9333EA] dark:bg-[#352050] dark:text-[#F3E8FF]">
+                <WalletCards className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Amount Requested</p>
+                <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white whitespace-nowrap">
+                  {loading ? '—' : <CurrencyAmount amount={totalRequested} className="text-sm font-semibold" iconSize={14} />}
+                </p>
+              </div>
+            </div>
+
+
             {portfolioAlreadySubmittedToDge ? (
-              <div className="rounded-2xl border border-[#DDD6FE] bg-[#F5F3FF] px-4 py-3 dark:border-[#5B3AA8] dark:bg-[#2A1C4A]">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#7C3AED_0%,#9333EA_100%)] text-white">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-[#5B21B6] dark:text-[#DDD6FE]">Submitted to DGE</p>
-                    <p className="mt-1 text-xs leading-5 text-[#6D28D9] dark:text-slate-100">
-                      The ADGE entity has already been handed off to the strategy team. New approver-stage projects will now move directly to DGE.
-                    </p>
-                  </div>
+              <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+                <div>
+                  <p className="text-sm font-bold text-[#A855F7] dark:text-[#E9D5FF]">Submitted to DGE</p>
+                  <p className="mt-1 text-xs leading-5 text-[#475569] dark:text-slate-100">
+                    The ADGE entity has already been handed off to the strategy team. New approver-stage projects will now move directly to DGE.
+                  </p>
                 </div>
               </div>
             ) : (
               <Button
-                className="h-11 rounded-2xl"
+                className="ml-auto h-11 shrink-0 rounded-[18px] px-4 shadow-[0_12px_24px_rgba(40,108,255,0.16)]"
                 disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
-                <Send className="h-4 w-4" />
                 Submit to DGE
+                <Send className="h-4 w-4" />
               </Button>
             )}
-            <p className="text-xs text-[#64748B] dark:text-slate-200">
-              {portfolioAlreadySubmittedToDge
-                ? 'The approved portfolio has already been submitted to the strategy team.'
-                : allProjectsApproved
-                  ? 'All cycle projects are approved. The entity is ready for DGE submission.'
-                  : 'This stays disabled until every cycle project is approved by the approver.'}
-            </p>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* ── Filter bar ── */}
       <div className="rounded-2xl border border-[#DDEBFF] bg-white p-3 dark:border-white/10 dark:bg-[#1E293B]">
@@ -750,9 +826,6 @@ export default function ApprovalQueue() {
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="outline" size="sm" className="h-10 rounded-xl">
-              <Download className="h-4 w-4" />Export
-            </Button>
           </div>
         </div>
       </div>
@@ -813,8 +886,6 @@ export default function ApprovalQueue() {
             const isSelected = selectedIds.includes(proj.id)
             const isActionable = proj.status === 'Pending'
             const canClarify = proj.status === 'Pending' || proj.status === 'Approved'
-            const aiExpanded = expandedAiId === proj.id
-
             return (
               <article
                 key={proj.id}
@@ -866,23 +937,12 @@ export default function ApprovalQueue() {
                   </div>
 
                   {/* AI insight row */}
-                  <div className="mt-4 rounded-xl border border-[#E9D5FF] bg-gradient-to-b from-[#FDF7FF] to-white dark:border-white/10 dark:from-[#2A123D] dark:to-[#1E293B] sm:ml-10">
-                    <button
-                      onClick={() => setExpandedAiId(aiExpanded ? null : proj.id)}
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
+                  <div className="mt-4 sm:ml-10">
+                    <AiInsightRow
+                      confidence={proj.aiConfidence}
                     >
-                      <Sparkles className="h-4 w-4 shrink-0 text-[#A855F7]" />
-                      <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Approval Insight</span>
-                      {proj.aiConfidence > 0 && (
-                        <span className="text-xs text-[#64748B] dark:text-slate-200">{proj.aiConfidence}% confidence</span>
-                      )}
-                      <ChevronDown className={cn('ml-auto h-4 w-4 text-[#A855F7] transition-transform', aiExpanded && 'rotate-180')} />
-                    </button>
-                    {aiExpanded && (
-                      <div className="border-t border-[#E9D5FF] px-4 py-3 dark:border-white/10">
-                        <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
-                      </div>
-                    )}
+                      <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
+                    </AiInsightRow>
                   </div>
 
                   {/* Card actions */}
@@ -897,7 +957,7 @@ export default function ApprovalQueue() {
                     </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link to={`/approver/approval-queue/${proj.id}`}>
-                        <Eye className="h-4 w-4" />Review
+                        <Eye className="h-4 w-4" />View Details
                       </Link>
                     </Button>
                     <Button

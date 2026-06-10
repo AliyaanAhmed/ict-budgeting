@@ -152,6 +152,16 @@ export interface BudgetOverviewData {
   clarifications?: {
     has_clarifications?: boolean
     summary_message?: string
+    items?: Array<{
+      clarification_id?: string
+      priority?: string
+      category?: string
+      raised_by?: string
+      message?: string
+      why_needed?: string
+      linked_issue_id?: string
+      suggested_recipient?: string
+    }>
   }
   recommended_next_actions?: Array<{ priority?: number; role?: string; action?: string }>
   validated_items?: Array<{ category?: string; item?: string }>
@@ -185,6 +195,25 @@ export interface StoredBudgetAiSummaryRecord {
   parsedSummary: SupportingDocumentEvaluationSummary | null
 }
 
+export type ProjectAiReviewFlagSeverity = 'High' | 'Medium' | 'Low'
+
+export interface ProjectAiReviewFlag {
+  code: Dga_ict_budgetsdga_ai_flags
+  key: string
+  label: string
+  severity: ProjectAiReviewFlagSeverity
+}
+
+function normalizeProjectAiReviewFlagSeverity(
+  value: string | null | undefined
+): ProjectAiReviewFlagSeverity | null {
+  const normalized = value?.trim().toLowerCase()
+  if (normalized === 'high') return 'High'
+  if (normalized === 'medium') return 'Medium'
+  if (normalized === 'low') return 'Low'
+  return null
+}
+
 export interface CreateDocumentSummaryInput {
   budgetId: string
   documentName: string
@@ -199,6 +228,7 @@ export interface UpsertCumulativeSummaryInput {
 }
 
 const CUMULATIVE_ROLE_CONTEXT: Dga_ict_ai_summariesdga_role_context = 1
+const CUMULATIVE_INVALIDATION_ROLE_CONTEXT: Dga_ict_ai_summariesdga_role_context = 7
 const CUMULATIVE_SUMMARY_CATEGORY: Dga_ict_ai_summariesdga_summary_category = 8
 const CUMULATIVE_SUMMARY_STAGE: Dga_ict_ai_summariesdga_summary_stage = 1
 const CUMULATIVE_SUMMARY_TYPE: Dga_ict_ai_summariesdga_summary_type = 1
@@ -210,6 +240,32 @@ const BUDGET_OVERVIEW_AI_FLAG_MAP = {
   budget_accuracy_risk: 4,
   clarification_required: 8,
 } as const satisfies Partial<Record<keyof BudgetOverviewReviewFlags, Dga_ict_budgetsdga_ai_flags>>
+
+const PROJECT_AI_REVIEW_FLAG_META: Record<Dga_ict_budgetsdga_ai_flags, Omit<ProjectAiReviewFlag, 'code'>> = {
+  1: { key: 'document_incompleteness', label: 'Evidence Risk', severity: 'High' },
+  2: { key: 'dge_policy_compliance_risk', label: 'DGE Budget Consideration Risk', severity: 'Medium' },
+  3: { key: 'strategic_priority_misalignment', label: 'Strategic Alignment Risk', severity: 'Medium' },
+  4: { key: 'budget_misalignment', label: 'Budget Accuracy Risk', severity: 'High' },
+  5: { key: 'account_code_misalignment', label: 'Account Code Misalignment', severity: 'Medium' },
+  6: { key: 'similar_project_current_cycle', label: 'Similar Project in Current Cycle', severity: 'Low' },
+  7: { key: 'similar_project_previous_cycles', label: 'Similar Project in Previous Cycles', severity: 'Low' },
+  8: { key: 'possible_clarification_detected', label: 'Clarification Required', severity: 'High' },
+}
+
+export function getProjectAiReviewFlags(
+  aiFlags: Dga_ict_budgetsdga_ai_flags[] | null | undefined
+): ProjectAiReviewFlag[] {
+  if (!aiFlags?.length) {
+    return []
+  }
+
+  return Array.from(new Set(aiFlags))
+    .map((code) => {
+      const meta = PROJECT_AI_REVIEW_FLAG_META[code]
+      return meta ? { code, ...meta } : null
+    })
+    .filter((flag): flag is ProjectAiReviewFlag => Boolean(flag))
+}
 
 function hasBudgetOverviewFields(value: unknown): value is BudgetOverviewData {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -228,6 +284,39 @@ function extractOpenAiTextPayload(value: unknown): string | null {
   const firstContent = content[0] as Record<string, unknown>
   const text = firstContent?.['text']
   return typeof text === 'string' ? text : null
+}
+
+function sanitizeTemplateTextNodes(value: unknown, visited = new WeakSet<object>()): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeTemplateTextNodes(item, visited))
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  if (visited.has(value)) {
+    return value
+  }
+  visited.add(value)
+
+  const record = value as Record<string, unknown>
+  if (typeof record.text_template === 'string') {
+    return record.text_template.trim()
+  }
+  if (typeof record.text === 'string') {
+    return record.text.trim()
+  }
+  if (typeof record.value === 'string') {
+    return record.value.trim()
+  }
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, nestedValue]) => [
+      key,
+      sanitizeTemplateTextNodes(nestedValue, visited),
+    ])
+  )
 }
 
 function findBudgetOverviewData(value: unknown, visited = new Set<unknown>()): BudgetOverviewData | null {
@@ -296,6 +385,8 @@ export function parseBudgetOverviewData(value: unknown): BudgetOverviewData | nu
     const parsedBudgetOverview = findBudgetOverviewData(value)
     console.log('[BudgetOverview] Final parsed BudgetOverviewData:', parsedBudgetOverview)
     return parsedBudgetOverview
+      ? (sanitizeTemplateTextNodes(parsedBudgetOverview) as BudgetOverviewData)
+      : null
   } catch (error) {
     console.warn('[DocumentAiSummaryStore] Failed to parse budget overview data:', error)
     return null
@@ -312,7 +403,12 @@ export function getBudgetAiFlagsFromBudgetOverview(
   const nextFlags = Object.entries(BUDGET_OVERVIEW_AI_FLAG_MAP).reduce<Dga_ict_budgetsdga_ai_flags[]>(
     (flags, [key, optionValue]) => {
       const reviewFlag = parsedData.ai_review_flags?.[key as keyof BudgetOverviewReviewFlags]
-      if (reviewFlag?.flag) {
+      const severity =
+        normalizeProjectAiReviewFlagSeverity(reviewFlag?.severity) ??
+        PROJECT_AI_REVIEW_FLAG_META[optionValue]?.severity ??
+        null
+
+      if (reviewFlag?.flag && (severity === 'High' || severity === 'Medium')) {
         flags.push(optionValue)
       }
       return flags
@@ -396,6 +492,22 @@ function asCumulativeCreatePayload(input: UpsertCumulativeSummaryInput) {
     dga_is_valid: input.isValid ?? true,
     dga_response_time: input.responseTime ?? undefined,
     dga_response_json: input.responseJson,
+  } as unknown as Omit<
+    Dga_ict_ai_summariesBase,
+    'dga_ict_ai_summaryid'
+  >
+}
+
+function asCumulativeInvalidationCreatePayload(budgetId: string) {
+  return {
+    'dga_ReferenceRecordId_dga_ict_budget@odata.bind': `/dga_ict_budgets(${budgetId})`,
+    dga_name: 'Cumulative Supporting Document Summary',
+    dga_role_context: CUMULATIVE_INVALIDATION_ROLE_CONTEXT,
+    dga_summary_category: CUMULATIVE_SUMMARY_CATEGORY,
+    dga_summary_stage: CUMULATIVE_SUMMARY_STAGE,
+    dga_summary_type: CUMULATIVE_SUMMARY_TYPE,
+    dga_is_valid: true,
+    dga_response_json: '',
   } as unknown as Omit<
     Dga_ict_ai_summariesBase,
     'dga_ict_ai_summaryid'
@@ -603,8 +715,24 @@ export async function getAllAiSummaryRecordsByBudgetId(budgetId: string): Promis
 }
 
 export async function invalidateCumulativeSummaryRecord(budgetId: string) {
-  const existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
-  if (!existing) return
+  let existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
+
+  if (!existing) {
+    const createResult = await Dga_ict_ai_summariesService.create(
+      asCumulativeInvalidationCreatePayload(budgetId)
+    )
+
+    if (!createResult.success) {
+      throw new Error(
+        createResult.error?.message?.trim() || 'Failed to create cumulative AI summary before invalidation.'
+      )
+    }
+
+    existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
+    if (!existing) {
+      throw new Error('Cumulative AI summary record could not be found after creation.')
+    }
+  }
 
   const result = await Dga_ict_ai_summariesService.update(existing.id, {
     dga_is_valid: false,

@@ -16,7 +16,11 @@
       "Bash(Write-Host \"Backup created.\")",
       "Bash(cp \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx\" \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx.bak\" && echo \"Backup created.\")",
       "Bash(git checkout *)",
-      "Bash(dir /s /b \"c:\\\\ICT-Budgeting-2026\\\\Data.md\" \"c:\\\\ICT-Budgeting-2026\\\\Workflow.md\" \"c:\\\\ICT-Budgeting-2026\\\\AI_SERVICES_DETAILED_GUIDE.md\" 2>nul)"
+      "Bash(dir /s /b \"c:\\\\ICT-Budgeting-2026\\\\Data.md\" \"c:\\\\ICT-Budgeting-2026\\\\Workflow.md\" \"c:\\\\ICT-Budgeting-2026\\\\AI_SERVICES_DETAILED_GUIDE.md\" 2>nul)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/recharts/package.json'\\).version\\)\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\ICT-Budgeting-2026\\\\src\" -Recurse -Filter \"*.tsx\" -File)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(head -20)"
     ],
     "additionalDirectories": [
       "c:\\ICT-Budgeting-2026\\src\\pages\\respondent",

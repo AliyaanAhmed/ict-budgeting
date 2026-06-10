@@ -19,6 +19,14 @@ import ApproverDashboard from '@/pages/approver/Dashboard'
 import ApprovalQueue from '@/pages/approver/ApprovalQueue'
 import ApproverProjects from '@/pages/approver/Projects'
 
+import StrategyTeamDashboard from '@/pages/strategy-team/Dashboard'
+import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
+import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
+import StrategySMETracker from '@/pages/strategy-team/SMETracker'
+import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
+import SmeTeamReviews from '@/pages/sme-team/Reviews'
+
 import AssessmentCycles from '@/pages/admin/AssessmentCycles'
 import CycleDetail from '@/pages/admin/CycleDetail'
 
@@ -50,6 +58,17 @@ export default function App() {
                     <Route path="/approver/approval-queue" element={<ApprovalQueue />} />
                     <Route path="/approver/approval-queue/:id" element={<ProjectDetail />} />
                     <Route path="/approver/projects" element={<ApproverProjects />} />
+                    {/* Strategy Team */}
+                    <Route path="/strategy-team/dashboard" element={<StrategyTeamDashboard />} />
+                    <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
+                    <Route path="/strategy-team/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
+                    <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
+                    <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    {/* SME Team */}
+                    <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
+                    <Route path="/sme-team/reviews" element={<SmeTeamReviews />} />
+                    <Route path="/sme-team/reviews/:id" element={<ProjectDetail />} />
                     {/* ICT Admin */}
                     <Route path="/admin/assessment-cycles" element={<AssessmentCycles />} />
                     <Route path="/admin/cycles/:id" element={<CycleDetail />} />
