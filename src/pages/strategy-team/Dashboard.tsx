@@ -26,6 +26,17 @@ import { entityProgressRows, smeTracks } from './strategyTeamData'
 import { DGE_BUDGET_STATUS, getBudgetStageBucket, getDgePortfolioData, getInstanceStageFilterLabel, type DgePortfolioData } from '@/services/dgePortfolioService'
 import { cn } from '@/lib/utils'
 
+type GovernanceEntityRow = {
+  code: string
+  name: string
+  insight: string
+  completion: number
+  budget: number
+  totalProjects: number
+  smeRouted: number
+  onStrategy: number
+}
+
 function MiniLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
@@ -125,6 +136,18 @@ export default function StrategyTeamDashboard() {
     return { submitted, inReview, planning }
   }, [instances])
 
+  const strategyOwnedCount = useMemo(
+    () =>
+      budgets.filter(
+        (budget) =>
+          budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview ||
+          budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview ||
+          budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck ||
+          budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
+      ).length,
+    [budgets]
+  )
+
   const dashboardStats = useMemo(
     () => [
       {
@@ -165,43 +188,59 @@ export default function StrategyTeamDashboard() {
     [budgets]
   )
 
-  const dynamicEntityRows = useMemo(() => {
-    return instances.slice(0, 3).map((instance) => {
+  const dynamicEntityRows = useMemo<GovernanceEntityRow[]>(() => {
+    const mappedRows = instances.slice(0, 3).map((instance) => {
       const totalBudget = instance.budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0)
       const smeRouted = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
       const qualityCheck = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length
+      const onStrategy = instance.budgets.filter(
+        (budget) =>
+          budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview ||
+          budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview ||
+          budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
+      ).length
       const completed = instance.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'reviewCompleted').length
       const completion = instance.budgets.length ? Math.round(((completed + qualityCheck) / instance.budgets.length) * 100) : 0
 
       return {
         code: instance.entityAbbr || instance.name.slice(0, 3).toUpperCase(),
         name: instance.name,
-        insight: `${instance.budgets.length} projects in cycle, ${smeRouted} with SME, ${qualityCheck} in quality check.`,
+        insight: `${instance.budgets.length} projects in cycle, ${onStrategy} with strategy, ${smeRouted} with SME, ${qualityCheck} in quality check.`,
         completion,
         budget: totalBudget,
         totalProjects: instance.budgets.length,
         smeRouted,
+        onStrategy,
       }
     })
+    if (mappedRows.length) {
+      return mappedRows
+    }
+    return entityProgressRows.slice(0, 3).map((entity) => ({
+      ...entity,
+      onStrategy: 0,
+    }))
   }, [instances])
 
   const alignmentDistribution = useMemo(() => {
-    const alignedAndReady = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
-    const needsClassification = budgets.filter(
+    const alignedAndReady = budgets.filter(
       (budget) => budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
     ).length
-    const wrongRoutingRisk = budgets.filter(
+    const needsClassification = budgets.filter(
       (budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+    ).length
+    const qualityCheck = budgets.filter(
+      (budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
     ).length
     const holdForClarification = budgets.filter(
       (budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
     ).length
-    const total = Math.max(1, alignedAndReady + needsClassification + wrongRoutingRisk + holdForClarification)
+    const total = Math.max(1, alignedAndReady + needsClassification + qualityCheck + holdForClarification)
 
     return [
       { label: 'Aligned and ready', value: alignedAndReady, color: '#286CFF', share: Math.round((alignedAndReady / total) * 100) },
       { label: 'Needs classification review', value: needsClassification, color: '#A855F7', share: Math.round((needsClassification / total) * 100) },
-      { label: 'Wrong SME routing risk', value: wrongRoutingRisk, color: '#D97706', share: Math.round((wrongRoutingRisk / total) * 100) },
+      { label: 'Quality Check', value: qualityCheck, color: '#10B981', share: Math.round((qualityCheck / total) * 100) },
       { label: 'Hold for clarification', value: holdForClarification, color: '#DC2626', share: Math.round((holdForClarification / total) * 100) },
     ]
   }, [budgets])
@@ -210,14 +249,15 @@ export default function StrategyTeamDashboard() {
     return smeTracks.map((track) => {
       const matching = budgets.filter((budget) => (budget.strategicPriorityName || '').split(' - ')[0]?.trim() === track.priority)
       if (!matching.length) {
-        return { ...track }
+        return {
+          ...track,
+          progress: 0,
+        }
       }
 
       const awaitingSME = matching.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length
       const completed = matching.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length
-      const avgConfidence = Math.round(
-        matching.reduce((sum, budget) => sum + (budget.aiConfidenceScore ?? 0), 0) / Math.max(1, matching.length)
-      )
+      const progress = budgets.length ? Math.round((matching.length / budgets.length) * 100) : 0
 
       return {
         ...track,
@@ -225,7 +265,7 @@ export default function StrategyTeamDashboard() {
         routed: awaitingSME,
         completed,
         awaitingSME,
-        averageConfidence: avgConfidence,
+        progress,
       }
     }).slice(0, 3)
   }, [budgets])
@@ -251,9 +291,6 @@ export default function StrategyTeamDashboard() {
                 <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <p className="text-sm font-bold text-[#0F172A] dark:text-white">{selectedCycle?.name || 'No active cycle'}</p>
-                  <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                    Under DGE Review
-                  </span>
                 </div>
               </div>
             </div>
@@ -277,7 +314,7 @@ export default function StrategyTeamDashboard() {
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
               <p className="text-sm text-[#475569] dark:text-slate-200">
-                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> Strategy is currently governing {budgets.length} projects across {instances.length} entities. {entityReadiness.inReview} entities are actively under DGE review, {entityReadiness.planning} still need planning-stage intervention, and {budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview).length} high-signal items should be handled before deeper SME routing.
+                <span className="font-semibold text-[#0F172A] dark:text-white">AI Summary:</span> Strategy is currently governing {budgets.length} projects across {instances.length} entities. {strategyOwnedCount} are actively on the strategy side, {entityReadiness.inReview} entities are under DGE review, and {entityReadiness.planning} still need planning-stage intervention.
               </p>
             </div>
           </div>
@@ -319,7 +356,7 @@ export default function StrategyTeamDashboard() {
               <MiniLink to="/strategy-team/entity-tracker" label="Open tracker" />
             </div>
             <div className="mt-5 space-y-3">
-              {(dynamicEntityRows.length ? dynamicEntityRows : entityProgressRows.slice(0, 3)).map((entity) => (
+              {dynamicEntityRows.map((entity) => (
                 <div key={entity.code} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -337,6 +374,7 @@ export default function StrategyTeamDashboard() {
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-[#64748B] dark:text-slate-300">
                     <span className="rounded-full bg-white px-2.5 py-1 dark:bg-white/5">Budget {entity.budget.toLocaleString('en-AE')} AED</span>
                     <span className="rounded-full bg-white px-2.5 py-1 dark:bg-white/5">{entity.totalProjects} projects</span>
+                    <span className="rounded-full bg-white px-2.5 py-1 dark:bg-white/5">Strategy {entity.onStrategy}</span>
                     <span className="rounded-full bg-white px-2.5 py-1 dark:bg-white/5">SME routed {entity.smeRouted}</span>
                   </div>
                 </div>
@@ -421,9 +459,9 @@ export default function StrategyTeamDashboard() {
               </div>
               <div className="space-y-3">
                 {[
-                  { title: 'Bulk updates ready', value: 18, badge: 'Priority review' },
-                  { title: 'SME handoff blocked', value: 6, badge: 'Needs action' },
-                  { title: 'Misaligned submissions', value: 3, badge: 'Route back' },
+                  { title: 'Bulk updates ready', value: alignmentDistribution[0]?.value ?? 0, badge: 'Priority review' },
+                  { title: 'Clarification hold', value: alignmentDistribution[3]?.value ?? 0, badge: 'Needs action' },
+                  { title: 'Quality check', value: alignmentDistribution[2]?.value ?? 0, badge: 'Route next' },
                 ].map((item) => (
                   <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-3">
@@ -465,11 +503,11 @@ export default function StrategyTeamDashboard() {
                     <StrategyPill tone={track.status === 'On Track' ? 'teal' : track.status === 'Backlog' ? 'violet' : 'amber'}>{track.status}</StrategyPill>
                   </div>
                   <div className="mt-3 flex items-center justify-between text-xs text-[#64748B] dark:text-slate-300">
-                    <span>{track.averageConfidence}% confidence</span>
+                    <span>{track.projects} projects</span>
                     <span>{track.awaitingSME} awaiting SME</span>
                   </div>
                   <div className="mt-2">
-                    <StrategyProgressBar value={track.averageConfidence} accent={track.status === 'On Track' ? '#14B8A6' : '#286CFF'} />
+                    <StrategyProgressBar value={track.progress} accent={track.status === 'On Track' ? '#14B8A6' : '#286CFF'} />
                   </div>
                 </div>
               ))}

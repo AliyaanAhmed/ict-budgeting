@@ -58,6 +58,10 @@ export interface RetrievedIctBudgetDraft {
   smeReviewerTeamId: string | null
   recommendedLabel: string | null
   rejectedByName: string | null
+  previousStrategicPriorityId: string | null
+  previousStrategicPriorityName: string | null
+  previousStrategicPriorityClassificationId: string | null
+  previousStrategicPriorityClassificationName: string | null
 }
 
 export interface CreatedIctBudgetDraft {
@@ -376,6 +380,23 @@ function mapRetrievedBudgetRecord(
     rejectedByName:
       getFormattedAnnotation(record, '_dga_rejected_by_value@OData.Community.Display.V1.FormattedValue') ??
       record.dga_rejected_byname ??
+      null,
+    previousStrategicPriorityId: record._dga_previous_strategic_priority_value ?? null,
+    previousStrategicPriorityName:
+      getFormattedAnnotation(
+        record,
+        '_dga_previous_strategic_priority_value@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_previous_strategic_priorityname ??
+      null,
+    previousStrategicPriorityClassificationId:
+      record._dga_previous_strategic_priorityclassification_value ?? null,
+    previousStrategicPriorityClassificationName:
+      getFormattedAnnotation(
+        record,
+        '_dga_previous_strategic_priorityclassification_value@OData.Community.Display.V1.FormattedValue'
+      ) ??
+      record.dga_previous_strategic_priorityclassificationname ??
       null,
   } satisfies RetrievedIctBudgetDraft
 }

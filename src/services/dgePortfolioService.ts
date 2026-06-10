@@ -36,7 +36,7 @@ export const DGE_STRATEGY_ALIGNMENT_VISIBLE_STATUSES = new Set<number>([
   DGE_BUDGET_STATUS.underStrategicAlignmentReview,
   DGE_BUDGET_STATUS.underSmeReview,
   DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
-  DGE_BUDGET_STATUS.underQualityCheck,
+  DGE_BUDGET_STATUS.clarificationPending,
 ])
 
 export interface DgeBudgetRecord {

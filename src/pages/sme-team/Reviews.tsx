@@ -14,7 +14,7 @@ import {
   Sparkles,
   Workflow,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -37,21 +37,32 @@ import {
 import {
   requestStrategicPriorityChange,
   routeBudgetToQualityCheck,
+  validateBudgetReadyForQualityCheck,
 } from '@/services/dgeWorkflowService'
 import { getStrategicPriorityOptions, type StrategicPriorityOption } from '@/services/strategicPriorityService'
+import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
 
-type QueueFilterKey = 'all' | 'under-sme-review' | 'change-under-review' | 'under-quality-check'
+type QueueFilterKey =
+  | 'all'
+  | 'under-sme-review'
+  | 'change-under-review'
+  | 'clarification-required'
+  | 'clarification-raised'
+  | 'under-quality-check'
 
 const FILTER_STATUS_MAP: Record<QueueFilterKey, number[] | null> = {
   all: null,
   'under-sme-review': [DGE_BUDGET_STATUS.underSmeReview],
   'change-under-review': [DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview],
+  'clarification-required': [DGE_BUDGET_STATUS.clarificationPending],
+  'clarification-raised': [DGE_BUDGET_STATUS.clarificationPending],
   'under-quality-check': [DGE_BUDGET_STATUS.underQualityCheck],
 }
 
 const SME_QUEUE_VISIBLE_STATUSES = new Set<number>([
   DGE_BUDGET_STATUS.underSmeReview,
   DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+  DGE_BUDGET_STATUS.clarificationPending,
   DGE_BUDGET_STATUS.underQualityCheck,
 ])
 
@@ -99,6 +110,7 @@ export default function SmeTeamReviews() {
   const { activeRoleOptionKey } = useRole()
   const currentSme = useMemo(() => getStoredCurrentSme(), [activeRoleOptionKey])
   const { runActionToast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -114,6 +126,17 @@ export default function SmeTeamReviews() {
   const [changeClassificationId, setChangeClassificationId] = useState('')
   const [qualityCheckBudget, setQualityCheckBudget] = useState<DgeBudgetRecord | null>(null)
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const rawFilter = searchParams.get('filter')
+    const incomingFilter =
+      rawFilter === 'clarification-pending'
+        ? 'clarification-required'
+        : (rawFilter as QueueFilterKey | null)
+    if (incomingFilter && incomingFilter in FILTER_STATUS_MAP && incomingFilter !== filter) {
+      setFilter(incomingFilter)
+    }
+  }, [filter, searchParams])
 
   useEffect(() => {
     let cancelled = false
@@ -195,6 +218,16 @@ export default function SmeTeamReviews() {
   const tabs = useMemo(() => {
     const countByStatus = (statuscodes: number[]) =>
       budgets.filter((budget) => statuscodes.includes(budget.statuscode)).length
+    const clarificationRequiredCount = budgets.filter(
+      (budget) =>
+        budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+        budget.statusForAdge !== ICT_BUDGET_STATUS.clarificationPending
+    ).length
+    const clarificationRaisedCount = budgets.filter(
+      (budget) =>
+        budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+        budget.statusForAdge === ICT_BUDGET_STATUS.clarificationPending
+    ).length
 
     return [
       { key: 'all' as const, label: 'All', count: budgets.length },
@@ -209,6 +242,16 @@ export default function SmeTeamReviews() {
         count: countByStatus([DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview]),
       },
       {
+        key: 'clarification-required' as const,
+        label: 'Clarification Required',
+        count: clarificationRequiredCount,
+      },
+      {
+        key: 'clarification-raised' as const,
+        label: 'Clarification Raised',
+        count: clarificationRaisedCount,
+      },
+      {
         key: 'under-quality-check' as const,
         label: 'Under Quality Check',
         count: countByStatus([DGE_BUDGET_STATUS.underQualityCheck]),
@@ -220,6 +263,14 @@ export default function SmeTeamReviews() {
     const allowedStatuses = FILTER_STATUS_MAP[filter]
     return budgets.filter((budget) => {
       const matchesStatus = !allowedStatuses || allowedStatuses.includes(budget.statuscode)
+      const matchesClarificationBucket =
+        filter === 'clarification-required'
+          ? budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+            budget.statusForAdge !== ICT_BUDGET_STATUS.clarificationPending
+          : filter === 'clarification-raised'
+            ? budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+              budget.statusForAdge === ICT_BUDGET_STATUS.clarificationPending
+            : true
       const entityLabel = budget.entityName || budget.instanceName || ''
       const matchesEntity = entityFilter === 'all' || entityLabel === entityFilter
       const matchesSearch =
@@ -236,7 +287,7 @@ export default function SmeTeamReviews() {
           .toLowerCase()
           .includes(search.toLowerCase())
 
-      return matchesStatus && matchesEntity && matchesSearch
+      return matchesStatus && matchesClarificationBucket && matchesEntity && matchesSearch
     })
   }, [budgets, entityFilter, filter, search])
 
@@ -250,6 +301,18 @@ export default function SmeTeamReviews() {
   useEffect(() => {
     setPage(1)
   }, [entityFilter, filter, search])
+
+  const handleFilterChange = (nextFilter: QueueFilterKey) => {
+    setFilter(nextFilter)
+    setPage(1)
+    const nextParams = new URLSearchParams(searchParams)
+    if (nextFilter === 'all') {
+      nextParams.delete('filter')
+    } else {
+      nextParams.set('filter', nextFilter)
+    }
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const changeClassificationOptions = useMemo(
     () => priorityOptions.filter((option) => option.parentId === changePriorityId),
@@ -312,9 +375,29 @@ export default function SmeTeamReviews() {
         }
       )
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Unable to route project to quality check.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const prepareRouteToQualityCheck = async (budget: DgeBudgetRecord) => {
+    try {
+      await runActionToast(
+        async () => {
+          await validateBudgetReadyForQualityCheck(budget.id)
+        },
+        {
+          processingTitle: 'Validating SME recommendation',
+          processingDescription: 'Checking required recommendation fields before quality check routing...',
+          successTitle: 'Validation complete',
+          successDescription: 'This project is ready to be routed to quality check.',
+          errorTitle: 'Unable to route to quality check',
+          minDurationMs: 900,
+        }
+      )
+      setQualityCheckBudget(budget)
+    } catch {
+      return
     }
   }
 
@@ -428,7 +511,7 @@ export default function SmeTeamReviews() {
                     <button
                       key={tab.key}
                       type="button"
-                      onClick={() => setFilter(tab.key)}
+                      onClick={() => handleFilterChange(tab.key)}
                       className={cn(
                         'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                         filter === tab.key
@@ -499,7 +582,9 @@ export default function SmeTeamReviews() {
                     classificationLabel && classificationLabel !== '-' ? classificationLabel : null,
                   ].filter((value): value is string => Boolean(value))
                   const canRequestChange = budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
-                  const canRouteToQuality = budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
+                  const canRouteToQuality =
+                    budget.statuscode === DGE_BUDGET_STATUS.underSmeReview ||
+                    budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
 
                   return (
                     <article
@@ -624,7 +709,7 @@ export default function SmeTeamReviews() {
                               type="button"
                               size="sm"
                               className="h-9 rounded-lg bg-blue-600 px-3 text-white hover:bg-blue-700"
-                              onClick={() => setQualityCheckBudget(budget)}
+                              onClick={() => void prepareRouteToQualityCheck(budget)}
                             >
                               <ArrowRight className="mr-1 h-4 w-4" />
                               Route to Quality Check

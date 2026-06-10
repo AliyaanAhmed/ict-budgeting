@@ -67,6 +67,7 @@ export interface Clarification {
   raisedByLabel?: string
   raisedByName: string
   raisedTo: string
+  scope?: 'External' | 'Internal (Entity)' | 'Internal (DGE)'
   message: string
   fileUrl?: string
   status: 'Open' | 'Closed'

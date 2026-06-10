@@ -49,6 +49,7 @@ const RECORD_TYPE_COMMENT = 1 as Dga_ict_clarificationsdga_record_type
 const RECORD_TYPE_CLARIFICATION = 2 as Dga_ict_clarificationsdga_record_type
 const SCOPE_INTERNAL_ENTITY = 2 as Dga_ict_clarificationsdga_scope
 const SCOPE_EXTERNAL = 1 as Dga_ict_clarificationsdga_scope
+const SCOPE_INTERNAL_DGE = 3 as Dga_ict_clarificationsdga_scope
 const STATUS_OPEN = 1 as Dga_ict_clarificationsstatuscode
 const STATUS_RESPONDED = 776140002 as Dga_ict_clarificationsstatuscode
 const STATUS_CLOSED = 776140003 as Dga_ict_clarificationsstatuscode
@@ -104,6 +105,14 @@ function getFormattedAnnotation(record: unknown, key: string) {
 
 function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team') {
   return `${recordType} - ${toRoleLabel(role)} - ${toIsoDateOnly()}`
+}
+
+function getScopeLabel(
+  scope: Dga_ict_clarificationsdga_scope | null | undefined
+): 'External' | 'Internal (Entity)' | 'Internal (DGE)' {
+  if (scope === SCOPE_EXTERNAL) return 'External'
+  if (scope === SCOPE_INTERNAL_DGE) return 'Internal (DGE)'
+  return 'Internal (Entity)'
 }
 
 async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<string | null> {
@@ -197,6 +206,7 @@ function mapClarification(record: Dga_ict_clarifications, replies: Clarification
       record.dga_raised_toname?.trim() ||
       getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
       'Respondent',
+    scope: getScopeLabel(record.dga_scope),
     message: record.dga_description?.trim() || '',
     fileUrl: record.dga_file_url?.trim() || undefined,
     status,
@@ -314,6 +324,7 @@ export async function getClarificationsByBudgetId(budgetId: string): Promise<Cla
         'modifiedon',
         'dga_description',
         'dga_file_url',
+        'dga_scope',
         '_dga_ict_budget_value',
         '_dga_parent_clarificaiton_value',
         '_dga_raised_by_value',
@@ -427,7 +438,7 @@ export async function addClarificationReply({
     dga_record_type: RECORD_TYPE_COMMENT,
     dga_scope:
       currentRole === 'Strategy Team' || currentRole === 'SME Team'
-        ? SCOPE_EXTERNAL
+        ? SCOPE_INTERNAL_DGE
         : SCOPE_INTERNAL_ENTITY,
     dga_response_date: today,
     dga_raised_by_role: toRoleLabel(currentRole),

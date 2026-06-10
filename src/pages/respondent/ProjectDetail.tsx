@@ -4,6 +4,7 @@ import { useBeforeUnload, useLocation, useParams, Link, useNavigate } from 'reac
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   ArrowUpRight,
   Bot,
   Briefcase,
@@ -39,6 +40,7 @@ import {
   Upload,
   UserCheck,
   WalletCards,
+  Workflow,
   X,
   Zap,
   BarChart2,
@@ -137,6 +139,13 @@ import {
   getClarificationsByBudgetId,
   raiseBudgetClarification,
 } from '@/services/clarificationService'
+import {
+  requestStrategicPriorityChange,
+  reviewStrategicPriorityChange,
+  routeBudgetToQualityCheck,
+  sendBudgetsToSme,
+  validateBudgetReadyForQualityCheck,
+} from '@/services/dgeWorkflowService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
 import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
@@ -2834,6 +2843,18 @@ export default function ProjectDetail() {
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
   const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'SME Team'
   const isSubmittedToDgeBudget = typeof project.statusCode === 'number' && project.statusCode >= 776140004
+  const statusForAdgeLabel = (project.statusForAdgeLabel ?? '').trim().toLowerCase()
+  const isAdgeClarificationPending =
+    statusForAdgeLabel === 'clarification pending' ||
+    statusForAdgeLabel === 'clarification required'
+  const isInternalDgeClarificationForCurrentRole =
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    !isAdgeClarificationPending &&
+    isCurrentOwner &&
+    (currentRole === 'SME Team' || currentRole === 'Strategy Team')
+  const isStrategyClarificationRequiredForSme =
+    currentRole === 'SME Team' && isInternalDgeClarificationForCurrentRole
+  const effectiveWorkflowOwner = isInternalDgeClarificationForCurrentRole ? currentRole : workflowOwner
   const [ictBudgetSmeReviewerTeamId, setIctBudgetSmeReviewerTeamId] = useState<string | null>(null)
   const currentSmeTeamId = getStoredCurrentSme()?.teamId?.trim() || null
   const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
@@ -2887,19 +2908,49 @@ export default function ProjectDetail() {
         (project.statusCode === 776140002 ||
           project.statusCode === 776140003 ||
           (project.statusCode == null && (project.status === 'Submitted to Approver' || project.status === 'Approved')))) ||
-      (currentRole === 'Strategy Team' && project.statusCode === 776140004) ||
+      (currentRole === 'Strategy Team' &&
+        (
+          project.statusCode === 776140004 ||
+          project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
+          project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
+          project.statusCode === DGE_BUDGET_STATUS.clarificationPending
+        )) ||
       (currentRole === 'SME Team' &&
         (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
     isCurrentOwner
+  const canRouteToQualityCheck =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    (project.statusCode === DGE_BUDGET_STATUS.underSmeReview ||
+      project.statusCode === DGE_BUDGET_STATUS.clarificationPending)
+  const canRequestStrategicPriorityChange =
+    currentRole === 'SME Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underSmeReview
+  const canSendToSmeFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+  const canReviewStrategicPriorityChangeFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+  const canRouteToDirectorFromDetail =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    (
+      project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
+      project.statusCode === DGE_BUDGET_STATUS.underFinalReview
+    )
   const approverUsesDirectDgeFlow =
     currentRole === 'Approver' &&
     hasCycleDgeSubmission &&
     isCurrentOwner &&
     (project.statusCode === 776140002 ||
       (project.statusCode == null && project.status === 'Submitted to Approver'))
-  const showPendingNotice = workflowOwner !== null && (workflowOwner !== currentRole || !isCurrentOwner)
-  const pendingNoticeText = workflowOwner
-    ? `This project is currently pending with ${workflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
+  const showPendingNotice = effectiveWorkflowOwner !== null && (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
+  const pendingNoticeText = effectiveWorkflowOwner
+    ? `This project is currently pending with ${effectiveWorkflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
     : 'This project has completed the current workflow stage and is now read-only.'
 
   useEffect(() => {
@@ -2973,6 +3024,10 @@ export default function ProjectDetail() {
   const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
   const [ictBudgetRecommendedLabel, setIctBudgetRecommendedLabel] = useState<string | null>(null)
   const [ictBudgetRejectedByName, setIctBudgetRejectedByName] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityId, setIctBudgetPreviousStrategicPriorityId] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityName, setIctBudgetPreviousStrategicPriorityName] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityClassificationId, setIctBudgetPreviousStrategicPriorityClassificationId] = useState<string | null>(null)
+  const [ictBudgetPreviousStrategicPriorityClassificationName, setIctBudgetPreviousStrategicPriorityClassificationName] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<IctBudgetFieldErrorMap>({})
   const [workStreamModalOpen, setWorkStreamModalOpen] = useState(false)
   const [technologyProductModalOpen, setTechnologyProductModalOpen] = useState(false)
@@ -2988,6 +3043,11 @@ export default function ProjectDetail() {
   const [lineItemToDelete, setLineItemToDelete] = useState<BudgetLineItemRecord | null>(null)
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null)
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null)
+  const [detailChangeRequestModalOpen, setDetailChangeRequestModalOpen] = useState(false)
+  const [detailChangePriorityId, setDetailChangePriorityId] = useState('')
+  const [detailChangeClassificationId, setDetailChangeClassificationId] = useState('')
+  const [detailReviewChangeModalOpen, setDetailReviewChangeModalOpen] = useState(false)
+  const [detailSendToSmeConfirmOpen, setDetailSendToSmeConfirmOpen] = useState(false)
 
   // ── File Upload (edit mode) ──────────────────────────────────────────────────
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
@@ -4599,6 +4659,10 @@ export default function ProjectDetail() {
           setIctBudgetSmeReviewerTeamId(retrievedBudget.smeReviewerTeamId)
           setIctBudgetRecommendedLabel(retrievedBudget.recommendedLabel)
           setIctBudgetRejectedByName(retrievedBudget.rejectedByName)
+          setIctBudgetPreviousStrategicPriorityId(retrievedBudget.previousStrategicPriorityId)
+          setIctBudgetPreviousStrategicPriorityName(retrievedBudget.previousStrategicPriorityName)
+          setIctBudgetPreviousStrategicPriorityClassificationId(retrievedBudget.previousStrategicPriorityClassificationId)
+          setIctBudgetPreviousStrategicPriorityClassificationName(retrievedBudget.previousStrategicPriorityClassificationName)
           setIctBudgetError(null)
         } else {
           const fallbackFormValues: IctBudgetFormValues = {
@@ -4623,6 +4687,10 @@ export default function ProjectDetail() {
           setIctBudgetSmeReviewerTeamId(null)
           setIctBudgetRecommendedLabel(null)
           setIctBudgetRejectedByName(null)
+          setIctBudgetPreviousStrategicPriorityId(null)
+          setIctBudgetPreviousStrategicPriorityName(null)
+          setIctBudgetPreviousStrategicPriorityClassificationId(null)
+          setIctBudgetPreviousStrategicPriorityClassificationName(null)
         }
       } catch (error) {
         if (cancelled) return
@@ -5923,21 +5991,14 @@ export default function ProjectDetail() {
 
         if (currentRole === 'Respondent' && returnToRole) {
           if (returnToRole !== 'Reviewer' && returnToRole !== 'Approver') {
-            const returnTeamId =
-              returnToRole === 'Strategy Team' ? strategyTeamId : ictBudgetSmeReviewerTeamId
             const nextStatusCode =
               returnToRole === 'Strategy Team'
                 ? DGE_BUDGET_STATUS.underStrategicAlignmentReview
                 : DGE_BUDGET_STATUS.underSmeReview
 
-            if (!returnTeamId) {
-              throw new Error(`Unable to resolve the ${returnToRole} team for clarification handoff.`)
-            }
-
             const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
               statuscode: nextStatusCode,
               dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
-              'ownerid@odata.bind': `/teams(${returnTeamId})`,
             } as never)
 
             if (!handoffResult.success) {
@@ -6113,22 +6174,16 @@ export default function ProjectDetail() {
             raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : 2,
           files,
         })
-        console.log('[ProjectDetail] Raising clarification — assigning ICT budget back to Respondent team' + (raisedByRole === 'Approver' ? ', sharing ReadAccess with Approver team' : '') + ':', {
+        console.log('[ProjectDetail] Raising clarification — updating ICT budget to clarification pending:', {
           ictBudgetId,
           raisedByRole,
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
         if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
-          const respondentTeamId = JSON.parse(sessionStorage.getItem('moduleConfigTeamIDs') || '{}').respondentTeamId as string | undefined
-          if (!respondentTeamId) {
-            throw new Error('Respondent team id is missing for DGE clarification routing.')
-          }
-
           const dgeClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
             statuscode: DGE_BUDGET_STATUS.clarificationPending,
             dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
-            'ownerid@odata.bind': `/teams(${respondentTeamId})`,
           } as never)
 
           if (!dgeClarificationResult.success) {
@@ -6154,7 +6209,7 @@ export default function ProjectDetail() {
       },
       {
         processingTitle: 'Raising clarification',
-        processingDescription: 'Opening the clarification thread and returning the project to the respondent...',
+        processingDescription: 'Opening the clarification thread and updating the project to clarification pending...',
         successTitle: 'Clarification raised',
         successDescription: 'The respondent has been notified and the project is now awaiting clarification.',
         errorTitle: 'Unable to raise clarification',
@@ -6437,11 +6492,250 @@ export default function ProjectDetail() {
     })
   }
 
+  const applyRecommendedDecisionToBudgetLines = (decision: 1 | 2) => {
+    setBudgetLineItems((current) =>
+      current.map((item) => ({
+        ...item,
+        budgetRecommended: decision === 2 ? item.budgetRequested : 0,
+      }))
+    )
+  }
+
   const handleBudgetRecommendedChange = (lineItemId: string, amount: number) => {
     setBudgetLineItems((current) =>
       current.map((item) =>
         item.id === lineItemId ? { ...item, budgetRecommended: amount } : item
       )
+    )
+  }
+
+  const validateSmeRecommendationForQualityCheck = () => {
+    if (formValues.recommended == null) {
+      showErrorToast('Recommendation required', 'Select Recommended before routing this project to quality check.')
+      return false
+    }
+
+    if (formValues.recommended === 1) {
+      if (!formValues.rejectionReason) {
+        showErrorToast('Rejection reason required', 'Select Rejection Reason before routing this project to quality check.')
+        return false
+      }
+      if (!formValues.rejectionJustification.trim()) {
+        showErrorToast('Rejection justification required', 'Add Rejection Justification before routing this project to quality check.')
+        return false
+      }
+    }
+
+    return true
+  }
+
+  const handleRouteToQualityCheck = async () => {
+    if (!ictBudgetId || !projectData || !canRouteToQualityCheck) return
+    if (!validateSmeRecommendationForQualityCheck()) return
+    await validateBudgetReadyForQualityCheck(ictBudgetId)
+
+    if (isEditMode) {
+      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+      if (!saveSucceeded) return
+    }
+
+    const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
+    const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
+    const storedInstance = getStoredInstanceDetail()
+
+    const workflowBudget = {
+      id: ictBudgetId,
+      budgetRefId: projectData.id,
+      name: display.name,
+      summary: display.summary,
+      statuscode: project.statusCode ?? DGE_BUDGET_STATUS.underSmeReview,
+      statusLabel: display.status,
+      statusForAdge: null,
+      strategicPriorityId: formValues.strategicPriorityId || null,
+      strategicPriorityName: display.strategicPriority,
+      strategicPriorityClassificationId: formValues.strategicPriorityClassificationId || null,
+      strategicPriorityClassificationName: display.classification,
+      previousStrategicPriorityId: null,
+      previousStrategicPriorityName: null,
+      previousStrategicPriorityClassificationId: null,
+      previousStrategicPriorityClassificationName: null,
+      requestedBudget: totalRequestedBudget,
+      recommendedBudget: totalRecommendedBudget,
+      allocatedBudget: 0,
+      utilizedBudget: 0,
+      aiConfidenceScore: project.aiScore ?? null,
+      ownerId: project.ownerId ?? null,
+      ownerName: null,
+      instanceId: null,
+      instanceName: storedInstance?.name ?? null,
+      entityName: storedInstance?.name ?? null,
+      smeReviewerTeamId: ictBudgetSmeReviewerTeamId,
+      smeReviewerTeamName: null,
+      sharePointUrl: null,
+    }
+
+    await runActionToast(
+      async () => {
+        await routeBudgetToQualityCheck(workflowBudget)
+        await invalidateBudgetOverviewRecord(ictBudgetId)
+        syncLocalWorkflowState('Under Quality Check' as Project['status'])
+        setIsEditMode(false)
+      },
+      {
+        processingTitle: 'Routing to quality check',
+        processingDescription: 'Validating SME recommendation fields and sending this project to quality check...',
+        successTitle: 'Routed to quality check',
+        successDescription: 'The project is now under quality check.',
+        errorTitle: 'Unable to route to quality check',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const buildCurrentWorkflowBudget = () => {
+    const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
+    const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
+    const storedInstance = getStoredInstanceDetail()
+
+    return {
+      id: ictBudgetId!,
+      budgetRefId: projectData?.id ?? project.id,
+      name: display.name,
+      summary: display.summary,
+      statuscode: project.statusCode ?? DGE_BUDGET_STATUS.underSmeReview,
+      statusLabel: display.status,
+      statusForAdge: null,
+      strategicPriorityId: formValues.strategicPriorityId || null,
+      strategicPriorityName: display.strategicPriority,
+      strategicPriorityClassificationId: formValues.strategicPriorityClassificationId || null,
+      strategicPriorityClassificationName: display.classification,
+      previousStrategicPriorityId: ictBudgetPreviousStrategicPriorityId,
+      previousStrategicPriorityName: ictBudgetPreviousStrategicPriorityName,
+      previousStrategicPriorityClassificationId: ictBudgetPreviousStrategicPriorityClassificationId,
+      previousStrategicPriorityClassificationName: ictBudgetPreviousStrategicPriorityClassificationName,
+      requestedBudget: totalRequestedBudget,
+      recommendedBudget: totalRecommendedBudget,
+      allocatedBudget: 0,
+      utilizedBudget: 0,
+      aiConfidenceScore: project.aiScore ?? null,
+      ownerId: project.ownerId ?? null,
+      ownerName: null,
+      instanceId: null,
+      instanceName: storedInstance?.name ?? null,
+      entityName: storedInstance?.name ?? null,
+      smeReviewerTeamId: ictBudgetSmeReviewerTeamId,
+      smeReviewerTeamName: null,
+      sharePointUrl: null,
+    }
+  }
+
+  const detailChangeClassificationOptions = useMemo(
+    () => strategicPriorities.filter((option) => option.parentId === detailChangePriorityId),
+    [detailChangePriorityId, strategicPriorities]
+  )
+
+  const openDetailChangeRequestModal = () => {
+    setDetailChangePriorityId(formValues.strategicPriorityId || '')
+    setDetailChangeClassificationId(formValues.strategicPriorityClassificationId || '')
+    setDetailChangeRequestModalOpen(true)
+  }
+
+  const handleDetailSubmitChangeRequest = async () => {
+    if (!ictBudgetId || !projectData || !detailChangePriorityId || !detailChangeClassificationId) return
+
+    if (isEditMode) {
+      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+      if (!saveSucceeded) return
+    }
+
+    await runActionToast(
+      async () => {
+        await requestStrategicPriorityChange(
+          buildCurrentWorkflowBudget(),
+          detailChangePriorityId,
+          detailChangeClassificationId
+        )
+        setDetailChangeRequestModalOpen(false)
+        syncLocalWorkflowState('Strategic Priority Change Under Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Submitting change request',
+        processingDescription: 'Sending the strategic priority change back to Strategy Team for review...',
+        successTitle: 'Change request submitted',
+        successDescription: 'The project is now waiting for Strategy Team review.',
+        errorTitle: 'Unable to submit change request',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
+    if (!ictBudgetId) return
+
+    await runActionToast(
+      async () => {
+        await reviewStrategicPriorityChange(buildCurrentWorkflowBudget(), decision)
+        setDetailReviewChangeModalOpen(false)
+        syncLocalWorkflowState('Under SME Review' as Project['status'])
+      },
+      {
+        processingTitle: decision === 'approve' ? 'Approving requested change' : 'Rejecting requested change',
+        processingDescription:
+          decision === 'approve'
+            ? 'Updating the project mapping and routing it back to the correct SME team...'
+            : 'Clearing the requested change and returning the project to SME review...',
+        successTitle: decision === 'approve' ? 'Change approved' : 'Change rejected',
+        successDescription:
+          decision === 'approve'
+            ? 'The new strategic priority mapping is now active.'
+            : 'The requested change was cleared and the project was returned to SME review.',
+        errorTitle: 'Unable to process strategic change review',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailSendToSme = async () => {
+    if (!ictBudgetId) return
+
+    await runActionToast(
+      async () => {
+        await sendBudgetsToSme([buildCurrentWorkflowBudget()])
+        setDetailSendToSmeConfirmOpen(false)
+        syncLocalWorkflowState('Under SME Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Sending to SME',
+        processingDescription: 'Routing this project to the mapped SME team...',
+        successTitle: 'Project sent to SME',
+        successDescription: 'The project was routed successfully.',
+        errorTitle: 'Unable to send to SME',
+        minDurationMs: 1400,
+      }
+    )
+  }
+
+  const handleDetailRouteToDirector = async () => {
+    if (!ictBudgetId) return
+    await runActionToast(
+      async () => {
+        const result = await Dga_ict_budgetsService.update(ictBudgetId, {
+          statuscode: DGE_BUDGET_STATUS.underFinalReview,
+          dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+        } as never)
+        if (!result.success) {
+          throw new Error(result.error?.message || 'Unable to route project to director review.')
+        }
+        syncLocalWorkflowState('Under Final Review' as Project['status'])
+      },
+      {
+        processingTitle: 'Routing to director',
+        processingDescription: 'Moving this project into final review...',
+        successTitle: 'Routed to director',
+        successDescription: 'The project is now under final review.',
+        errorTitle: 'Unable to route to director',
+        minDurationMs: 1200,
+      }
     )
   }
 
@@ -6808,8 +7102,10 @@ export default function ProjectDetail() {
               >
                 {showClarificationReturnNotice
                   ? `Reply Returns To ${clarificationReturnRole}`
+                  : isStrategyClarificationRequiredForSme
+                    ? 'Clarification Required by Strategy Team'
                   : showPendingNotice
-                  ? `Pending with ${workflowOwner}`
+                  ? `Pending with ${effectiveWorkflowOwner}`
                   : canCurrentRoleEdit
                     ? `${currentRole} actions available`
                     : 'Read-only workflow state'}
@@ -6817,6 +7113,8 @@ export default function ProjectDetail() {
               <p className="text-xs text-[#64748B] dark:text-slate-300">
                 {showClarificationReturnNotice
                   ? `Reply to the latest clarification below and this ICT budget will automatically be assigned back to ${clarificationReturnRole}. You do not need to submit it manually from Quick Actions.`
+                  : isStrategyClarificationRequiredForSme
+                    ? 'Strategy Team requested clarification from SME on this project. You can update the recommendation fields, reply in the clarification thread, and still route the project to quality check once it is ready.'
                   : showPendingNotice
                   ? pendingNoticeText
                   : canCurrentRoleEdit
@@ -7218,6 +7516,7 @@ export default function ProjectDetail() {
                           value={formValues.recommended ? String(formValues.recommended) : ''}
                           onValueChange={(value) => {
                             const nextRecommended = Number(value) as 1 | 2
+                            applyRecommendedDecisionToBudgetLines(nextRecommended)
                             setFormValues((prev) => ({
                               ...prev,
                               recommended: nextRecommended,
@@ -7677,6 +7976,43 @@ export default function ProjectDetail() {
                         Raise Clarification
                       </Button>
                     )}
+                    {canRequestStrategicPriorityChange && (
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 border-blue-300 text-blue-700 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF]"
+                        onClick={openDetailChangeRequestModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Request Strategic Priority Change
+                      </Button>
+                    )}
+                    {canSendToSmeFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setDetailSendToSmeConfirmOpen(true)}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Send to SME
+                      </Button>
+                    )}
+                    {canReviewStrategicPriorityChangeFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2"
+                        onClick={() => setDetailReviewChangeModalOpen(true)}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        Review Change Request
+                      </Button>
+                    )}
+                    {canRouteToDirectorFromDetail && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailRouteToDirector()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Director
+                      </Button>
+                    )}
                     {canCompleteReview && (
                       <Button
                         className="w-full justify-start gap-2"
@@ -7808,6 +8144,15 @@ export default function ProjectDetail() {
                         >
                           <Trash2 className="h-4 w-4" />
                           Delete Project
+                        </Button>
+                      )}
+                      {canRouteToQualityCheck && (
+                        <Button
+                          className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                          onClick={() => void handleRouteToQualityCheck()}
+                        >
+                          <Send className="h-4 w-4" />
+                          Route to Quality Check
                         </Button>
                       )}
                     </>
@@ -8178,6 +8523,142 @@ export default function ProjectDetail() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={detailChangeRequestModalOpen} onOpenChange={setDetailChangeRequestModalOpen}>
+        <DialogContent className="max-w-4xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+          <div className="border-b border-[#EEF3F8] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] px-7 py-6 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0.02)_100%)]">
+            <DialogHeader className="space-y-0">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#286CFF_0%,#4F98FF_100%)] text-white shadow-[0_14px_28px_rgba(40,108,255,0.18)]">
+                  <Workflow className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Request Strategic Priority Change</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                    Submit a revised strategic priority and classification to Strategy Team without changing the live mapping yet.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto px-7 py-6">
+            <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-5 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-base font-semibold text-[#0F172A] dark:text-white">{display.name}</p>
+                <span className="rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                  {project.id}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{project.id}</p>
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Requested Strategic Priority</p>
+                  <Select
+                    value={detailChangePriorityId}
+                    onValueChange={(value) => {
+                      setDetailChangePriorityId(value)
+                      setDetailChangeClassificationId('')
+                    }}
+                  >
+                    <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2 text-left">
+                        <Layers className="h-4 w-4 text-[#286CFF]" />
+                        <SelectValue placeholder="Select strategic priority" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {strategicPriorities
+                        .filter((option) => !option.parentId)
+                        .map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Requested Classification</p>
+                  <Select value={detailChangeClassificationId} onValueChange={setDetailChangeClassificationId}>
+                    <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex items-center gap-2 text-left">
+                        <Workflow className="h-4 w-4 text-[#286CFF]" />
+                        <SelectValue placeholder="Select classification" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {detailChangeClassificationOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 pb-6 pt-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => setDetailChangeRequestModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+              disabled={!detailChangePriorityId || !detailChangeClassificationId}
+              onClick={() => void handleDetailSubmitChangeRequest()}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={detailReviewChangeModalOpen} onOpenChange={setDetailReviewChangeModalOpen}>
+        <DialogContent className="max-w-[620px] rounded-[28px] border border-[#D9E6F5] p-0 dark:border-white/10">
+          <div className="border-b border-[#EEF3F8] bg-white px-6 py-5 dark:border-white/10 dark:bg-[#162339]">
+            <DialogHeader>
+              <DialogTitle>Strategic Priority Change Request</DialogTitle>
+              <DialogDescription>
+                Review the SME requested strategic priority change and approve or reject it.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Current Strategic Priority</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{display.strategicPriority || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Current Strategic Priority Classification</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{display.classification || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{ictBudgetPreviousStrategicPriorityName || '-'}</p>
+            </div>
+            <div className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-xs font-semibold tracking-[0.12em] text-[#64748B] dark:text-slate-400">Requested Strategic Priority Classification</p>
+              <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{ictBudgetPreviousStrategicPriorityClassificationName || '-'}</p>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 pb-6 pt-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => void handleDetailReviewChangeRequest('reject')}>
+              Reject
+            </Button>
+            <Button className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]" onClick={() => void handleDetailReviewChangeRequest('approve')}>
+              Approve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ConfirmationModal
+        open={detailSendToSmeConfirmOpen}
+        onOpenChange={setDetailSendToSmeConfirmOpen}
+        title="Send to SME?"
+        description="This will route the project to the mapped SME team for domain review."
+        confirmLabel="Send to SME"
+        cancelLabel="Cancel"
+        onConfirm={() => void handleDetailSendToSme()}
+        tone="primary"
+      />
     </div>
   )
 }

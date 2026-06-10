@@ -35,12 +35,22 @@ import {
   getDgePortfolioData,
   type DgeBudgetRecord,
 } from '@/services/dgePortfolioService'
+import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
 
 const SME_QUEUE_VISIBLE_STATUSES = new Set<number>([
   DGE_BUDGET_STATUS.underSmeReview,
   DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+  DGE_BUDGET_STATUS.clarificationPending,
   DGE_BUDGET_STATUS.underQualityCheck,
 ])
+
+const SME_QUEUE_FILTER_HREFS = {
+  toReview: '/sme-team/reviews?filter=under-sme-review',
+  reviewed: '/sme-team/reviews?filter=under-quality-check',
+  clarificationRequired: '/sme-team/reviews?filter=clarification-required',
+  clarificationRaised: '/sme-team/reviews?filter=clarification-raised',
+  mismatch: '/sme-team/reviews?filter=change-under-review',
+} as const
 
 function SkeletonPanel() {
   return (
@@ -120,7 +130,7 @@ export default function SmeTeamDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<DgeBudgetRecord[]>([])
-  const [assignedFilter, setAssignedFilter] = useState<'all' | 'review' | 'change' | 'quality'>('all')
+  const [assignedFilter, setAssignedFilter] = useState<'all' | 'review' | 'change' | 'clarification' | 'quality'>('all')
   const [assignedPage, setAssignedPage] = useState(1)
 
   useEffect(() => {
@@ -166,7 +176,16 @@ export default function SmeTeamDashboard() {
     const changeRequests = budgets.filter(
       (budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
     )
-    const clarifications = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending)
+    const clarificationsRaised = budgets.filter(
+      (budget) =>
+        budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+        budget.statusForAdge === ICT_BUDGET_STATUS.clarificationPending
+    )
+    const clarificationsRequired = budgets.filter(
+      (budget) =>
+        budget.statuscode === DGE_BUDGET_STATUS.clarificationPending &&
+        budget.statusForAdge !== ICT_BUDGET_STATUS.clarificationPending
+    )
     const missingDocs = budgets.filter((budget) => !budget.sharePointUrl)
 
     return {
@@ -174,7 +193,8 @@ export default function SmeTeamDashboard() {
       toReview,
       reviewed,
       changeRequests,
-      clarifications,
+      clarificationsRaised,
+      clarificationsRequired,
       missingDocs,
     }
   }, [budgets])
@@ -189,7 +209,7 @@ export default function SmeTeamDashboard() {
         badge: 'Live queue',
         accent: '#286CFF',
         icon: ClipboardCheck,
-        href: '/sme-team/reviews',
+        href: SME_QUEUE_FILTER_HREFS.toReview,
       },
       {
         title: 'Reviewed',
@@ -199,17 +219,27 @@ export default function SmeTeamDashboard() {
         badge: 'Quality check',
         accent: '#10B981',
         icon: CheckCircle2,
-        href: '/sme-team/reviews',
+        href: SME_QUEUE_FILTER_HREFS.reviewed,
       },
       {
-        title: 'Clarifications Raised',
-        value: metrics.clarifications.length,
+        title: 'Clarification Required',
+        value: metrics.clarificationsRequired.length,
+        budgetLabel: 'Needed by Strategy Team',
+        budget: null,
+        badge: 'Action needed',
+        accent: '#A855F7',
+        icon: MessageSquareDot,
+        href: SME_QUEUE_FILTER_HREFS.clarificationRequired,
+      },
+      {
+        title: 'Clarification Raised',
+        value: metrics.clarificationsRaised.length,
         budgetLabel: 'Awaiting ADGE response',
         budget: null,
         badge: 'Pending response',
-        accent: '#A855F7',
+        accent: '#7C3AED',
         icon: MessageSquareDot,
-        href: '/sme-team/reviews',
+        href: SME_QUEUE_FILTER_HREFS.clarificationRaised,
       },
       {
         title: 'Priority Mismatch',
@@ -219,10 +249,16 @@ export default function SmeTeamDashboard() {
         badge: 'Review routing',
         accent: '#F97316',
         icon: Workflow,
-        href: '/sme-team/reviews',
+        href: SME_QUEUE_FILTER_HREFS.mismatch,
       },
     ],
-    [metrics]
+    [
+      metrics.changeRequests.length,
+      metrics.clarificationsRaised.length,
+      metrics.clarificationsRequired.length,
+      metrics.reviewed.length,
+      metrics.toReview.length,
+    ]
   )
 
   const assignedTabs = useMemo(
@@ -238,9 +274,21 @@ export default function SmeTeamDashboard() {
         label: 'Strategic Priority Change Under Review',
         count: metrics.changeRequests.length,
       },
+      {
+        key: 'clarification' as const,
+        label: 'Clarification Pending',
+        count: metrics.clarificationsRaised.length + metrics.clarificationsRequired.length,
+      },
       { key: 'quality' as const, label: 'Under Quality Check', count: metrics.reviewed.length },
     ],
-    [budgets.length, metrics.changeRequests.length, metrics.reviewed.length, metrics.toReview.length]
+    [
+      budgets.length,
+      metrics.changeRequests.length,
+      metrics.clarificationsRaised.length,
+      metrics.clarificationsRequired.length,
+      metrics.reviewed.length,
+      metrics.toReview.length,
+    ]
   )
 
   const assignedProjects = useMemo(() => {
@@ -250,6 +298,7 @@ export default function SmeTeamDashboard() {
       if (assignedFilter === 'change') {
         return budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
       }
+      if (assignedFilter === 'clarification') return budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
       if (assignedFilter === 'quality') return budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
       return true
     })
@@ -299,18 +348,7 @@ export default function SmeTeamDashboard() {
                     <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Budget Cycle</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <p className="text-sm font-bold text-[#0F172A] dark:text-white">{selectedCycle?.name || 'No active cycle'}</p>
-                      <StrategyPill tone="blue">Under DGE Review</StrategyPill>
                     </div>
-                  </div>
-                </div>
-                <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]">
-                    <Clock3 className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">Domain Scope</p>
-                    <p className="mt-1 text-sm font-bold text-[#D97706] dark:text-[#FCD34D]">{trimTitle(currentSme?.strategicPriorityName || 'No SME domain')}</p>
                   </div>
                 </div>
                 <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
@@ -335,7 +373,7 @@ export default function SmeTeamDashboard() {
             </CardContent>
           </Card>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
             {actionCards.map((card) => (
               <ActionCard key={card.title} {...card} />
             ))}

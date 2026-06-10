@@ -186,7 +186,14 @@ function ClarificationCard({
   const style = ROLE_STYLE[clarification.raisedBy]
   const isOpen = clarification.status === 'Open'
   const isRaiser = currentRole === clarification.raisedBy
+  const isAdgeRole =
+    currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
+  const isDgeInternal = clarification.scope === 'Internal (DGE)'
   const canReply = isOpen
+    ? isDgeInternal
+      ? currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      : currentRole === 'Respondent' || isRaiser
+    : false
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length
   const clarificationFileUrls = getFileUrls(clarification.fileUrl)
@@ -227,6 +234,11 @@ function ClarificationCard({
             {clarification.raisedByLabel ?? clarification.raisedBy}
           </span>
           <span className="text-xs text-[#94A3B8]">{formatDisplayDate(clarification.date)}</span>
+          {isAdgeRole && clarification.scope === 'External' ? (
+            <span className="rounded-full bg-[#EEF5FF] px-2 py-0.5 text-[11px] font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+              External
+            </span>
+          ) : null}
           {clarification.dueDate && (
             <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-[#475569] dark:bg-white/10 dark:text-slate-300">
               Due {formatDisplayDate(clarification.dueDate)}
@@ -379,10 +391,19 @@ export function ClarificationThread({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
 
-  const openList = [...clarifications]
+  const visibleClarifications = clarifications.filter((clarification) => {
+    const isAdgeRole =
+      currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
+    if (isAdgeRole && clarification.scope === 'Internal (DGE)') {
+      return false
+    }
+    return true
+  })
+
+  const openList = [...visibleClarifications]
     .filter((clarification) => clarification.status === 'Open')
     .sort((left, right) => toSortTime(right.date) - toSortTime(left.date))
-  const closedList = [...clarifications]
+  const closedList = [...visibleClarifications]
     .filter((clarification) => clarification.status === 'Closed')
     .sort((left, right) => toSortTime(right.closedAt ?? right.date) - toSortTime(left.closedAt ?? left.date))
 

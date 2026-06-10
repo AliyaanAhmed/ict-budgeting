@@ -1,4 +1,5 @@
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
+import { Dga_ict_budget_line_itemsService } from '@/generated/services/Dga_ict_budget_line_itemsService'
 import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
@@ -10,6 +11,74 @@ import { grantIctBudgetAccessToTeam, revokeIctBudgetAccessFromTeam } from '@/ser
 function assertSuccess(success: boolean | undefined, message: string, error?: { message?: string } | null) {
   if (!success) {
     throw new Error(error?.message?.trim() || message)
+  }
+}
+
+async function prepareRecommendedBudgetForQualityCheck(budgetId: string) {
+  const budgetResult = await Dga_ict_budgetsService.get(budgetId, {
+    select: ['dga_ict_budgetid', 'dga_recommended', 'dga_rejection_reason', 'dga_rejection_justification'],
+  })
+
+  const budget = budgetResult.data
+  const recommended = budget?.dga_recommended ?? null
+  const rejectionReason = budget?.dga_rejection_reason ?? null
+  const rejectionJustification = budget?.dga_rejection_justification?.trim() || ''
+
+  if (recommended == null) {
+    throw new Error('Recommended must be selected before routing this project to quality check.')
+  }
+
+  const lineItemsResult = await Dga_ict_budget_line_itemsService.getAll({
+    select: ['dga_ict_budget_line_itemid', 'dga_budget_requested', 'dga_budget_recommended'],
+    filter: `_dga_ict_budget_value eq ${budgetId}`,
+  })
+
+  const lineItems = lineItemsResult.data ?? []
+
+  if (recommended === 2) {
+    await Promise.all(
+      lineItems
+        .filter((item) => item.dga_ict_budget_line_itemid)
+        .map((item) =>
+          Dga_ict_budget_line_itemsService.update(item.dga_ict_budget_line_itemid!, {
+            dga_budget_recommended: Number((item.dga_budget_recommended ?? item.dga_budget_requested ?? 0).toFixed(4)),
+          } as never)
+        )
+    )
+    return
+  }
+
+  if (!rejectionReason || !rejectionJustification) {
+    throw new Error('Rejection Reason and Rejection Justification are required when Recommended is set to No.')
+  }
+
+  await Promise.all(
+    lineItems
+      .filter((item) => item.dga_ict_budget_line_itemid)
+      .map((item) =>
+        Dga_ict_budget_line_itemsService.update(item.dga_ict_budget_line_itemid!, {
+          dga_budget_recommended: 0,
+        } as never)
+      )
+  )
+}
+
+export async function validateBudgetReadyForQualityCheck(budgetId: string) {
+  const budgetResult = await Dga_ict_budgetsService.get(budgetId, {
+    select: ['dga_ict_budgetid', 'dga_recommended', 'dga_rejection_reason', 'dga_rejection_justification'],
+  })
+
+  const budget = budgetResult.data
+  const recommended = budget?.dga_recommended ?? null
+  const rejectionReason = budget?.dga_rejection_reason ?? null
+  const rejectionJustification = budget?.dga_rejection_justification?.trim() || ''
+
+  if (recommended == null) {
+    throw new Error('Recommended must be selected before routing this project to quality check.')
+  }
+
+  if (recommended === 1 && (!rejectionReason || !rejectionJustification)) {
+    throw new Error('Rejection Reason and Rejection Justification are required when Recommended is set to No.')
   }
 }
 
@@ -184,6 +253,8 @@ export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
   if (!currentUserId) {
     throw new Error('Current user id is missing from session storage.')
   }
+
+  await prepareRecommendedBudgetForQualityCheck(budget.id)
 
   const result = await Dga_ict_budgetsService.update(budget.id, {
     statuscode: DGE_BUDGET_STATUS.underQualityCheck,
