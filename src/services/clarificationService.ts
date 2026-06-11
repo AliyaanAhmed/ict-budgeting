@@ -26,7 +26,7 @@ import { uploadFilesToRecord } from '@/services/fileUploadService'
 export interface RaiseClarificationInput {
   budgetId: string
   message: string
-  raisedByRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  raisedByRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   clarificationStage?: Dga_ict_clarificationsdga_clarification_stage
   scope?: Dga_ict_clarificationsdga_scope
   raisedToTeamId?: string | null
@@ -37,7 +37,7 @@ export interface AddClarificationReplyInput {
   budgetId: string
   parentClarificationId: string
   message: string
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   files?: File[]
 }
 
@@ -54,8 +54,9 @@ const STATUS_OPEN = 1 as Dga_ict_clarificationsstatuscode
 const STATUS_RESPONDED = 776140002 as Dga_ict_clarificationsstatuscode
 const STATUS_CLOSED = 776140003 as Dga_ict_clarificationsstatuscode
 
-function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team' {
+function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team' {
   const normalized = roleLabel?.trim().toLowerCase() ?? ''
+  if (normalized.includes('strategy director')) return 'Strategy Director'
   if (normalized.includes('strategy')) return 'Strategy Team'
   if (normalized.includes('sme')) return 'SME Team'
   if (normalized.includes('review')) return 'Reviewer'
@@ -63,7 +64,8 @@ function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Re
   return 'Respondent'
 }
 
-function toRoleLabel(role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team') {
+function toRoleLabel(role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team') {
+  if (role === 'Strategy Director') return 'ICT - Strategy Director'
   if (role === 'Strategy Team') return 'ICT - Strategy Team'
   if (role === 'SME Team') return 'ICT - SME Team'
   if (role === 'Reviewer') return 'ICT - Reviewer'
@@ -103,7 +105,7 @@ function getFormattedAnnotation(record: unknown, key: string) {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team') {
+function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team') {
   return `${recordType} - ${toRoleLabel(role)} - ${toIsoDateOnly()}`
 }
 
@@ -432,12 +434,12 @@ export async function addClarificationReply({
     dga_description: message.trim(),
     ...(uploadedFileUrl ? { dga_file_url: uploadedFileUrl } : {}),
     dga_clarification_stage:
-      currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
         ? CLARIFICATION_STAGE_DGE_REVIEW
         : CLARIFICATION_STAGE_PLANNING,
     dga_record_type: RECORD_TYPE_COMMENT,
     dga_scope:
-      currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
         ? SCOPE_INTERNAL_DGE
         : SCOPE_INTERNAL_ENTITY,
     dga_response_date: today,

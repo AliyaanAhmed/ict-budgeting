@@ -1,11 +1,14 @@
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
+import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import { Dga_ict_budget_line_itemsService } from '@/generated/services/Dga_ict_budget_line_itemsService'
-import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { getStoredCurrentSme, getStoredStrategyDirectorTeam, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
+  DGE_INSTANCE_STATUS,
   getSmeAssignmentByPriorityId,
   type DgeBudgetRecord,
 } from '@/services/dgePortfolioService'
+import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
 import { grantIctBudgetAccessToTeam, revokeIctBudgetAccessFromTeam } from '@/services/recordShareService'
 
 function assertSuccess(success: boolean | undefined, message: string, error?: { message?: string } | null) {
@@ -177,32 +180,29 @@ export async function reviewStrategicPriorityChange(
       : null
   }
 
-  const result = await Dga_ict_budgetsService.update(budget.id, payload as never)
-
-  assertSuccess(result.success, 'Unable to process strategic priority change review.', result.error ?? null)
-
-  const previousTeamId =
-    decision === 'approve' ? currentSmeAssignment?.teamId ?? null : requestedSmeAssignment?.teamId ?? null
+  const previousTeamId = currentSmeAssignment?.teamId ?? null
   console.log('[DgeWorkflowService] Strategic priority change sharing resolution:', {
     budgetId: budget.id,
     decision,
     previousTeamId,
     nextTeamId: nextSmeAssignment.teamId,
-    willRevoke: Boolean(previousTeamId && previousTeamId !== nextSmeAssignment.teamId),
+    willRevoke: decision === 'approve' && Boolean(previousTeamId && previousTeamId !== nextSmeAssignment.teamId),
   })
 
-  if (previousTeamId && previousTeamId !== nextSmeAssignment.teamId) {
+  if (decision === 'approve' && previousTeamId && previousTeamId !== nextSmeAssignment.teamId) {
     await revokeIctBudgetAccessFromTeam(budget.id, previousTeamId)
   } else {
     console.log('[DgeWorkflowService] Revoke skipped for strategic priority change:', {
       budgetId: budget.id,
       previousTeamId,
       nextTeamId: nextSmeAssignment.teamId,
-      reason: previousTeamId ? 'same-team' : 'missing-previous-team',
+      reason: decision === 'reject' ? 'reject-does-not-change-sharing' : previousTeamId ? 'same-team' : 'missing-previous-team',
     })
   }
 
-  await grantIctBudgetAccessToTeam(budget.id, nextSmeAssignment.teamId)
+  const result = await Dga_ict_budgetsService.update(budget.id, payload as never)
+
+  assertSuccess(result.success, 'Unable to process strategic priority change review.', result.error ?? null)
 }
 
 export async function requestStrategicPriorityChange(
@@ -221,6 +221,8 @@ export async function requestStrategicPriorityChange(
     throw new Error('Current SME domain is missing from session storage.')
   }
 
+  await grantIctBudgetAccessToTeam(budget.id, currentSme.teamId)
+
   const result = await Dga_ict_budgetsService.update(budget.id, {
     statuscode: DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
     dga_status_for_adge: 6,
@@ -230,11 +232,6 @@ export async function requestStrategicPriorityChange(
   } as never)
 
   assertSuccess(result.success, 'Unable to submit strategic priority change request.', result.error ?? null)
-
-  await Promise.all([
-    grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId),
-    grantIctBudgetAccessToTeam(budget.id, currentSme.teamId),
-  ])
 }
 
 export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
@@ -256,6 +253,8 @@ export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
 
   await prepareRecommendedBudgetForQualityCheck(budget.id)
 
+  await grantIctBudgetAccessToTeam(budget.id, currentSme.teamId)
+
   const result = await Dga_ict_budgetsService.update(budget.id, {
     statuscode: DGE_BUDGET_STATUS.underQualityCheck,
     dga_status_for_adge: 6,
@@ -266,8 +265,148 @@ export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
 
   assertSuccess(result.success, 'Unable to route project to quality check.', result.error ?? null)
 
-  await Promise.all([
-    grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId),
-    grantIctBudgetAccessToTeam(budget.id, currentSme.teamId),
-  ])
+  await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
+}
+
+export async function routeBudgetToDirectorReview(budget: DgeBudgetRecord) {
+  const directorTeam = getStoredStrategyDirectorTeam()
+  const strategyTeam = getStoredStrategyTeam()
+
+  if (!directorTeam?.teamId) {
+    throw new Error('Strategy Director team is not configured for this workspace.')
+  }
+
+  await grantIctBudgetAccessToTeam(budget.id, directorTeam.teamId)
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.underFinalReview,
+    dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+    'ownerid@odata.bind': `/teams(${directorTeam.teamId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to route project to Strategy Director.', result.error ?? null)
+
+  if (strategyTeam?.teamId) {
+    await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
+  }
+}
+
+export async function completeDirectorReview(budget: DgeBudgetRecord) {
+  const directorTeam = getStoredStrategyDirectorTeam()
+  const budgetResult = await Dga_ict_budgetsService.get(budget.id, {
+    select: ['dga_ict_budgetid', 'dga_recommended'],
+  })
+
+  const recommended = budgetResult.data?.dga_recommended ?? null
+  const planningOutcome =
+    recommended === 2
+      ? 1
+      : recommended === 1
+        ? 2
+        : null
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.reviewCompleted,
+    dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+    ...(planningOutcome != null ? { dga_planning_outcome: planningOutcome } : {}),
+    ...(directorTeam?.teamId ? { 'ownerid@odata.bind': `/teams(${directorTeam.teamId})` } : {}),
+  } as never)
+
+  assertSuccess(result.success, 'Unable to complete director review.', result.error ?? null)
+}
+
+export async function assignDirectorClarificationToStrategy(budget: DgeBudgetRecord) {
+  const strategyTeam = getStoredStrategyTeam()
+  const directorTeam = getStoredStrategyDirectorTeam()
+
+  if (!strategyTeam?.teamId) {
+    throw new Error('Strategy Team is not configured for this workspace.')
+  }
+
+  if (!directorTeam?.teamId) {
+    throw new Error('Strategy Director team is not configured for this workspace.')
+  }
+
+  await grantIctBudgetAccessToTeam(budget.id, directorTeam.teamId)
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.clarificationPending,
+    dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+    'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to assign clarification to Strategy Team.', result.error ?? null)
+
+  await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
+}
+
+export async function assignDirectorClarificationToSme(budget: DgeBudgetRecord) {
+  const directorTeam = getStoredStrategyDirectorTeam()
+  const smeAssignment = budget.smeReviewerTeamId
+    ? { teamId: budget.smeReviewerTeamId }
+    : getSmeAssignmentByPriorityId(budget.strategicPriorityId)
+
+  if (!smeAssignment?.teamId) {
+    throw new Error('No SME team is mapped on this project.')
+  }
+
+  if (!directorTeam?.teamId) {
+    throw new Error('Strategy Director team is not configured for this workspace.')
+  }
+
+  await grantIctBudgetAccessToTeam(budget.id, directorTeam.teamId)
+
+  const result = await Dga_ict_budgetsService.update(budget.id, {
+    statuscode: DGE_BUDGET_STATUS.clarificationPending,
+    dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+    'ownerid@odata.bind': `/teams(${smeAssignment.teamId})`,
+    'dga_sme_reviewer_team@odata.bind': `/teams(${smeAssignment.teamId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to assign clarification to SME.', result.error ?? null)
+
+  await grantIctBudgetAccessToTeam(budget.id, smeAssignment.teamId)
+}
+
+export async function returnStrategyClarificationToDirector(budgetId: string) {
+  const directorTeam = getStoredStrategyDirectorTeam()
+  if (!directorTeam?.teamId) {
+    throw new Error('Strategy Director team is not configured for this workspace.')
+  }
+
+  const result = await Dga_ict_budgetsService.update(budgetId, {
+    statuscode: DGE_BUDGET_STATUS.underFinalReview,
+    dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+    'ownerid@odata.bind': `/teams(${directorTeam.teamId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to return project to Strategy Director.', result.error ?? null)
+  await grantIctBudgetAccessToTeam(budgetId, directorTeam.teamId)
+}
+
+export async function publishDgeReviewedInstance(instanceId: string) {
+  const result = await Dga_ict_budget_instancesService.update(instanceId, {
+    statuscode: DGE_INSTANCE_STATUS.reviewCompletedByDge,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to publish entity review completion.', result.error ?? null)
+}
+
+export async function startInstanceAllocation(instanceId: string, budgetIds: string[]) {
+  const instanceResult = await Dga_ict_budget_instancesService.update(instanceId, {
+    statuscode: DGE_INSTANCE_STATUS.allocation,
+  } as never)
+
+  assertSuccess(instanceResult.success, 'Unable to start allocation for this entity.', instanceResult.error ?? null)
+
+  await Promise.all(
+    budgetIds.map(async (budgetId) => {
+      const result = await Dga_ict_budgetsService.update(budgetId, {
+        statuscode: DGE_BUDGET_STATUS.allocationInProgress,
+        dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+      } as never)
+
+      assertSuccess(result.success, 'Unable to move project into allocation.', result.error ?? null)
+    })
+  )
 }

@@ -20,6 +20,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { useCycle } from '@/context/CycleContext'
@@ -41,6 +42,8 @@ import {
 } from '@/services/dgeWorkflowService'
 import { getStrategicPriorityOptions, type StrategicPriorityOption } from '@/services/strategicPriorityService'
 import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
+import { raiseBudgetClarification } from '@/services/clarificationService'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 
 type QueueFilterKey =
   | 'all'
@@ -125,6 +128,8 @@ export default function SmeTeamReviews() {
   const [changePriorityId, setChangePriorityId] = useState('')
   const [changeClassificationId, setChangeClassificationId] = useState('')
   const [qualityCheckBudget, setQualityCheckBudget] = useState<DgeBudgetRecord | null>(null)
+  const [clarificationBudget, setClarificationBudget] = useState<DgeBudgetRecord | null>(null)
+  const [clarificationMessage, setClarificationMessage] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -380,6 +385,51 @@ export default function SmeTeamReviews() {
     }
   }
 
+  const handleSubmitClarification = async () => {
+    if (!clarificationBudget || !clarificationMessage.trim()) return
+
+    setSaving(true)
+    setError(null)
+    try {
+      await runActionToast(
+        async () => {
+          await raiseBudgetClarification({
+            budgetId: clarificationBudget.id,
+            message: clarificationMessage,
+            raisedByRole: 'SME Team',
+            clarificationStage: 2,
+            scope: 1,
+          })
+
+          const result = await Dga_ict_budgetsService.update(clarificationBudget.id, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
+          } as never)
+
+          if (!result.success) {
+            throw new Error(result.error?.message || 'Unable to raise clarification to ADGE.')
+          }
+
+          await refreshQueue()
+          setClarificationBudget(null)
+          setClarificationMessage('')
+        },
+        {
+          processingTitle: 'Raising clarification',
+          processingDescription: 'Opening an external clarification thread for the ADGE Respondent...',
+          successTitle: 'Clarification raised',
+          successDescription: 'The project is now awaiting ADGE response.',
+          errorTitle: 'Unable to raise clarification',
+          minDurationMs: 1400,
+        }
+      )
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Unable to raise clarification.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const prepareRouteToQualityCheck = async (budget: DgeBudgetRecord) => {
     try {
       await runActionToast(
@@ -582,6 +632,7 @@ export default function SmeTeamReviews() {
                     classificationLabel && classificationLabel !== '-' ? classificationLabel : null,
                   ].filter((value): value is string => Boolean(value))
                   const canRequestChange = budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
+                  const canRaiseClarification = budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
                   const canRouteToQuality =
                     budget.statuscode === DGE_BUDGET_STATUS.underSmeReview ||
                     budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
@@ -608,12 +659,6 @@ export default function SmeTeamReviews() {
                               >
                                 {budget.statusLabel}
                               </StrategyPill>
-                              {budget.aiConfidenceScore !== null && budget.aiConfidenceScore < 75 ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF8E8] px-2.5 py-1 text-xs font-semibold text-[#B45309] dark:bg-[#3A2810] dark:text-[#FCD34D]">
-                                  <AlertTriangle className="h-3 w-3" />
-                                  Review closely
-                                </span>
-                              ) : null}
                             </div>
 
                             <h3 className="mt-2 text-xl font-bold text-[#0F172A] dark:text-white">{budget.name}</h3>
@@ -701,6 +746,22 @@ export default function SmeTeamReviews() {
                             >
                               <Layers className="mr-1 h-4 w-4" />
                               Request Strategic Priority Change
+                            </Button>
+                          ) : null}
+
+                          {canRaiseClarification ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-lg border-[#D7E4F4] px-3 text-[#286CFF] hover:bg-[#EEF5FF]"
+                              onClick={() => {
+                                setClarificationBudget(budget)
+                                setClarificationMessage('')
+                              }}
+                            >
+                              <MessageSquareDot className="mr-1 h-4 w-4" />
+                              Raise Clarification
                             </Button>
                           ) : null}
 
@@ -892,6 +953,45 @@ export default function SmeTeamReviews() {
         onConfirm={() => void handleRouteToQualityCheck()}
         tone="primary"
       />
+
+      <Dialog open={Boolean(clarificationBudget)} onOpenChange={(open) => !open && setClarificationBudget(null)}>
+        <DialogContent className="max-w-[620px] overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-0 dark:border-white/10 dark:bg-[#162339]">
+          <div className="border-b border-[#EEF3F8] bg-white px-6 py-5 dark:border-white/10 dark:bg-[#162339]">
+            <DialogHeader>
+              <DialogTitle>Raise Clarification</DialogTitle>
+              <DialogDescription>Send an external clarification request to the ADGE Respondent.</DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            {clarificationBudget ? (
+              <div className="rounded-[18px] border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{clarificationBudget.name}</p>
+                <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                  {clarificationBudget.budgetRefId} · {clarificationBudget.entityName || clarificationBudget.instanceName || 'Unknown Entity'}
+                </p>
+              </div>
+            ) : null}
+            <Textarea
+              value={clarificationMessage}
+              onChange={(event) => setClarificationMessage(event.target.value)}
+              placeholder="Describe what the ADGE Respondent needs to clarify..."
+              className="min-h-[140px] rounded-2xl border-[#D7E4F4]"
+            />
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 py-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl" onClick={() => setClarificationBudget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+              onClick={() => void handleSubmitClarification()}
+              disabled={!clarificationMessage.trim() || saving}
+            >
+              Raise Clarification
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </StrategyPageShell>
   )
 }

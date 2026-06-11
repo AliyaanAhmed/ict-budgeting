@@ -9,7 +9,7 @@ import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
 
 interface ClarificationThreadProps {
   clarifications: Clarification[]
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   isEditMode: boolean
   onReply: (clarificationId: string, message: string, files?: File[]) => void
   onClose: (clarificationId: string) => void
@@ -42,6 +42,12 @@ const ROLE_STYLE = {
     badge: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#E9D5FF]',
     avatarBg: 'bg-[#7C3AED]',
     bubble: 'border border-[#D8B4FE] bg-white text-[#0F172A] dark:border-[#7C3AED]/25 dark:bg-[#211136] dark:text-white',
+  },
+  'Strategy Director': {
+    headerBg: 'bg-[#EFF6FF] dark:bg-[#0D1E35]',
+    badge: 'bg-[#DBEAFE] text-[#1D4ED8] dark:bg-[#1D4ED8]/20 dark:text-[#BFDBFE]',
+    avatarBg: 'bg-[#286CFF]',
+    bubble: 'border border-[#BFD8FF] bg-white text-[#0F172A] dark:border-[#286CFF]/25 dark:bg-[#0D1E35] dark:text-white',
   },
   'SME Team': {
     headerBg: 'bg-[#EEF5FF] dark:bg-[#0D1E35]',
@@ -171,7 +177,7 @@ function ClarificationCard({
 }: {
   clarification: Clarification
   index: number
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   isEditMode: boolean
   isExpanded: boolean
   onToggle: () => void
@@ -191,7 +197,7 @@ function ClarificationCard({
   const isDgeInternal = clarification.scope === 'Internal (DGE)'
   const canReply = isOpen
     ? isDgeInternal
-      ? currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      ? currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
       : currentRole === 'Respondent' || isRaiser
     : false
   const canClose = isOpen && isRaiser

@@ -19,6 +19,7 @@ export interface AppInstanceDetail {
   abbr: string
   planningStartDate: string
   planningEndDate: string
+  statuscode?: number | null
 }
 
 const ROLE_ACCOUNT_KEY: Record<TeamRole, string> = {
@@ -47,6 +48,7 @@ export async function fetchAndStoreInstance(
         'dga_name',
         'dga_planning_start_date',
         'dga_planning_end_date',
+        'statuscode',
       ],
       filter: `_dga_cycle_value eq ${cycleId} and _dga_entity_value eq ${accountId}`,
       top: 1,
@@ -63,6 +65,7 @@ export async function fetchAndStoreInstance(
       abbr:               rec.dga_entity_abbr ?? '',
       planningStartDate:  rec.dga_planning_start_date ?? '',
       planningEndDate:    rec.dga_planning_end_date ?? '',
+      statuscode:         typeof rec.statuscode === 'number' ? rec.statuscode : null,
     }
 
     sessionStorage.setItem(SESSION_INSTANCE_ID_KEY,     detail.id)

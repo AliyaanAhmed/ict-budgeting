@@ -90,7 +90,7 @@ export function AppEmptyState({
         <div className="absolute left-[20%] top-[18%] h-3 w-3 rounded-full bg-[#286CFF]/30 animate-bounce" />
         <div className="absolute right-[24%] top-[30%] h-3 w-3 rounded-full bg-[#7C3AED]/30 animate-bounce [animation-delay:300ms]" />
         <div className="absolute bottom-[22%] left-[28%] h-2.5 w-2.5 rounded-full bg-[#10B981]/30 animate-bounce [animation-delay:600ms]" />
-        <div className={`absolute inset-8 rounded-[32px] border ${content.grid} bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0.18))] dark:border-white/5 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]`} />
+        <div className={`absolute inset-8`} />
       </div>
 
       <div className="relative z-10 w-full max-w-4xl">

@@ -130,6 +130,7 @@ import {
   type WorkStreamOption,
 } from '@/services/workStreamService'
 import { DGE_BUDGET_STATUS } from '@/services/dgePortfolioService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { projectService } from '@/services/projectService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
@@ -142,13 +143,17 @@ import {
 import {
   requestStrategicPriorityChange,
   reviewStrategicPriorityChange,
+  routeBudgetToDirectorReview,
   routeBudgetToQualityCheck,
+  completeDirectorReview,
+  returnStrategyClarificationToDirector,
   sendBudgetsToSme,
   validateBudgetReadyForQualityCheck,
 } from '@/services/dgeWorkflowService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
 import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
-import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { getStoredCurrentSme, getStoredStrategyDirectorTeam, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 import {
   associateTechnologyProduct,
   disassociateTechnologyProduct,
@@ -811,7 +816,7 @@ function EmptyAiActionCard({
   )
 }
 
-type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
 type WorkflowAction =
   | 'delete-project'
   | 'submit-reviewer'
@@ -822,7 +827,7 @@ type PendingClarificationReply = {
   clarificationId: string
   message: string
   files?: File[]
-  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
 }
 
 interface DetailSuggestionRow {
@@ -866,6 +871,15 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
     case 776140002:
     case 776140003:
       return 'Approver'
+    case DGE_BUDGET_STATUS.underStrategicAlignmentReview:
+    case DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview:
+    case DGE_BUDGET_STATUS.underQualityCheck:
+      return 'Strategy Team'
+    case DGE_BUDGET_STATUS.underSmeReview:
+      return 'SME Team'
+    case DGE_BUDGET_STATUS.underFinalReview:
+    case DGE_BUDGET_STATUS.reviewCompleted:
+      return 'Strategy Director'
     default:
       return fallbackStatus ? getWorkflowOwner(fallbackStatus) : null
   }
@@ -873,6 +887,7 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
 
 function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
   const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('strategy director')) return 'Strategy Director'
   if (value.includes('strategy')) return 'Strategy Team'
   if (value.includes('sme')) return 'SME Team'
   if (value.includes('review')) return 'Reviewer'
@@ -894,6 +909,10 @@ function getStoredUserTeams(): UserTeam[] {
 }
 
 function getRoleTeamId(role: WorkflowRole): string | null {
+  if (role === 'Strategy Director') {
+    return getStoredStrategyDirectorTeam()?.teamId?.trim() || null
+  }
+
   if (role === 'Strategy Team') {
     return getStoredStrategyTeam()?.teamId?.trim() || null
   }
@@ -2111,7 +2130,7 @@ function InteractiveBudgetOverviewCard({
   record: StoredBudgetOverviewRecord | null
   loading: boolean
   error: string | null
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   confidenceScore: number
   isRefreshing: boolean
   policyLoading: boolean
@@ -2785,13 +2804,16 @@ export default function ProjectDetail() {
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
   const isStrategyView = pathname.includes('/strategy-team/')
+  const isStrategyDirectorView = pathname.includes('/strategy-director/')
   const isSmeView = pathname.includes('/sme-team/')
-  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isSmeView
+  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isStrategyDirectorView || isSmeView
 
   const routeRole: WorkflowRole = isReviewerView
     ? 'Reviewer'
     : isApproverView
       ? 'Approver'
+      : isStrategyDirectorView
+        ? 'Strategy Director'
       : isStrategyView
         ? 'Strategy Team'
         : isSmeView
@@ -2807,6 +2829,8 @@ export default function ProjectDetail() {
       ? '/approver/approval-queue'
       : isStrategyView
         ? '/strategy-team/strategic-alignment'
+        : isStrategyDirectorView
+          ? '/strategy-director/reviewer-queue'
         : isSmeView
           ? '/sme-team/reviews'
           : '/respondent/projects'
@@ -2816,6 +2840,8 @@ export default function ProjectDetail() {
       ? '/approver/dashboard'
       : isStrategyView
         ? '/strategy-team/dashboard'
+        : isStrategyDirectorView
+          ? '/strategy-director/dashboard'
         : isSmeView
           ? '/sme-team/dashboard'
           : '/respondent/dashboard'
@@ -2825,6 +2851,8 @@ export default function ProjectDetail() {
       ? 'Approval Queue'
       : isStrategyView
         ? 'Strategic Alignment'
+        : isStrategyDirectorView
+          ? 'Director Review Queue'
         : isSmeView
           ? 'SME Review Queue'
           : 'My Projects'
@@ -2841,7 +2869,7 @@ export default function ProjectDetail() {
   )
   const workflowOwner = getWorkflowOwnerByStatusCode(project.statusCode, project.status)
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
-  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'SME Team'
+  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
   const isSubmittedToDgeBudget = typeof project.statusCode === 'number' && project.statusCode >= 776140004
   const statusForAdgeLabel = (project.statusForAdgeLabel ?? '').trim().toLowerCase()
   const isAdgeClarificationPending =
@@ -2851,24 +2879,30 @@ export default function ProjectDetail() {
     project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
     !isAdgeClarificationPending &&
     isCurrentOwner &&
-    (currentRole === 'SME Team' || currentRole === 'Strategy Team')
+    (currentRole === 'SME Team' || currentRole === 'Strategy Team' || currentRole === 'Strategy Director')
   const isStrategyClarificationRequiredForSme =
     currentRole === 'SME Team' && isInternalDgeClarificationForCurrentRole
   const effectiveWorkflowOwner = isInternalDgeClarificationForCurrentRole ? currentRole : workflowOwner
   const [ictBudgetSmeReviewerTeamId, setIctBudgetSmeReviewerTeamId] = useState<string | null>(null)
   const currentSmeTeamId = getStoredCurrentSme()?.teamId?.trim() || null
   const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
+  const isCurrentSmeDomainProject =
+    currentRole === 'SME Team' &&
+    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+  const canCurrentSmeActOnProject =
+    currentRole === 'SME Team' &&
+    (isCurrentOwner || isCurrentSmeDomainProject)
   const canSmeEditRecommendedOnly =
     currentRole === 'SME Team' &&
     isCurrentOwner &&
-    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+    isCurrentSmeDomainProject
   const canCurrentRoleEdit =
-    currentRole === 'Strategy Team'
+    currentRole === 'Strategy Team' || currentRole === 'Strategy Director'
       ? true
       : currentRole === 'SME Team'
         ? canSmeEditRecommendedOnly
         : canRoleEdit(project, currentRole)
-  const canEditFullForm = currentRole === 'Strategy Team' || (!isDgeRole && canCurrentRoleEdit)
+  const canEditFullForm = currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || (!isDgeRole && canCurrentRoleEdit)
   const canEditDgeRecommendationOnly = currentRole === 'SME Team' && canSmeEditRecommendedOnly
   const canDeleteProject =
     currentRole === 'Respondent' &&
@@ -2915,17 +2949,22 @@ export default function ProjectDetail() {
           project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
           project.statusCode === DGE_BUDGET_STATUS.clarificationPending
         )) ||
+      (currentRole === 'Strategy Director' &&
+        (
+          project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
+          project.statusCode === DGE_BUDGET_STATUS.clarificationPending
+        )) ||
       (currentRole === 'SME Team' &&
         (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
-    isCurrentOwner
+    (currentRole === 'SME Team' ? canCurrentSmeActOnProject : isCurrentOwner)
   const canRouteToQualityCheck =
     currentRole === 'SME Team' &&
-    isCurrentOwner &&
+    canCurrentSmeActOnProject &&
     (project.statusCode === DGE_BUDGET_STATUS.underSmeReview ||
       project.statusCode === DGE_BUDGET_STATUS.clarificationPending)
   const canRequestStrategicPriorityChange =
     currentRole === 'SME Team' &&
-    isCurrentOwner &&
+    canCurrentSmeActOnProject &&
     project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const canSendToSmeFromDetail =
     currentRole === 'Strategy Team' &&
@@ -2942,16 +2981,36 @@ export default function ProjectDetail() {
       project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
       project.statusCode === DGE_BUDGET_STATUS.underFinalReview
     )
+  const canCompleteDirectorReviewFromDetail =
+    currentRole === 'Strategy Director' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underFinalReview
   const approverUsesDirectDgeFlow =
     currentRole === 'Approver' &&
     hasCycleDgeSubmission &&
     isCurrentOwner &&
     (project.statusCode === 776140002 ||
       (project.statusCode == null && project.status === 'Submitted to Approver'))
-  const showPendingNotice = effectiveWorkflowOwner !== null && (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
+  const hasDgeGovernanceEditOverride = currentRole === 'Strategy Team' || currentRole === 'Strategy Director'
+  const showPendingNotice =
+    !hasDgeGovernanceEditOverride &&
+    effectiveWorkflowOwner !== null &&
+    (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
   const pendingNoticeText = effectiveWorkflowOwner
     ? `This project is currently pending with ${effectiveWorkflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
     : 'This project has completed the current workflow stage and is now read-only.'
+  const availableActionHeading =
+    currentRole === 'Strategy Team' && workflowOwner && workflowOwner !== 'Strategy Team'
+      ? 'Strategy Team governance access available'
+      : currentRole === 'Strategy Director' && workflowOwner && workflowOwner !== 'Strategy Director'
+        ? 'Strategy Director governance access available'
+        : `${currentRole} actions available`
+  const availableActionDescription =
+    currentRole === 'Strategy Team' && workflowOwner && workflowOwner !== 'Strategy Team'
+      ? 'Strategy Team can edit the form and continue eligible governance actions from the panel on the right, even when the active workflow owner is another DGE or ADGE role.'
+      : currentRole === 'Strategy Director' && workflowOwner && workflowOwner !== 'Strategy Director'
+        ? 'Strategy Director can review, edit, and use eligible final-governance actions from the panel on the right, even when the active workflow owner is another DGE role.'
+        : `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
 
   useEffect(() => {
     let cancelled = false
@@ -3174,6 +3233,34 @@ export default function ProjectDetail() {
   const latestOpenClarification = [...localClarifications]
     .filter((clarification) => clarification.status === 'Open')
     .sort((left, right) => (right.date || '').localeCompare(left.date || ''))[0] ?? null
+  const hasDirectorRaisedOpenClarification =
+    latestOpenClarification?.raisedBy === 'Strategy Director'
+  const isDirectorClarificationForStrategy =
+    currentRole === 'Strategy Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const isDirectorClarificationForSme =
+    currentRole === 'SME Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const isStrategyClarificationForSme =
+    currentRole === 'SME Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    latestOpenClarification?.raisedBy === 'Strategy Team'
+  const canRouteToDirectorAfterDirectorClarification =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const canRouteToQualityCheckAfterDirectorClarification =
+    currentRole === 'SME Team' &&
+    canCurrentSmeActOnProject &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const canCompleteDirectorReviewAfterClarification =
+    currentRole === 'Strategy Director' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
   const clarificationReturnRole =
     currentRole === 'Respondent' &&
     project.status === 'Clarification Required' &&
@@ -5183,6 +5270,11 @@ export default function ProjectDetail() {
     await saveProjectChanges()
   }
 
+  const savePendingFormChangesBeforeDgeAction = async () => {
+    if (!isEditMode || !hasUnsavedChanges) return true
+    return Boolean(await saveProjectChanges({ exitEditMode: false }))
+  }
+
   const handleSaveBeforeNavigation = async () => {
     if (!pendingNavigationHref) return
 
@@ -5953,7 +6045,7 @@ export default function ProjectDetail() {
     clarificationId: string,
     message: string,
     files?: File[],
-    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   ) => {
     if (!ictBudgetId) {
       setLocalClarifications((prev) =>
@@ -5989,16 +6081,56 @@ export default function ProjectDetail() {
           files,
         })
 
+        if (returnToRole === 'Strategy Director' && (currentRole === 'Strategy Team' || currentRole === 'SME Team')) {
+          if (currentRole === 'Strategy Team') {
+            await returnStrategyClarificationToDirector(ictBudgetId)
+            syncLocalWorkflowState('Under Final Review' as Project['status'])
+          } else {
+            const strategyTeam = getStoredStrategyTeam()
+            if (!strategyTeam?.teamId) {
+              throw new Error('Strategy Team is not configured for this workspace.')
+            }
+            const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+              statuscode: DGE_BUDGET_STATUS.underQualityCheck,
+              dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+              'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+            } as never)
+            if (!handoffResult.success) {
+              throw new Error(handoffResult.error?.message || 'Unable to return SME clarification to quality check.')
+            }
+            syncLocalWorkflowState('Under Quality Check' as Project['status'])
+          }
+
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+          setLocalClarifications(clarifications)
+          if (files?.length) void refreshSharepointDocs()
+          return
+        }
+
         if (currentRole === 'Respondent' && returnToRole) {
           if (returnToRole !== 'Reviewer' && returnToRole !== 'Approver') {
             const nextStatusCode =
               returnToRole === 'Strategy Team'
                 ? DGE_BUDGET_STATUS.underStrategicAlignmentReview
                 : DGE_BUDGET_STATUS.underSmeReview
+            const targetTeamId =
+              returnToRole === 'Strategy Team'
+                ? getStoredStrategyTeam()?.teamId?.trim() || null
+                : ictBudgetSmeReviewerTeamId || null
+
+            if (!targetTeamId) {
+              throw new Error(
+                returnToRole === 'Strategy Team'
+                  ? 'Strategy Team is not configured for this workspace.'
+                  : 'No SME team is mapped on this project.'
+              )
+            }
 
             const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
               statuscode: nextStatusCode,
               dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+              'ownerid@odata.bind': `/teams(${targetTeamId})`,
             } as never)
 
             if (!handoffResult.success) {
@@ -6068,6 +6200,7 @@ export default function ProjectDetail() {
       clarification?.raisedBy === 'Reviewer' ||
       clarification?.raisedBy === 'Approver' ||
       clarification?.raisedBy === 'Strategy Team' ||
+      clarification?.raisedBy === 'Strategy Director' ||
       clarification?.raisedBy === 'SME Team'
         ? clarification.raisedBy
         : null
@@ -6083,6 +6216,21 @@ export default function ProjectDetail() {
         message,
         files,
         returnToRole: firstReplyReturnToRole,
+      })
+      return
+    }
+
+    const isDgeFirstReplyToDirector =
+      (currentRole === 'Strategy Team' || currentRole === 'SME Team') &&
+      clarification?.raisedBy === 'Strategy Director' &&
+      clarification.replies.length === 0
+
+    if (isDgeFirstReplyToDirector) {
+      setPendingClarificationReply({
+        clarificationId,
+        message,
+        files,
+        returnToRole: 'Strategy Director',
       })
       return
     }
@@ -6128,12 +6276,14 @@ export default function ProjectDetail() {
     )
   }
 
-  const handleRaiseClarification = ({ message, files }: { message: string; files?: File[] }) => {
+  const handleRaiseClarification = async ({ message, files, target }: { message: string; files?: File[]; target?: string }) => {
     const raisedByRole =
       currentRole === 'Approver'
         ? 'Approver'
         : currentRole === 'Strategy Team'
           ? 'Strategy Team'
+          : currentRole === 'Strategy Director'
+            ? 'Strategy Director'
           : currentRole === 'SME Team'
             ? 'SME Team'
             : 'Reviewer'
@@ -6149,6 +6299,8 @@ export default function ProjectDetail() {
               ? 'Approver'
               : raisedByRole === 'Strategy Team'
                 ? 'ICT - Strategy Team'
+                : raisedByRole === 'Strategy Director'
+                  ? 'ICT - Strategy Director'
                 : 'ICT - SME Team',
         raisedByName: currentUser.name,
         raisedTo: 'Respondent',
@@ -6162,16 +6314,26 @@ export default function ProjectDetail() {
       return
     }
 
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
     void runActionToast(
       async () => {
+        const directorClarificationTargetTeamId =
+          raisedByRole === 'Strategy Director'
+            ? target === 'sme'
+              ? ictBudgetSmeReviewerTeamId || null
+              : getStoredStrategyTeam()?.teamId?.trim() || null
+            : null
         await raiseBudgetClarification({
           budgetId: ictBudgetId,
           message,
           raisedByRole,
           clarificationStage:
-            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 2 : 1,
+            raisedByRole === 'Strategy Team' || raisedByRole === 'Strategy Director' || raisedByRole === 'SME Team' ? 2 : 1,
           scope:
-            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : 2,
+            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : raisedByRole === 'Strategy Director' ? 3 : 2,
+          raisedToTeamId: directorClarificationTargetTeamId,
           files,
         })
         console.log('[ProjectDetail] Raising clarification — updating ICT budget to clarification pending:', {
@@ -6180,7 +6342,24 @@ export default function ProjectDetail() {
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
+        if (raisedByRole === 'Strategy Director') {
+          if (!directorClarificationTargetTeamId) {
+            throw new Error(target === 'sme' ? 'No SME team is mapped on this project.' : 'Strategy Team is not configured for this workspace.')
+          }
+          const strategyDirectorTeam = getStoredStrategyDirectorTeam()
+          if (!strategyDirectorTeam?.teamId) {
+            throw new Error('Strategy Director team is not configured for this workspace.')
+          }
+          await grantIctBudgetAccessToTeam(ictBudgetId, strategyDirectorTeam.teamId)
+          const directorClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            'ownerid@odata.bind': `/teams(${directorClarificationTargetTeamId})`,
+          } as never)
+          if (!directorClarificationResult.success) {
+            throw new Error(directorClarificationResult.error?.message || 'Unable to send director clarification to Strategy Team.')
+          }
+        } else if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
           const dgeClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
             statuscode: DGE_BUDGET_STATUS.clarificationPending,
             dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
@@ -6530,14 +6709,14 @@ export default function ProjectDetail() {
   }
 
   const handleRouteToQualityCheck = async () => {
-    if (!ictBudgetId || !projectData || !canRouteToQualityCheck) return
+    const canRouteFromDetail = canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification
+    if (!ictBudgetId || !projectData || !canRouteFromDetail) return
     if (!validateSmeRecommendationForQualityCheck()) return
-    await validateBudgetReadyForQualityCheck(ictBudgetId)
 
-    if (isEditMode) {
-      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
-      if (!saveSucceeded) return
-    }
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
+    await validateBudgetReadyForQualityCheck(ictBudgetId)
 
     const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
     const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
@@ -6564,7 +6743,9 @@ export default function ProjectDetail() {
       allocatedBudget: 0,
       utilizedBudget: 0,
       aiConfidenceScore: project.aiScore ?? null,
+      aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,
+      ownerType: project.ownerType ?? null,
       ownerName: null,
       instanceId: null,
       instanceName: storedInstance?.name ?? null,
@@ -6618,7 +6799,9 @@ export default function ProjectDetail() {
       allocatedBudget: 0,
       utilizedBudget: 0,
       aiConfidenceScore: project.aiScore ?? null,
+      aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,
+      ownerType: project.ownerType ?? null,
       ownerName: null,
       instanceId: null,
       instanceName: storedInstance?.name ?? null,
@@ -6643,10 +6826,8 @@ export default function ProjectDetail() {
   const handleDetailSubmitChangeRequest = async () => {
     if (!ictBudgetId || !projectData || !detailChangePriorityId || !detailChangeClassificationId) return
 
-    if (isEditMode) {
-      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
-      if (!saveSucceeded) return
-    }
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6671,6 +6852,8 @@ export default function ProjectDetail() {
 
   const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6697,6 +6880,8 @@ export default function ProjectDetail() {
 
   const handleDetailSendToSme = async () => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6717,15 +6902,12 @@ export default function ProjectDetail() {
 
   const handleDetailRouteToDirector = async () => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
     await runActionToast(
       async () => {
-        const result = await Dga_ict_budgetsService.update(ictBudgetId, {
-          statuscode: DGE_BUDGET_STATUS.underFinalReview,
-          dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
-        } as never)
-        if (!result.success) {
-          throw new Error(result.error?.message || 'Unable to route project to director review.')
-        }
+        await routeBudgetToDirectorReview(buildCurrentWorkflowBudget())
         syncLocalWorkflowState('Under Final Review' as Project['status'])
       },
       {
@@ -6734,6 +6916,27 @@ export default function ProjectDetail() {
         successTitle: 'Routed to director',
         successDescription: 'The project is now under final review.',
         errorTitle: 'Unable to route to director',
+        minDurationMs: 1200,
+      }
+    )
+  }
+
+  const handleDetailCompleteDirectorReview = async () => {
+    if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
+    await runActionToast(
+      async () => {
+        await completeDirectorReview(buildCurrentWorkflowBudget())
+        syncLocalWorkflowState('Review Completed' as Project['status'])
+      },
+      {
+        processingTitle: 'Completing director review',
+        processingDescription: 'Marking this project as DGE review completed...',
+        successTitle: 'Director review completed',
+        successDescription: 'The project is now counted as Review Completed.',
+        errorTitle: 'Unable to complete director review',
         minDurationMs: 1200,
       }
     )
@@ -6846,6 +7049,7 @@ export default function ProjectDetail() {
   const savedActivityTypeLabel =
     ACTIVITY_TYPE_OPTIONS.find((option) => option.value === savedFormValues.activityType)?.title ?? '-'
   const headerCreatedBy = ictBudgetCreatedByName || project.submittedBy
+  const headerPendingWith = project.pendingWith || '-'
   const creationCreatedOnLabel = ictBudgetCreatedOn
     ? ictBudgetCreatedOn
     : project.submittedDate
@@ -6855,7 +7059,13 @@ export default function ProjectDetail() {
   const resolvedStatusLabel = isDgeRole
     ? getDgeHeaderStatusLabel(project.statusCode ?? null, project.status)
     : project.status
-  const showDgeRecommendationFields = isDgeRole && isSubmittedToDgeBudget
+  const storedInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const canAdgeViewDgeRecommendationFields =
+    !isDgeRole &&
+    typeof storedInstanceStatusCode === 'number' &&
+    storedInstanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+  const showDgeRecommendationFields =
+    (isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields
   const recommendedChoiceLabel =
     formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : '-'
   const rejectionReasonLabel =
@@ -6887,6 +7097,7 @@ export default function ProjectDetail() {
     summary: savedFormValues.summary || toPlainTextSummary(project.summary),
     status: resolvedStatusLabel,
     createdBy: headerCreatedBy,
+    pendingWith: headerPendingWith,
     createdOn: creationCreatedOnLabel,
     modifiedOn: creationModifiedOnLabel,
     recommended: ictBudgetRecommendedLabel || recommendedChoiceLabel,
@@ -6942,6 +7153,11 @@ export default function ProjectDetail() {
               <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
                 Created By: <span className="font-semibold text-[#0F172A] dark:text-white">{display.createdBy}</span>
               </p>
+              {isDgeRole ? (
+                <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
+                  Pending With: <span className="font-semibold text-[#0F172A] dark:text-white">{display.pendingWith}</span>
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -7102,23 +7318,31 @@ export default function ProjectDetail() {
               >
                 {showClarificationReturnNotice
                   ? `Reply Returns To ${clarificationReturnRole}`
+                  : isDirectorClarificationForStrategy
+                    ? 'Clarification Required by Strategy Director'
+                  : isDirectorClarificationForSme
+                    ? 'Clarification Required by Strategy Director'
                   : isStrategyClarificationRequiredForSme
                     ? 'Clarification Required by Strategy Team'
                   : showPendingNotice
                   ? `Pending with ${effectiveWorkflowOwner}`
                   : canCurrentRoleEdit
-                    ? `${currentRole} actions available`
+                    ? availableActionHeading
                     : 'Read-only workflow state'}
               </p>
               <p className="text-xs text-[#64748B] dark:text-slate-300">
                 {showClarificationReturnNotice
                   ? `Reply to the latest clarification below and this ICT budget will automatically be assigned back to ${clarificationReturnRole}. You do not need to submit it manually from Quick Actions.`
+                  : isDirectorClarificationForStrategy
+                    ? 'Strategy Director requested clarification from Strategy Team. Your first reply will return this project to Director final review, and you can also use Route to Director when ready.'
+                  : isDirectorClarificationForSme
+                    ? 'Strategy Director requested clarification from SME Team. Your first reply will move this project back to Strategy Team quality check, and you can also route it to quality check when ready.'
                   : isStrategyClarificationRequiredForSme
                     ? 'Strategy Team requested clarification from SME on this project. You can update the recommendation fields, reply in the clarification thread, and still route the project to quality check once it is ready.'
                   : showPendingNotice
                   ? pendingNoticeText
                   : canCurrentRoleEdit
-                    ? `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
+                    ? availableActionDescription
                   : 'This project is currently read-only, but the clarification thread remains available for all roles.'}
             </p>
           </div>
@@ -7694,6 +7918,61 @@ export default function ProjectDetail() {
                         Raise Clarification
                       </Button>
                     )}
+                    {(canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleRouteToQualityCheck()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Quality Check
+                      </Button>
+                    )}
+                    {canRequestStrategicPriorityChange && (
+                      <Button
+                        variant="outline"
+                        className="gap-2 rounded-xl border-blue-300 text-blue-700 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF]"
+                        onClick={openDetailChangeRequestModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Request Strategic Priority Change
+                      </Button>
+                    )}
+                    {canSendToSmeFromDetail && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => setDetailSendToSmeConfirmOpen(true)}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Send to SME
+                      </Button>
+                    )}
+                    {canReviewStrategicPriorityChangeFromDetail && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => setDetailReviewChangeModalOpen(true)}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        Review Change Request
+                      </Button>
+                    )}
+                    {(canRouteToDirectorFromDetail || canRouteToDirectorAfterDirectorClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailRouteToDirector()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Director
+                      </Button>
+                    )}
+                    {(canCompleteDirectorReviewFromDetail || canCompleteDirectorReviewAfterClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailCompleteDirectorReview()}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Complete Review
+                      </Button>
+                    )}
                     {canCompleteReview && (
                       <Button
                         className="gap-2 rounded-xl"
@@ -7966,7 +8245,9 @@ export default function ProjectDetail() {
                         Edit Details
                       </Button>
                     )}
-                    {canRaiseClarification && (
+                    {canRaiseClarification &&
+                      !canRouteToDirectorAfterDirectorClarification &&
+                      !canRouteToQualityCheckAfterDirectorClarification && (
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
@@ -7974,6 +8255,15 @@ export default function ProjectDetail() {
                       >
                         <MessageSquare className="h-4 w-4" />
                         Raise Clarification
+                      </Button>
+                    )}
+                    {(canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification) && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleRouteToQualityCheck()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Quality Check
                       </Button>
                     )}
                     {canRequestStrategicPriorityChange && (
@@ -8004,13 +8294,22 @@ export default function ProjectDetail() {
                         Review Change Request
                       </Button>
                     )}
-                    {canRouteToDirectorFromDetail && (
+                    {(canRouteToDirectorFromDetail || canRouteToDirectorAfterDirectorClarification) && (
                       <Button
                         className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
                         onClick={() => void handleDetailRouteToDirector()}
                       >
                         <Workflow className="h-4 w-4" />
                         Route to Director
+                      </Button>
+                    )}
+                    {(canCompleteDirectorReviewFromDetail || canCompleteDirectorReviewAfterClarification) && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailCompleteDirectorReview()}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Complete Review
                       </Button>
                     )}
                     {canCompleteReview && (
@@ -8040,7 +8339,13 @@ export default function ProjectDetail() {
                         {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
                       </Button>
                     )}
-                    {!canCurrentRoleEdit && !canRaiseClarification && !canCompleteReview && !canSubmitToApprover && !canApproveProject && (
+                    {!canCurrentRoleEdit &&
+                      !canRaiseClarification &&
+                      !canRouteToQualityCheck &&
+                      !canRouteToQualityCheckAfterDirectorClarification &&
+                      !canCompleteReview &&
+                      !canSubmitToApprover &&
+                      !canApproveProject && (
                       <p className="text-xs text-[#475569] dark:text-slate-200">
                         This record is currently pending with another role, so workflow actions are locked here.
                       </p>
@@ -8427,21 +8732,35 @@ export default function ProjectDetail() {
             setPendingClarificationReply(null)
           }
         }}
-        title={`Send Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}?`}
+        title={`Send Reply And Return To ${
+          pendingClarificationReply?.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+            ? 'Strategy Team'
+            : pendingClarificationReply?.returnToRole ?? 'Reviewer'
+        }?`}
         description={
           pendingClarificationReply
-            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
+            ? pendingClarificationReply.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+              ? 'After this reply is submitted, the ICT budget will move back to Strategy Team quality check so Strategy can continue governance review.'
+              : pendingClarificationReply.returnToRole === 'Strategy Director' && currentRole === 'Strategy Team'
+                ? 'After this reply is submitted, the ICT budget will return to Strategy Director final review.'
+              : `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
                 pendingClarificationReply.returnToRole === 'Reviewer'
                   ? 'reviewer review'
                   : pendingClarificationReply.returnToRole === 'Approver'
                     ? 'approver review'
                     : pendingClarificationReply.returnToRole === 'Strategy Team'
                       ? 'strategic alignment review'
+                      : pendingClarificationReply.returnToRole === 'Strategy Director'
+                        ? 'final review'
                       : 'SME review'
               }.`
             : 'After this reply is submitted, the ICT budget will be reassigned in the workflow.'
         }
-        confirmLabel={`Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}`}
+        confirmLabel={`Reply And Return To ${
+          pendingClarificationReply?.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+            ? 'Strategy Team'
+            : pendingClarificationReply?.returnToRole ?? 'Reviewer'
+        }`}
         cancelLabel="Keep Editing"
         onConfirm={handleConfirmClarificationReplyHandoff}
         tone="primary"
@@ -8457,6 +8776,14 @@ export default function ProjectDetail() {
         projectName={display.name}
         onSubmit={handleRaiseClarification}
         quickPrompts={clarificationQuickPrompts}
+        targetOptions={
+          currentRole === 'Strategy Director'
+            ? [
+                { value: 'strategy', label: 'To Strategy' },
+                { value: 'sme', label: 'To SME' },
+              ]
+            : undefined
+        }
       />
       <Dialog open={workStreamModalOpen} onOpenChange={setWorkStreamModalOpen}>
         <DialogContent className="max-w-[520px] p-0">

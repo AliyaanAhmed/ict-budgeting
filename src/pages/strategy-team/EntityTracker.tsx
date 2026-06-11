@@ -140,7 +140,7 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
   const activeIndex = getActiveStepIndex(instance)
   const breakdown = instance.budgets.reduce(
     (acc, budget) => {
-      const bucket = getBudgetStageBucket(budget.statuscode)
+      const bucket = getBudgetStageBucket(budget)
       acc[bucket] += 1
       return acc
     },
@@ -205,11 +205,11 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
         <div className="h-4 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
           <div className="flex h-full w-full">
             {[
-              { label: 'Planning', value: breakdown.planning, color: '#7FA8FF', textColor: '#FFFFFF' },
-              { label: 'DGE Review', value: breakdown.dgeReview, color: '#286CFF', textColor: '#FFFFFF' },
-              { label: 'Review Completed', value: breakdown.reviewCompleted, color: '#7C3AED', textColor: '#FFFFFF' },
-              { label: 'Allocation', value: breakdown.allocation, color: '#10B981', textColor: '#FFFFFF' },
-              { label: 'Utilization', value: breakdown.utilization, color: '#008a65', textColor: '#FFFFFF' },
+              { label: 'Planning', value: breakdown.planning, color: '#0F766E', textColor: '#FFFFFF' },
+              { label: 'DGE Review', value: breakdown.dgeReview, color: '#1D4ED8', textColor: '#FFFFFF' },
+              { label: 'Review Completed', value: breakdown.reviewCompleted, color: '#6D28D9', textColor: '#FFFFFF' },
+              { label: 'Allocation', value: breakdown.allocation, color: '#C2410C', textColor: '#FFFFFF' },
+              { label: 'Utilization', value: breakdown.utilization, color: '#475569', textColor: '#FFFFFF' },
             ].map((segment) => (
               <div
                 key={segment.label}
@@ -224,11 +224,11 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
 
         <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
           {[
-            { label: 'Planning', value: breakdown.planning, color: '#7FA8FF', textColor: '#FFFFFF' },
-            { label: 'DGE Review', value: breakdown.dgeReview, color: '#286CFF', textColor: '#FFFFFF' },
-            { label: 'Review Completed', value: breakdown.reviewCompleted, color: '#7C3AED', textColor: '#FFFFFF' },
-            { label: 'Allocation', value: breakdown.allocation, color: '#10B981', textColor: '#FFFFFF' },
-            { label: 'Utilization', value: breakdown.utilization, color: '#008a65', textColor: '#FFFFFF' },
+            { label: 'Planning', value: breakdown.planning, color: '#0F766E', textColor: '#FFFFFF' },
+            { label: 'DGE Review', value: breakdown.dgeReview, color: '#1D4ED8', textColor: '#FFFFFF' },
+            { label: 'Review Completed', value: breakdown.reviewCompleted, color: '#6D28D9', textColor: '#FFFFFF' },
+            { label: 'Allocation', value: breakdown.allocation, color: '#C2410C', textColor: '#FFFFFF' },
+            { label: 'Utilization', value: breakdown.utilization, color: '#475569', textColor: '#FFFFFF' },
           ].map((item) => (
             <div key={item.label} className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
@@ -349,11 +349,11 @@ export default function EntityTracker() {
             </Card>
           ) : (
             filteredEntities.map((entity) => {
-              const planningRisk = entity.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'planning').length
-              const dgeReviewCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'dgeReview').length
-              const reviewCompletedCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'reviewCompleted').length
-              const allocationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'allocation').length
-              const utilizationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'utilization').length
+              const planningRisk = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'planning').length
+              const dgeReviewCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'dgeReview').length
+              const reviewCompletedCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'reviewCompleted').length
+              const allocationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'allocation').length
+              const utilizationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'utilization').length
 
               return (
                 <Card

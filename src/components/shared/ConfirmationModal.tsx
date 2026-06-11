@@ -80,17 +80,17 @@ export function ConfirmationModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] bg-white px-6 py-4 dark:border-white/10 dark:bg-[#1E293B]">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#E2E8F0] bg-white px-6 py-4 dark:border-white/10 dark:bg-[#1E293B]">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-10 rounded-xl border-[#E2E8F0] px-5 text-sm font-medium text-[#64748B] hover:bg-[#F8FAFC] dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"
+            className="h-10 min-w-[112px] rounded-xl border-[#E2E8F0] px-5 text-sm font-medium text-[#64748B] hover:bg-[#F8FAFC] dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"
           >
             {cancelLabel}
           </Button>
           <Button
             onClick={onConfirm}
-            className="h-10 rounded-xl px-5 text-sm font-semibold text-white transition-colors"
+            className="h-10 min-w-[150px] rounded-xl px-5 text-sm font-semibold text-white transition-colors"
             style={{ backgroundColor: confirmBg }}
             onMouseEnter={e => (e.currentTarget.style.backgroundColor = confirmHover)}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = confirmBg)}

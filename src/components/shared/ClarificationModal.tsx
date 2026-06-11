@@ -15,8 +15,9 @@ interface ClarificationModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectName: string
-  onSubmit: (payload: { message: string; files?: File[] }) => void
+  onSubmit: (payload: { message: string; files?: File[]; target?: string }) => void
   quickPrompts?: string[]
+  targetOptions?: Array<{ value: string; label: string }>
 }
 
 export function ClarificationModal({
@@ -25,9 +26,11 @@ export function ClarificationModal({
   projectName,
   onSubmit,
   quickPrompts = [],
+  targetOptions = [],
 }: ClarificationModalProps) {
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [target, setTarget] = useState(() => targetOptions[0]?.value ?? '')
 
   const isValid = useMemo(() => message.trim().length > 0, [message])
   const visibleQuickPrompts = useMemo(
@@ -40,19 +43,20 @@ export function ClarificationModal({
     if (!next) {
       setMessage('')
       setFiles([])
+      setTarget(targetOptions[0]?.value ?? '')
     }
   }
 
   const handleSubmit = () => {
     if (!isValid) return
-    onSubmit({ message: message.trim(), files })
+    onSubmit({ message: message.trim(), files, target })
     handleClose(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-[1040px] p-0">
-        <div className="rounded-t-[28px] border-b border-[var(--border)] bg-[var(--muted)] py-4 pl-6 pr-12">
+      <DialogContent className="max-w-[1040px] overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-0 dark:border-white/10 dark:bg-[#162339]">
+        <div className="border-b border-[var(--border)] bg-[var(--muted)] py-4 pl-6 pr-12">
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#286CFF] text-white">
               <HelpCircle className="h-5 w-5" />
@@ -67,6 +71,24 @@ export function ClarificationModal({
         <div className="px-6 pb-6 pt-5">
           <div className="space-y-5">
             <div>
+              {targetOptions.length > 0 ? (
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {targetOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setTarget(option.value)}
+                      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        target === option.value
+                          ? 'border-[#286CFF] bg-[#286CFF] text-white'
+                          : 'border-[#D7E4F4] bg-white text-[#0F172A] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-white/5 dark:text-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div className="mb-2 flex items-center justify-between gap-3">
                 <label className="inline-flex items-center gap-2 text-sm font-semibold text-[#0F172A] dark:text-white">
                   <MessageSquareText className="h-3.5 w-3.5" />

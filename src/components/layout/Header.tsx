@@ -48,6 +48,7 @@ const roleMeta: Record<Role, { sub: string; icon: React.ElementType }> = {
   Approver: { sub: 'Approve for DGE', icon: ShieldAlert },
   'ICT Admin': { sub: 'Manage assessment cycles', icon: Settings2 },
   'ICT - Strategy Team': { sub: 'Strategic alignment and governance', icon: ShieldCheck },
+  'ICT - Strategy Director': { sub: 'Final DGE review and publication', icon: ShieldAlert },
   'ICT - SME Team': { sub: 'Domain review and recommendation', icon: ClipboardCheck },
 }
 
@@ -418,7 +419,7 @@ export function Header({
                 <DropdownMenuItem
                   key={option.key}
                   onClick={() => {
-                    if (option.role === 'ICT - SME Team' || option.role === 'ICT - Strategy Team' || option.role === 'ICT Admin') {
+                    if (option.role === 'ICT - SME Team' || option.role === 'ICT - Strategy Team' || option.role === 'ICT - Strategy Director' || option.role === 'ICT Admin') {
                       setActiveRoleOption(option.key)
                     } else {
                       setActiveRole(role)
@@ -427,6 +428,8 @@ export function Header({
 
                     if (option.role === 'ICT - SME Team') {
                       navigate('/sme-team/dashboard')
+                    } else if (option.role === 'ICT - Strategy Director') {
+                      navigate('/strategy-director/dashboard')
                     }
                   }}
                   className={cn(

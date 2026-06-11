@@ -199,7 +199,7 @@ export default function StrategyTeamDashboard() {
           budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview ||
           budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
       ).length
-      const completed = instance.budgets.filter((budget) => getBudgetStageBucket(budget.statuscode) === 'reviewCompleted').length
+      const completed = instance.budgets.filter((budget) => getBudgetStageBucket(budget) === 'reviewCompleted').length
       const completion = instance.budgets.length ? Math.round(((completed + qualityCheck) / instance.budgets.length) * 100) : 0
 
       return {

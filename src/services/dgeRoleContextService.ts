@@ -11,6 +11,7 @@ import {
 
 export const SESSION_DGE_SME_ASSIGNMENTS_KEY = 'dgeSmeAssignments'
 export const SESSION_DGE_STRATEGY_TEAM_KEY = 'dgeStrategyTeam'
+export const SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY = 'dgeStrategyDirectorTeam'
 export const SESSION_CURRENT_SME_KEY = 'currentSME'
 
 export interface DgeRoleUser {
@@ -32,6 +33,8 @@ export interface DgeStrategyTeamConfig {
   teamName: string
   users: DgeRoleUser[]
 }
+
+export type DgeTeamConfig = DgeStrategyTeamConfig
 
 function setSessionJson(key: string, value: unknown) {
   sessionStorage.setItem(key, JSON.stringify(value))
@@ -219,39 +222,51 @@ async function fetchAndStoreSmeAssignments(): Promise<DgeSmeAssignment[]> {
   }
 }
 
-async function fetchAndStoreStrategyTeam(): Promise<DgeStrategyTeamConfig | null> {
+async function fetchAndStoreDgeTeamByName(
+  teamName: string,
+  sessionKey: string
+): Promise<DgeTeamConfig | null> {
   try {
     const teamResult = await TeamsService.getAll({
       select: ['teamid', 'name'],
-      filter: `name eq 'ICT - Strategy Team'`,
+      filter: `name eq '${teamName.replace(/'/g, "''")}'`,
       top: 1,
     })
 
     const team = teamResult.data?.[0]
     if (!team?.teamid) {
-      sessionStorage.removeItem(SESSION_DGE_STRATEGY_TEAM_KEY)
+      sessionStorage.removeItem(sessionKey)
       return null
     }
 
     const usersByTeam = await getUsersForTeamIds([team.teamid])
-    const config: DgeStrategyTeamConfig = {
+    const config: DgeTeamConfig = {
       teamId: team.teamid,
-      teamName: team.name ?? 'ICT - Strategy Team',
+      teamName: team.name ?? teamName,
       users: usersByTeam.get(team.teamid) ?? [],
     }
 
-    setSessionJson(SESSION_DGE_STRATEGY_TEAM_KEY, config)
+    setSessionJson(sessionKey, config)
     return config
   } catch {
-    sessionStorage.removeItem(SESSION_DGE_STRATEGY_TEAM_KEY)
+    sessionStorage.removeItem(sessionKey)
     return null
   }
+}
+
+async function fetchAndStoreStrategyTeam(): Promise<DgeTeamConfig | null> {
+  return fetchAndStoreDgeTeamByName('ICT - Strategy Team', SESSION_DGE_STRATEGY_TEAM_KEY)
+}
+
+async function fetchAndStoreStrategyDirectorTeam(): Promise<DgeTeamConfig | null> {
+  return fetchAndStoreDgeTeamByName('ICT - Strategy Director', SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY)
 }
 
 export async function initDgeRoleContext(currentUserId: string | null): Promise<void> {
   const [smeAssignments] = await Promise.all([
     fetchAndStoreSmeAssignments(),
     fetchAndStoreStrategyTeam(),
+    fetchAndStoreStrategyDirectorTeam(),
   ])
 
   await seedAdgeModuleConfigTeamIdsForDgeUsers()
@@ -284,6 +299,10 @@ export function getStoredSmeAssignments(): DgeSmeAssignment[] {
 
 export function getStoredStrategyTeam(): DgeStrategyTeamConfig | null {
   return parseSessionJson<DgeStrategyTeamConfig>(SESSION_DGE_STRATEGY_TEAM_KEY)
+}
+
+export function getStoredStrategyDirectorTeam(): DgeTeamConfig | null {
+  return parseSessionJson<DgeTeamConfig>(SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY)
 }
 
 export function getStoredCurrentSme(): DgeSmeAssignment | null {
