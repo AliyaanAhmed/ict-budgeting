@@ -16,10 +16,7 @@ import type {
   Dga_ict_clarificationsstatuscode,
 } from '@/generated/models/Dga_ict_clarificationsModel'
 import {
-  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
-  SESSION_MODULE_TYPE_ID_KEY,
   SESSION_USER_ID_KEY,
-  type ModuleConfigTeamIds,
 } from '@/services/userContextService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 
@@ -85,17 +82,6 @@ function getStoredUserId() {
   return sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || null
 }
 
-function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
-  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw) as ModuleConfigTeamIds
-  } catch {
-    return null
-  }
-}
-
 function toLookupBinding(entitySetName: string, id: string | null | undefined) {
   return id ? `/${entitySetName}(${id})` : undefined
 }
@@ -128,17 +114,6 @@ function getStageLabel(
 }
 
 async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<string | null> {
-  const storedTeamIds = getStoredModuleConfigTeamIds()
-  const storedRespondentTeamId = storedTeamIds?.respondentTeamId?.trim() || null
-  if (storedRespondentTeamId) {
-    return storedRespondentTeamId
-  }
-
-  const moduleTypeId = sessionStorage.getItem(SESSION_MODULE_TYPE_ID_KEY)?.trim() || null
-  if (!moduleTypeId) {
-    return null
-  }
-
   const budgetResult = await Dga_ict_budgetsService.get(budgetId, {
     select: ['dga_ict_budgetid', '_dga_ict_budget_instance_value'],
   })
@@ -148,37 +123,25 @@ async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<strin
   }
 
   const instanceResult = await Dga_ict_budget_instancesService.get(instanceId, {
-    select: ['dga_ict_budget_instanceid', '_dga_entity_value'],
+    select: ['dga_ict_budget_instanceid', '_dga_entity_value', '_dga_module_configuration_value'],
   })
   const accountId = instanceResult.data?._dga_entity_value?.trim() || null
-  if (!accountId) {
+  const moduleConfigurationId = instanceResult.data?._dga_module_configuration_value?.trim() || null
+  if (!moduleConfigurationId) {
     return null
   }
 
-  const configResult = await Dga_module_configurationsService.getAll({
+  const configResult = await Dga_module_configurationsService.get(moduleConfigurationId, {
     select: ['dga_module_configurationid', '_dga_respondent_team_value'],
-    filter: `_dga_account_value eq ${accountId} and _dga_module_type_value eq ${moduleTypeId}`,
-    top: 1,
   })
 
-  const respondentTeamId = configResult.data?.[0]?._dga_respondent_team_value?.trim() || null
-  if (respondentTeamId) {
-    sessionStorage.setItem(
-      SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
-      JSON.stringify({
-        respondentTeamId,
-        reviewerTeamId: storedTeamIds?.reviewerTeamId ?? null,
-        approverTeamId: storedTeamIds?.approverTeamId ?? null,
-        strategyTeamId: storedTeamIds?.strategyTeamId ?? null,
-      } satisfies ModuleConfigTeamIds)
-    )
-  }
+  const respondentTeamId = configResult.data?._dga_respondent_team_value?.trim() || null
 
   console.log(`[ClarificationService ${CLARIFICATION_SERVICE_VERSION}] Resolved respondent team for budget:`, {
     budgetId,
-    moduleTypeId,
     instanceId,
     accountId,
+    moduleConfigurationId,
     respondentTeamId,
   })
 
@@ -218,6 +181,7 @@ function mapClarification(record: Dga_ict_clarifications, replies: Clarification
       record.dga_raised_toname?.trim() ||
       getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
       'Respondent',
+    raisedToTeamId: record._dga_raised_to_value ?? null,
     scope: getScopeLabel(record.dga_scope),
     stage: getStageLabel(record.dga_clarification_stage),
     message: record.dga_description?.trim() || '',

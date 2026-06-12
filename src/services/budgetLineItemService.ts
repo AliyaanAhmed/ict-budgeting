@@ -64,7 +64,12 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
-function buildCreateRecord(projectId: string, item: BudgetItemDraft) {
+interface CreateBudgetLineItemsOptions {
+  allocationMode?: boolean
+}
+
+function buildCreateRecord(projectId: string, item: BudgetItemDraft, options: CreateBudgetLineItemsOptions = {}) {
+  const amount = Number(item.budgetRequested.toFixed(4))
   return {
     'dga_ict_budget@odata.bind': `/dga_ict_budgets(${projectId})`,
     'dga_classification@odata.bind': `/dga_classifications(${item.id})`,
@@ -73,9 +78,10 @@ function buildCreateRecord(projectId: string, item: BudgetItemDraft) {
     dga_description: item.description ?? undefined,
     dga_fusion_account_code: item.fusionCode === 'N/A' ? null : item.fusionCode,
     dga_ebs_account_code: item.ebsCode === 'N/A' ? null : item.ebsCode,
-    dga_budget_requested: Number(item.budgetRequested.toFixed(4)),
+    dga_budget_requested: options.allocationMode ? 0 : amount,
+    dga_budget_allocated: options.allocationMode ? amount : undefined,
     dga_expense_type: item.expenseTypeValue ?? undefined,
-    dga_added_in_allocation: 1,
+    dga_added_in_allocation: options.allocationMode ? 2 : 1,
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>> as Omit<
     Dga_ict_budget_line_itemsBase,
     'dga_ict_budget_line_itemid'
@@ -123,8 +129,8 @@ function normalizeLineItem(
   }
 }
 
-export async function createBudgetLineItems(projectId: string, items: BudgetItemDraft[]) {
-  await Promise.all(items.map((item) => Dga_ict_budget_line_itemsService.create(buildCreateRecord(projectId, item))))
+export async function createBudgetLineItems(projectId: string, items: BudgetItemDraft[], options: CreateBudgetLineItemsOptions = {}) {
+  await Promise.all(items.map((item) => Dga_ict_budget_line_itemsService.create(buildCreateRecord(projectId, item, options))))
 }
 
 export async function updateBudgetLineItemAmount(lineItemId: string, budgetRequested: number) {

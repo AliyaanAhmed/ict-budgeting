@@ -433,7 +433,7 @@ export default function ReviewQueue() {
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingSubmit, setPendingSubmit] = useState<string[] | null>(null)
-  const { runActionToast } = useToast()
+  const { runActionToast, showErrorToast } = useToast()
   const { setReviewCount } = useQueueCounts()
   const hasCycleDgeSubmission = cycleProjects.some(
     (cycleProject) =>
@@ -527,6 +527,23 @@ export default function ReviewQueue() {
     const project = projects.find(p => p.id === id)
     return Boolean(project && (project.status === 'To Review' || project.status === 'Reviewed') && isProjectActionable(project))
   })
+  const selectedProjects = selectedIds
+    .map((id) => projects.find((project) => project.id === id))
+    .filter((project): project is ReviewQueueProject => Boolean(project))
+  const selectedStatusKeys = Array.from(
+    new Set(selectedProjects.map((project) => `${project.status}|${project.statusForAdgeLabel ?? ''}`))
+  )
+  const hasMixedSelectedStatuses = selectedStatusKeys.length > 1
+  const guardedBulkAction = (action: () => void) => {
+    if (hasMixedSelectedStatuses) {
+      showErrorToast(
+        'Mixed statuses selected',
+        'Please select projects from the same workflow status before using bulk actions.'
+      )
+      return
+    }
+    action()
+  }
 
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => {
@@ -534,15 +551,37 @@ export default function ReviewQueue() {
       if (!project || !isProjectActionable(project)) {
         return prev
       }
-      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const nextProjects = next
+        .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
+        .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
+      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      if (nextStatusCount > 1) {
+        showErrorToast(
+          'Mixed statuses selected',
+          'Bulk workflow buttons are disabled when selected projects are in different statuses.'
+        )
+      }
+      return next
     })
 
   const toggleAllVisible = () =>
-    setSelectedIds(prev =>
-      allVisibleSelected
+    setSelectedIds(prev => {
+      const next = allVisibleSelected
         ? prev.filter(id => !visibleActionableIds.includes(id))
         : Array.from(new Set([...prev, ...visibleActionableIds]))
-    )
+      const nextProjects = next
+        .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
+        .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
+      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      if (nextStatusCount > 1) {
+        showErrorToast(
+          'Mixed statuses selected',
+          'Bulk workflow buttons are disabled when selected projects are in different statuses.'
+        )
+      }
+      return next
+    })
 
   const getIctId = (projectId: string) =>
     projects.find(p => p.id === projectId)?.ictBudgetId ?? ''
@@ -759,8 +798,8 @@ export default function ReviewQueue() {
             <Button
               variant="outline"
               size="sm"
-              disabled={clarificationSelected.length === 0}
-              onClick={() => setBulkClarificationOpen(true)}
+              disabled={clarificationSelected.length === 0 || hasMixedSelectedStatuses}
+              onClick={() => guardedBulkAction(() => setBulkClarificationOpen(true))}
             >
               <MessageSquare className="h-4 w-4" />Raise Clarification
             </Button>
@@ -768,16 +807,16 @@ export default function ReviewQueue() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={completableSelected.length === 0}
-                onClick={() => void handleCompleteReview(completableSelected)}
+                disabled={completableSelected.length === 0 || hasMixedSelectedStatuses}
+                onClick={() => guardedBulkAction(() => void handleCompleteReview(completableSelected))}
               >
                 <Check className="h-4 w-4" />Mark as Reviewed
               </Button>
             )}
             <Button
               size="sm"
-              disabled={submittableSelected.length === 0}
-              onClick={() => setPendingSubmit(submittableSelected)}
+              disabled={submittableSelected.length === 0 || hasMixedSelectedStatuses}
+              onClick={() => guardedBulkAction(() => setPendingSubmit(submittableSelected))}
             >
               <Send className="h-4 w-4" />Submit to Approver
             </Button>

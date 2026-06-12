@@ -14,6 +14,7 @@ import {
   type UserTeam,
 } from '@/services/userContextService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
+import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import { Dga_ict_budget_dga_technology_productsetService } from '@/generated/services/Dga_ict_budget_dga_technology_productsetService'
 import { shareIctBudgetWithRoleTeam } from '@/services/recordShareService'
 import { createNotificationForRole } from '@/services/appNotificationService'
@@ -52,11 +53,15 @@ export interface RetrievedIctBudgetDraft {
   createdOn: string | null
   modifiedOn: string | null
   statusLabel: string | null
+  instanceStatusCode: number | null
   respondentName: string | null
   reviewerName: string | null
   approverName: string | null
   smeReviewerTeamId: string | null
   recommendedLabel: string | null
+  addedInAllocation: number | null
+  planningOutcome: number | null
+  allocationOutcome: number | null
   rejectedByName: string | null
   previousStrategicPriorityId: string | null
   previousStrategicPriorityName: string | null
@@ -277,7 +282,8 @@ function mapRetrievedBudgetRecord(
   record: Awaited<ReturnType<typeof Dga_ict_budgetsService.get>>['data'],
   technologyCompanies: TechnologyCompanyOption[],
   fallbackTechnologyProducts: string[],
-  associatedTechnologyProductIds: string[]
+  associatedTechnologyProductIds: string[],
+  instanceStatusCode: number | null
 ) {
   if (!record?.dga_ict_budgetid) {
     throw new Error('Unable to retrieve the ICT budget record for this project.')
@@ -365,6 +371,7 @@ function mapRetrievedBudgetRecord(
       ) ??
       record.dga_status_for_adgename ??
       null,
+    instanceStatusCode,
     respondentName:
       getFormattedAnnotation(record, '_dga_respondent_value@OData.Community.Display.V1.FormattedValue') ?? null,
     reviewerName:
@@ -372,6 +379,9 @@ function mapRetrievedBudgetRecord(
     approverName:
       getFormattedAnnotation(record, '_dga_approver_value@OData.Community.Display.V1.FormattedValue') ?? null,
     smeReviewerTeamId: record._dga_sme_reviewer_team_value ?? null,
+    addedInAllocation: record.dga_added_in_allocation ?? null,
+    planningOutcome: record.dga_planning_outcome ?? null,
+    allocationOutcome: record.dga_allocation_outcome ?? null,
     recommendedLabel:
       getFormattedAnnotation(
         record,
@@ -497,11 +507,14 @@ export async function getIctBudgetDraftById(
         'dga_budget_item_type',
         'dga_category',
         'dga_status_for_adge',
+        'dga_added_in_allocation',
+        'dga_planning_outcome',
         'dga_recommended',
         'dga_rejection_reason',
         'dga_rejection_justification',
         'dga_allocation_outcome',
         'dga_allocation_cancelation_reason',
+        '_dga_ict_budget_instance_value',
         '_dga_rejected_by_value',
         '_dga_sme_reviewer_team_value',
         'dga_total_budget_paid_previous_year',
@@ -520,11 +533,26 @@ export async function getIctBudgetDraftById(
   ])
 
   const record = result.data
+  const budgetInstanceId = record?._dga_ict_budget_instance_value?.trim() || null
+  let instanceStatusCode: number | null = null
+  if (budgetInstanceId) {
+    try {
+      const instanceResult = await Dga_ict_budget_instancesService.get(budgetInstanceId, {
+        select: ['dga_ict_budget_instanceid', 'statuscode'],
+      })
+      instanceStatusCode =
+        typeof instanceResult.data?.statuscode === 'number' ? instanceResult.data.statuscode : null
+    } catch {
+      instanceStatusCode = null
+    }
+  }
+
   return mapRetrievedBudgetRecord(
     record,
     technologyCompanies,
     fallbackTechnologyProducts,
-    associatedTechnologyProductIds
+    associatedTechnologyProductIds,
+    instanceStatusCode
   )
 }
 

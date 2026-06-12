@@ -68,6 +68,7 @@ export interface Clarification {
   raisedByLabel?: string
   raisedByName: string
   raisedTo: string
+  raisedToTeamId?: string | null
   scope?: 'External' | 'Internal (Entity)' | 'Internal (DGE)'
   stage?: 'Planning' | 'In DGE Review' | 'Allocation' | 'Utilization'
   message: string

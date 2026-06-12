@@ -6,6 +6,14 @@ import { AttachmentIconPicker } from '@/components/shared/AttachmentIconPicker'
 import { cn } from '@/lib/utils'
 import type { Clarification, ClarificationReply } from '@/data/db'
 import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
+import { SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import {
+  SESSION_CURRENT_SME_KEY,
+  SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY,
+  SESSION_DGE_STRATEGY_TEAM_KEY,
+  type DgeSmeAssignment,
+  type DgeTeamConfig,
+} from '@/services/dgeRoleContextService'
 
 interface ClarificationThreadProps {
   clarifications: Clarification[]
@@ -17,6 +25,33 @@ interface ClarificationThreadProps {
 }
 
 const PAGE_SIZE = 3
+
+function getSessionJson<T>(key: string): T | null {
+  const raw = sessionStorage.getItem(key)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+function getCurrentUserTeamIds() {
+  const ids = new Set<string>()
+  const userTeams = getSessionJson<UserTeam[]>(SESSION_USER_TEAMS_KEY) ?? []
+  userTeams.forEach((team) => {
+    if (team.teamid) ids.add(team.teamid.toLowerCase())
+  })
+
+  const strategyTeam = getSessionJson<DgeTeamConfig>(SESSION_DGE_STRATEGY_TEAM_KEY)
+  const strategyDirectorTeam = getSessionJson<DgeTeamConfig>(SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY)
+  const currentSme = getSessionJson<DgeSmeAssignment>(SESSION_CURRENT_SME_KEY)
+  ;[strategyTeam?.teamId, strategyDirectorTeam?.teamId, currentSme?.teamId].forEach((teamId) => {
+    if (teamId) ids.add(teamId.toLowerCase())
+  })
+
+  return ids
+}
 
 const ROLE_STYLE = {
   Reviewer: {
@@ -195,10 +230,15 @@ function ClarificationCard({
   const isAdgeRole =
     currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
   const isDgeInternal = clarification.scope === 'Internal (DGE)'
+  const currentUserTeamIds = getCurrentUserTeamIds()
+  const raisedToTeamId = clarification.raisedToTeamId?.trim().toLowerCase() || ''
+  const canReplyByRaisedToTeam = raisedToTeamId ? currentUserTeamIds.has(raisedToTeamId) : null
   const canReply = isOpen
-    ? isDgeInternal
-      ? currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
-      : currentRole === 'Respondent' || isRaiser
+    ? canReplyByRaisedToTeam !== null
+      ? canReplyByRaisedToTeam
+      : isDgeInternal
+        ? currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
+        : currentRole === 'Respondent'
     : false
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length

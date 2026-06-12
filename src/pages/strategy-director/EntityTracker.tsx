@@ -32,7 +32,13 @@ function SkeletonBlock({ className }: { className: string }) {
 }
 
 function canPublishEntity(entity: DgeInstanceRecord) {
-  return entity.budgets.length > 0 && entity.budgets.every((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted)
+  return (
+    entity.statuscode !== DGE_INSTANCE_STATUS.reviewCompletedByDge &&
+    entity.statuscode !== DGE_INSTANCE_STATUS.allocation &&
+    entity.statuscode !== DGE_INSTANCE_STATUS.utilization &&
+    entity.budgets.length > 0 &&
+    entity.budgets.every((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted)
+  )
 }
 
 function getActiveStepIndex(instance: DgeInstanceRecord) {

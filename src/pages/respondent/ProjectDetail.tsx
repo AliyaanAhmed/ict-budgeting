@@ -217,6 +217,29 @@ interface PolicyMatchGroup {
 
 const PENDING_NEW_AI_RECORD = '__pending_new_ai_record__'
 
+const ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
+  DGE_INSTANCE_STATUS.reviewCompletedByDge,
+  DGE_INSTANCE_STATUS.allocation,
+  DGE_INSTANCE_STATUS.utilization,
+])
+
+const ADGE_ALLOCATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
+  DGE_INSTANCE_STATUS.allocation,
+  DGE_INSTANCE_STATUS.utilization,
+])
+
+function isAdgeRecommendationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return typeof statuscode === 'number' && ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES.has(statuscode)
+}
+
+function isAdgeAllocationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return typeof statuscode === 'number' && ADGE_ALLOCATION_VISIBLE_INSTANCE_STATUSES.has(statuscode)
+}
+
+function isAdgeUtilizationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return statuscode === DGE_INSTANCE_STATUS.utilization
+}
+
 function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Potential Conflict') {
     return {
@@ -776,7 +799,44 @@ function AiSignal({ label, value, tone = 'blue' }: { label: string; value: strin
 
 function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null; fallbackStatus: string }) {
   const resolvedStatus = status?.trim() || fallbackStatus
+  const extendedClass =
+    resolvedStatus === 'Allocation In Progress' || resolvedStatus === 'Allocation in Progress'
+      ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+      : resolvedStatus === 'Allocation In Review' || resolvedStatus === 'Allocation in Review'
+        ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300'
+        : resolvedStatus === 'Allocation Completed'
+          ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300'
+          : resolvedStatus === 'Utilization In Progress' || resolvedStatus === 'Utilization in Progress'
+            ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300'
+            : resolvedStatus === 'Utilization Completed'
+              ? 'bg-lime-50 text-lime-700 dark:bg-lime-900/20 dark:text-lime-300'
+              : null
+
+  if (extendedClass) {
+    return (
+      <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap', extendedClass)}>
+        {resolvedStatus}
+      </span>
+    )
+  }
+
   return <StatusBadge status={resolvedStatus as never} />
+}
+
+function HeaderInfoTag({ children, tone = 'blue' }: { children: React.ReactNode; tone?: 'blue' | 'green' | 'red' | 'amber' | 'slate' }) {
+  const toneClass = {
+    blue: 'border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-[#286CFF]/20 dark:bg-[#10213B] dark:text-[#BFDBFE]',
+    green: 'border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] dark:border-emerald-700/30 dark:bg-emerald-900/20 dark:text-emerald-300',
+    red: 'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] dark:border-red-700/30 dark:bg-red-900/20 dark:text-red-300',
+    amber: 'border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C] dark:border-orange-700/30 dark:bg-orange-900/20 dark:text-orange-300',
+    slate: 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300',
+  }[tone]
+
+  return (
+    <span className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap', toneClass)}>
+      {children}
+    </span>
+  )
 }
 
 function getDgeHeaderStatusLabel(statusCode: number | null | undefined, fallbackStatus?: string | null) {
@@ -3011,6 +3071,7 @@ export default function ProjectDetail() {
   const [projectData, setProjectData] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const [projectReloadToken, setProjectReloadToken] = useState(0)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [auditLogsLoading, setAuditLogsLoading] = useState(false)
   const [auditLogsError, setAuditLogsError] = useState<string | null>(null)
@@ -3139,12 +3200,12 @@ export default function ProjectDetail() {
   const isAllocationInReview = project.statusCode === DGE_BUDGET_STATUS.allocationInReview
   const isUtilizationInProgress = project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
   const canEditAllocationFields =
-    canEditFullForm ||
+    (canEditFullForm && isAllocationOrUtilizationPhase) ||
     ((currentRole === 'Respondent' || currentRole === 'Approver') &&
       isCurrentOwner &&
       (isAllocationInProgress || isAllocationInReview))
   const canEditUtilizationFields =
-    canEditFullForm ||
+    (canEditFullForm && isUtilizationInProgress) ||
     (currentRole === 'Respondent' && isCurrentOwner && isUtilizationInProgress)
   const canEditLimitedForm =
     !canEditFullForm &&
@@ -3213,7 +3274,7 @@ export default function ProjectDetail() {
           project.statusCode === DGE_BUDGET_STATUS.clarificationPending
         )) ||
       (currentRole === 'SME Team' &&
-        (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
+        project.statusCode === DGE_BUDGET_STATUS.underSmeReview)) &&
     (currentRole === 'SME Team' ? canCurrentSmeActOnProject : isCurrentOwner)
   const canRouteToQualityCheck =
     currentRole === 'SME Team' &&
@@ -3312,7 +3373,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, projectReloadToken])
 
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
@@ -3336,11 +3397,18 @@ export default function ProjectDetail() {
   const [ictBudgetCreatedByName, setIctBudgetCreatedByName] = useState<string | null>(null)
   const [ictBudgetCreatedOn, setIctBudgetCreatedOn] = useState<string | null>(null)
   const [ictBudgetModifiedOn, setIctBudgetModifiedOn] = useState<string | null>(null)
+  const [ictBudgetStatusLabel, setIctBudgetStatusLabel] = useState<string | null>(project.statusForAdgeLabel ?? null)
+  const [ictBudgetInstanceStatusCode, setIctBudgetInstanceStatusCode] = useState<number | null>(
+    getStoredInstanceDetail()?.statuscode ?? null
+  )
   const [ictBudgetRespondentName, setIctBudgetRespondentName] = useState<string | null>(null)
   const [ictBudgetReviewerName, setIctBudgetReviewerName] = useState<string | null>(null)
   const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
   const [ictBudgetRecommendedLabel, setIctBudgetRecommendedLabel] = useState<string | null>(null)
   const [ictBudgetRejectedByName, setIctBudgetRejectedByName] = useState<string | null>(null)
+  const [ictBudgetAddedInAllocation, setIctBudgetAddedInAllocation] = useState<number | null>(project.addedInAllocation ?? null)
+  const [ictBudgetPlanningOutcome, setIctBudgetPlanningOutcome] = useState<number | null>(project.planningOutcome ?? null)
+  const [ictBudgetAllocationOutcome, setIctBudgetAllocationOutcome] = useState<number | null>(null)
   const [ictBudgetPreviousStrategicPriorityId, setIctBudgetPreviousStrategicPriorityId] = useState<string | null>(null)
   const [ictBudgetPreviousStrategicPriorityName, setIctBudgetPreviousStrategicPriorityName] = useState<string | null>(null)
   const [ictBudgetPreviousStrategicPriorityClassificationId, setIctBudgetPreviousStrategicPriorityClassificationId] = useState<string | null>(null)
@@ -5004,12 +5072,17 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(retrievedBudget.createdByName)
           setIctBudgetCreatedOn(retrievedBudget.createdOn)
           setIctBudgetModifiedOn(retrievedBudget.modifiedOn)
+          setIctBudgetStatusLabel(retrievedBudget.statusLabel)
+          setIctBudgetInstanceStatusCode(retrievedBudget.instanceStatusCode)
           setIctBudgetRespondentName(retrievedBudget.respondentName)
           setIctBudgetReviewerName(retrievedBudget.reviewerName)
           setIctBudgetApproverName(retrievedBudget.approverName)
           setIctBudgetSmeReviewerTeamId(retrievedBudget.smeReviewerTeamId)
           setIctBudgetRecommendedLabel(retrievedBudget.recommendedLabel)
           setIctBudgetRejectedByName(retrievedBudget.rejectedByName)
+          setIctBudgetAddedInAllocation(retrievedBudget.addedInAllocation)
+          setIctBudgetPlanningOutcome(retrievedBudget.planningOutcome)
+          setIctBudgetAllocationOutcome(retrievedBudget.allocationOutcome)
           setIctBudgetPreviousStrategicPriorityId(retrievedBudget.previousStrategicPriorityId)
           setIctBudgetPreviousStrategicPriorityName(retrievedBudget.previousStrategicPriorityName)
           setIctBudgetPreviousStrategicPriorityClassificationId(retrievedBudget.previousStrategicPriorityClassificationId)
@@ -5035,9 +5108,14 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(project.submittedBy)
           setIctBudgetCreatedOn(null)
           setIctBudgetModifiedOn(null)
+          setIctBudgetStatusLabel(project.statusForAdgeLabel ?? null)
+          setIctBudgetInstanceStatusCode(getStoredInstanceDetail()?.statuscode ?? null)
           setIctBudgetSmeReviewerTeamId(null)
           setIctBudgetRecommendedLabel(null)
           setIctBudgetRejectedByName(null)
+          setIctBudgetAddedInAllocation(project.addedInAllocation ?? null)
+          setIctBudgetPlanningOutcome(project.planningOutcome ?? null)
+          setIctBudgetAllocationOutcome(null)
           setIctBudgetPreviousStrategicPriorityId(null)
           setIctBudgetPreviousStrategicPriorityName(null)
           setIctBudgetPreviousStrategicPriorityClassificationId(null)
@@ -5065,7 +5143,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [hasDataverseBudgetProject, ictBudgetId, project.name, project.plannedEndDate, project.plannedStartDate, project.summary, project.technology.product])
+  }, [hasDataverseBudgetProject, ictBudgetId, project.name, project.plannedEndDate, project.plannedStartDate, project.summary, project.technology.product, projectReloadToken])
 
   useEffect(() => {
     if (!ictBudgetId) return
@@ -5619,6 +5697,7 @@ export default function ProjectDetail() {
           }
         : current
     )
+    setProjectReloadToken((current) => current + 1)
   }
 
   const prepareWorkflowAction = async (action: WorkflowAction) => {
@@ -7050,21 +7129,20 @@ export default function ProjectDetail() {
   const recommendedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.budgetRecommended, 0)
   const allocatedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.budgetAllocated, 0)
   const utilizedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.totalBudgetUtilized, 0)
-  const summaryInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const summaryInstanceStatusCode = ictBudgetInstanceStatusCode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const isAddedInAllocationBudget = ictBudgetAddedInAllocation === 2
   const summaryShowRecommended =
-    isDgeRole ||
-    (typeof summaryInstanceStatusCode === 'number' && summaryInstanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge)
+    !isAddedInAllocationBudget &&
+    (isDgeRole ||
+      isAdgeRecommendationVisibleInstanceStatus(summaryInstanceStatusCode))
   const summaryShowAllocated =
-    isDgeRole ||
-    canEditAllocationFields ||
-    ([DGE_BUDGET_STATUS.allocationInProgress, DGE_BUDGET_STATUS.allocationInReview, DGE_BUDGET_STATUS.allocationCompleted, DGE_BUDGET_STATUS.utilizationInProgress, DGE_BUDGET_STATUS.utilizationCompleted] as number[]).includes(project.statusCode ?? 0) ||
-    summaryInstanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
-    summaryInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
+    (isDgeRole && isAdgeAllocationVisibleInstanceStatus(summaryInstanceStatusCode)) ||
+    (!isDgeRole && canEditAllocationFields) ||
+    (!isDgeRole && isAdgeAllocationVisibleInstanceStatus(summaryInstanceStatusCode))
   const summaryShowUtilized =
-    isDgeRole ||
-    canEditUtilizationFields ||
-    ([DGE_BUDGET_STATUS.utilizationInProgress, DGE_BUDGET_STATUS.utilizationCompleted] as number[]).includes(project.statusCode ?? 0) ||
-    summaryInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
+    (isDgeRole && isAdgeUtilizationVisibleInstanceStatus(summaryInstanceStatusCode)) ||
+    (!isDgeRole && canEditUtilizationFields) ||
+    (!isDgeRole && isAdgeUtilizationVisibleInstanceStatus(summaryInstanceStatusCode))
   const budgetSummaryTiles = [
     { label: 'Total Requested Budget', amount: budgetTotal },
     ...(summaryShowRecommended ? [{ label: 'Total Recommended Budget', amount: recommendedBudgetTotal }] : []),
@@ -7296,6 +7374,14 @@ export default function ProjectDetail() {
   }
 
   const validateAllocationForReview = () => {
+    if (isAddedInAllocationBudget) {
+      if (budgetLineItems.some((item) => item.budgetAllocated <= 0)) {
+        showErrorToast('Allocated budget required', 'Enter Allocated Budget for each budget line before submitting this project for review.')
+        return false
+      }
+      return true
+    }
+
     if (formValues.allocationOutcome == null) {
       showErrorToast('Allocation outcome required', 'Select Allocation Outcome before submitting this project for review.')
       return false
@@ -7678,23 +7764,25 @@ export default function ProjectDetail() {
     : project.lastModified
   const resolvedStatusLabel = isDgeRole
     ? getDgeHeaderStatusLabel(project.statusCode ?? null, project.status)
-    : project.status
-  const storedInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+    : ictBudgetStatusLabel || project.statusForAdgeLabel || project.status
+  const storedInstanceStatusCode = ictBudgetInstanceStatusCode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const isInstanceAllocationOrLater = isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode)
+  const isInstanceReviewCompletedOrLater = isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
   const canAdgeViewDgeRecommendationFields =
     !isDgeRole &&
-    typeof storedInstanceStatusCode === 'number' &&
-    storedInstanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+    isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
   const showDgeRecommendationFields =
-    (isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields
+    !isAddedInAllocationBudget &&
+    ((isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields)
   const showAllocationFields =
-    canEditAllocationFields ||
-    ([DGE_BUDGET_STATUS.allocationInProgress, DGE_BUDGET_STATUS.allocationInReview, DGE_BUDGET_STATUS.allocationCompleted, DGE_BUDGET_STATUS.utilizationInProgress, DGE_BUDGET_STATUS.utilizationCompleted] as number[]).includes(project.statusCode ?? 0) ||
-    storedInstanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
-    storedInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
+    (isDgeRole && isSubmittedToDgeBudget && isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode)) ||
+    (!isDgeRole && canEditAllocationFields) ||
+    (!isDgeRole && isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode))
+  const showAllocationOutcomeFields = showAllocationFields && !isAddedInAllocationBudget
   const showUtilizationFields =
-    canEditUtilizationFields ||
-    ([DGE_BUDGET_STATUS.utilizationInProgress, DGE_BUDGET_STATUS.utilizationCompleted] as number[]).includes(project.statusCode ?? 0) ||
-    storedInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
+    (isDgeRole && isSubmittedToDgeBudget && isAdgeUtilizationVisibleInstanceStatus(storedInstanceStatusCode)) ||
+    (!isDgeRole && canEditUtilizationFields) ||
+    (!isDgeRole && isAdgeUtilizationVisibleInstanceStatus(storedInstanceStatusCode))
   const recommendedChoiceLabel =
     formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : '-'
   const rejectionReasonLabel =
@@ -7734,6 +7822,11 @@ export default function ProjectDetail() {
     rejectionJustification: formValues.rejectionJustification.trim() || '-',
   }
 
+  const planningOutcomeLabel =
+    ictBudgetPlanningOutcome === 1 ? 'Recommended by DGE' : ictBudgetPlanningOutcome === 2 ? 'Not Recommended' : null
+  const allocationOutcomeLabel =
+    ictBudgetAllocationOutcome === 2 ? 'Used In Allocation' : ictBudgetAllocationOutcome === 1 ? 'Cancelled In Allocation' : null
+
   if (projectLoading && !projectData) {
     return <DetailPageLoadingShell />
   }
@@ -7766,6 +7859,19 @@ export default function ProjectDetail() {
                 {display.name}
               </h1>
               <DynamicStatusBadge status={display.status} fallbackStatus={project.status} />
+              {!isDgeRole && ictBudgetAddedInAllocation === 2 ? (
+                <HeaderInfoTag tone="blue">Added in Allocation</HeaderInfoTag>
+              ) : null}
+              {!isDgeRole && isInstanceReviewCompletedOrLater && planningOutcomeLabel ? (
+                <HeaderInfoTag tone={ictBudgetPlanningOutcome === 2 ? 'red' : 'green'}>
+                  {planningOutcomeLabel}
+                </HeaderInfoTag>
+              ) : null}
+              {!isDgeRole && isInstanceAllocationOrLater && allocationOutcomeLabel ? (
+                <HeaderInfoTag tone={ictBudgetAllocationOutcome === 1 ? 'amber' : 'green'}>
+                  {allocationOutcomeLabel}
+                </HeaderInfoTag>
+              ) : null}
               <RiskBadge risk={project.riskLevel} />
               {/* Edit mode indicator chip */}
               {isEditMode && (
@@ -8429,7 +8535,7 @@ export default function ProjectDetail() {
                     </div>
                   )}
 
-                  {showAllocationFields && (
+                  {showAllocationOutcomeFields && (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <EditField label="Allocation Outcome" required>
                         {canEditAllocationFields ? (
@@ -8504,7 +8610,7 @@ export default function ProjectDetail() {
                   error={budgetItemsError}
                   editableRequested={canEditFullForm}
                   editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
-                  editableAllocated={canEditAllocationFields && formValues.allocationOutcome === 2}
+                  editableAllocated={canEditAllocationFields && (isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
                   editableUtilization={canEditUtilizationFields}
                   showRecommendedBudget={showDgeRecommendationFields}
                   showAllocatedBudget={showAllocationFields}
@@ -8842,7 +8948,7 @@ export default function ProjectDetail() {
                     </div>
                   ) : null}
 
-                  {showAllocationFields ? (
+                  {showAllocationOutcomeFields ? (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       <Field
                         label="Allocation Outcome"

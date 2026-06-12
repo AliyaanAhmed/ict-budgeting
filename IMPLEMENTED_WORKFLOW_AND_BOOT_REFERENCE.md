@@ -148,19 +148,16 @@ If a user belongs to multiple SME mappings:
 - all valid SME roles can appear in role switch
 - `currentSME` stores the currently selected domain
 
-## 3.6 DGE boot seeding of ADGE team ids
+## 3.6 DGE boot and ADGE module configuration ids
 
-Even DGE users need ADGE team ids for external clarification workflows.
+DGE roles do not use the current user's `moduleConfigTeamIDs` for ADGE workflow assignment.
 
-If `moduleConfigTeamIDs` does not already contain ADGE ids, DGE boot seeds them from `dga_module_configurations`.
+Clean rule:
+- Strategy Team, SME Team, and Strategy Director do not assign or share budgets to ADGE teams during DGE review clarifications.
+- DGE-to-ADGE clarification `dga_raised_to` is resolved from the budget's own instance module configuration, not from the DGE user's session storage.
+- Strategy Director Start Allocation is the main DGE-to-ADGE assignment handoff. It resolves the Respondent team from each instance module configuration before assigning budgets to ADGE Respondent.
 
-That means DGE users should still end up with:
-- `respondentTeamId`
-- `reviewerTeamId`
-- `approverTeamId`
-- `strategyTeamId`
-
-inside `moduleConfigTeamIDs`.
+ADGE users still rely on `moduleConfigTeamIDs` for their own instance-scoped Respondent/Reviewer/Approver routing.
 
 ## 4. Main Workflow Fields
 
@@ -652,7 +649,8 @@ Current DGE-to-ADGE behavior:
 - clarification record is created
 - `statuscode = 776140010`
 - `dga_status_for_adge = 5`
-- owner is not always moved away in every DGE-to-ADGE path
+- owner remains with the current DGE owner; DGE-to-ADGE clarification does not assign or share the budget to ADGE
+- `dga_raised_to` is resolved from the budget instance module configuration Respondent team
 - respondent sees the thread and can reply
 
 Important:
@@ -792,6 +790,11 @@ For DGE actions in the form:
 - then the workflow action runs
 - workflow action saves run silently
 - the user should not see a separate "Changes saved" toast before the workflow toast
+
+After successful workflow actions from Edit/View:
+- the project shell is reloaded
+- the ICT budget detail is reloaded
+- header status and available quick actions should update without closing and reopening the form
 
 ## 10.6 Budget column visibility
 

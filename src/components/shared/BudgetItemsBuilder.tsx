@@ -11,12 +11,13 @@ import { formatAEDFull } from '@/lib/utils'
 interface BudgetItemsBuilderProps {
   items: BudgetItemDraft[]
   onChange: (items: BudgetItemDraft[]) => void
+  allocationMode?: boolean
 }
 
-export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps) {
+export function BudgetItemsBuilder({ items, onChange, allocationMode = false }: BudgetItemsBuilderProps) {
   const [modalOpen, setModalOpen] = useState(false)
 
-  const totalRequested = useMemo(
+  const totalBudget = useMemo(
     () => items.reduce((sum, item) => sum + item.budgetRequested, 0),
     [items]
   )
@@ -54,8 +55,10 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
               <p className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white">{items.length}</p>
             </div>
             <div className="rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Total Requested</p>
-              <CurrencyAmount amount={totalRequested} full className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+              <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">
+                {allocationMode ? 'Total Allocated' : 'Total Requested'}
+              </p>
+              <CurrencyAmount amount={totalBudget} full className="mt-1 text-lg font-bold text-[#0F172A] dark:text-white" iconSize={16} />
             </div>
           </div>
 
@@ -69,7 +72,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
           <table className="w-full text-sm">
             <thead className="hidden border-b border-[#EAF0F6] bg-[#F8FAFC] md:table-header-group dark:border-white/10 dark:bg-[#0F172A]/20">
               <tr>
-                {['Account Name', 'Classification Path', 'EBS / Fusion / Type', 'Budget Requested', 'Actions'].map((header) => (
+                {['Account Name', 'Classification Path', 'EBS / Fusion / Type', allocationMode ? 'Allocated Budget' : 'Budget Requested', 'Actions'].map((header) => (
                   <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
                     {header}
                   </th>
@@ -85,7 +88,7 @@ export function BudgetItemsBuilder({ items, onChange }: BudgetItemsBuilderProps)
                     </div>
                     <p className="text-sm text-[#0F172A] dark:text-white" style={{fontWeight: 600}}>No budget account codes added yet</p>
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-200">
-                      Use the classification picker to add GL accounts and then enter each requested amount.
+                      Use the classification picker to add GL accounts and then enter each {allocationMode ? 'allocated' : 'requested'} amount.
                     </p>
                   </td>
                 </tr>

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import type { AppInstanceDetail } from '@/services/instanceService'
 import {
+  clearStoredInstanceContext,
   fetchAndStoreInstance,
   getAccountIdForRole,
   getStoredInstanceDetail,
@@ -40,6 +41,7 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
     if (!selectedCycle?.id || !activeRole) return
 
     if (activeRole !== 'Respondent' && activeRole !== 'Reviewer' && activeRole !== 'Approver') {
+      clearStoredInstanceContext()
       setInstanceId(null)
       setInstanceDetail(null)
       setInstanceLoading(false)
@@ -48,6 +50,7 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
 
     const accountId = getAccountIdForRole(activeRole)
     if (!accountId) {
+      clearStoredInstanceContext()
       setInstanceId(null)
       setInstanceDetail(null)
       setInstanceLoading(false)
@@ -60,11 +63,14 @@ export function InstanceProvider({ children }: { children: React.ReactNode }) {
 
     if (!isFirst) setInstanceLoading(true)
 
-    void fetchAndStoreInstance(selectedCycle.id, accountId).then((detail) => {
-      setInstanceId(detail?.id ?? null)
-      setInstanceDetail(detail)
-      if (!isFirst) setInstanceLoading(false)
-    })
+    void fetchAndStoreInstance(selectedCycle.id, accountId)
+      .then((detail) => {
+        setInstanceId(detail?.id ?? null)
+        setInstanceDetail(detail)
+      })
+      .finally(() => {
+        if (!isFirst) setInstanceLoading(false)
+      })
   }, [activeRole, selectedCycle?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

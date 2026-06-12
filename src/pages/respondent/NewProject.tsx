@@ -1400,6 +1400,7 @@ function validateDraftState(input: {
   setFieldErrors: React.Dispatch<React.SetStateAction<FieldErrorMap>>
   setBudgetItemsError: React.Dispatch<React.SetStateAction<string | null>>
   showErrorToast: (title: string, description?: string) => void
+  allocationMode?: boolean
 }) {
   const nextErrors: FieldErrorMap = {}
   const visibleBudgetFields = getVisibleBudgetFields(input.values.activityType)
@@ -1438,7 +1439,7 @@ function validateDraftState(input: {
   if (input.budgetItems.length === 0) {
     nextErrors.budgetItems = 'Add at least one budget account code before saving the draft.'
   } else if (input.budgetItems.some((item) => item.budgetRequested <= 0)) {
-    nextErrors.budgetItems = 'Each budget account code must have a requested budget greater than zero.'
+    nextErrors.budgetItems = `Each budget account code must have a ${input.allocationMode ? 'allocated' : 'requested'} budget greater than zero.`
   }
 
   input.setFieldErrors(nextErrors)
@@ -2583,6 +2584,8 @@ export default function NewProject() {
   const manualSuggestionAutoSelectionKeyRef = useRef<string | null>(null)
   const prevSuggestionCountRef = useRef(0)
   const shownCopilotCumulativeSummaryScopeRef = useRef<string | null>(null)
+  const creatingDuringAllocation = getStoredInstanceDetail()?.statuscode === 776140005
+  const saveDraftLabel = creatingDuringAllocation ? 'Create Allocation Budget' : 'Save Draft'
 
   useEffect(() => {
     const el = chatScrollRef.current
@@ -4812,7 +4815,7 @@ export default function NewProject() {
     if (budgetItems.length === 0) {
       nextErrors.budgetItems = 'Add at least one budget account code before saving the draft.'
     } else if (budgetItems.some((item) => item.budgetRequested <= 0)) {
-      nextErrors.budgetItems = 'Each budget account code must have a requested budget greater than zero.'
+      nextErrors.budgetItems = `Each budget account code must have a ${creatingDuringAllocation ? 'allocated' : 'requested'} budget greater than zero.`
     }
 
     setFieldErrors(nextErrors)
@@ -4867,7 +4870,7 @@ export default function NewProject() {
     const createdBudget = await runActionToast(
       async () => {
         const budget = await createIctBudgetDraft(payload)
-        await createBudgetLineItems(budget.id, budgetItems)
+        await createBudgetLineItems(budget.id, budgetItems, { allocationMode: creatingDuringAllocation })
         return budget
       },
       {
@@ -4961,6 +4964,7 @@ export default function NewProject() {
       setFieldErrors: setCopilotFieldErrors,
       setBudgetItemsError: setCopilotBudgetItemsError,
       showErrorToast,
+      allocationMode: creatingDuringAllocation,
     })
 
   const saveDraftFromState = async (input: {
@@ -4988,7 +4992,7 @@ export default function NewProject() {
     const createdBudget = await runActionToast(
       async () => {
         const budget = await createIctBudgetDraft(buildCreateDraftPayload(input.values))
-        await createBudgetLineItems(budget.id, input.budgetRows)
+        await createBudgetLineItems(budget.id, input.budgetRows, { allocationMode: creatingDuringAllocation })
         return budget
       },
       {
@@ -5663,7 +5667,7 @@ export default function NewProject() {
               onClick={() => mode === 'manual' ? void handleSaveDraft() : void handleCopilotSaveDraft()}
               disabled={mode === 'manual' ? isManualSaveBlockedByAiAnalysis : isCopilotSaveBlockedByAiAnalysis}
             >
-              Save Draft
+              {saveDraftLabel}
             </Button>
           </div>
         </div>
@@ -6315,6 +6319,7 @@ export default function NewProject() {
             >
               <BudgetItemsBuilder
                 items={budgetItems}
+                allocationMode={creatingDuringAllocation}
                 onChange={(items) => {
                   setBudgetItems(items)
                   if (items.length > 0 && items.every((item) => item.budgetRequested > 0)) {
@@ -6337,7 +6342,7 @@ export default function NewProject() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
                   <CheckCircle2 className="h-5 w-5 text-[var(--primary)]" />
-                  <span>Save Draft validates required fields, creates the ICT budget, associates technology products, and creates budget line items.</span>
+                  <span>{saveDraftLabel} validates required fields, creates the ICT budget, associates technology products, and creates budget line items.</span>
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
                   <Button
@@ -6352,7 +6357,7 @@ export default function NewProject() {
                     onClick={() => void handleSaveDraft()}
                     disabled={isManualSaveBlockedByAiAnalysis}
                   >
-                    Save Draft
+                    {saveDraftLabel}
                   </Button>
                 </div>
               </div>
@@ -7250,6 +7255,7 @@ export default function NewProject() {
             <FormSection title="Budget Account Codes" description="Review the GL lines the copilot or documents suggested, and add or adjust them before saving." icon={CircleDollarSign} noIconBg>
               <BudgetItemsBuilder
                 items={copilotBudgetItems}
+                allocationMode={creatingDuringAllocation}
                 onChange={(items) => {
                   setCopilotBudgetItems(items)
                   if (items.length > 0 && items.every((item) => item.budgetRequested > 0)) {
@@ -7289,7 +7295,7 @@ export default function NewProject() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3 text-sm text-[#64748B] dark:text-slate-200">
                   <CheckCircle2 className="h-5 w-5 text-[#A855F7]" />
-                  <span>Save Draft uses the same safe create flow as manual mode, including file upload and AI-summary persistence after the budget record is created.</span>
+                  <span>{saveDraftLabel} uses the same safe create flow as manual mode, including file upload and AI-summary persistence after the budget record is created.</span>
                 </div>
                 <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
                   <Button
@@ -7304,7 +7310,7 @@ export default function NewProject() {
                     onClick={() => void handleCopilotSaveDraft()}
                     disabled={isCopilotSaveBlockedByAiAnalysis}
                   >
-                    Save Draft
+                    {saveDraftLabel}
                   </Button>
                 </div>
               </div>

@@ -635,6 +635,7 @@ export const dataverseProjectsApi: ProjectsApi = {
         name: record.dga_initiative_project_requirement_name?.trim() || 'Untitled Budget Item',
         entity: getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') || '-',
         status: queueStatus,
+        statusCode: record.statuscode ?? null,
         statusForAdgeLabel:
           getFormattedAnnotation(record, 'dga_status_for_adge@OData.Community.Display.V1.FormattedValue') || queueStatus,
         budgetType: mapActivityTypeLabel(record, record.dga_activity_type),
