@@ -30,6 +30,8 @@ import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 
 type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -74,6 +76,10 @@ function ProjectAiFlagTags({ project, portfolioSummary }: { project: Project; po
 
 function ProjectCard({ project, portfolioSummary }: { project: Project; portfolioSummary: PortfolioSummaryPayload | null }) {
   const pendingClarification = project.status === 'Clarification Required'
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showRecommended = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+  const showAllocated = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation
+  const showUtilized = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization
   const dynamicRisk = portfolioSummary
     ? getPortfolioProjectInsight(portfolioSummary, project.ictBudgetId ?? project.id, 'respondent').riskLevel
     : null
@@ -116,9 +122,27 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Requested Budget</p>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
+          {showRecommended && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Recommended Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showAllocated && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Allocated Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showUtilized && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Utilized Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
+            </div>
+          )}
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Pending With</p>
             <p className="truncate text-sm font-bold text-[#0F172A] dark:text-white">{project.pendingWith || '-'}</p>

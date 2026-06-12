@@ -20,6 +20,8 @@ import { isReviewerSentToApproverProjectStatus } from '@/services/projectService
 import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 
 type FilterTab = 'all' | 'pending-review' | 'review-completed' | 'clarification' | 'submitted-approver'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -65,6 +67,10 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
   const dynamicRisk = portfolioSummary
     ? getPortfolioProjectInsight(portfolioSummary, project.ictBudgetId ?? project.id, 'reviewer').riskLevel
     : null
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showRecommended = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+  const showAllocated = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation
+  const showUtilized = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_18px_40px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
@@ -92,9 +98,27 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Requested Budget</p>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
+          {showRecommended && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Recommended Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showAllocated && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Allocated Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showUtilized && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <p className="text-xs text-[#64748B] dark:text-slate-200">Utilized Budget</p>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
+            </div>
+          )}
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Budget Type</p>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{project.budgetType}</p>

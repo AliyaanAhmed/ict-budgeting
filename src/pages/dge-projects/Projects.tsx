@@ -201,8 +201,20 @@ function DgeProjectCard({ project, linkBase }: { project: Project; linkBase: str
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Requested Budget</p>
             <CurrencyAmount amount={project.requestedBudget} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+          </div>
+          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Recommended Budget</p>
+            <CurrencyAmount amount={project.recommendedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+          </div>
+          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Allocated Budget</p>
+            <CurrencyAmount amount={project.allocatedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+          </div>
+          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+            <p className="text-xs text-[#64748B] dark:text-slate-200">Utilized Budget</p>
+            <CurrencyAmount amount={project.utilizedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Pending With</p>
@@ -492,6 +504,7 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
             linkBase={config.linkBase}
             showCreatedBy
             showAiScore
+            budgetColumnMode="all"
             onFilterStateChange={setHasActiveTableFilters}
           />
         ) : (

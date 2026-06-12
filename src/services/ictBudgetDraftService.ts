@@ -319,6 +319,8 @@ function mapRetrievedBudgetRecord(
     rejectionReason: record.dga_rejection_reason ?? null,
     rejectionJustification: record.dga_rejection_justification ?? '',
     rejectedById: record._dga_rejected_by_value ?? '',
+    allocationOutcome: record.dga_allocation_outcome ?? null,
+    allocationCancelationReason: record.dga_allocation_cancelation_reason ?? '',
     totalBudgetPayableFutureYear: toCurrencyInputValue(record.dga_total_budget_payable_future_year),
     totalBudgetPayableNextYear: toCurrencyInputValue(record.dga_total_budget_payable_next_year),
     totalBudgetPayableForYearAfterNext: toCurrencyInputValue(
@@ -405,9 +407,11 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
   // Resolve the current budget instance and entity abbreviation from sessionStorage
   const instanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
   const instanceDetailRaw = sessionStorage.getItem(SESSION_INSTANCE_DETAIL_KEY)
-  const entityAbbr: string | undefined = instanceDetailRaw
-    ? (JSON.parse(instanceDetailRaw) as { abbr?: string }).abbr
-    : undefined
+  const instanceDetail = instanceDetailRaw
+    ? (JSON.parse(instanceDetailRaw) as { abbr?: string; statuscode?: number })
+    : null
+  const entityAbbr: string | undefined = instanceDetail?.abbr
+  const creatingDuringAllocation = instanceDetail?.statuscode === 776140005
 
   const payload = {
     dga_initiative_project_requirement_name: input.initiativeName.trim(),
@@ -432,9 +436,9 @@ export async function createIctBudgetDraft(input: CreateIctBudgetDraftInput) {
     dga_planned_end_date: input.plannedEndDate,
     dga_summary: input.summary.trim(),
     dga_activity_type: input.activityType,
-    dga_added_in_allocation: 1,
-    dga_status_for_adge: ICT_BUDGET_STATUS.draft,
-    statuscode: 1,
+    dga_added_in_allocation: creatingDuringAllocation ? 2 : 1,
+    dga_status_for_adge: creatingDuringAllocation ? 7 : ICT_BUDGET_STATUS.draft,
+    statuscode: creatingDuringAllocation ? 776140011 : 1,
     dga_budget_item_type: input.budgetItemType,
     dga_category: input.category ?? undefined,
     dga_total_budget_paid_previous_year: input.totalBudgetPaidPreviousYear ?? undefined,
@@ -496,6 +500,8 @@ export async function getIctBudgetDraftById(
         'dga_recommended',
         'dga_rejection_reason',
         'dga_rejection_justification',
+        'dga_allocation_outcome',
+        'dga_allocation_cancelation_reason',
         '_dga_rejected_by_value',
         '_dga_sme_reviewer_team_value',
         'dga_total_budget_paid_previous_year',
@@ -555,6 +561,9 @@ export async function updateIctBudgetDraft(
     dga_rejection_justification: recommendedNo ? formValues.rejectionJustification.trim() : null,
     'dga_rejected_by@odata.bind':
       recommendedNo && currentUserId ? toBoundLookupValue('systemusers', currentUserId) : null,
+    dga_allocation_outcome: formValues.allocationOutcome ?? undefined,
+    dga_allocation_cancelation_reason:
+      formValues.allocationOutcome === 1 ? formValues.allocationCancelationReason.trim() : null,
     dga_total_budget_paid_previous_year: parseCurrencyValue(
       formValues.totalBudgetPaidPreviousYear
     ) ?? undefined,

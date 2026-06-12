@@ -57,11 +57,19 @@ import { projectService } from '@/services/projectService'
 import { useToast } from '@/context/ToastContext'
 import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { submitInstanceToUtilization } from '@/services/dgeWorkflowService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import type { Project } from '@/domain/types'
 
 const LOCAL_STATUSCODE_BY_STATUS = {
   Approved: 776140003,
   'Submitted to DGE': 776140004,
 } as const
+
+type StatusOverride = {
+  status: Project['status']
+  statusCode: number
+}
 
 function PieTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
@@ -286,7 +294,7 @@ export default function ApproverDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
   const [planningExpanded, setPlanningExpanded] = useState(false)
   const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, 'Approved' | 'Submitted to DGE'>>({})
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>({})
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
@@ -300,8 +308,8 @@ export default function ApproverDashboard() {
 
         return {
           ...project,
-          status: override,
-          statusCode: LOCAL_STATUSCODE_BY_STATUS[override],
+          status: override.status,
+          statusCode: override.statusCode,
         }
       }),
     [liveProjects, statusOverrides]
@@ -315,6 +323,8 @@ export default function ApproverDashboard() {
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const storedInstanceDetail = getStoredInstanceDetail()
+  const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
+  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
   const dueDateLabel = selectedCycle?.endDate
     ? new Date(selectedCycle.endDate).toLocaleDateString('en-AE', {
@@ -344,11 +354,21 @@ export default function ApproverDashboard() {
   const submittedToDgeCount = submittedToDgeProjects.length
   const approverOwnedProjects = [...submittedToApproverProjects, ...approvedProjects]
   const allProjectsApproved = effectiveLiveProjects.length > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
+  const allocationCompletedProjectCount = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+  ).length
+  const allProjectsAllocationCompleted =
+    effectiveLiveProjects.length > 0 &&
+    allocationCompletedProjectCount === effectiveLiveProjects.length
   const hasCycleDgeSubmission = effectiveLiveProjects.some(
     (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
   )
   const portfolioAlreadySubmittedToDge =
     portfolioSubmittedToDge || hasCycleDgeSubmission
+  const showSubmittedToDgeMessage = portfolioAlreadySubmittedToDge && !instanceInAllocation
+  const submitToDgeDisabled = instanceInAllocation
+    ? !allProjectsAllocationCompleted
+    : !allProjectsApproved
   const projectsRequiringApproval = useMemo(
     () => [...submittedToApproverProjects].sort((a, b) => parseProjectDate(b) - parseProjectDate(a)).slice(0, 2),
     [submittedToApproverProjects]
@@ -560,32 +580,48 @@ export default function ApproverDashboard() {
 
   const handleSubmitToDge = async () => {
     const projectIds = effectiveLiveProjects
-      .filter((project) => project.ictBudgetId && project.status === 'Approved')
+      .filter((project) =>
+        project.ictBudgetId &&
+        (instanceInAllocation
+          ? project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+          : project.status === 'Approved')
+      )
       .map((project) => project.ictBudgetId as string)
 
-    if (!projectIds.length) {
+    if (!projectIds.length || (instanceInAllocation && !instanceId)) {
       return
     }
 
     await runActionToast(
       async () => {
-        await projectService.approverSubmitToDge(projectIds)
-        await updateCurrentInstanceSubmissionDate()
+        if (instanceInAllocation && instanceId) {
+          await submitInstanceToUtilization(instanceId, projectIds)
+        } else {
+          await projectService.approverSubmitToDge(projectIds)
+          await updateCurrentInstanceSubmissionDate()
+        }
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
           const next = { ...prev }
           for (const projectId of projectIds) {
-            next[projectId] = 'Submitted to DGE'
+            next[projectId] = {
+              status: 'Submitted to DGE',
+              statusCode: instanceInAllocation ? DGE_BUDGET_STATUS.utilizationInProgress : DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+            }
           }
           return next
         })
       },
       {
-        processingTitle: 'Submitting to DGE',
-        processingDescription: 'Assigning the approved portfolio to the strategy team and moving it into DGE review...',
-        successTitle: 'Submitted to DGE',
-        successDescription: 'All approved projects were submitted to DGE successfully.',
-        errorTitle: 'Unable to submit to DGE',
+        processingTitle: instanceInAllocation ? 'Starting utilization' : 'Submitting to DGE',
+        processingDescription: instanceInAllocation
+          ? 'Moving the entity into utilization and assigning projects back to Respondent...'
+          : 'Assigning the approved portfolio to the strategy team and moving it into DGE review...',
+        successTitle: instanceInAllocation ? 'Utilization started' : 'Submitted to DGE',
+        successDescription: instanceInAllocation
+          ? 'All allocation-completed projects are now in utilization.'
+          : 'All approved projects were submitted to DGE successfully.',
+        errorTitle: instanceInAllocation ? 'Unable to start utilization' : 'Unable to submit to DGE',
         minDurationMs: 1600,
       }
     )
@@ -685,7 +721,7 @@ export default function ApproverDashboard() {
               </div>
             </div>
 
-            {portfolioAlreadySubmittedToDge ? (
+            {showSubmittedToDgeMessage ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                 <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                 <div>
@@ -698,7 +734,7 @@ export default function ApproverDashboard() {
             ) : (
               <Button
                 className="ml-auto h-11 shrink-0 rounded-[18px] px-4 shadow-[0_12px_24px_rgba(40,108,255,0.16)]"
-                disabled={!allProjectsApproved}
+                disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
                 Submit to DGE
@@ -1105,7 +1141,7 @@ export default function ApproverDashboard() {
             <div className="mt-auto flex flex-col gap-3 pt-5">
               <Button
                 className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
-                disabled={!allProjectsApproved}
+                disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
                 Submit to DGE

@@ -175,6 +175,11 @@ Current values used by the app:
 - `4` = Approved by Approver
 - `5` = Clarification Pending
 - `6` = Under DGE Review
+- `7` = Allocation In Progress
+- `8` = Allocation In Review
+- `9` = Allocation Completed
+- `10` = Utilization in Progress
+- `11` = Utilization Completed
 - `12` = Reviewer Review Completed
 
 ## 4.2 `statuscode`
@@ -253,6 +258,9 @@ General ownership model:
 - Strategy Team owns strategic alignment and quality-check items
 - SME team owns SME-stage items
 - Strategy Director owns final review items
+- Allocation and utilization return ownership to ADGE roles:
+  - Respondent owns Allocation In Progress and Utilization In Progress
+  - Approver owns Allocation In Review
 
 ## 6. Sharing Model
 
@@ -402,6 +410,7 @@ Strategy Director can:
 - complete review
 - publish instance/entity after all budgets are review completed
 - start allocation for the instance
+- start utilization after ADGE allocation is completed through the existing Approver Submit to DGE button
 
 ## 8.4 Strategy to SME handoff
 
@@ -495,9 +504,112 @@ Publish updates instance:
 Then `Start Allocation` becomes available.
 
 Start Allocation updates:
-- instance `statuscode = 776140005`
-- all budgets in that instance `statuscode = 776140011`
-- meaning `Allocation in Progress`
+- instance `statuscode = 776140005` (`Allocation`)
+- all budgets in that instance:
+  - `statuscode = 776140011` (`Allocation in Progress`)
+  - `dga_status_for_adge = 7`
+  - owner moves to the instance-specific ADGE Respondent team
+
+Respondent team is not read from the current DGE user's session storage during this handoff.
+It is resolved from the instance module configuration:
+1. read `_dga_module_configuration_value` from `dga_ict_budget_instance`
+2. retrieve `dga_module_configuration`
+3. use `_dga_respondent_team_value`
+
+## 8.9 ADGE allocation workflow
+
+When the instance is in Allocation:
+- ADGE Respondent receives all instance budgets as `Allocation in Progress`
+- Reviewer is view-only
+- DGE roles are view-only except Strategy Team
+- Strategy Team keeps full governance edit access
+
+### Respondent allocation entry
+
+Respondent can edit only allocation-specific fields:
+- `dga_allocation_outcome`
+- `dga_allocation_cancelation_reason` when outcome is Cancelled
+- line item `dga_budget_allocated`
+
+Choice rules:
+- `dga_allocation_outcome = 1` means `Cancelled In Allocation`
+  - cancellation reason is required
+  - allocated budgets are set to `0`
+  - allocated budget is read-only
+- `dga_allocation_outcome = 2` means `Used In Allocation`
+  - allocated budget is required on each budget line
+
+Submit to Review:
+- `statuscode = 776140012`
+- `dga_status_for_adge = 8`
+- owner moves to instance Approver team
+
+### Approver allocation review
+
+Approver can edit allocation outcome and allocated budget while status is `Allocation In Review`.
+
+Complete Allocation:
+- `statuscode = 776140013`
+- `dga_status_for_adge = 9`
+
+The Complete Allocation action is available in:
+- Edit/View Form
+- Approver Queue cards
+
+### Allocation clarification
+
+Approver can raise clarification to Respondent while status is `Allocation In Review`.
+
+Clarification record:
+- `dga_clarification_stage = 3` (`Allocation`)
+- `dga_scope = 2` (`Internal Entity`)
+
+Respondent first reply:
+- returns ownership to the instance Approver team
+- `statuscode = 776140012`
+- `dga_status_for_adge = 8`
+- confirmation copy says it returns to allocation review
+
+## 8.10 ADGE utilization workflow
+
+When every budget in the instance is Allocation Completed:
+- Approver Queue and Approver Dashboard show the existing `Submit to DGE` button
+- this does not run the planning Submit to DGE workflow
+- in Allocation phase, this button starts Utilization
+
+Start Utilization updates:
+- instance `statuscode = 776140006` (`Utilization`)
+- all instance budgets:
+  - `statuscode = 776140014` (`Utilization in Progress`)
+  - `dga_status_for_adge = 10`
+  - owner moves back to instance Respondent team
+
+Respondent utilization entry:
+- all normal fields are read-only
+- line item utilization is editable through quarter modal
+- quarter fields:
+  - `dga_utilization_quarter_1`
+  - `dga_utilization_quarter_2`
+  - `dga_utilization_quarter_3`
+  - `dga_utilization_quarter_4`
+- total field:
+  - `dga_total_budget_utilized`
+
+Validation:
+- if allocation outcome is Cancelled, utilization is not mandatory
+- otherwise every line must have total utilized budget greater than `0`
+
+Complete Utilization:
+- `statuscode = 776140015`
+- `dga_status_for_adge = 11`
+
+## 8.11 Projects created during Allocation
+
+When ADGE Respondent creates a new project while instance status is Allocation:
+- `statuscode = 776140011`
+- `dga_status_for_adge = 7`
+- `dga_added_in_allocation = 2` (`Yes`)
+- project enters Allocation In Progress instead of Draft
 
 ## 9. Clarification Model
 
@@ -608,8 +720,11 @@ Behavior:
 
 On SME side:
 - project can be edited only within SME-allowed fields
-- first reply does not automatically send it to Director
-- SME can route it back to quality check when ready
+- first SME reply automatically returns it to Strategy Team quality check
+- `statuscode = 776140007`
+- `dga_status_for_adge = 6`
+- owner moves to Strategy Team
+- SME can also route it back to quality check when ready
 
 ## 9.5 Clarification visibility rules
 
@@ -639,7 +754,8 @@ This page is reused by:
 
 ## 10.2 Strategy Director
 
-- full edit access
+- full edit access during DGE review/final review
+- view-only during Allocation and Utilization phases
 - can review projects across DGE final-governance states
 - status display is DGE `statuscode`
 
@@ -659,6 +775,13 @@ This page is reused by:
 - DGE recommendation fields are hidden during normal ADGE stages
 - once instance reaches `Review Completed by DGE` or later
   - recommendation fields become visible read-only for ADGE roles
+- during Allocation:
+  - Respondent can edit allocation outcome/allocated budget while assigned
+  - Approver can edit allocation outcome/allocated budget while assigned
+  - Reviewer is view-only
+- during Utilization:
+  - Respondent can edit utilization quarter values while assigned
+  - Reviewer and Approver are view-only unless a workflow action applies
 
 ## 10.5 Save-before-action behavior
 
@@ -667,6 +790,44 @@ For DGE actions in the form:
 - and clicks an action like route/send/request/review
 - the form saves first
 - then the workflow action runs
+- workflow action saves run silently
+- the user should not see a separate "Changes saved" toast before the workflow toast
+
+## 10.6 Budget column visibility
+
+Project table/card budget columns:
+
+### ADGE roles
+- Requested Budget always shows
+- when instance status is `Review Completed by DGE` or later:
+  - Requested Budget
+  - Recommended Budget
+  - Planning Outcome
+- when instance status is `Allocation` or later:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Planning Outcome
+  - Added In Allocation
+- when instance status is `Utilization`:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Utilized Budget
+  - Planning Outcome
+  - Added In Allocation
+
+### DGE roles
+- DGE project table/card views always show:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Utilized Budget
+
+Edit/View budget section:
+- Project Budget Type & Budget Account Codes summary shows phase-relevant totals
+- requested total always shows
+- recommended/allocated/utilized totals appear according to the same phase rules
 
 ## 11. DGE Project Pages
 

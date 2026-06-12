@@ -117,6 +117,16 @@ function getScopeLabel(
   return 'Internal (Entity)'
 }
 
+function getStageLabel(
+  stage: Dga_ict_clarificationsdga_clarification_stage | null | undefined
+): Clarification['stage'] | undefined {
+  if (stage === 1) return 'Planning'
+  if (stage === 2) return 'In DGE Review'
+  if (stage === 3) return 'Allocation'
+  if (stage === 4) return 'Utilization'
+  return undefined
+}
+
 async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<string | null> {
   const storedTeamIds = getStoredModuleConfigTeamIds()
   const storedRespondentTeamId = storedTeamIds?.respondentTeamId?.trim() || null
@@ -209,6 +219,7 @@ function mapClarification(record: Dga_ict_clarifications, replies: Clarification
       getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
       'Respondent',
     scope: getScopeLabel(record.dga_scope),
+    stage: getStageLabel(record.dga_clarification_stage),
     message: record.dga_description?.trim() || '',
     fileUrl: record.dga_file_url?.trim() || undefined,
     status,
@@ -326,6 +337,7 @@ export async function getClarificationsByBudgetId(budgetId: string): Promise<Cla
         'modifiedon',
         'dga_description',
         'dga_file_url',
+        'dga_clarification_stage',
         'dga_scope',
         '_dga_ict_budget_value',
         '_dga_parent_clarificaiton_value',

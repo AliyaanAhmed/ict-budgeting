@@ -14,6 +14,12 @@ const SELECT_FIELDS = [
   'dga_ict_budget_line_itemid',
   'dga_budget_requested',
   'dga_budget_recommended',
+  'dga_budget_allocated',
+  'dga_total_budget_utilized',
+  'dga_utilization_quarter_1',
+  'dga_utilization_quarter_2',
+  'dga_utilization_quarter_3',
+  'dga_utilization_quarter_4',
   '_dga_classification_value',
   'dga_ebs_account_code',
   'dga_fusion_account_code',
@@ -37,6 +43,12 @@ export interface BudgetLineItemRecord {
   fusionCode: string
   budgetRequested: number
   budgetRecommended: number
+  budgetAllocated: number
+  totalBudgetUtilized: number
+  utilizationQuarter1: number
+  utilizationQuarter2: number
+  utilizationQuarter3: number
+  utilizationQuarter4: number
 }
 
 function asString(value: unknown): string | null {
@@ -102,6 +114,12 @@ function normalizeLineItem(
     fusionCode: asString(record.dga_fusion_account_code) ?? glNode?.fusionCode ?? 'N/A',
     budgetRequested: asNumber(record.dga_budget_requested) ?? 0,
     budgetRecommended: asNumber(record.dga_budget_recommended) ?? 0,
+    budgetAllocated: asNumber(record.dga_budget_allocated) ?? 0,
+    totalBudgetUtilized: asNumber(record.dga_total_budget_utilized) ?? 0,
+    utilizationQuarter1: asNumber(record.dga_utilization_quarter_1) ?? 0,
+    utilizationQuarter2: asNumber(record.dga_utilization_quarter_2) ?? 0,
+    utilizationQuarter3: asNumber(record.dga_utilization_quarter_3) ?? 0,
+    utilizationQuarter4: asNumber(record.dga_utilization_quarter_4) ?? 0,
   }
 }
 
@@ -121,6 +139,39 @@ export async function updateBudgetLineItemRecommendedAmount(
 ) {
   await Dga_ict_budget_line_itemsService.update(lineItemId, {
     dga_budget_recommended: Number(budgetRecommended.toFixed(4)),
+  } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
+}
+
+export async function updateBudgetLineItemAllocatedAmount(
+  lineItemId: string,
+  budgetAllocated: number
+) {
+  await Dga_ict_budget_line_itemsService.update(lineItemId, {
+    dga_budget_allocated: Number(budgetAllocated.toFixed(4)),
+  } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
+}
+
+export async function updateBudgetLineItemUtilizationAmounts(
+  lineItemId: string,
+  quarters: {
+    quarter1: number
+    quarter2: number
+    quarter3: number
+    quarter4: number
+  }
+) {
+  const total =
+    Number(quarters.quarter1 || 0) +
+    Number(quarters.quarter2 || 0) +
+    Number(quarters.quarter3 || 0) +
+    Number(quarters.quarter4 || 0)
+
+  await Dga_ict_budget_line_itemsService.update(lineItemId, {
+    dga_utilization_quarter_1: Number((quarters.quarter1 || 0).toFixed(4)),
+    dga_utilization_quarter_2: Number((quarters.quarter2 || 0).toFixed(4)),
+    dga_utilization_quarter_3: Number((quarters.quarter3 || 0).toFixed(4)),
+    dga_utilization_quarter_4: Number((quarters.quarter4 || 0).toFixed(4)),
+    dga_total_budget_utilized: Number(total.toFixed(4)),
   } as Partial<Omit<Dga_ict_budget_line_itemsBase, 'dga_ict_budget_line_itemid'>>)
 }
 

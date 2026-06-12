@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 
 type ColumnType = 'text' | 'number' | 'option'
 type TextOperator = 'contains' | 'equals'
@@ -133,6 +135,19 @@ function normalize(value: string | number | null | undefined) {
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
+}
+
+function BudgetAmount({ amount }: { amount: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#0F172A] dark:text-white">
+      <DirhamIcon width={13} height={13} color="currentColor" />
+      {formatBudgetValue(amount)}
+    </span>
+  )
+}
+
+function choiceLabel(value: number | null | undefined, labels: Record<number, string>) {
+  return value != null ? labels[value] ?? '-' : '-'
 }
 
 function compareValues(a: string | number | null | undefined, b: string | number | null | undefined, type: ColumnType) {
@@ -383,6 +398,7 @@ interface ProjectTableProps {
   linkBase?: string
   showCreatedBy?: boolean
   showAiScore?: boolean
+  budgetColumnMode?: 'instance' | 'all'
   portfolioSummary?: PortfolioSummaryPayload | null
   onFilterStateChange?: (active: boolean) => void
 }
@@ -416,11 +432,23 @@ export function ProjectTable({
   linkBase = '/respondent/projects',
   showCreatedBy = false,
   showAiScore = true,
+  budgetColumnMode = 'instance',
   portfolioSummary,
   onFilterStateChange,
 }: ProjectTableProps) {
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({})
   const [sort, setSort] = useState<SortState | undefined>()
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showDgeOutcomeColumns =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge)
+  const showRecommendedBudgetColumn = showDgeOutcomeColumns
+  const showAllocatedBudgetColumn =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation)
+  const showUtilizedBudgetColumn =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization)
 
   const columns = useMemo<ColumnDefinition<Project>[]>(() => {
     const baseColumns: ColumnDefinition<Project>[] = [
@@ -501,15 +529,105 @@ export function ProjectTable({
       },
       {
         id: 'budget',
-        header: 'Budget',
+        header: 'Requested Budget',
         type: 'number',
         accessor: (project) => project.requestedBudget,
-        render: (project) => (
-          <span className="text-[14px] font-semibold text-[#0F172A] dark:text-white">
-            {formatBudgetValue(project.requestedBudget)}
-          </span>
-        ),
+        render: (project) => <BudgetAmount amount={project.requestedBudget} />,
       },
+      ...(showRecommendedBudgetColumn
+        ? [
+            {
+              id: 'recommendedBudget',
+              header: 'Recommended Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.recommendedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.recommendedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showDgeOutcomeColumns
+        ? [
+            {
+              id: 'planningOutcome',
+              header: 'Planning Outcome',
+              type: 'option' as const,
+              accessor: (project: Project) =>
+                choiceLabel(project.planningOutcome, {
+                  1: 'Recommended by DGE',
+                  2: 'Not Recommended',
+                }),
+              options: Array.from(
+                new Set(
+                  projects.map((project) =>
+                    choiceLabel(project.planningOutcome, {
+                      1: 'Recommended by DGE',
+                      2: 'Not Recommended',
+                    })
+                  )
+                )
+              ).sort(),
+              render: (project: Project) => (
+                <span className="whitespace-nowrap text-[14px] font-semibold text-[#0F172A] dark:text-white">
+                  {choiceLabel(project.planningOutcome, {
+                    1: 'Recommended by DGE',
+                    2: 'Not Recommended',
+                  })}
+                </span>
+              ),
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+            {
+              id: 'addedInAllocation',
+              header: 'Added In Allocation',
+              type: 'option' as const,
+              accessor: (project: Project) =>
+                choiceLabel(project.addedInAllocation, {
+                  1: 'No',
+                  2: 'Yes',
+                }),
+              options: ['No', 'Yes'],
+              render: (project: Project) => (
+                <span className="whitespace-nowrap text-[14px] font-semibold text-[#0F172A] dark:text-white">
+                  {choiceLabel(project.addedInAllocation, {
+                    1: 'No',
+                    2: 'Yes',
+                  })}
+                </span>
+              ),
+              className: 'hidden 2xl:table-cell',
+              headerClassName: 'hidden 2xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showAllocatedBudgetColumn
+        ? [
+            {
+              id: 'allocatedBudget',
+              header: 'Allocated Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.allocatedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.allocatedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showUtilizedBudgetColumn
+        ? [
+            {
+              id: 'utilizedBudget',
+              header: 'Utilized Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.utilizedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.utilizedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
       {
         id: 'status',
         header: 'Status',
@@ -610,7 +728,17 @@ export function ProjectTable({
     })
 
     return baseColumns
-  }, [linkBase, portfolioSummary, projects, showAiScore, showCreatedBy])
+  }, [
+    linkBase,
+    portfolioSummary,
+    projects,
+    showAiScore,
+    showCreatedBy,
+    showAllocatedBudgetColumn,
+    showDgeOutcomeColumns,
+    showRecommendedBudgetColumn,
+    showUtilizedBudgetColumn,
+  ])
 
   const tableRows = useMemo(() => {
     const filteredRows = projects.filter((project) =>

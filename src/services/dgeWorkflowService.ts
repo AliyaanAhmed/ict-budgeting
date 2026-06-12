@@ -1,6 +1,7 @@
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import { Dga_ict_budget_line_itemsService } from '@/generated/services/Dga_ict_budget_line_itemsService'
+import { Dga_module_configurationsService } from '@/generated/services/Dga_module_configurationsService'
 import { getStoredCurrentSme, getStoredStrategyDirectorTeam, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
@@ -61,6 +62,50 @@ async function prepareRecommendedBudgetForQualityCheck(budgetId: string) {
       .map((item) =>
         Dga_ict_budget_line_itemsService.update(item.dga_ict_budget_line_itemid!, {
           dga_budget_recommended: 0,
+        } as never)
+      )
+  )
+}
+
+async function getInstanceRespondentTeamId(instanceId: string) {
+  const instanceResult = await Dga_ict_budget_instancesService.get(instanceId, {
+    select: ['dga_ict_budget_instanceid', '_dga_module_configuration_value'],
+  })
+
+  const moduleConfigId = instanceResult.data?._dga_module_configuration_value?.trim()
+  if (!moduleConfigId) {
+    throw new Error('This entity instance is missing module configuration, so Respondent team could not be resolved.')
+  }
+
+  const configResult = await Dga_module_configurationsService.getAll({
+    select: ['dga_module_configurationid', '_dga_respondent_team_value', '_dga_approver_team_value'],
+    filter: `dga_module_configurationid eq ${moduleConfigId}`,
+    maxPageSize: 1,
+  })
+
+  const respondentTeamId = configResult.data?.[0]?._dga_respondent_team_value?.trim()
+  if (!respondentTeamId) {
+    throw new Error('This entity module configuration is missing Respondent team.')
+  }
+
+  return {
+    respondentTeamId,
+    approverTeamId: configResult.data?.[0]?._dga_approver_team_value?.trim() || null,
+  }
+}
+
+async function zeroAllocatedBudgetLines(budgetId: string) {
+  const lineItemsResult = await Dga_ict_budget_line_itemsService.getAll({
+    select: ['dga_ict_budget_line_itemid'],
+    filter: `_dga_ict_budget_value eq ${budgetId}`,
+  })
+
+  await Promise.all(
+    (lineItemsResult.data ?? [])
+      .filter((item) => item.dga_ict_budget_line_itemid)
+      .map((item) =>
+        Dga_ict_budget_line_itemsService.update(item.dga_ict_budget_line_itemid!, {
+          dga_budget_allocated: 0,
         } as never)
       )
   )
@@ -393,6 +438,8 @@ export async function publishDgeReviewedInstance(instanceId: string) {
 }
 
 export async function startInstanceAllocation(instanceId: string, budgetIds: string[]) {
+  const { respondentTeamId } = await getInstanceRespondentTeamId(instanceId)
+
   const instanceResult = await Dga_ict_budget_instancesService.update(instanceId, {
     statuscode: DGE_INSTANCE_STATUS.allocation,
   } as never)
@@ -403,10 +450,71 @@ export async function startInstanceAllocation(instanceId: string, budgetIds: str
     budgetIds.map(async (budgetId) => {
       const result = await Dga_ict_budgetsService.update(budgetId, {
         statuscode: DGE_BUDGET_STATUS.allocationInProgress,
-        dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+        dga_status_for_adge: 7,
+        'ownerid@odata.bind': `/teams(${respondentTeamId})`,
       } as never)
 
       assertSuccess(result.success, 'Unable to move project into allocation.', result.error ?? null)
     })
   )
+}
+
+export async function submitAllocationToReview(budgetId: string, approverTeamId: string) {
+  if (!approverTeamId?.trim()) {
+    throw new Error('Approver team is missing for this entity.')
+  }
+
+  const result = await Dga_ict_budgetsService.update(budgetId, {
+    statuscode: DGE_BUDGET_STATUS.allocationInReview,
+    dga_status_for_adge: 8,
+    'ownerid@odata.bind': `/teams(${approverTeamId})`,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to submit allocation to approver.', result.error ?? null)
+}
+
+export async function completeAllocationReview(budgetId: string) {
+  const result = await Dga_ict_budgetsService.update(budgetId, {
+    statuscode: DGE_BUDGET_STATUS.allocationCompleted,
+    dga_status_for_adge: 9,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to complete allocation review.', result.error ?? null)
+}
+
+export async function submitInstanceToUtilization(instanceId: string, budgetIds: string[]) {
+  const { respondentTeamId } = await getInstanceRespondentTeamId(instanceId)
+
+  const instanceResult = await Dga_ict_budget_instancesService.update(instanceId, {
+    statuscode: DGE_INSTANCE_STATUS.utilization,
+  } as never)
+
+  assertSuccess(instanceResult.success, 'Unable to move this entity into utilization.', instanceResult.error ?? null)
+
+  await Promise.all(
+    budgetIds.map(async (budgetId) => {
+      const result = await Dga_ict_budgetsService.update(budgetId, {
+        statuscode: DGE_BUDGET_STATUS.utilizationInProgress,
+        dga_status_for_adge: 10,
+        'ownerid@odata.bind': `/teams(${respondentTeamId})`,
+      } as never)
+
+      assertSuccess(result.success, 'Unable to move project into utilization.', result.error ?? null)
+    })
+  )
+}
+
+export async function completeBudgetUtilization(budgetId: string) {
+  const result = await Dga_ict_budgetsService.update(budgetId, {
+    statuscode: DGE_BUDGET_STATUS.utilizationCompleted,
+    dga_status_for_adge: 11,
+  } as never)
+
+  assertSuccess(result.success, 'Unable to complete utilization.', result.error ?? null)
+}
+
+export async function applyAllocationOutcomeDefaults(budgetId: string, allocationOutcome: number | null | undefined) {
+  if (allocationOutcome === 1) {
+    await zeroAllocatedBudgetLines(budgetId)
+  }
 }

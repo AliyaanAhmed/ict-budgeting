@@ -69,6 +69,7 @@ export interface Clarification {
   raisedByName: string
   raisedTo: string
   scope?: 'External' | 'Internal (Entity)' | 'Internal (DGE)'
+  stage?: 'Planning' | 'In DGE Review' | 'Allocation' | 'Utilization'
   message: string
   fileUrl?: string
   status: 'Open' | 'Closed'
@@ -98,6 +99,11 @@ export interface Project {
   classification: string
   category: string
   requestedBudget: number
+  recommendedBudget?: number
+  allocatedBudget?: number
+  utilizedBudget?: number
+  planningOutcome?: number | null
+  addedInAllocation?: number | null
   budgetItems: BudgetItem[]
   status: ProjectStatus
   approvalStatus: string
