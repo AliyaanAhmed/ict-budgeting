@@ -53,6 +53,63 @@ function toDisplayText(value: unknown): string {
 type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification' | 'submitted-dge'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
 
+function getQueueBudgetItems(
+  project: Pick<ApprovalQueueProject, 'requestedBudget' | 'recommendedBudget' | 'allocatedBudget' | 'utilizedBudget'>,
+  instanceStatusCode?: number | null
+) {
+  return [
+    { label: 'Requested', amount: project.requestedBudget },
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.reviewCompletedByDge ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Recommended', amount: project.recommendedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.allocation || instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Allocated', amount: project.allocatedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Utilized', amount: project.utilizedBudget ?? 0 }]
+      : []),
+  ]
+}
+
+function QueueBudgetSummary({
+  project,
+  instanceStatusCode,
+  accent,
+}: {
+  project: ApprovalQueueProject
+  instanceStatusCode?: number | null
+  accent: string
+}) {
+  const items = getQueueBudgetItems(project, instanceStatusCode)
+
+  return (
+    <div
+      className="shrink-0 rounded-xl px-4 py-3 text-left lg:min-w-[230px]"
+      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold" style={{ color: accent }}>Budget Summary</p>
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-full"
+          style={{ background: `${accent}14`, color: accent }}
+        >
+          <WalletCards className="h-3.5 w-3.5" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-white/5">
+            <p className="text-xs font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
+            <CurrencyAmount amount={item.amount} className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white" iconSize={12} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const LOCAL_STATUSCODE_BY_STATUS = {
   Approved: 776140003,
   'Submitted to DGE': 776140004,
@@ -1001,22 +1058,7 @@ export default function ApprovalQueue() {
                       </div>
                     </div>
 
-                    {/* Budget box */}
-                    <div
-                      className="shrink-0 rounded-xl px-4 py-3 text-left lg:text-end"
-                      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-3 lg:justify-end">
-                        <p className="text-xs font-semibold" style={{ color: accent }}>Requested Budget</p>
-                        <div
-                          className="flex h-7 w-7 items-center justify-center rounded-full"
-                          style={{ background: `${accent}14`, color: accent }}
-                        >
-                          <WalletCards className="h-3.5 w-3.5" />
-                        </div>
-                      </div>
-                      <CurrencyAmount amount={proj.requestedBudget} className="text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
-                    </div>
+                    <QueueBudgetSummary project={proj} instanceStatusCode={instanceDetail?.statuscode} accent={accent} />
                   </div>
 
                   {/* AI insight row */}

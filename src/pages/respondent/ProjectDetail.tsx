@@ -7150,13 +7150,19 @@ export default function ProjectDetail() {
     ...(summaryShowUtilized ? [{ label: 'Total Utilized Budget', amount: utilizedBudgetTotal }] : []),
   ]
   const budgetSectionAction = (
-    <div className="grid min-w-[220px] grid-cols-1 gap-2 sm:min-w-[360px] sm:grid-cols-2">
-      {budgetSummaryTiles.map((tile) => (
-        <div key={tile.label} className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
-          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{tile.label}</p>
-          <CurrencyAmount amount={tile.amount} full className="text-base font-bold text-[#0F172A] dark:text-white" iconSize={15} />
-        </div>
-      ))}
+    <div className="min-w-[240px] rounded-2xl border border-[#D9E6F5] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5 sm:min-w-[360px]">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Budget Totals</p>
+        <WalletCards className="h-4 w-4 text-[#286CFF]" />
+      </div>
+      <div className="grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2">
+        {budgetSummaryTiles.map((tile) => (
+          <div key={tile.label} className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-[#64748B] dark:text-slate-300">{tile.label.replace('Total ', '')}</span>
+            <CurrencyAmount amount={tile.amount} full className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+          </div>
+        ))}
+      </div>
     </div>
   )
   const existingBudgetDrafts = useMemo<BudgetItemDraft[]>(
@@ -7448,6 +7454,8 @@ export default function ProjectDetail() {
       recommendedBudget: totalRecommendedBudget,
       allocatedBudget: 0,
       utilizedBudget: 0,
+      planningOutcome: project.planningOutcome ?? ictBudgetPlanningOutcome ?? null,
+      addedInAllocation: project.addedInAllocation ?? ictBudgetAddedInAllocation ?? null,
       aiConfidenceScore: project.aiScore ?? null,
       aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,
@@ -7504,6 +7512,8 @@ export default function ProjectDetail() {
       recommendedBudget: totalRecommendedBudget,
       allocatedBudget: 0,
       utilizedBudget: 0,
+      planningOutcome: project.planningOutcome ?? ictBudgetPlanningOutcome ?? null,
+      addedInAllocation: project.addedInAllocation ?? ictBudgetAddedInAllocation ?? null,
       aiConfidenceScore: project.aiScore ?? null,
       aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,

@@ -14,6 +14,9 @@ export interface ReviewQueueProject {
   riskLevel: RiskLevel | null
   hasMissingDocs: boolean
   requestedBudget: number
+  recommendedBudget?: number
+  allocatedBudget?: number
+  utilizedBudget?: number
   capex: number
   opex: number
   glCodeCount: number
@@ -39,6 +42,9 @@ export interface ApprovalQueueProject {
   budgetType: string
   budgetCategory: string
   requestedBudget: number
+  recommendedBudget?: number
+  allocatedBudget?: number
+  utilizedBudget?: number
   riskLevel: RiskLevel | null
   aiConfidence: number
   summary: string

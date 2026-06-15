@@ -3,18 +3,21 @@ import type { Project } from '@/domain/types'
 import type { AppCycle, CyclesSessionData } from '@/services/cycleService'
 import { getAccountIdForRole } from '@/services/instanceService'
 import { getBudgetLineItemsByBudgetIds } from '@/services/budgetLineItemService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 
 export interface BudgetByCategoryChartItem {
   name: string
   value: number
+  amounts?: Partial<Record<DashboardBudgetMetric, number>>
 }
 
 export interface AccountCodesBreakdownItem {
   name: string
   type: string
   amount: number
+  amounts?: Partial<Record<DashboardBudgetMetric, number>>
   pct: number
 }
 
@@ -24,17 +27,71 @@ export interface StrategicPriorityComparisonItem {
   previous: number
 }
 
+export type DashboardBudgetMetric = 'requested' | 'recommended' | 'allocated' | 'utilized'
+
+export const DASHBOARD_BUDGET_METRIC_LABEL: Record<DashboardBudgetMetric, string> = {
+  requested: 'Requested Budget',
+  recommended: 'Recommended Budget',
+  allocated: 'Allocated Budget',
+  utilized: 'Utilized Budget',
+}
+
+export function getDashboardBudgetMetricForInstanceStatus(statuscode: number | null | undefined): DashboardBudgetMetric {
+  if (statuscode === DGE_INSTANCE_STATUS.utilization) return 'utilized'
+  if (statuscode === DGE_INSTANCE_STATUS.allocation) return 'allocated'
+  if (statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge) return 'recommended'
+  return 'requested'
+}
+
+export function getDashboardBudgetMetricsForInstanceStatus(statuscode: number | null | undefined): DashboardBudgetMetric[] {
+  if (statuscode === DGE_INSTANCE_STATUS.utilization) return ['requested', 'recommended', 'allocated', 'utilized']
+  if (statuscode === DGE_INSTANCE_STATUS.allocation) return ['requested', 'recommended', 'allocated']
+  if (statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge) return ['requested', 'recommended']
+  return ['requested']
+}
+
+export function getProjectBudgetAmount(project: Project, metric: DashboardBudgetMetric) {
+  if (metric === 'recommended') return project.recommendedBudget ?? 0
+  if (metric === 'allocated') return project.allocatedBudget ?? 0
+  if (metric === 'utilized') return project.utilizedBudget ?? 0
+  return project.requestedBudget
+}
+
+function getBudgetLineAmount(
+  item: {
+    budgetRequested: number
+    budgetRecommended: number
+    budgetAllocated: number
+    totalBudgetUtilized: number
+  },
+  metric: DashboardBudgetMetric
+) {
+  if (metric === 'recommended') return item.budgetRecommended
+  if (metric === 'allocated') return item.budgetAllocated
+  if (metric === 'utilized') return item.totalBudgetUtilized
+  return item.budgetRequested
+}
+
 function normalizeChartLabel(value: string | null | undefined, fallback: string) {
   const trimmed = value?.trim()
   return trimmed || fallback
 }
 
-function groupStrategicPriorityBudgets(projects: Project[]) {
-  const grouped = new Map<string, number>()
+export function getMetricAmountsFromProjects(projects: Project[], metrics: DashboardBudgetMetric[]) {
+  return metrics.reduce<Partial<Record<DashboardBudgetMetric, number>>>((totals, metric) => {
+    totals[metric] = projects.reduce((sum, project) => sum + getProjectBudgetAmount(project, metric), 0)
+    return totals
+  }, {})
+}
+
+function groupStrategicPriorityBudgets(projects: Project[], metrics: DashboardBudgetMetric[] = ['requested']) {
+  const grouped = new Map<string, Project[]>()
 
   for (const project of projects) {
     const name = normalizeChartLabel(project.strategicPriority, 'Unassigned Strategic Priority')
-    grouped.set(name, (grouped.get(name) ?? 0) + project.requestedBudget)
+    const existing = grouped.get(name) ?? []
+    existing.push(project)
+    grouped.set(name, existing)
   }
 
   return grouped
@@ -92,13 +149,21 @@ async function getStrategicPriorityBudgetsByInstanceId(instanceId: string) {
   return grouped
 }
 
-export function useBudgetByCategoryChart(projects: Project[]) {
+export function useBudgetByCategoryChart(projects: Project[], metrics: DashboardBudgetMetric[] = ['requested']) {
   return useMemo<BudgetByCategoryChartItem[]>(() => {
-    const grouped = groupStrategicPriorityBudgets(projects)
+    const grouped = groupStrategicPriorityBudgets(projects, metrics)
+    const activeMetric = metrics[metrics.length - 1] ?? 'requested'
     return Array.from(grouped.entries())
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, groupedProjects]) => {
+        const amounts = getMetricAmountsFromProjects(groupedProjects, metrics)
+        return {
+          name,
+          value: amounts[activeMetric] ?? 0,
+          amounts,
+        }
+      })
       .sort((left, right) => right.value - left.value)
-  }, [projects])
+  }, [metrics, projects])
 }
 
 export function useStrategicPriorityCycleComparison(
@@ -154,7 +219,16 @@ export function useStrategicPriorityCycleComparison(
         const previousInstanceId = previousInstanceResult.data?.[0]?.dga_ict_budget_instanceid
 
         const [selectedBudgetMap, previousBudgetMap] = await Promise.all([
-          Promise.resolve(groupStrategicPriorityBudgets(selectedProjects)),
+          Promise.resolve(
+            new Map(
+              Array.from(groupStrategicPriorityBudgets(selectedProjects, ['requested']).entries()).map(
+                ([name, groupedProjects]) => [
+                  name,
+                  groupedProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'requested'), 0),
+                ]
+              )
+            )
+          ),
           previousInstanceId
             ? getStrategicPriorityBudgetsByInstanceId(previousInstanceId)
             : Promise.resolve(new Map<string, number>()),
@@ -210,7 +284,7 @@ export function useStrategicPriorityCycleComparison(
   }
 }
 
-export function useAccountCodesBreakdown(projects: Project[]) {
+export function useAccountCodesBreakdown(projects: Project[], metrics: DashboardBudgetMetric[] = ['requested']) {
   const [items, setItems] = useState<AccountCodesBreakdownItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -237,30 +311,37 @@ export function useAccountCodesBreakdown(projects: Project[]) {
         }
 
         const lineItems = await getBudgetLineItemsByBudgetIds(budgetIds)
-        const grouped = new Map<string, { name: string; type: string; amount: number }>()
+        const activeMetric = metrics[metrics.length - 1] ?? 'requested'
+        const grouped = new Map<string, { name: string; type: string; amounts: Partial<Record<DashboardBudgetMetric, number>> }>()
 
         for (const item of lineItems) {
           const name = normalizeChartLabel(item.accountName, 'Unnamed GL Code')
           const existing = grouped.get(name)
           if (existing) {
-            existing.amount += item.budgetRequested
+            for (const budgetMetric of metrics) {
+              existing.amounts[budgetMetric] = (existing.amounts[budgetMetric] ?? 0) + getBudgetLineAmount(item, budgetMetric)
+            }
             continue
           }
 
           grouped.set(name, {
             name,
             type: normalizeAccountCodeType(item.expenseTypeLabel),
-            amount: item.budgetRequested,
+            amounts: metrics.reduce<Partial<Record<DashboardBudgetMetric, number>>>((totals, budgetMetric) => {
+              totals[budgetMetric] = getBudgetLineAmount(item, budgetMetric)
+              return totals
+            }, {}),
           })
         }
 
-        const total = Array.from(grouped.values()).reduce((sum, item) => sum + item.amount, 0)
+        const total = Array.from(grouped.values()).reduce((sum, item) => sum + (item.amounts[activeMetric] ?? 0), 0)
         const nextItems = Array.from(grouped.values())
-          .sort((left, right) => right.amount - left.amount)
+          .sort((left, right) => (right.amounts[activeMetric] ?? 0) - (left.amounts[activeMetric] ?? 0))
           .slice(0, 5)
           .map((item) => ({
             ...item,
-            pct: total > 0 ? Math.round((item.amount / total) * 100) : 0,
+            amount: item.amounts[activeMetric] ?? 0,
+            pct: total > 0 ? Math.round(((item.amounts[activeMetric] ?? 0) / total) * 100) : 0,
           }))
 
         if (mounted) {
@@ -283,7 +364,7 @@ export function useAccountCodesBreakdown(projects: Project[]) {
     return () => {
       mounted = false
     }
-  }, [budgetIds])
+  }, [budgetIds, metrics])
 
   return { items, loading, error }
 }

@@ -21,6 +21,7 @@ import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
 import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
 
 type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge'
 type StatusFilter = 'all-statuses' | ProjectStatus
@@ -34,6 +35,15 @@ type AiReviewFlagFilter = 'all-ai-review-flags' | string
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
+}
+
+function BudgetCardLabel({ children }: { children: string }) {
+  return (
+    <p className="inline-flex items-center gap-1.5 text-xs text-[#64748B] dark:text-slate-200">
+      <DirhamIcon width={12} height={12} color="currentColor" />
+      <span>{children}</span>
+    </p>
+  )
 }
 
 function AiScore({ score }: { score: number }) {
@@ -97,24 +107,24 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Requested Budget</p>
+            <BudgetCardLabel>Requested Budget</BudgetCardLabel>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
           {showRecommended && (
             <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-              <p className="text-xs text-[#64748B] dark:text-slate-200">Recommended Budget</p>
+              <BudgetCardLabel>Recommended Budget</BudgetCardLabel>
               <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
             </div>
           )}
           {showAllocated && (
             <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-              <p className="text-xs text-[#64748B] dark:text-slate-200">Allocated Budget</p>
+              <BudgetCardLabel>Allocated Budget</BudgetCardLabel>
               <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
             </div>
           )}
           {showUtilized && (
             <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-              <p className="text-xs text-[#64748B] dark:text-slate-200">Utilized Budget</p>
+              <BudgetCardLabel>Utilized Budget</BudgetCardLabel>
               <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
             </div>
           )}

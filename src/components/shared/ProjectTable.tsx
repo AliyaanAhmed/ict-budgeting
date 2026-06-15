@@ -37,7 +37,8 @@ interface SortState {
 
 interface ColumnDefinition<T> {
   id: string
-  header: string
+  header: ReactNode
+  headerLabel?: string
   type: ColumnType
   accessor: (row: T) => string | number | null | undefined
   render?: (row: T) => ReactNode
@@ -139,11 +140,24 @@ function formatBudgetValue(amount: number) {
 
 function BudgetAmount({ amount }: { amount: number }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#0F172A] dark:text-white">
-      <DirhamIcon width={13} height={13} color="currentColor" />
+    <span className="text-[14px] font-semibold text-[#0F172A] dark:text-white">
       {formatBudgetValue(amount)}
     </span>
   )
+}
+
+function BudgetHeader({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 leading-none">
+      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function getColumnHeaderLabel<T>(column: ColumnDefinition<T>) {
+  if (column.headerLabel) return column.headerLabel
+  return typeof column.header === 'string' ? column.header : column.id
 }
 
 function choiceLabel(value: number | null | undefined, labels: Record<number, string>) {
@@ -237,6 +251,7 @@ function ColumnFilterMenu<T>({
   const currentFilter = filter ?? {}
   const textOperator = (currentFilter.operator as TextOperator | undefined) ?? 'contains'
   const numberOperator = (currentFilter.operator as NumberOperator | undefined) ?? 'equals'
+  const headerLabel = getColumnHeaderLabel(column)
 
   return (
     <DropdownMenu>
@@ -249,7 +264,7 @@ function ColumnFilterMenu<T>({
               ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
               : 'border-transparent text-[#94A3B8] hover:border-[#B0DBFF] hover:bg-[#E7F5FF] hover:text-[#286CFF]'
           )}
-          aria-label={`Filter ${column.header}`}
+          aria-label={`Filter ${headerLabel}`}
         >
           <Filter className="h-3.5 w-3.5" />
         </button>
@@ -259,7 +274,7 @@ function ColumnFilterMenu<T>({
           <div className="flex items-start justify-between gap-3">
             <div>
               <DropdownMenuLabel className="p-0 text-xs font-semibold text-[#0F172A]">
-                Filter {column.header}
+                Filter {headerLabel}
               </DropdownMenuLabel>
               <p className="mt-0.5 text-[11px] text-[#64748B]">
                 {column.type === 'text' && 'Choose operator and value'}
@@ -272,7 +287,7 @@ function ColumnFilterMenu<T>({
                 type="button"
                 onClick={onClear}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
-                aria-label={`Clear ${column.header} filter`}
+                aria-label={`Clear ${headerLabel} filter`}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -343,7 +358,7 @@ function ColumnFilterMenu<T>({
                 <Input
                   value={currentFilter.value ?? ''}
                   onChange={(event) => onFilterChange({ ...currentFilter, value: event.target.value })}
-                  placeholder={column.type === 'number' ? 'Enter amount' : `Enter ${column.header.toLowerCase()}`}
+                  placeholder={column.type === 'number' ? 'Enter amount' : `Enter ${headerLabel.toLowerCase()}`}
                   className="h-8 rounded-lg border-[#DCE6F1] pl-8 text-xs shadow-none"
                 />
               </div>
@@ -529,7 +544,8 @@ export function ProjectTable({
       },
       {
         id: 'budget',
-        header: 'Requested Budget',
+        header: <BudgetHeader label="Requested Budget" />,
+        headerLabel: 'Requested Budget',
         type: 'number',
         accessor: (project) => project.requestedBudget,
         render: (project) => <BudgetAmount amount={project.requestedBudget} />,
@@ -538,10 +554,39 @@ export function ProjectTable({
         ? [
             {
               id: 'recommendedBudget',
-              header: 'Recommended Budget',
+              header: <BudgetHeader label="Recommended Budget" />,
+              headerLabel: 'Recommended Budget',
               type: 'number' as const,
               accessor: (project: Project) => project.recommendedBudget ?? 0,
               render: (project: Project) => <BudgetAmount amount={project.recommendedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showAllocatedBudgetColumn
+        ? [
+            {
+              id: 'allocatedBudget',
+              header: <BudgetHeader label="Allocated Budget" />,
+              headerLabel: 'Allocated Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.allocatedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.allocatedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showUtilizedBudgetColumn
+        ? [
+            {
+              id: 'utilizedBudget',
+              header: <BudgetHeader label="Utilized Budget" />,
+              headerLabel: 'Utilized Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.utilizedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.utilizedBudget ?? 0} />,
               className: 'hidden xl:table-cell',
               headerClassName: 'hidden xl:table-cell whitespace-nowrap',
             },
@@ -599,32 +644,6 @@ export function ProjectTable({
               ),
               className: 'hidden 2xl:table-cell',
               headerClassName: 'hidden 2xl:table-cell whitespace-nowrap',
-            },
-          ]
-        : []),
-      ...(showAllocatedBudgetColumn
-        ? [
-            {
-              id: 'allocatedBudget',
-              header: 'Allocated Budget',
-              type: 'number' as const,
-              accessor: (project: Project) => project.allocatedBudget ?? 0,
-              render: (project: Project) => <BudgetAmount amount={project.allocatedBudget ?? 0} />,
-              className: 'hidden xl:table-cell',
-              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
-            },
-          ]
-        : []),
-      ...(showUtilizedBudgetColumn
-        ? [
-            {
-              id: 'utilizedBudget',
-              header: 'Utilized Budget',
-              type: 'number' as const,
-              accessor: (project: Project) => project.utilizedBudget ?? 0,
-              render: (project: Project) => <BudgetAmount amount={project.utilizedBudget ?? 0} />,
-              className: 'hidden xl:table-cell',
-              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
             },
           ]
         : []),
@@ -788,19 +807,12 @@ export function ProjectTable({
                 )}
               >
                 <div className="flex items-center gap-2">
-                  {column.id === 'budget' ? (
-                    <span className="inline-flex items-center gap-1.5 leading-none">
-                      <span>{column.header}</span>
-                      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
-                    </span>
-                  ) : (
-                    <span>{column.header}</span>
-                  )}
+                  <span>{column.header}</span>
                   {column.filterable !== false && (
                     <>
                       <SortButton
                         columnId={column.id}
-                        columnHeader={column.header}
+                        columnHeader={getColumnHeaderLabel(column)}
                         sort={sort}
                         onSortChange={(direction) => setSort({ columnId: column.id, direction })}
                       />

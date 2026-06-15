@@ -15,7 +15,7 @@ import { useCycle } from '@/context/CycleContext'
 import { useRole } from '@/context/RoleContext'
 import { useToast } from '@/context/ToastContext'
 import { ProjectTable } from '@/components/shared/ProjectTable'
-import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -67,6 +67,19 @@ function trimPriorityLabel(value: string | null | undefined) {
   return value?.replace(/\s+-\s+SP\d+$/i, '').trim() || ''
 }
 
+function formatBudgetValue(amount: number) {
+  return amount.toLocaleString('en-AE')
+}
+
+function BudgetCardLabel({ children }: { children: string }) {
+  return (
+    <p className="inline-flex items-center gap-1.5 text-xs text-[#64748B] dark:text-slate-200">
+      <DirhamIcon width={12} height={12} color="currentColor" />
+      <span>{children}</span>
+    </p>
+  )
+}
+
 function DgeStatusBadge({ status }: { status: string }) {
   const className =
     {
@@ -106,6 +119,11 @@ function mapDgeBudgetToProject(budget: DgeBudgetRecord): Project {
     classification,
     category: '-',
     requestedBudget: budget.requestedBudget,
+    recommendedBudget: budget.recommendedBudget,
+    allocatedBudget: budget.allocatedBudget,
+    utilizedBudget: budget.utilizedBudget,
+    planningOutcome: budget.planningOutcome,
+    addedInAllocation: budget.addedInAllocation,
     budgetItems: [],
     status,
     approvalStatus: statusLabel,
@@ -201,20 +219,20 @@ function DgeProjectCard({ project, linkBase }: { project: Project; linkBase: str
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Requested Budget</p>
-            <CurrencyAmount amount={project.requestedBudget} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+            <BudgetCardLabel>Requested Budget</BudgetCardLabel>
+            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Recommended Budget</p>
-            <CurrencyAmount amount={project.recommendedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+            <BudgetCardLabel>Recommended Budget</BudgetCardLabel>
+            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Allocated Budget</p>
-            <CurrencyAmount amount={project.allocatedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+            <BudgetCardLabel>Allocated Budget</BudgetCardLabel>
+            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Utilized Budget</p>
-            <CurrencyAmount amount={project.utilizedBudget ?? 0} className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+            <BudgetCardLabel>Utilized Budget</BudgetCardLabel>
+            <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
           </div>
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Pending With</p>
