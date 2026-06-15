@@ -2,6 +2,7 @@ import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsServ
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import { Dga_ict_budget_line_itemsService } from '@/generated/services/Dga_ict_budget_line_itemsService'
 import { Dga_module_configurationsService } from '@/generated/services/Dga_module_configurationsService'
+import { createNotificationForTeam } from '@/services/appNotificationService'
 import { getStoredCurrentSme, getStoredStrategyDirectorTeam, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
@@ -16,6 +17,26 @@ function assertSuccess(success: boolean | undefined, message: string, error?: { 
   if (!success) {
     throw new Error(error?.message?.trim() || message)
   }
+}
+
+function buildBudgetNotificationText(
+  budget: Pick<DgeBudgetRecord, 'name' | 'budgetRefId'>,
+  message: string
+) {
+  const label = budget.name?.trim() || budget.budgetRefId?.trim()
+  return label ? `${label}: ${message}` : message
+}
+
+async function notifyBudgetTeam(
+  teamId: string | null | undefined,
+  budget: Pick<DgeBudgetRecord, 'id' | 'name' | 'budgetRefId'>,
+  message: string,
+  action: string
+) {
+  await createNotificationForTeam(teamId, buildBudgetNotificationText(budget, message), {
+    action,
+    budgetId: budget.id,
+  })
 }
 
 async function prepareRecommendedBudgetForQualityCheck(budgetId: string) {
@@ -169,6 +190,13 @@ export async function sendBudgetsToSme(budgets: DgeBudgetRecord[]) {
       if (strategyTeam?.teamId) {
         await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
       }
+
+      await notifyBudgetTeam(
+        smeAssignment.teamId,
+        budget,
+        'Strategy Team assigned this budget to your SME review queue.',
+        'send-to-sme'
+      )
     })
   )
 }
@@ -248,6 +276,15 @@ export async function reviewStrategicPriorityChange(
   const result = await Dga_ict_budgetsService.update(budget.id, payload as never)
 
   assertSuccess(result.success, 'Unable to process strategic priority change review.', result.error ?? null)
+
+  await notifyBudgetTeam(
+    nextSmeAssignment.teamId,
+    budget,
+    decision === 'approve'
+      ? 'Strategy Team approved the strategic priority change and returned this budget to SME review.'
+      : 'Strategy Team rejected the strategic priority change request and returned this budget to SME review.',
+    `strategic-priority-change-${decision}`
+  )
 }
 
 export async function requestStrategicPriorityChange(
@@ -277,6 +314,13 @@ export async function requestStrategicPriorityChange(
   } as never)
 
   assertSuccess(result.success, 'Unable to submit strategic priority change request.', result.error ?? null)
+
+  await notifyBudgetTeam(
+    strategyTeam.teamId,
+    budget,
+    'SME requested a strategic priority and classification change for Strategy Team review.',
+    'request-strategic-priority-change'
+  )
 }
 
 export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
@@ -311,6 +355,13 @@ export async function routeBudgetToQualityCheck(budget: DgeBudgetRecord) {
   assertSuccess(result.success, 'Unable to route project to quality check.', result.error ?? null)
 
   await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
+
+  await notifyBudgetTeam(
+    strategyTeam.teamId,
+    budget,
+    'SME routed this budget to Strategy Team for quality check.',
+    'route-to-quality-check'
+  )
 }
 
 export async function routeBudgetToDirectorReview(budget: DgeBudgetRecord) {
@@ -334,6 +385,13 @@ export async function routeBudgetToDirectorReview(budget: DgeBudgetRecord) {
   if (strategyTeam?.teamId) {
     await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
   }
+
+  await notifyBudgetTeam(
+    directorTeam.teamId,
+    budget,
+    'Strategy Team routed this budget to Strategy Director for final review.',
+    'route-to-director'
+  )
 }
 
 export async function completeDirectorReview(budget: DgeBudgetRecord) {
@@ -383,6 +441,13 @@ export async function assignDirectorClarificationToStrategy(budget: DgeBudgetRec
   assertSuccess(result.success, 'Unable to assign clarification to Strategy Team.', result.error ?? null)
 
   await grantIctBudgetAccessToTeam(budget.id, strategyTeam.teamId)
+
+  await notifyBudgetTeam(
+    strategyTeam.teamId,
+    budget,
+    'Strategy Director raised an internal clarification for Strategy Team.',
+    'director-clarification-to-strategy'
+  )
 }
 
 export async function assignDirectorClarificationToSme(budget: DgeBudgetRecord) {
@@ -411,6 +476,13 @@ export async function assignDirectorClarificationToSme(budget: DgeBudgetRecord) 
   assertSuccess(result.success, 'Unable to assign clarification to SME.', result.error ?? null)
 
   await grantIctBudgetAccessToTeam(budget.id, smeAssignment.teamId)
+
+  await notifyBudgetTeam(
+    smeAssignment.teamId,
+    budget,
+    'Strategy Director raised an internal clarification for SME review.',
+    'director-clarification-to-sme'
+  )
 }
 
 export async function returnStrategyClarificationToDirector(budgetId: string) {
@@ -427,6 +499,11 @@ export async function returnStrategyClarificationToDirector(budgetId: string) {
 
   assertSuccess(result.success, 'Unable to return project to Strategy Director.', result.error ?? null)
   await grantIctBudgetAccessToTeam(budgetId, directorTeam.teamId)
+  await createNotificationForTeam(
+    directorTeam.teamId,
+    'A clarification reply has returned a budget to Strategy Director final review.',
+    { action: 'return-clarification-to-director', budgetId }
+  )
 }
 
 export async function publishDgeReviewedInstance(instanceId: string) {
@@ -456,6 +533,12 @@ export async function startInstanceAllocation(instanceId: string, budgetIds: str
 
       assertSuccess(result.success, 'Unable to move project into allocation.', result.error ?? null)
     })
+  )
+
+  await createNotificationForTeam(
+    respondentTeamId,
+    `${budgetIds.length} budget item${budgetIds.length === 1 ? '' : 's'} assigned to Respondent for allocation.`,
+    { action: 'start-instance-allocation', instanceId }
   )
 }
 
@@ -501,6 +584,12 @@ export async function submitInstanceToUtilization(instanceId: string, budgetIds:
 
       assertSuccess(result.success, 'Unable to move project into utilization.', result.error ?? null)
     })
+  )
+
+  await createNotificationForTeam(
+    respondentTeamId,
+    `${budgetIds.length} budget item${budgetIds.length === 1 ? '' : 's'} assigned to Respondent for utilization.`,
+    { action: 'submit-instance-to-utilization', instanceId }
   )
 }
 

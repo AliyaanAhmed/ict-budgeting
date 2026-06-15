@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   BrainCircuit,
+  Building2,
   CheckCircle2,
   CircleAlert,
   ClipboardList,
@@ -17,11 +18,13 @@ import {
   Sparkles,
   TriangleAlert,
   Users,
+  Wallet,
   Workflow,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { useCycle } from '@/context/CycleContext'
-import { StrategyAiPanel, StrategyMetricCard, StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
+import { StrategyAiPanel, StrategyDashboardEmptyState, StrategyMetricCard, StrategyPageShell, StrategyPill, StrategyProgressBar } from './StrategyTeamShell'
 import { entityProgressRows, smeTracks } from './strategyTeamData'
 import { DGE_BUDGET_STATUS, getBudgetStageBucket, getDgePortfolioData, getInstanceStageFilterLabel, type DgePortfolioData } from '@/services/dgePortfolioService'
 import { cn } from '@/lib/utils'
@@ -35,6 +38,39 @@ type GovernanceEntityRow = {
   totalProjects: number
   smeRouted: number
   onStrategy: number
+}
+
+function sumBudgetAmounts(budgets: DgePortfolioData['budgets']) {
+  return {
+    requested: budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+    recommended: budgets.reduce((sum, budget) => sum + budget.recommendedBudget, 0),
+    allocated: budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0),
+    utilized: budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0),
+  }
+}
+
+function BudgetPortfolioGrid({ budgets }: { budgets: DgePortfolioData['budgets'] }) {
+  const totals = sumBudgetAmounts(budgets)
+  const items = [
+    { label: 'Requested', value: totals.requested, accent: '#286CFF' },
+    { label: 'Recommended', value: totals.recommended, accent: '#5B87FF' },
+    { label: 'Allocated', value: totals.allocated, accent: '#0C65F5' },
+    { label: 'Utilized', value: totals.utilized, accent: '#1E3A8A' },
+  ]
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-[18px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-[#64748B] dark:text-slate-300">{item.label}</p>
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.accent }} />
+          </div>
+          <CurrencyAmount amount={item.value} className="mt-3 text-lg font-bold text-[#0F172A] dark:text-white" iconSize={14} />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function MiniLink({ to, label }: { to: string; label: string }) {
@@ -128,6 +164,65 @@ export default function StrategyTeamDashboard() {
 
   const budgets = portfolio.budgets
   const instances = portfolio.instances
+  const clarificationBudgets = useMemo(
+    () => budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending),
+    [budgets]
+  )
+  const aiFlagCount = useMemo(
+    () => budgets.reduce((sum, budget) => sum + (budget.aiReviewFlags?.length ?? 0), 0),
+    [budgets]
+  )
+  const missingDocumentCount = useMemo(
+    () => budgets.filter((budget) => !budget.sharePointUrl).length,
+    [budgets]
+  )
+  const dgeToAdgeClarifications = useMemo(
+    () => clarificationBudgets.filter((budget) => budget.statusForAdge === 5),
+    [clarificationBudgets]
+  )
+  const internalDgeClarifications = useMemo(
+    () => clarificationBudgets.filter((budget) => budget.statusForAdge !== 5),
+    [clarificationBudgets]
+  )
+  const highestPendingClarifications = useMemo(() => {
+    const byEntity = new Map<string, number>()
+    for (const budget of clarificationBudgets) {
+      const key = budget.entityName || budget.instanceName || 'Unknown Entity'
+      byEntity.set(key, (byEntity.get(key) ?? 0) + 1)
+    }
+    return [...byEntity.entries()]
+      .map(([entity, count]) => ({ entity, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+  }, [clarificationBudgets])
+  const qualityCheckBudgets = useMemo(
+    () => budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck),
+    [budgets]
+  )
+  const finalReviewBudgets = useMemo(
+    () => budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underFinalReview),
+    [budgets]
+  )
+  const reviewCompletedBudgets = useMemo(
+    () => budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted),
+    [budgets]
+  )
+  const entityStageRows = useMemo(() => {
+    return instances.map((instance) => {
+      const stage = getInstanceStageFilterLabel(instance.statuscode)
+      const completed = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted).length
+      const progress = instance.budgets.length ? Math.round((completed / instance.budgets.length) * 100) : 0
+      const accent =
+        stage === 'Planning'
+          ? '#008A65'
+          : stage === 'DGE Review'
+            ? '#286CFF'
+            : stage === 'Allocation'
+              ? '#D0A600'
+              : '#1E3A8A'
+      return { instance, stage, completed, progress, accent }
+    })
+  }, [instances])
 
   const entityReadiness = useMemo(() => {
     const submitted = instances.filter((instance) => instance.budgets.length > 0).length
@@ -346,6 +441,63 @@ export default function StrategyTeamDashboard() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-[#286CFF]" />
+                  <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Portfolio</h2>
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                  All budget lenses across the selected cycle, regardless of individual entity stage.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-1 flex-col justify-center">
+              <BudgetPortfolioGrid budgets={budgets} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-5 w-5 text-[#286CFF]" />
+                  <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">DGE Workflow Mix</h2>
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                  Current distribution across strategic alignment, SME review, quality check, final review, and completion.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex flex-1 flex-col justify-center space-y-3">
+              {[
+                { label: 'Strategic Alignment', value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview).length, accent: '#286CFF' },
+                { label: 'SME Review', value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview).length, accent: '#7C3AED' },
+                { label: 'Quality Check', value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck).length, accent: '#10B981' },
+                { label: 'Final Review', value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underFinalReview).length, accent: '#F97316' },
+                { label: 'Review Completed', value: budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted).length, accent: '#0F9D8A' },
+              ].map((item) => {
+                const share = budgets.length ? Math.round((item.value / budgets.length) * 100) : 0
+                return (
+                  <div key={item.label}>
+                    <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                      <span className="font-semibold text-[#0F172A] dark:text-white">{item.label}</span>
+                      <span className="text-[#64748B] dark:text-slate-300">{item.value}</span>
+                    </div>
+                    <StrategyProgressBar value={share} accent={item.accent} />
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
                   <Layers className="h-5 w-5 text-[#286CFF]" />
                   <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">ADGE Governance</h2>
                 </div>
@@ -383,37 +535,47 @@ export default function StrategyTeamDashboard() {
           </CardContent>
         </Card>
 
-        <StrategyAiPanel title="AI Risk Snapshot">
-          <div className="flex flex-1 flex-col justify-center space-y-3">
-            <div className="rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">High risk exposure</p>
-                  <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                    6 projects need policy or scope correction before routing to SMEs.
-                  </p>
+        <Card className="flex h-full flex-col overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+          <CardContent className="flex flex-1 flex-col p-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-[#286CFF]" />
+                  <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Entity Progress</h2>
                 </div>
-                <ShieldAlert className="h-5 w-5 text-[#F97316]" />
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                  Current stage by entity across planning, DGE review, review completion, allocation, and utilization.
+                </p>
               </div>
+              <MiniLink to="/strategy-team/entity-tracker" label="Open tracker" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[20px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">AI flags</p>
-                <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">14</p>
-              </div>
-              <div className="rounded-[20px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Exception items</p>
-                <p className="mt-2 text-2xl font-bold text-[#0F172A] dark:text-white">7</p>
-              </div>
+            <div className="mt-5 flex flex-1 flex-col justify-center space-y-3">
+              {entityStageRows.slice(0, 5).map(({ instance, stage, completed, progress, accent }) => (
+                <div key={instance.id} className="rounded-[20px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</p>
+                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{instance.budgets.length} projects, {completed} review completed</p>
+                    </div>
+                    <StrategyPill tone={stage === 'DGE Review' ? 'blue' : stage === 'Allocation' ? 'amber' : stage === 'Review Completed' ? 'violet' : 'teal'}>
+                      {stage}
+                    </StrategyPill>
+                  </div>
+                  <div className="mt-3">
+                    <StrategyProgressBar value={progress} accent={accent} />
+                  </div>
+                </div>
+              ))}
+              {entityStageRows.length === 0 ? (
+                <StrategyDashboardEmptyState
+                  icon={<Building2 className="h-6 w-6" />}
+                  title="No Entity Progress Yet"
+                  description="Entity stages will appear once this cycle has participating instances and budget movement."
+                />
+              ) : null}
             </div>
-            <div className="rounded-[20px] border border-dashed border-[#D7E4F4] bg-white p-4 dark:border-white/10 dark:bg-white/5">
-              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI guidance</p>
-              <p className="mt-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                Prioritise AI, cloud, and security submissions first because they show the highest overlap with DGE-wide patterns.
-              </p>
-            </div>
-          </div>
-        </StrategyAiPanel>
+          </CardContent>
+        </Card>
       </section>
 
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
@@ -534,12 +696,12 @@ export default function StrategyTeamDashboard() {
             <div className="mt-5 flex flex-1 flex-col justify-center space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {[
-                  { label: 'DGE To ADGE', value: '23', accent: '#286CFF' },
-                  { label: 'Overdue DGE To ADGE', value: '5', accent: '#DC2626' },
-                  { label: 'Within DGE', value: '14', accent: '#A855F7' },
-                  { label: 'Avg Response', value: '2.4 days', accent: '#10B981' },
-                  { label: 'Repeated Back-And-Forth', value: '4', accent: '#D97706' },
-                  { label: 'Non-Responsive ADGEs', value: '2', accent: '#0F172A' },
+                  { label: 'DGE To ADGE', value: dgeToAdgeClarifications.length.toString(), accent: '#286CFF' },
+                  { label: 'Within DGE', value: internalDgeClarifications.length.toString(), accent: '#A855F7' },
+                  { label: 'All Pending', value: clarificationBudgets.length.toString(), accent: '#D97706' },
+                  { label: 'Entities Impacted', value: highestPendingClarifications.length.toString(), accent: '#10B981' },
+                  { label: 'Missing Docs', value: missingDocumentCount.toString(), accent: '#DC2626' },
+                  { label: 'AI Flags', value: aiFlagCount.toString(), accent: '#0F172A' },
                 ].map((item) => (
                   <div key={item.label} className="rounded-[22px] border border-[#DCE6F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                     <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">{item.label}</p>
@@ -555,14 +717,10 @@ export default function StrategyTeamDashboard() {
                     <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Highest Pending</p>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {[
-                      { entity: 'ADDA', count: 5, accent: '#DC2626' },
-                      { entity: 'DMT', count: 4, accent: '#D97706' },
-                      { entity: 'DoH', count: 3, accent: '#286CFF' },
-                    ].map((item) => (
+                    {(highestPendingClarifications.length ? highestPendingClarifications : [{ entity: 'No pending clarifications', count: 0 }]).map((item, index) => (
                       <div key={item.entity} className="flex items-center justify-between rounded-[18px] border border-[#E4EDF9] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#162339]">
                         <span className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.entity}</span>
-                        <span className="text-lg font-bold" style={{ color: item.accent }}>{item.count}</span>
+                        <span className="text-lg font-bold" style={{ color: index === 0 ? '#DC2626' : index === 1 ? '#D97706' : '#286CFF' }}>{item.count}</span>
                       </div>
                     ))}
                   </div>
@@ -575,8 +733,8 @@ export default function StrategyTeamDashboard() {
                   </div>
                   <div className="mt-4 space-y-3">
                     {[
-                      '3 clarifications appear too broad, rephrase them for faster response.',
-                      'ADDA and DMT are non-responsive, escalation is recommended.',
+                      `${dgeToAdgeClarifications.length} external clarification threads need ADGE respondent attention.`,
+                      `${internalDgeClarifications.length} internal DGE clarification threads are blocking governance movement.`,
                     ].map((item) => (
                       <div key={item} className="flex items-start gap-2.5">
                         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
@@ -670,13 +828,15 @@ export default function StrategyTeamDashboard() {
                     <BrainCircuit className="h-5 w-5 text-[#286CFF]" />
                     <p className="text-sm font-semibold text-[#0F172A] dark:text-white">QC Flow</p>
                   </div>
-                  <span className="text-2xl font-bold text-[#0F172A] dark:text-white">12</span>
+                  <span className="text-2xl font-bold text-[#0F172A] dark:text-white">
+                    {qualityCheckBudgets.length + finalReviewBudgets.length}
+                  </span>
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-3">
                   {[
-                    { label: 'Awaiting QC', value: 4, accent: '#286CFF' },
-                    { label: 'Ready to route', value: 3, accent: '#10B981' },
-                    { label: 'Hold items', value: 5, accent: '#D97706' },
+                    { label: 'Under QC', value: qualityCheckBudgets.length, accent: '#286CFF' },
+                    { label: 'Director lane', value: finalReviewBudgets.length, accent: '#10B981' },
+                    { label: 'Clarification', value: clarificationBudgets.length, accent: '#D97706' },
                   ].map((item) => (
                     <div key={item.label} className="rounded-[18px] border border-[#DCE6F6] bg-white p-3 text-center dark:border-white/10 dark:bg-white/5">
                       <p className="text-xl font-bold" style={{ color: item.accent }}>{item.value}</p>
@@ -684,12 +844,34 @@ export default function StrategyTeamDashboard() {
                     </div>
                   ))}
                 </div>
+                <div className="mt-4 space-y-2">
+                  {[...qualityCheckBudgets, ...finalReviewBudgets].slice(0, 3).map((budget) => (
+                    <div key={budget.id} className="rounded-[16px] border border-[#EAF0F6] bg-white px-3 py-2 dark:border-white/10 dark:bg-[#162339]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{budget.name}</p>
+                          <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-300">{budget.entityName || budget.instanceName || 'Unknown entity'}</p>
+                        </div>
+                        <StrategyPill tone={budget.statuscode === DGE_BUDGET_STATUS.underFinalReview ? 'violet' : 'blue'}>
+                          {budget.statuscode === DGE_BUDGET_STATUS.underFinalReview ? 'Final Review' : 'Quality Check'}
+                        </StrategyPill>
+                      </div>
+                    </div>
+                  ))}
+                  {qualityCheckBudgets.length + finalReviewBudgets.length === 0 ? (
+                    <StrategyDashboardEmptyState
+                      icon={<BrainCircuit className="h-6 w-6" />}
+                      title="No Quality Check Projects"
+                      description="Projects will appear here after SME review routes them to Strategy Team for quality check or final review preparation."
+                    />
+                  ) : null}
+                </div>
               </div>
               <div className="grid gap-3">
                 {[
-                  { title: 'AI-sensitive items', detail: '1 submission needs policy validation before strategy can sign off.', icon: Sparkles, accent: '#A855F7' },
-                  { title: 'High-confidence lane', detail: '3 projects are ready to pass onward after governance checks.', icon: CheckCircle2, accent: '#10B981' },
-                  { title: 'Clarification before QC', detail: '2 items should not enter QC until evidence gaps are closed.', icon: CircleAlert, accent: '#D97706' },
+                  { title: 'AI-sensitive items', detail: `${aiFlagCount} projects carry AI review flags across the quality and governance lanes.`, icon: Sparkles, accent: '#A855F7' },
+                  { title: 'High-confidence lane', detail: `${reviewCompletedBudgets.length} projects have completed DGE review and are ready for downstream entity readiness.`, icon: CheckCircle2, accent: '#10B981' },
+                  { title: 'Clarification before QC', detail: `${clarificationBudgets.length} projects are clarification pending and should be resolved before final governance movement.`, icon: CircleAlert, accent: '#D97706' },
                 ].map((item) => (
                   <div key={item.title} className="rounded-[22px] border border-[#DCE6F6] bg-white p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-start gap-3">

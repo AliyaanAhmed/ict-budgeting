@@ -18,6 +18,7 @@ import type {
 import {
   SESSION_USER_ID_KEY,
 } from '@/services/userContextService'
+import { createNotificationForTeam } from '@/services/appNotificationService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 
 export interface RaiseClarificationInput {
@@ -50,6 +51,10 @@ const SCOPE_INTERNAL_DGE = 3 as Dga_ict_clarificationsdga_scope
 const STATUS_OPEN = 1 as Dga_ict_clarificationsstatuscode
 const STATUS_RESPONDED = 776140002 as Dga_ict_clarificationsstatuscode
 const STATUS_CLOSED = 776140003 as Dga_ict_clarificationsstatuscode
+
+function isDgeRole(role: RaiseClarificationInput['raisedByRole'] | AddClarificationReplyInput['currentRole']) {
+  return role === 'Strategy Team' || role === 'Strategy Director' || role === 'SME Team'
+}
 
 function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team' {
   const normalized = roleLabel?.trim().toLowerCase() ?? ''
@@ -146,6 +151,20 @@ async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<strin
   })
 
   return respondentTeamId
+}
+
+async function getBudgetNotificationLabel(budgetId: string) {
+  try {
+    const result = await Dga_ict_budgetsService.get(budgetId, {
+      select: ['dga_ict_budgetid', 'dga_budget_ref_id', 'dga_initiative_project_requirement_name'],
+    })
+
+    const projectName = result.data?.dga_initiative_project_requirement_name?.trim()
+    const budgetRef = result.data?.dga_budget_ref_id?.trim()
+    return projectName || budgetRef || 'ICT budget'
+  } catch {
+    return 'ICT budget'
+  }
 }
 
 function mapReply(record: Dga_ict_clarifications): ClarificationReply {
@@ -392,6 +411,19 @@ export async function raiseBudgetClarification({
   } as Record<string, unknown>
 
   await createClarificationRecord(payload)
+
+  if (isDgeRole(raisedByRole) && (scope ?? SCOPE_INTERNAL_ENTITY) === SCOPE_EXTERNAL) {
+    const budgetLabel = await getBudgetNotificationLabel(budgetId)
+    await createNotificationForTeam(
+      respondentTeamId,
+      `${budgetLabel}: DGE raised an external clarification for ADGE Respondent response.`,
+      {
+        action: 'dge-external-clarification',
+        budgetId,
+        raisedByRole,
+      }
+    )
+  }
 }
 
 export async function addClarificationReply({
