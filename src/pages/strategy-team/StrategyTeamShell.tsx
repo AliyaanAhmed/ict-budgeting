@@ -131,6 +131,31 @@ export function StrategyProgressBar({ value, accent }: { value: number; accent: 
   )
 }
 
+export function StrategyDashboardEmptyState({
+  icon,
+  title,
+  description,
+}: {
+  icon: ReactNode
+  title: string
+  description: string
+}) {
+  return (
+    <div className="relative flex min-h-[210px] flex-col items-center justify-center overflow-hidden rounded-[22px] border border-dashed border-[#CFE0F5] bg-[radial-gradient(circle_at_50%_0%,#EEF5FF_0%,#FFFFFF_58%)] px-6 py-10 text-center dark:border-white/10 dark:bg-[radial-gradient(circle_at_50%_0%,rgba(40,108,255,0.18)_0%,rgba(22,35,57,0.92)_62%)]">
+      <div className="pointer-events-none absolute -top-16 h-40 w-40 animate-pulse rounded-full border border-[#BFD8FF]/70 dark:border-[#286CFF]/20" />
+      <div className="pointer-events-none absolute -bottom-20 h-48 w-48 animate-pulse rounded-full border border-[#D8E7FF]/80 dark:border-white/10" />
+      <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] shadow-[0_14px_32px_rgba(40,108,255,0.14)] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+        <span className="absolute h-full w-full animate-ping rounded-2xl bg-[#286CFF]/10" />
+        <span className="relative flex h-14 w-14 items-center justify-center rounded-2xl">
+          {icon}
+        </span>
+      </div>
+      <p className="mt-4 text-base font-semibold text-[#0F172A] dark:text-white">{title}</p>
+      <p className="mt-2 max-w-sm text-sm leading-6 text-[#64748B] dark:text-slate-300">{description}</p>
+    </div>
+  )
+}
+
 export function StrategyAiPanel({
   title = 'AI Copilot',
   children,

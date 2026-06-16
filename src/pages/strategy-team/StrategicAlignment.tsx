@@ -10,6 +10,7 @@ import {
   CircleAlert,
   FolderSearch,
   Layers,
+  MessageSquare,
   Sparkles,
   Workflow,
 } from 'lucide-react'
@@ -18,6 +19,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
@@ -34,8 +36,12 @@ import {
   sendBudgetsToSme,
   updateBudgetStrategicClassification,
 } from '@/services/dgeWorkflowService'
+import { raiseBudgetClarification } from '@/services/clarificationService'
+import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
+import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
 import { getStrategicPriorityOptions, type StrategicPriorityOption } from '@/services/strategicPriorityService'
-import { getStoredSmeAssignments } from '@/services/dgeRoleContextService'
+import { getStoredSmeAssignments, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 
 function AssistantSummary() {
   const [open, setOpen] = useState(false)
@@ -213,6 +219,9 @@ export default function StrategicAlignment() {
   const [classificationModalOpen, setClassificationModalOpen] = useState(false)
   const [changeRequestModalOpen, setChangeRequestModalOpen] = useState(false)
   const [pendingSendToSme, setPendingSendToSme] = useState<string[] | null>(null)
+  const [clarificationBudget, setClarificationBudget] = useState<DgeBudgetRecord | null>(null)
+  const [clarificationTarget, setClarificationTarget] = useState<'adge' | 'sme'>('adge')
+  const [clarificationMessage, setClarificationMessage] = useState('')
   const [priorities, setPriorities] = useState<StrategicPriorityOption[]>([])
   const [classificationDrafts, setClassificationDrafts] = useState<Record<string, ProjectClassificationDraft>>({})
   const [loading, setLoading] = useState(true)
@@ -347,6 +356,15 @@ export default function StrategicAlignment() {
       ? selectedBudgets[0]
       : null
 
+  const selectedClarificationBudget =
+    selectedBudgets.length === 1 &&
+    (
+      selectedBudgets[0].statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview ||
+      selectedBudgets[0].statuscode === DGE_BUDGET_STATUS.underQualityCheck
+    )
+      ? selectedBudgets[0]
+      : null
+
   const openClassificationModal = () => {
     if (!selectedBudgets.length) return
     setClassificationDrafts(
@@ -461,6 +479,77 @@ export default function StrategicAlignment() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleSubmitClarification = async () => {
+    if (!clarificationBudget || !clarificationMessage.trim()) return
+
+    await runActionToast(
+      async () => {
+        if (clarificationTarget === 'sme') {
+          if (!clarificationBudget.smeReviewerTeamId) {
+            throw new Error('No SME team is mapped on this project.')
+          }
+
+          const strategyTeam = getStoredStrategyTeam()
+          if (!strategyTeam?.teamId) {
+            throw new Error('Strategy Team is not configured for this workspace.')
+          }
+
+          await raiseBudgetClarification({
+            budgetId: clarificationBudget.id,
+            message: clarificationMessage,
+            raisedByRole: 'Strategy Team',
+            clarificationStage: 2,
+            scope: 3,
+            raisedToTeamId: clarificationBudget.smeReviewerTeamId,
+          })
+
+          await grantIctBudgetAccessToTeam(clarificationBudget.id, strategyTeam.teamId)
+
+          const result = await Dga_ict_budgetsService.update(clarificationBudget.id, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            'ownerid@odata.bind': `/teams(${clarificationBudget.smeReviewerTeamId})`,
+          } as never)
+
+          if (!result.success) {
+            throw new Error(result.error?.message || 'Unable to raise clarification to SME.')
+          }
+        } else {
+          await raiseBudgetClarification({
+            budgetId: clarificationBudget.id,
+            message: clarificationMessage,
+            raisedByRole: 'Strategy Team',
+            clarificationStage: 2,
+            scope: 1,
+          })
+
+          const result = await Dga_ict_budgetsService.update(clarificationBudget.id, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
+          } as never)
+
+          if (!result.success) {
+            throw new Error(result.error?.message || 'Unable to raise clarification to ADGE.')
+          }
+        }
+
+        await refreshData()
+        setSelectedIds([])
+        setClarificationBudget(null)
+        setClarificationMessage('')
+        setClarificationTarget('adge')
+      },
+      {
+        processingTitle: 'Raising clarification',
+        processingDescription: clarificationTarget === 'sme' ? 'Creating internal DGE clarification for SME...' : 'Creating external clarification for ADGE...',
+        successTitle: 'Clarification raised',
+        successDescription: clarificationTarget === 'sme' ? 'The project is now awaiting SME clarification.' : 'The project is now awaiting ADGE clarification.',
+        errorTitle: 'Unable to raise clarification',
+        minDurationMs: 1400,
+      }
+    )
   }
 
   const toggleSelected = (id: string) => {
@@ -674,6 +763,22 @@ export default function StrategicAlignment() {
                         View Request Change
                       </Button>
                     ) : null}
+                    {selectedClarificationBudget ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#D7E4F4] bg-white px-3 text-sm font-medium text-[#286CFF] transition-colors hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
+                        disabled={saving}
+                        onClick={() => {
+                          setClarificationBudget(selectedClarificationBudget)
+                          setClarificationTarget('adge')
+                          setClarificationMessage('')
+                        }}
+                      >
+                        <MessageSquare className="mr-1 h-4 w-4" />
+                        Raise Clarification
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -744,9 +849,12 @@ export default function StrategicAlignment() {
                                 tone={
                                   budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
                                     ? 'violet'
-                                    : budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck
+                                    : budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck ||
+                                        budget.statuscode === DGE_BUDGET_STATUS.clarificationPending
                                       ? 'amber'
-                                      : 'blue'
+                                      : budget.statuscode === DGE_BUDGET_STATUS.underSmeReview
+                                        ? 'teal'
+                                        : 'blue'
                                 }
                                 className="whitespace-nowrap"
                               >
@@ -1045,6 +1153,56 @@ export default function StrategicAlignment() {
         onConfirm={() => void handleSendToSme()}
         tone="primary"
       />
+
+      <Dialog open={Boolean(clarificationBudget)} onOpenChange={(open) => !open && setClarificationBudget(null)}>
+        <DialogContent className="max-w-[620px] overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-0 dark:border-white/10 dark:bg-[#162339]">
+          <div className="border-b border-[#EEF3F8] bg-white px-6 py-5 dark:border-white/10 dark:bg-[#162339]">
+            <DialogHeader>
+              <DialogTitle>Raise Clarification</DialogTitle>
+              <DialogDescription>
+                {clarificationBudget?.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+                  ? 'Raise clarification to ADGE for this strategic alignment project.'
+                  : 'Raise clarification to ADGE or SME for this quality-check project.'}
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            {clarificationBudget?.statuscode === DGE_BUDGET_STATUS.underQualityCheck ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setClarificationTarget('adge')}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${clarificationTarget === 'adge' ? 'bg-[#286CFF] text-white' : 'border border-[#D7E4F4] bg-white text-[#0F172A]'}`}
+                >
+                  From ADGE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClarificationTarget('sme')}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${clarificationTarget === 'sme' ? 'bg-[#286CFF] text-white' : 'border border-[#D7E4F4] bg-white text-[#0F172A]'}`}
+                >
+                  From SME
+                </button>
+              </div>
+            ) : null}
+            <Textarea
+              value={clarificationMessage}
+              onChange={(event) => setClarificationMessage(event.target.value)}
+              rows={5}
+              className="rounded-2xl border-[#D7E4F4]"
+              placeholder={clarificationTarget === 'sme' ? 'Explain what SME should clarify...' : 'Explain what ADGE should clarify...'}
+            />
+          </div>
+          <DialogFooter className="border-t border-[#EEF3F8] px-6 py-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-2xl" onClick={() => setClarificationBudget(null)}>
+              Cancel
+            </Button>
+            <Button className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]" onClick={() => void handleSubmitClarification()} disabled={!clarificationMessage.trim()}>
+              Raise Clarification
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </StrategyPageShell>
   )
 }

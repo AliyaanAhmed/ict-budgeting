@@ -30,7 +30,6 @@ import {
   Users,
   WalletCards,
 } from 'lucide-react'
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Button } from '@/components/ui/button'
 import { BudgetByCategory } from '@/components/charts/BudgetByCategory'
 import { AccountCodesBreakdown } from '@/components/charts/AccountCodesBreakdown'
@@ -40,7 +39,16 @@ import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import { PortfolioInsightCharts } from '@/components/shared/PortfolioInsightCharts'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
-import { useAccountCodesBreakdown, useBudgetByCategoryChart } from '@/hooks/useDashboardBudgetCharts'
+import {
+  DASHBOARD_BUDGET_METRIC_LABEL,
+  type DashboardBudgetMetric,
+  getDashboardBudgetMetricForInstanceStatus,
+  getDashboardBudgetMetricsForInstanceStatus,
+  getMetricAmountsFromProjects,
+  getProjectBudgetAmount,
+  useAccountCodesBreakdown,
+  useBudgetByCategoryChart,
+} from '@/hooks/useDashboardBudgetCharts'
 import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
 import {
   getAiReviewFlags,
@@ -57,29 +65,18 @@ import { projectService } from '@/services/projectService'
 import { useToast } from '@/context/ToastContext'
 import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { submitInstanceToUtilization } from '@/services/dgeWorkflowService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import type { Project } from '@/domain/types'
 
 const LOCAL_STATUSCODE_BY_STATUS = {
   Approved: 776140003,
   'Submitted to DGE': 776140004,
 } as const
 
-function PieTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null
-  const entry = payload[0]
-  return (
-    <div className="min-w-[170px] rounded-2xl border border-[#DCE6F1] bg-white/95 p-3 shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur dark:border-white/10 dark:bg-[#10203A]/95">
-      <p className="text-xs font-semibold text-[#0F172A] dark:text-white">{entry.name}</p>
-      <CurrencyAmount
-        amount={entry.value as number}
-        className="mt-1 text-xs text-[#64748B] dark:text-slate-100"
-        iconSize={12}
-        iconColor={entry.payload.fill}
-      />
-      <p className="mt-1 text-xs font-semibold" style={{ color: entry.payload.fill }}>
-        {entry.payload.percent}% of portfolio budget
-      </p>
-    </div>
-  )
+type StatusOverride = {
+  status: Project['status']
+  statusCode: number
 }
 
 function InfoHint({ text }: { text: string }) {
@@ -92,6 +89,88 @@ function InfoHint({ text }: { text: string }) {
         {text}
       </span>
     </span>
+  )
+}
+
+function BudgetQueueMixContent({
+  queueBudgetMix,
+  totalBudget,
+  dashboardBudgetMetricLabel,
+  dashboardBudgetMetrics,
+}: {
+  queueBudgetMix: Array<{
+    name: string
+    value: number
+    fill: string
+    percent: number
+    amounts?: Partial<Record<DashboardBudgetMetric, number>>
+  }>
+  totalBudget: number
+  dashboardBudgetMetricLabel: string
+  dashboardBudgetMetrics: DashboardBudgetMetric[]
+}) {
+  const activeMix = queueBudgetMix.filter((item) => item.value > 0 || item.percent > 0)
+  const visibleMix = [...(activeMix.length ? activeMix : queueBudgetMix)]
+    .sort((left, right) => right.value - left.value)
+    .slice(0, 5)
+  const maxValue = Math.max(...visibleMix.map((item) => item.value), 1)
+  const leadingStage = visibleMix[0]
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[18px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Current Lens</p>
+          <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{dashboardBudgetMetricLabel}</p>
+        </div>
+        <div className="rounded-[18px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Portfolio Total</p>
+          <CurrencyAmount amount={totalBudget} className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white" iconSize={11} />
+        </div>
+        <div className="rounded-[18px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Largest Stage</p>
+          <p className="mt-1 truncate text-sm font-bold text-[#0F172A] dark:text-white">{leadingStage?.name ?? 'No activity'}</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {visibleMix.map((item) => {
+          const width = Math.max(6, Math.round((item.value / maxValue) * 100))
+          return (
+            <div key={item.name} className="rounded-[18px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1B2A41]">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
+                  <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-xs font-bold text-[#286CFF] dark:text-[#BFDBFE]">{item.percent}%</span>
+                  <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                </div>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${width}%`, backgroundColor: item.fill }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {dashboardBudgetMetrics.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {dashboardBudgetMetrics.map((metric) => (
+            <span key={metric} className="inline-flex items-center gap-2 rounded-full border border-[#DCE8F6] bg-[#F8FBFF] px-3 py-1.5 text-xs font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+              {DASHBOARD_BUDGET_METRIC_LABEL[metric]}
+              <CurrencyAmount
+                amount={queueBudgetMix.reduce((sum, item) => sum + (item.amounts?.[metric] ?? 0), 0)}
+                className="text-xs font-bold text-[#0F172A] dark:text-white"
+                iconSize={10}
+              />
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -147,8 +226,8 @@ function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; icon
     <CurrencyAmount
       amount={amount}
       className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
-      valueClassName="break-all"
-      iconColor={iconColor}
+      valueClassName="break-words"
+      iconColor="#286CFF"
       iconSize={16}
     />
   )
@@ -282,16 +361,30 @@ function computeDaysRemaining(endDate?: string | null): number {
   return Math.max(0, Math.ceil((end.getTime() - today.getTime()) / 86_400_000))
 }
 
+function getInstancePhaseLabel(statuscode: number | null | undefined) {
+  if (statuscode === DGE_INSTANCE_STATUS.utilization) return 'Utilization'
+  if (statuscode === DGE_INSTANCE_STATUS.allocation) return 'Allocation'
+  if (statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge) return 'Review Completed by DGE'
+  if (statuscode === DGE_INSTANCE_STATUS.underDgeReview) return 'Under DGE Review'
+  return 'Planning'
+}
+
 export default function ApproverDashboard() {
   const [portfolioExpanded, setPortfolioExpanded] = useState(false)
   const [planningExpanded, setPlanningExpanded] = useState(false)
   const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, 'Approved' | 'Submitted to DGE'>>({})
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>({})
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
   const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
   const { runActionToast } = useToast()
+  const storedInstanceDetail = getStoredInstanceDetail()
+  const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
+  const dashboardInstanceStatus = activeInstanceDetail?.statuscode ?? null
+  const dashboardBudgetMetrics = useMemo(() => getDashboardBudgetMetricsForInstanceStatus(dashboardInstanceStatus), [dashboardInstanceStatus])
+  const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
+  const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const effectiveLiveProjects = useMemo(
     () =>
       liveProjects.map((project) => {
@@ -300,21 +393,21 @@ export default function ApproverDashboard() {
 
         return {
           ...project,
-          status: override,
-          statusCode: LOCAL_STATUSCODE_BY_STATUS[override],
+          status: override.status,
+          statusCode: override.statusCode,
         }
       }),
     [liveProjects, statusOverrides]
   )
-  const budgetByCategory = useBudgetByCategoryChart(effectiveLiveProjects)
+  const budgetByCategory = useBudgetByCategoryChart(effectiveLiveProjects, dashboardBudgetMetrics)
   const {
     items: accountBreakdown,
     loading: accountBreakdownLoading,
     error: accountBreakdownError,
-  } = useAccountCodesBreakdown(effectiveLiveProjects)
+  } = useAccountCodesBreakdown(effectiveLiveProjects, dashboardBudgetMetrics)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
-  const storedInstanceDetail = getStoredInstanceDetail()
+  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
   const dueDateLabel = selectedCycle?.endDate
     ? new Date(selectedCycle.endDate).toLocaleDateString('en-AE', {
@@ -331,24 +424,64 @@ export default function ApproverDashboard() {
   const draftProjects = effectiveLiveProjects.filter((project) => project.status === 'Draft')
   const respondentProjects = [...draftProjects, ...clarificationProjects]
 
-  const totalBudget = effectiveLiveProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
-  const approvedBudget = approvedProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
+  const totalBudget = effectiveLiveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
+  const approvedBudget = approvedProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
+  const budgetPhaseTotals = {
+    requested: effectiveLiveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'requested'), 0),
+    recommended: effectiveLiveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'recommended'), 0),
+    allocated: effectiveLiveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'allocated'), 0),
+    utilized: effectiveLiveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'utilized'), 0),
+  }
   const pendingApproval = submittedToApproverProjects.length
   const clarificationCount = clarificationProjects.length
   const highRiskCount = effectiveLiveProjects.filter((project) => project.riskLevel === 'High').length
   const avgConfidence = effectiveLiveProjects.length > 0
     ? Math.round(effectiveLiveProjects.reduce((sum, project) => sum + project.aiScore, 0) / effectiveLiveProjects.length)
     : 0
+  const budgetSnapshotItems =
+    dashboardBudgetMetrics.length === 1
+      ? [
+          { label: 'Requested Budget', amount: budgetPhaseTotals.requested, iconColor: dashboardPalette.primary, type: 'amount' as const },
+          { label: 'Approved Budget', amount: approvedBudget, iconColor: dashboardPalette.primarySoft, type: 'amount' as const },
+          { label: 'AI Confidence', amount: avgConfidence, iconColor: dashboardPalette.primary, type: 'percent' as const },
+        ]
+      : dashboardBudgetMetrics.map((metric) => ({
+          label: DASHBOARD_BUDGET_METRIC_LABEL[metric],
+          amount: budgetPhaseTotals[metric],
+          iconColor:
+            metric === 'recommended'
+              ? dashboardPalette.primarySoft
+              : metric === 'allocated'
+                ? dashboardPalette.primaryDeep
+                : metric === 'utilized'
+                  ? dashboardPalette.primaryInk
+                  : dashboardPalette.primary,
+          type: 'amount' as const,
+        }))
   const approvalRate = Math.max(1, effectiveLiveProjects.length)
   const approvedCount = approvedProjects.length
   const submittedToDgeCount = submittedToDgeProjects.length
   const approverOwnedProjects = [...submittedToApproverProjects, ...approvedProjects]
   const allProjectsApproved = effectiveLiveProjects.length > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
+  const allocationCompletedProjectCount = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+  ).length
+  const allocationInReviewProjects = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  )
+  const allocationInReviewCount = allocationInReviewProjects.length
+  const allProjectsAllocationCompleted =
+    effectiveLiveProjects.length > 0 &&
+    allocationCompletedProjectCount === effectiveLiveProjects.length
   const hasCycleDgeSubmission = effectiveLiveProjects.some(
     (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
   )
   const portfolioAlreadySubmittedToDge =
     portfolioSubmittedToDge || hasCycleDgeSubmission
+  const showSubmittedToDgeMessage = portfolioAlreadySubmittedToDge && !instanceInAllocation
+  const submitToDgeDisabled = instanceInAllocation
+    ? !allProjectsAllocationCompleted
+    : !allProjectsApproved
   const projectsRequiringApproval = useMemo(
     () => [...submittedToApproverProjects].sort((a, b) => parseProjectDate(b) - parseProjectDate(a)).slice(0, 2),
     [submittedToApproverProjects]
@@ -370,33 +503,81 @@ export default function ApproverDashboard() {
   const queueBudgetMix = [
     {
       name: 'Drafts on Respondent',
-      value: draftProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: draftProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(draftProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primary,
     },
     {
       name: 'With Reviewer',
-      value: reviewerProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: reviewerProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(reviewerProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primarySoft,
     },
     {
       name: 'Pending My Approval',
-      value: approverOwnedProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: approverOwnedProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(approverOwnedProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryDeep,
     },
     {
       name: 'Clarification Open',
-      value: clarificationProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: clarificationProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(clarificationProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryMuted,
     },
     {
       name: 'Submitted to DGE',
-      value: submittedToDgeProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: submittedToDgeProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(submittedToDgeProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primary,
     },
   ].map((item) => ({
     ...item,
     percent: totalBudget > 0 ? Math.round((item.value / totalBudget) * 100) : 0,
   }))
+
+  const budgetTypeGroups = [
+    {
+      key: 'Operational Non-Recurring',
+      label: 'Operational Non-Recurring',
+      accent: '#286CFF',
+      bgClass: 'border-[#D8E7FF] dark:border-[#3E5F97]',
+      badgeClass: 'bg-[#EAF2FF] text-[#286CFF] dark:border dark:border-[#3E5F97] dark:bg-[#1E355C] dark:text-[#BFDBFE]',
+    },
+    {
+      key: 'Operational Recurring',
+      label: 'Operational Recurring',
+      accent: '#0EA5E9',
+      bgClass: 'border-[#CFEFFF] dark:border-[#2D6E8B]',
+      badgeClass: 'bg-[#E0F7FF] text-[#0EA5E9] dark:border dark:border-[#2D6E8B] dark:bg-[#173B4B] dark:text-[#BAE6FD]',
+    },
+    {
+      key: 'New Project',
+      label: 'New Project',
+      accent: '#14B8A6',
+      bgClass: 'border-[#CDEFEA] dark:border-[#2F7C73]',
+      badgeClass: 'bg-[#E6FFFB] text-[#0F9D8A] dark:border dark:border-[#2F7C73] dark:bg-[#173E3B] dark:text-[#99F6E4]',
+    },
+    {
+      key: 'Project Continuation',
+      label: 'Project Continuation',
+      accent: '#F59E0B',
+      bgClass: 'border-[#F8E2B7] dark:border-[#8A6832]',
+      badgeClass: 'bg-[#FFF4DB] text-[#D97706] dark:border dark:border-[#8A6832] dark:bg-[#4A3517] dark:text-[#FCD34D]',
+    },
+  ] as const
+
+  const budgetTypeBreakdown = budgetTypeGroups.map((group) => {
+    const items = effectiveLiveProjects.filter((project) => project.budgetType === group.key)
+    const amount = items.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
+    return {
+      ...group,
+      count: items.length,
+      amount,
+      amounts: getMetricAmountsFromProjects(items, dashboardBudgetMetrics),
+      share: totalBudget > 0 ? Math.round((amount / totalBudget) * 100) : 0,
+    }
+  })
 
   const clarificationFocusProjects = useMemo(
     () => [...clarificationProjects].sort((a, b) => parseProjectDate(b) - parseProjectDate(a)).slice(0, 2),
@@ -560,32 +741,48 @@ export default function ApproverDashboard() {
 
   const handleSubmitToDge = async () => {
     const projectIds = effectiveLiveProjects
-      .filter((project) => project.ictBudgetId && project.status === 'Approved')
+      .filter((project) =>
+        project.ictBudgetId &&
+        (instanceInAllocation
+          ? project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+          : project.status === 'Approved')
+      )
       .map((project) => project.ictBudgetId as string)
 
-    if (!projectIds.length) {
+    if (!projectIds.length || (instanceInAllocation && !instanceId)) {
       return
     }
 
     await runActionToast(
       async () => {
-        await projectService.approverSubmitToDge(projectIds)
-        await updateCurrentInstanceSubmissionDate()
+        if (instanceInAllocation && instanceId) {
+          await submitInstanceToUtilization(instanceId, projectIds)
+        } else {
+          await projectService.approverSubmitToDge(projectIds)
+          await updateCurrentInstanceSubmissionDate()
+        }
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
           const next = { ...prev }
           for (const projectId of projectIds) {
-            next[projectId] = 'Submitted to DGE'
+            next[projectId] = {
+              status: 'Submitted to DGE',
+              statusCode: instanceInAllocation ? DGE_BUDGET_STATUS.utilizationInProgress : DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+            }
           }
           return next
         })
       },
       {
-        processingTitle: 'Submitting to DGE',
-        processingDescription: 'Assigning the approved portfolio to the strategy team and moving it into DGE review...',
-        successTitle: 'Submitted to DGE',
-        successDescription: 'All approved projects were submitted to DGE successfully.',
-        errorTitle: 'Unable to submit to DGE',
+        processingTitle: instanceInAllocation ? 'Starting utilization' : 'Submitting to DGE',
+        processingDescription: instanceInAllocation
+          ? 'Moving the entity into utilization and assigning projects back to Respondent...'
+          : 'Assigning the approved portfolio to the strategy team and moving it into DGE review...',
+        successTitle: instanceInAllocation ? 'Utilization started' : 'Submitted to DGE',
+        successDescription: instanceInAllocation
+          ? 'All allocation-completed projects are now in utilization.'
+          : 'All approved projects were submitted to DGE successfully.',
+        errorTitle: instanceInAllocation ? 'Unable to start utilization' : 'Unable to submit to DGE',
         minDurationMs: 1600,
       }
     )
@@ -685,7 +882,7 @@ export default function ApproverDashboard() {
               </div>
             </div>
 
-            {portfolioAlreadySubmittedToDge ? (
+            {showSubmittedToDgeMessage ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                 <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                 <div>
@@ -698,7 +895,7 @@ export default function ApproverDashboard() {
             ) : (
               <Button
                 className="ml-auto h-11 shrink-0 rounded-[18px] px-4 shadow-[0_12px_24px_rgba(40,108,255,0.16)]"
-                disabled={!allProjectsApproved}
+                disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
                 Submit to DGE
@@ -738,6 +935,17 @@ export default function ApproverDashboard() {
             href="/approver/projects?tab=approved"
             description="Approved items held until the entity moves onward to DGE."
           />
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">In Review</span></>}
+              value={allocationInReviewCount}
+              accent={dashboardPalette.seaBlue}
+              badge="Allocation"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/approver/projects?tab=allocation-in-review"
+              description="Allocation submissions waiting for approver completion."
+            />
+          )}
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">
@@ -746,7 +954,7 @@ export default function ApproverDashboard() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Snapshot</h3>
-                  <InfoHint text="Consolidated approver view of total requested budget, approved value, and portfolio confidence." />
+                  <InfoHint text={`Consolidated approver view of total ${dashboardBudgetMetricLabel.toLowerCase()}, approved value, and portfolio confidence.`} />
                 </div>
               </div>
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#E7F5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-white">
@@ -755,25 +963,24 @@ export default function ApproverDashboard() {
             </div>
 
             <div className="mt-5 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-[#1B2A41]">
-              <div className="grid gap-4 sm:grid-cols-3 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10">
-                <div className="sm:pr-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Requested Budget</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={totalBudget} />
+              <div className={cn(
+                'grid gap-4 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10',
+                budgetSnapshotItems.length >= 4 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'
+              )}>
+                {budgetSnapshotItems.map((item, index) => (
+                  <div key={item.label} className={cn(index === 0 ? 'sm:pr-4' : 'sm:px-4', index === budgetSnapshotItems.length - 1 && 'sm:pr-0')}>
+                    <p className="flex min-h-8 items-end text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                    {item.type === 'percent' ? (
+                      <div className="mt-3 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
+                        {item.amount}%
+                      </div>
+                    ) : (
+                      <div className="mt-3">
+                        <CompactAmount amount={item.amount} />
+                      </div>
+                    )}
                   </div>
-                </div>
-                <div className="sm:px-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Approved Budget</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={approvedBudget} iconColor={dashboardPalette.aeGreen} />
-                  </div>
-                </div>
-                <div className="sm:pl-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Confidence</p>
-                  <div className="mt-3 text-2xl font-bold leading-none text-[#0F172A] dark:text-white sm:text-[30px] xl:text-[32px]">
-                    {avgConfidence}%
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </CardContent>
@@ -915,7 +1122,7 @@ export default function ApproverDashboard() {
                           {showPendingApprovalPanel ? 'Awaiting approval' : project.status}
                         </span>
                         <span>{project.budgetType}</span>
-                        <CurrencyAmount amount={project.requestedBudget} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
+                        <CurrencyAmount amount={getProjectBudgetAmount(project, dashboardBudgetMetric)} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
                       </div>
                     </div>
                     <MoveRight className="mt-1 h-4 w-4 shrink-0 text-[#94A3B8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#286CFF]" />
@@ -943,7 +1150,7 @@ export default function ApproverDashboard() {
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
         <Card
-          title="Budget distribution across ICT strategic categories for the current approval cycle."
+          title={`${dashboardBudgetMetricLabel} distribution across ICT strategic categories for the current approval cycle.`}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -952,27 +1159,50 @@ export default function ApproverDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Strategic Priority</h3>
-                  <InfoHint text="Shows how the submitted budget is distributed across strategic ICT categories before final approval and DGE submission." />
+                  <InfoHint text={`Shows how the ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across strategic ICT categories before final approval and DGE submission.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Submitted budget by strategic ICT category
+                  {dashboardBudgetMetricLabel} by strategic ICT category
                 </p>
               </div>
               <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
                 Current cycle
               </span>
             </div>
-            <BudgetByCategory data={budgetByCategory} />
+            <BudgetByCategory data={budgetByCategory} metrics={dashboardBudgetMetrics} />
           </CardContent>
         </Card>
-        <PortfolioInsightCharts
-          summary={portfolioSummary}
-          chartKeys={['budgetConsideration']}
-          projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
-        />
+        <Card
+          title={`Account codes receiving the largest share of ${dashboardBudgetMetricLabel.toLowerCase()} across approver-stage projects.`}
+          className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+        >
+          <CardContent className="flex h-full flex-col p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
+                  <InfoHint text={`Highlights which account codes are drawing the largest share of ${dashboardBudgetMetricLabel.toLowerCase()} across approver-stage projects.`} />
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                  Most-funded accounts by {dashboardBudgetMetricLabel.toLowerCase()}
+                </p>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#286CFE]/18 dark:text-[#C6DBFF]">
+                Top accounts
+              </span>
+            </div>
+            <AccountCodesBreakdown
+              items={accountBreakdown}
+              loading={accountBreakdownLoading}
+              error={accountBreakdownError}
+              metrics={dashboardBudgetMetrics}
+            />
+          </CardContent>
+        </Card>
 
         <Card
-          title="Requested budget distribution across approver-visible workflow stages."
+          title={`${dashboardBudgetMetricLabel} distribution across approver-visible workflow stages.`}
           className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -981,60 +1211,136 @@ export default function ApproverDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
-                  <InfoHint text="Shows how requested budget is currently distributed across the approver-visible project workflow." />
+                  <InfoHint text={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is currently distributed across the approver-visible project workflow.`} />
                 </div>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Requested budget split across approval stages</p>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">{dashboardBudgetMetricLabel} split across approval stages</p>
               </div>
               <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#C6DBFF]">
                 Portfolio mix
               </span>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-              <div className="relative h-[230px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={queueBudgetMix}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={58}
-                      outerRadius={88}
-                      paddingAngle={3}
-                      strokeWidth={0}
-                    >
-                      {queueBudgetMix.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<PieTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Portfolio</span>
-                  <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
-                </div>
-              </div>
+            <BudgetQueueMixContent
+              queueBudgetMix={queueBudgetMix}
+              totalBudget={totalBudget}
+              dashboardBudgetMetricLabel={dashboardBudgetMetricLabel}
+              dashboardBudgetMetrics={dashboardBudgetMetrics}
+            />
+          </CardContent>
+        </Card>
+      </section>
 
-              <div className="space-y-3">
-                {queueBudgetMix.map((item) => (
-                  <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
-                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
+      <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+        <Card
+          title={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across the four ICT budget activity types in the approver workspace.`}
+          className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+        >
+          <CardContent className="p-6">
+            <div className="mb-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
+                <InfoHint text={`Shows how much of the approver-visible ${dashboardBudgetMetricLabel.toLowerCase()} sits in each ICT budget activity type.`} />
+              </div>
+              <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                {dashboardBudgetMetricLabel} split across all four budget types
+              </p>
+            </div>
+            <div className="mx-auto mt-8 max-w-2xl">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {budgetTypeBreakdown.map((item) => (
+                  <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-none dark:bg-[#18263F] ${item.bgClass}`}>
+                    <div className="flex min-h-[104px] items-center gap-3">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-[18px] text-2xl font-bold ${item.badgeClass}`}>
+                        {item.count}
                       </div>
-                      <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-[#64748B] dark:text-slate-100">Requested</span>
-                      <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
+                      <div className="flex-1">
+                        <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
+                        <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of {dashboardBudgetMetricLabel.toLowerCase()} total</p>
+                        {dashboardBudgetMetrics.length > 1 && (
+                          <div className="mt-3 space-y-1.5">
+                            {dashboardBudgetMetrics.map((metric) => (
+                              <div key={metric} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                                <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                <div className="flex h-full">
+                  {budgetTypeBreakdown.map((item, index) => (
+                    <div
+                      key={item.key}
+                      className={`${index === 0 ? 'rounded-l-full' : ''} ${index === budgetTypeBreakdown.length - 1 ? 'rounded-r-full' : ''} h-full`}
+                      style={{
+                        width: `${item.share}%`,
+                        backgroundColor: item.accent,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          title="Phase-aware budget lens for requested, recommended, allocated, and utilized values."
+          className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
+        >
+          <CardContent className="flex h-full flex-col p-6">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Phase Lens</h3>
+                  <InfoHint text="Shows all budget lenses while highlighting the value currently used by dashboard charts for this instance stage." />
+                </div>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
+                  Active dashboard metric: {dashboardBudgetMetricLabel}
+                </p>
+              </div>
+              <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#286CFE]/18 dark:text-[#C6DBFF]">
+                {getInstancePhaseLabel(activeInstanceDetail?.statuscode)}
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { label: 'Requested Budget', value: budgetPhaseTotals.requested, metric: 'requested', accent: '#286CFF' },
+                { label: 'Recommended Budget', value: budgetPhaseTotals.recommended, metric: 'recommended', accent: '#10B981' },
+                { label: 'Allocated Budget', value: budgetPhaseTotals.allocated, metric: 'allocated', accent: '#7C3AED' },
+                { label: 'Utilized Budget', value: budgetPhaseTotals.utilized, metric: 'utilized', accent: '#F59E0B' },
+              ].map((item) => {
+                const isActive = item.metric === dashboardBudgetMetric
+                return (
+                  <div
+                    key={item.label}
+                    className={cn(
+                      'rounded-[20px] border bg-white p-4 transition-colors dark:bg-[#1B2A41]',
+                      isActive
+                        ? 'border-[#286CFF] bg-[#F3F8FF] dark:border-[#4F98FF] dark:bg-[#203352]'
+                        : 'border-[#DCE8F6] dark:border-white/10'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.label}</p>
+                      {isActive && (
+                        <span className="rounded-full bg-[#286CFF] px-2 py-0.5 text-[11px] font-semibold text-white">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <CurrencyAmount amount={item.value} className="mt-3 text-lg font-bold text-[#0F172A] dark:text-white" iconColor={item.accent} iconSize={15} />
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -1105,7 +1411,7 @@ export default function ApproverDashboard() {
             <div className="mt-auto flex flex-col gap-3 pt-5">
               <Button
                 className="h-12 w-full rounded-2xl shadow-[0_16px_32px_rgba(40,108,255,0.20)]"
-                disabled={!allProjectsApproved}
+                disabled={submitToDgeDisabled}
                 onClick={() => void handleSubmitToDge()}
               >
                 Submit to DGE
@@ -1184,35 +1490,13 @@ export default function ApproverDashboard() {
 
       {clarificationCount > 0 && (
         <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+          <PortfolioInsightCharts
+            summary={portfolioSummary}
+            chartKeys={['budgetConsideration']}
+            projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+          />
           <Card
-            title="Account codes receiving the largest share of budget across approver-stage projects."
-            className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
-          >
-            <CardContent className="flex h-full flex-col justify-center p-6">
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                    <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
-                    <InfoHint text="Highlights which account codes are drawing the largest share of budget across approver-stage projects." />
-                  </div>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                    Most-funded budget accounts across the approver workspace
-                  </p>
-                </div>
-                <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFE] dark:bg-[#286CFE]/18 dark:text-[#C6DBFF]">
-                  Top accounts
-                </span>
-              </div>
-              <AccountCodesBreakdown
-                items={accountBreakdown}
-                loading={accountBreakdownLoading}
-                error={accountBreakdownError}
-              />
-            </CardContent>
-          </Card>
-          <Card
-            title="Requested budget distribution across approver-visible workflow stages."
+            title={`${dashboardBudgetMetricLabel} distribution across approver-visible workflow stages.`}
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
@@ -1221,61 +1505,21 @@ export default function ApproverDashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                     <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
-                    <InfoHint text="Shows how requested budget is currently distributed across the approver-visible project workflow." />
+                    <InfoHint text={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is currently distributed across the approver-visible project workflow.`} />
                   </div>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Requested budget split across approval stages</p>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">{dashboardBudgetMetricLabel} split across approval stages</p>
                 </div>
                 <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#C6DBFF]">
                   Portfolio mix
                 </span>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-                <div className="relative h-[230px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={queueBudgetMix}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={58}
-                        outerRadius={88}
-                        paddingAngle={3}
-                        strokeWidth={0}
-                      >
-                        {queueBudgetMix.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<PieTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Portfolio</span>
-                    <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {queueBudgetMix.map((item) => (
-                    <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
-                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
-                        </div>
-                        <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                        <span className="text-[#64748B] dark:text-slate-100">Requested</span>
-                        <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <BudgetQueueMixContent
+                queueBudgetMix={queueBudgetMix}
+                totalBudget={totalBudget}
+                dashboardBudgetMetricLabel={dashboardBudgetMetricLabel}
+                dashboardBudgetMetrics={dashboardBudgetMetrics}
+              />
             </CardContent>
           </Card>
         </section>
@@ -1283,27 +1527,13 @@ export default function ApproverDashboard() {
 
       {clarificationCount > 0 ? null : (
         <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
+          <PortfolioInsightCharts
+            summary={portfolioSummary}
+            chartKeys={['budgetConsideration']}
+            projectHrefBuilder={(projectId) => `/approver/approval-queue/${projectId}`}
+          />
           <Card
-            title="Fast access to actions the approver takes most often."
-            className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
-          >
-            <CardContent className="p-6">
-              <div className="mb-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Radar className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
-                  <InfoHint text="Highlights which account codes are drawing the largest share of budget across approver-stage projects." />
-                </div>
-              </div>
-              <AccountCodesBreakdown
-                items={accountBreakdown}
-                loading={accountBreakdownLoading}
-                error={accountBreakdownError}
-              />
-            </CardContent>
-          </Card>
-          <Card
-            title="Requested budget distribution across approver-visible workflow stages."
+            title={`${dashboardBudgetMetricLabel} distribution across approver-visible workflow stages.`}
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
@@ -1312,61 +1542,21 @@ export default function ApproverDashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                     <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
-                    <InfoHint text="Shows how requested budget is currently distributed across the approver-visible project workflow." />
+                    <InfoHint text={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is currently distributed across the approver-visible project workflow.`} />
                   </div>
-                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">Requested budget split across approval stages</p>
+                  <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">{dashboardBudgetMetricLabel} split across approval stages</p>
                 </div>
                 <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/18 dark:text-[#C6DBFF]">
                   Portfolio mix
                 </span>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
-                <div className="relative h-[230px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={queueBudgetMix}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={58}
-                        outerRadius={88}
-                        paddingAngle={3}
-                        strokeWidth={0}
-                      >
-                        {queueBudgetMix.map((entry) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<PieTooltip />} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Portfolio</span>
-                    <CurrencyAmount amount={totalBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={15} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {queueBudgetMix.map((item) => (
-                    <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-none dark:border-white/10 dark:bg-[#1B2A41]">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.fill }} />
-                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
-                        </div>
-                        <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                        <span className="text-[#64748B] dark:text-slate-100">Requested</span>
-                        <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <BudgetQueueMixContent
+                queueBudgetMix={queueBudgetMix}
+                totalBudget={totalBudget}
+                dashboardBudgetMetricLabel={dashboardBudgetMetricLabel}
+                dashboardBudgetMetrics={dashboardBudgetMetrics}
+              />
             </CardContent>
           </Card>
         </section>

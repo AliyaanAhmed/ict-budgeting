@@ -1,18 +1,19 @@
 # Implemented Workflow And Boot Reference
 
-This file is a practical reference for the current app implementation.
+This file is the practical source of truth for the current app implementation.
 
-Use it when you start a new Codex chat and want quick context about:
-- app boot and session storage
-- ADGE role workflow
-- DGE role workflow
-- assignment and sharing behavior
+Use it when starting a new Codex chat and you want fast context about:
+- boot order and session storage
+- ADGE workflow
+- DGE workflow
+- ownership and sharing
 - clarification routing
-- key services and where the logic lives
+- DGE recommendation and planning outcome behavior
+- where the important logic lives
 
-This document is based on the current code, not on older mock or design-only notes.
+This document is intentionally based on the current code, not older design notes.
 
-## 1. High-Level Role Model
+## 1. Current Role Model
 
 ### ADGE roles
 - `Respondent`
@@ -22,30 +23,33 @@ This document is based on the current code, not on older mock or design-only not
 ### DGE roles
 - `Strategy Team`
 - `SME Team`
+- `Strategy Director`
 
-### Admin/supporting role
+### Admin role
 - `ICT Admin`
 
-## 2. App Boot Order
+## 2. Boot Order
 
-Current boot order is implemented in [src/main.tsx](/abs/path/c:/ICT-Budgeting-2026/src/main.tsx:1):
+Boot is implemented in [src/main.tsx](/abs/path/c:/ICT-Budgeting-2026/src/main.tsx:1).
 
+Current order:
 1. `initUserContext()`
 2. `initCycleContext()`
 3. `initInstanceContext()`
 4. `initDgeRoleContext(sessionStorage.getItem('userID'))`
 5. render React app
 
-Important:
+Important behavior:
 - ADGE boot happens first
-- DGE boot is added after ADGE boot
-- DGE boot should not break ADGE context
+- DGE boot is layered after ADGE context is ready
+- ADGE instance boot must not be broken by DGE additions
+- `instanceID` and `instanceDetail` are still critical for ADGE-side scoping
 
-## 3. Session Storage Keys
+## 3. Session Storage
 
-## 3.1 Core user/app keys
+## 3.1 Core keys
 
-Set mainly by [src/services/userContextService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/userContextService.ts:1):
+Mainly set by [src/services/userContextService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/userContextService.ts:1):
 
 - `ict_app_user`
 - `userID`
@@ -54,7 +58,33 @@ Set mainly by [src/services/userContextService.ts](/abs/path/c:/ICT-Budgeting-20
 - `userTeams`
 - `currentRole`
 
-## 3.2 ADGE role-specific keys
+## 3.2 Cycle keys
+
+Set by cycle boot/services:
+
+- `cycles`
+- `currentCycle`
+
+## 3.3 ADGE instance keys
+
+Set by [src/services/instanceService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/instanceService.ts:1):
+
+- `instanceID`
+- `instanceDetail`
+
+`instanceDetail` currently contains:
+- `id`
+- `name`
+- `abbr`
+- `planningStartDate`
+- `planningEndDate`
+- `statuscode`
+
+ADGE dashboards, project lists, and entity naming rely on this.
+
+## 3.4 ADGE role-account keys
+
+Derived from module config + team membership:
 
 - `respondentAccount`
 - `respondentAccountName`
@@ -66,76 +96,68 @@ Set mainly by [src/services/userContextService.ts](/abs/path/c:/ICT-Budgeting-20
 - `approverAccountName`
 - `approverModuleConfigId`
 
-These are derived from:
-- current user
-- team memberships
-- `dga_module_configurations`
-- account linked to that ADGE role team
-
-## 3.3 Cycle and instance keys
-
-Set by cycle/instance services:
-
-- `cycles`
-- `currentCycle`
-- `instanceID`
-- `instanceDetail`
-
-`instanceDetail` is critical for ADGE-side scoping and usually includes:
-- `id`
-- `name`
-- `abbr`
-- `planningStartDate`
-- `planningEndDate`
-
-ADGE dashboards and project lists rely on this instance context.
-
-## 3.4 DGE role keys
+## 3.5 DGE keys
 
 Set by [src/services/dgeRoleContextService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/dgeRoleContextService.ts:1):
 
 - `dgeSmeAssignments`
 - `dgeStrategyTeam`
+- `dgeStrategyDirectorTeam`
 - `currentSME`
 
 ### `dgeSmeAssignments`
-Contains one record per strategic priority that is mapped to an SME team:
+
+Contains one item per strategic priority that is mapped to an SME team:
 - `strategicPriorityId`
 - `strategicPriorityName`
 - `teamId`
 - `teamName`
 - `users`
 
+Important:
+- `teamName` is resolved from the Dataverse team table
+- it is no longer a static `"SME Team"` label
+
 ### `dgeStrategyTeam`
+
+Contains:
+- `teamId`
+- `teamName`
+- `users`
+
+### `dgeStrategyDirectorTeam`
+
+Resolved from the Dataverse team named `ICT - Strategy Director`.
+
 Contains:
 - `teamId`
 - `teamName`
 - `users`
 
 ### `currentSME`
-Only for users who belong to one or more SME teams.
-Contains the selected SME domain:
+
+Used only for SME users.
+
+Contains the currently selected SME domain:
 - `strategicPriorityId`
 - `strategicPriorityName`
 - `teamId`
 - `teamName`
 
-## 3.5 Important DGE boot behavior
+If a user belongs to multiple SME mappings:
+- all valid SME roles can appear in role switch
+- `currentSME` stores the currently selected domain
 
-If a DGE user logs in and `moduleConfigTeamIDs` does not already contain ADGE team ids, DGE boot seeds them from `dga_module_configurations`.
+## 3.6 DGE boot and ADGE module configuration ids
 
-This matters because DGE clarification flow still needs:
-- respondent team id
-- reviewer team id
-- approver team id
+DGE roles do not use the current user's `moduleConfigTeamIDs` for ADGE workflow assignment.
 
-So even DGE users should end up with:
-- `respondentTeamId`
-- `reviewerTeamId`
-- `approverTeamId`
-- `strategyTeamId`
+Clean rule:
+- Strategy Team, SME Team, and Strategy Director do not assign or share budgets to ADGE teams during DGE review clarifications.
+- DGE-to-ADGE clarification `dga_raised_to` is resolved from the budget's own instance module configuration, not from the DGE user's session storage.
+- Strategy Director Start Allocation is the main DGE-to-ADGE assignment handoff. It resolves the Respondent team from each instance module configuration before assigning budgets to ADGE Respondent.
 
-inside `moduleConfigTeamIDs`.
+ADGE users still rely on `moduleConfigTeamIDs` for their own instance-scoped Respondent/Reviewer/Approver routing.
 
 ## 4. Main Workflow Fields
 
@@ -143,18 +165,23 @@ inside `moduleConfigTeamIDs`.
 
 This is the ADGE-facing workflow field.
 
-Current values used:
+Current values used by the app:
 - `1` = Draft
 - `2` = Under Reviewer Review
 - `3` = Under Approver Review
 - `4` = Approved by Approver
 - `5` = Clarification Pending
 - `6` = Under DGE Review
+- `7` = Allocation In Progress
+- `8` = Allocation In Review
+- `9` = Allocation Completed
+- `10` = Utilization in Progress
+- `11` = Utilization Completed
 - `12` = Reviewer Review Completed
 
 ## 4.2 `statuscode`
 
-This is the Dataverse status reason used for deeper workflow state, especially for DGE stages.
+This is the detailed Dataverse status reason used as the DGE workflow engine.
 
 Current values used:
 - `1` = Draft
@@ -175,18 +202,46 @@ Current values used:
 - `776140014` = Utilization in Progress
 - `776140015` = Utilization Completed
 
-Important rule:
-- ADGE UI usually shows `dga_status_for_adge`
-- DGE UI usually shows `statuscode`
+Display rule:
+- ADGE screens normally show `dga_status_for_adge`
+- DGE screens normally show `statuscode`
 
-## 5. Ownership And Assignment Model
+## 4.3 DGE recommendation fields
 
-Workflow transitions usually update:
+These are used during DGE review:
+- `dga_recommended`
+- `dga_rejection_reason`
+- `dga_rejection_justification`
+- `dga_rejected_by`
+- `dga_planning_outcome`
+
+Current choices:
+
+### `dga_recommended`
+- `1` = No
+- `2` = Yes
+
+### `dga_planning_outcome`
+- `1` = Recommended by DGE
+- `2` = Not Recommended
+
+Current rule:
+- when Strategy Director clicks `Complete Review`
+- the app reads `dga_recommended`
+- if `Yes (2)`, it writes `dga_planning_outcome = 1`
+- if `No (1)`, it writes `dga_planning_outcome = 2`
+
+This is implemented in [src/services/dgeWorkflowService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/dgeWorkflowService.ts:1).
+
+## 5. Ownership Model
+
+Workflow moves usually update:
 - `ownerid`
-- workflow fields
-- actor lookups
+- `statuscode`
+- `dga_status_for_adge`
+- workflow actor lookups where needed
 
-Common actor lookups:
+Common lookups used by the app:
 - `dga_respondent_systemuser`
 - `dga_reviewer_systemuser`
 - `dga_approver_systemuser`
@@ -195,20 +250,24 @@ Common actor lookups:
 - `dga_sme_reviewer_team`
 - `dga_quality_checker`
 
-The general rule is:
+General ownership model:
 - ADGE roles own ADGE-stage items
-- Strategy Team owns strategy-stage items
+- Strategy Team owns strategic alignment and quality-check items
 - SME team owns SME-stage items
-- Strategy Team owns quality-check/final DGE governance items
+- Strategy Director owns final review items
+- Allocation and utilization return ownership to ADGE roles:
+  - Respondent owns Allocation In Progress and Utilization In Progress
+  - Approver owns Allocation In Review
 
 ## 6. Sharing Model
 
 Sharing is implemented through [src/services/recordShareService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/recordShareService.ts:1).
 
-The app uses the custom API:
+The app uses the custom API behind:
 - `dga_WebApiForPortal`
 
-### Grant access action
+### Grant access
+
 Payload uses:
 - `actionName: "grandaccess"`
 - `tableName: "dga_ict_budget"`
@@ -216,7 +275,8 @@ Payload uses:
 - `targetId: <teamId>`
 - `fetchXml: "read"`
 
-### Revoke access action
+### Revoke access
+
 Payload uses:
 - `actionName: "revokeaccess"`
 - `tableName: "dga_ict_budget"`
@@ -224,15 +284,20 @@ Payload uses:
 - `targetId: <teamId>`
 - `fetchXml: "read"`
 
-### Current helper methods
+### Current helpers
 - `shareIctBudgetWithRoleTeam(budgetId, role)`
 - `grantIctBudgetAccessToTeam(budgetId, teamId)`
 - `revokeIctBudgetAccessFromTeam(budgetId, teamId)`
 
-Typical usage:
-- ownership moves to next team
-- previous team may still get read access
-- in some DGE reassignment flows old SME access is revoked
+Important current rule:
+- several DGE flows now intentionally grant access before ownership handoff
+- this is done to preserve visibility for the initiating governance team
+
+Examples:
+- SME route to quality check grants current SME first, then assigns to Strategy Team
+- Strategy Team clarification to SME grants Strategy Team first, then assigns to SME
+- Strategy Director clarification to Strategy or SME grants Strategy Director first, then assigns away
+- strategic priority change request grants current SME before assigning back to Strategy Team
 
 ## 7. ADGE Workflow
 
@@ -241,7 +306,6 @@ Typical usage:
 Respondent creates draft:
 - `dga_status_for_adge = 1`
 - `statuscode = 1`
-- owner is respondent context
 
 Respondent submits to reviewer:
 - `dga_status_for_adge = 2`
@@ -255,12 +319,12 @@ Reviewer can:
 - raise clarification
 - submit to approver
 
-Reviewer submit to approver:
+Submit to approver:
 - `dga_status_for_adge = 3`
 - `statuscode = 776140002`
 - owner moves to approver team
 
-Reviewer clarification:
+Raise clarification:
 - `dga_status_for_adge = 5`
 - `statuscode = 776140010`
 - owner returns to respondent team
@@ -272,217 +336,569 @@ Approver can:
 - raise clarification
 - submit to DGE
 
-Approver approve:
+Approve:
 - `dga_status_for_adge = 4`
 - `statuscode = 776140003`
 
-Approver clarification:
+Raise clarification:
 - `dga_status_for_adge = 5`
 - `statuscode = 776140010`
 - owner returns to respondent team
 
-Approver submit to DGE:
+Submit to DGE:
 - `dga_status_for_adge = 6`
 - `statuscode = 776140004`
-- instance submission date is updated
-- instance `statuscode` can also move to DGE review state when bulk submit flow completes
+- current instance submission date is updated
+- current instance `statuscode` is updated to DGE review state
 
 ## 8. DGE Workflow
 
 ## 8.1 Strategy Team
 
-Strategy Team mainly works with:
+Strategy Team primarily works with:
 - `776140004` = Under Strategic Alignment Review
 - `776140006` = Strategic Priority Change Under Review
 - `776140007` = Under Quality Check
 - `776140010` = Clarification Pending
 
-Main responsibilities:
-- review strategic priority and classification
-- bulk update strategic mapping
-- assign projects to SME via strategic-priority-to-team mapping
-- review SME-requested strategic priority changes
-- handle quality-check/final governance steps
+Strategy Team can:
+- edit any project form
+- bulk update strategic priority/classification
+- send projects to SME
+- review SME strategic-priority-change requests
+- raise clarification from ADGE or SME depending on stage
+- route quality-check items to Strategy Director
 
 ## 8.2 SME Team
 
-SME Team only sees projects in its assigned SME domain.
+SME only sees projects for the currently selected SME domain.
 
-Domain is resolved from:
-- `currentSME`
-- matching `strategicPriorityId`
+Domain filtering uses:
+- `currentSME.strategicPriorityId`
+- matching project `strategicPriorityId`
 
-SME screens should show only projects whose:
-- `budget.strategicPriorityId === currentSME.strategicPriorityId`
-
-SME currently works with:
+SME works with:
 - `776140005` = Under SME Review
 - `776140006` = Strategic Priority Change Under Review
 - `776140007` = Under Quality Check
 - `776140010` = Clarification Pending
 
-## 8.3 Strategy-to-SME assignment
+SME can:
+- edit only DGE recommendation fields and recommended budgets when allowed
+- request strategic priority change
+- raise clarification to ADGE respondent
+- route to quality check
+
+## 8.3 Strategy Director
+
+Strategy Director is the final DGE governance role above Strategy Team and SME Team.
+
+Resolved by membership in Dataverse team:
+- `ICT - Strategy Director`
+
+Main statuses:
+- `776140008` = Under Final Review
+- `776140009` = Review Completed
+- `776140010` = Clarification Pending
+
+Strategy Director can:
+- review final DGE items
+- raise internal DGE clarification to Strategy Team or SME
+- complete review
+- publish instance/entity after all budgets are review completed
+- start allocation for the instance
+- start utilization after ADGE allocation is completed through the existing Approver Submit to DGE button
+
+## 8.4 Strategy to SME handoff
 
 Implemented in [src/services/dgeWorkflowService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/dgeWorkflowService.ts:1).
 
-When Strategy sends project to SME:
-- owner moves to SME team
+When Strategy sends to SME:
+- owner moves to mapped SME team
 - `dga_sme_reviewer_team` is set
 - `dga_status_for_adge = 6`
 - `statuscode = 776140005`
+- Strategy Team can retain read visibility through sharing
 
-Strategy determines target SME by matching:
-- budget strategic priority id
+SME team is resolved from:
+- budget strategic priority
 - `dgeSmeAssignments`
 
-## 8.4 SME strategic priority change request
+## 8.5 SME strategic priority change request
 
-When SME requests a strategic priority/classification change:
-- actual live strategic fields do not change immediately
-- requested values are stored in:
-  - `dga_previous_strategic_priority`
-  - `dga_previous_strategic_priorityclassification`
-- owner moves back to Strategy Team
-- status becomes `776140006`
-- sharing may keep SME visibility
+SME submits requested change without changing the live mapping immediately.
 
-When Strategy approves requested change:
+Requested values are stored in:
+- `dga_previous_strategic_priority`
+- `dga_previous_strategic_priorityclassification`
+
+Then:
+- current SME is granted access first
+- owner moves to Strategy Team
+- `statuscode = 776140006`
+- `dga_status_for_adge = 6`
+
+### Approve requested change
+
+When Strategy approves:
+- old SME access is revoked first if routing changes to a different SME
 - requested values are copied into live strategic fields
 - previous/requested fields are cleared
-- project is reassigned to the SME team for the new strategic priority
-- old SME access can be revoked via `revokeaccess`
-- status returns to `776140005`
+- owner moves to the new SME team
+- `dga_sme_reviewer_team` is updated
+- `statuscode = 776140005`
 
-When Strategy rejects requested change:
+### Reject requested change
+
+When Strategy rejects:
 - previous/requested fields are cleared
-- project returns to SME based on current live strategic priority
-- status returns to `776140005`
+- no revoke/grant happens for the rejected path
+- owner goes back to the SME for the current live strategic priority
+- `statuscode = 776140005`
 
-## 8.5 SME route to quality check
+## 8.6 SME route to quality check
 
-When SME routes to quality check:
+Before route:
+- recommendation fields must be valid
+- if recommended = `Yes`
+  - recommended budgets are prepared from requested budgets when missing
+- if recommended = `No`
+  - rejection reason and rejection justification are required
+  - recommended budget values are set to `0`
+
+When route happens:
+- current SME is granted access first
 - owner moves to Strategy Team
 - `statuscode = 776140007`
 - `dga_status_for_adge = 6`
-- reviewer user lookups are stamped:
-  - `dga_strategic_alignment_reviewer_systemuser`
-  - `dga_sme_reviewer_user`
+- `dga_strategic_alignment_reviewer_systemuser` is stamped with current user
+- `dga_sme_reviewer_user` is stamped with current user
+- Strategy Team is also granted access
 
-## 9. Clarification Workflow
+## 8.7 Strategy route to Director
+
+When Strategy Team routes to Strategy Director:
+- Strategy Director is granted access first
+- owner moves to Strategy Director team
+- `statuscode = 776140008`
+- `dga_status_for_adge = 6`
+- Strategy Team can retain visibility
+
+When Strategy Director completes review:
+- `statuscode = 776140009`
+- `dga_status_for_adge = 6`
+- `dga_planning_outcome` is derived from `dga_recommended`
+
+## 8.8 Director entity publish and allocation
+
+On Director Entity Tracker:
+- `Publish` appears when all budgets in that instance are `Review Completed`
+
+Publish updates instance:
+- `dga_ict_budget_instance.statuscode = 776140004`
+- meaning `Review Completed by DGE`
+
+Then `Start Allocation` becomes available.
+
+Start Allocation updates:
+- instance `statuscode = 776140005` (`Allocation`)
+- all budgets in that instance:
+  - `statuscode = 776140011` (`Allocation in Progress`)
+  - `dga_status_for_adge = 7`
+  - owner moves to the instance-specific ADGE Respondent team
+
+Respondent team is not read from the current DGE user's session storage during this handoff.
+It is resolved from the instance module configuration:
+1. read `_dga_module_configuration_value` from `dga_ict_budget_instance`
+2. retrieve `dga_module_configuration`
+3. use `_dga_respondent_team_value`
+
+## 8.9 ADGE allocation workflow
+
+When the instance is in Allocation:
+- ADGE Respondent receives all instance budgets as `Allocation in Progress`
+- Reviewer is view-only
+- DGE roles are view-only except Strategy Team
+- Strategy Team keeps full governance edit access
+
+### Respondent allocation entry
+
+Respondent can edit only allocation-specific fields:
+- `dga_allocation_outcome`
+- `dga_allocation_cancelation_reason` when outcome is Cancelled
+- line item `dga_budget_allocated`
+
+Choice rules:
+- `dga_allocation_outcome = 1` means `Cancelled In Allocation`
+  - cancellation reason is required
+  - allocated budgets are set to `0`
+  - allocated budget is read-only
+- `dga_allocation_outcome = 2` means `Used In Allocation`
+  - allocated budget is required on each budget line
+
+Submit to Review:
+- `statuscode = 776140012`
+- `dga_status_for_adge = 8`
+- owner moves to instance Approver team
+
+### Approver allocation review
+
+Approver can edit allocation outcome and allocated budget while status is `Allocation In Review`.
+
+Complete Allocation:
+- `statuscode = 776140013`
+- `dga_status_for_adge = 9`
+
+The Complete Allocation action is available in:
+- Edit/View Form
+- Approver Queue cards
+
+### Allocation clarification
+
+Approver can raise clarification to Respondent while status is `Allocation In Review`.
+
+Clarification record:
+- `dga_clarification_stage = 3` (`Allocation`)
+- `dga_scope = 2` (`Internal Entity`)
+
+Respondent first reply:
+- returns ownership to the instance Approver team
+- `statuscode = 776140012`
+- `dga_status_for_adge = 8`
+- confirmation copy says it returns to allocation review
+
+## 8.10 ADGE utilization workflow
+
+When every budget in the instance is Allocation Completed:
+- Approver Queue and Approver Dashboard show the existing `Submit to DGE` button
+- this does not run the planning Submit to DGE workflow
+- in Allocation phase, this button starts Utilization
+
+Start Utilization updates:
+- instance `statuscode = 776140006` (`Utilization`)
+- all instance budgets:
+  - `statuscode = 776140014` (`Utilization in Progress`)
+  - `dga_status_for_adge = 10`
+  - owner moves back to instance Respondent team
+
+Respondent utilization entry:
+- all normal fields are read-only
+- line item utilization is editable through quarter modal
+- quarter fields:
+  - `dga_utilization_quarter_1`
+  - `dga_utilization_quarter_2`
+  - `dga_utilization_quarter_3`
+  - `dga_utilization_quarter_4`
+- total field:
+  - `dga_total_budget_utilized`
+
+Validation:
+- if allocation outcome is Cancelled, utilization is not mandatory
+- otherwise every line must have total utilized budget greater than `0`
+
+Complete Utilization:
+- `statuscode = 776140015`
+- `dga_status_for_adge = 11`
+
+## 8.11 Projects created during Allocation
+
+When ADGE Respondent creates a new project while instance status is Allocation:
+- `statuscode = 776140011`
+- `dga_status_for_adge = 7`
+- `dga_added_in_allocation = 2` (`Yes`)
+- project enters Allocation In Progress instead of Draft
+
+## 9. Clarification Model
 
 Clarification logic is implemented in:
 - [src/services/clarificationService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/clarificationService.ts:1)
-- shared UI in `ProjectDetail.tsx` and `ClarificationThread.tsx`
+- [src/pages/respondent/ProjectDetail.tsx](/abs/path/c:/ICT-Budgeting-2026/src/pages/respondent/ProjectDetail.tsx:1)
 
 Clarifications are stored in:
 - `dga_ict_clarifications`
 
-Important values:
-- clarification stage planning = `1`
-- clarification stage DGE review = `2`
+Current clarification values:
+- stage planning = `1`
+- stage DGE review = `2`
 - scope external = `1`
 - scope internal entity = `2`
+- scope internal DGE = `3`
 
-## 9.1 ADGE clarification flow
+Current status values:
+- open = `1`
+- responded = `776140002`
+- closed = `776140003`
 
-Reviewer or Approver can raise clarification to Respondent.
+Current record types:
+- comment = `1`
+- clarification = `2`
 
-Result:
-- budget moves to respondent ownership
+## 9.1 External ADGE clarification
+
+Raised by:
+- Reviewer to Respondent
+- Approver to Respondent
+- Strategy Team to ADGE
+- SME Team to ADGE
+
+For ADGE-side clarification:
+- scope = `1` for DGE-to-ADGE external clarification
+- scope = `2` for ADGE internal/entity clarification
+
+Current DGE-to-ADGE behavior:
+- clarification record is created
 - `statuscode = 776140010`
 - `dga_status_for_adge = 5`
-
-First respondent reply sends record back to the original ADGE governance owner:
-- Reviewer
-- or Approver
-
-## 9.2 DGE clarification flow
-
-Strategy Team and SME Team can raise clarification to Respondent.
-
-When DGE raises clarification:
-- clarification stage = `2`
-- scope = `1`
-- budget owner returns to respondent team
-- `statuscode = 776140010`
-- `dga_status_for_adge = 5`
+- owner remains with the current DGE owner; DGE-to-ADGE clarification does not assign or share the budget to ADGE
+- `dga_raised_to` is resolved from the budget instance module configuration Respondent team
+- respondent sees the thread and can reply
 
 Important:
-- for DGE clarification, `statuscode` must be `776140010`
-- `dga_status_for_adge` must be `5`
-- writing `5` directly into `statuscode` is invalid
+- ADGE dashboards/counts should treat clarification pending as relevant when:
+  - budget is clarification pending
+  - `dga_status_for_adge = 5`
+  - scope is `External` or `Internal (Entity)`
 
-## 9.3 Respondent reply handoff for DGE clarification
+## 9.2 Respondent first reply routing
 
-When Respondent replies to a clarification raised by:
-- `Strategy Team`
-- `SME Team`
+When Respondent replies first to an ADGE or DGE clarification:
+- the record is sent back to the original governance side
 
-the budget is assigned back to that DGE owner:
+Examples:
+- Reviewer clarification -> back to Reviewer
+- Approver clarification -> back to Approver
+- Strategy Team clarification -> back to Strategy Team
+- SME clarification -> back to `dga_sme_reviewer_team`
 
-### Reply back to Strategy Team
-- owner moves to strategy team
-- `statuscode = 776140004`
+Current return statuses:
+- back to Strategy Team -> `776140004`, `dga_status_for_adge = 6`
+- back to SME -> `776140005`, `dga_status_for_adge = 6`
+
+## 9.3 Director internal DGE clarification
+
+Strategy Director can raise clarification to:
+- Strategy Team
+- SME Team
+
+Behavior:
+- scope = `3` (`Internal DGE`)
+- clarification stage = `2`
+- Strategy Director is granted access first
+- owner moves to the selected DGE target team
+- `statuscode = 776140010`
 - `dga_status_for_adge = 6`
 
-### Reply back to SME Team
-- owner moves to `dga_sme_reviewer_team`
-- `statuscode = 776140005`
+### Director -> Strategy Team
+
+On first Strategy reply:
+- record returns to Strategy Director
+- `statuscode = 776140008`
 - `dga_status_for_adge = 6`
 
-Clarification thread remains open until the raising side closes it.
+### Director -> SME Team
 
-## 10. Editability Rules In Project Detail
+On first SME reply:
+- record moves to Strategy Team
+- `statuscode = 776140007`
+- `dga_status_for_adge = 6`
 
-Shared form page:
+SME can also route such a project directly to quality check when eligible.
+
+## 9.4 Strategy internal DGE clarification to SME
+
+Strategy Team can raise clarification to SME from quality-check/governance flow.
+
+Behavior:
+- scope = `3`
+- clarification stage = `2`
+- Strategy Team is granted access first
+- owner moves to the mapped SME team
+- `statuscode = 776140010`
+- `dga_status_for_adge = 6`
+
+On SME side:
+- project can be edited only within SME-allowed fields
+- first SME reply automatically returns it to Strategy Team quality check
+- `statuscode = 776140007`
+- `dga_status_for_adge = 6`
+- owner moves to Strategy Team
+- SME can also route it back to quality check when ready
+
+## 9.5 Clarification visibility rules
+
+Current rule:
+- ADGE roles should not see `Internal (DGE)` clarification threads
+- ADGE roles should show `External` tag when clarification scope is external
+- clarification reply/close permissions follow the thread participants and workflow logic
+
+## 10. Edit/View Form Rules
+
+Shared form:
 - [src/pages/respondent/ProjectDetail.tsx](/abs/path/c:/ICT-Budgeting-2026/src/pages/respondent/ProjectDetail.tsx:1)
 
-This same page is reused by:
+This page is reused by:
 - Respondent
 - Reviewer
 - Approver
 - Strategy Team
+- Strategy Director
 - SME Team
 
-### Strategy Team
+## 10.1 Strategy Team
+
 - full edit access
-- not limited by normal owner lock in the same way as ADGE roles
+- can edit even when workflow owner is another role
+- governance actions depend on project stage
 
-### SME Team
-- can only edit when the record is currently owned by that SME context
-- edit is limited to DGE recommendation fields and recommended budget fields
-- if project is no longer assigned to SME, the form becomes read-only
+## 10.2 Strategy Director
 
-### Respondent / Reviewer / Approver
-- editability depends on workflow status and current owner
+- full edit access during DGE review/final review
+- view-only during Allocation and Utilization phases
+- can review projects across DGE final-governance states
+- status display is DGE `statuscode`
 
-## 11. DGE-Specific Recommendation Fields
+## 10.3 SME Team
 
-Shown only in DGE-stage edit/view usage, not for ADGE roles.
+- form is generally locked except for SME-editable DGE fields
+- SME can edit only when project belongs to the current SME domain
+- editable fields:
+  - `dga_recommended`
+  - rejection fields when applicable
+  - recommended budget amounts
+- requested budgets remain read-only for SME
 
-Current fields:
-- `dga_recommended`
-- `dga_rejection_reason`
-- `dga_rejection_justification`
-- `dga_rejected_by`
+## 10.4 ADGE roles
 
-Behavior:
-- if recommended = `Yes`, rejection fields stay hidden
-- if recommended = `No`, rejection reason and justification are shown
-- `dga_rejected_by` is not meant to be user-entered manually in UI
-- it is set from `sessionStorage["userID"]` on save
+- normal ADGE workflow editability still applies
+- DGE recommendation fields are hidden during normal ADGE stages
+- once instance reaches `Review Completed by DGE` or later
+  - recommendation fields become visible read-only for ADGE roles
+- during Allocation:
+  - Respondent can edit allocation outcome/allocated budget while assigned
+  - Approver can edit allocation outcome/allocated budget while assigned
+  - Reviewer is view-only
+- during Utilization:
+  - Respondent can edit utilization quarter values while assigned
+  - Reviewer and Approver are view-only unless a workflow action applies
 
-Budget line items also support:
-- requested budget
-- recommended budget
+## 10.5 Save-before-action behavior
 
-For SME:
-- requested amount is read-only
-- recommended amount is editable when SME is allowed to edit
+For DGE actions in the form:
+- if the user has unsaved changes
+- and clicks an action like route/send/request/review
+- the form saves first
+- then the workflow action runs
+- workflow action saves run silently
+- the user should not see a separate "Changes saved" toast before the workflow toast
 
-## 12. Key Service Files
+After successful workflow actions from Edit/View:
+- the project shell is reloaded
+- the ICT budget detail is reloaded
+- header status and available quick actions should update without closing and reopening the form
+
+## 10.6 Budget column visibility
+
+Project table/card budget columns:
+
+### ADGE roles
+- Requested Budget always shows
+- when instance status is `Review Completed by DGE` or later:
+  - Requested Budget
+  - Recommended Budget
+  - Planning Outcome
+- when instance status is `Allocation` or later:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Planning Outcome
+  - Added In Allocation
+- when instance status is `Utilization`:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Utilized Budget
+  - Planning Outcome
+  - Added In Allocation
+
+### DGE roles
+- DGE project table/card views always show:
+  - Requested Budget
+  - Recommended Budget
+  - Allocated Budget
+  - Utilized Budget
+
+Edit/View budget section:
+- Project Budget Type & Budget Account Codes summary shows phase-relevant totals
+- requested total always shows
+- recommended/allocated/utilized totals appear according to the same phase rules
+
+## 11. DGE Project Pages
+
+There are dedicated DGE project pages for:
+- Strategy Team
+- Strategy Director
+- SME Team
+
+They follow the ADGE-style project experience, but:
+- DGE roles show DGE `statuscode` labels
+- ADGE roles show ADGE-facing status
+
+Scope:
+- Strategy Team sees all selected-cycle entity projects
+- Strategy Director sees all selected-cycle entity projects
+- SME Team sees selected-cycle projects limited to the current SME domain
+
+## 12. Entity Tracker Stage Grouping
+
+Shared stage bucket logic is in [src/services/dgePortfolioService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/dgePortfolioService.ts:1).
+
+Current grouping:
+
+### Planning
+- Draft
+- Under Reviewer Review
+- Under Approver Review
+- Approved by Approver
+- Reviewer Review Completed
+- Clarification Pending when it is ADGE-facing clarification (`dga_status_for_adge = 5`)
+
+### DGE Review
+- Under Strategic Alignment Review
+- Under SME Review
+- Strategic Priority Change Under Review
+- Under Quality Check
+- Under Final Review
+- Clarification Pending when it is DGE-side clarification
+
+### Review Completed
+- Review Completed
+
+### Allocation
+- Allocation in Progress
+- Allocation in Review
+- Allocation Completed
+
+### Utilization
+- Utilization in Progress
+- Utilization Completed
+
+## 13. Empty States
+
+The app now supports dedicated whole-app empty states for:
+- no role found
+- no cycle found
+
+Important behavior:
+- if no role exists, app should show role empty state
+- if no cycle exists, app should show cycle empty state
+- if user has `ICT Admin` and there is no cycle, empty state provides navigation to ICT Admin workspace
+
+These empty states are visual-only UX surfaces and should not break existing ADGE or DGE boot behavior.
+
+## 14. Key Files
 
 ### Boot / context
+- [src/main.tsx](/abs/path/c:/ICT-Budgeting-2026/src/main.tsx:1)
 - [src/services/userContextService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/userContextService.ts:1)
 - [src/services/cycleService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/cycleService.ts:1)
 - [src/services/instanceService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/instanceService.ts:1)
@@ -496,33 +912,35 @@ For SME:
 ### Clarifications
 - [src/services/clarificationService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/clarificationService.ts:1)
 
-### DGE portfolio mapping
+### DGE portfolio/entity mapping
 - [src/services/dgePortfolioService.ts](/abs/path/c:/ICT-Budgeting-2026/src/services/dgePortfolioService.ts:1)
 
-### Shared project form
+### Shared project detail form
 - [src/pages/respondent/ProjectDetail.tsx](/abs/path/c:/ICT-Budgeting-2026/src/pages/respondent/ProjectDetail.tsx:1)
 
-## 13. What To Tell Codex In A New Chat
+## 15. Good New-Chat Prompt
 
-If you start a fresh chat, a useful prompt is:
+If you start a fresh Codex chat, a strong prompt is:
 
 1. Read `IMPLEMENTED_WORKFLOW_AND_BOOT_REFERENCE.md`
-2. Read `Workflow.md`, `Data.md`, and `ICT_Budgeting_App_Overview.md`
-3. Respect current ADGE boot first, then DGE boot
+2. Read `Workflow.md`, `Data.md`, `ICT_Budgeting_App_Overview.md`, and `APP_GUIDE.md`
+3. Preserve ADGE boot first, then DGE boot
 4. Do not break `instanceID` / `instanceDetail`
 5. Reuse `ProjectDetail.tsx` as the shared edit/view form
 6. Keep ADGE status display based on `dga_status_for_adge`
 7. Keep DGE status display based on `statuscode`
+8. Respect current ownership + sharing order before changing workflow code
 
-## 14. Short Summary
+## 16. Short Mental Model
 
 The safest mental model for this app is:
 
 - ADGE side is instance-scoped and account/team-driven
 - DGE side is cycle-wide and strategic-priority/team-driven
-- ownership controls workflow
+- ownership moves workflow
 - sharing preserves visibility across handoffs
-- `dga_status_for_adge` is the ADGE-facing stage
-- `statuscode` is the detailed workflow engine, especially for DGE
-- clarifications can move records back to Respondent from both ADGE and DGE
-- respondent replies return the record to the original reviewer/approver/strategy/SME side
+- `dga_status_for_adge` is the ADGE-facing status
+- `statuscode` is the DGE workflow engine
+- clarification routing depends on who raised it and which scope it uses
+- Strategy Team and Strategy Director have governance override access
+- SME is domain-scoped and only edits recommendation-related fields

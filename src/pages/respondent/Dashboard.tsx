@@ -49,6 +49,11 @@ import { PortfolioInsightCharts } from '@/components/shared/PortfolioInsightChar
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import {
+  DASHBOARD_BUDGET_METRIC_LABEL,
+  getDashboardBudgetMetricForInstanceStatus,
+  getDashboardBudgetMetricsForInstanceStatus,
+  getMetricAmountsFromProjects,
+  getProjectBudgetAmount,
   useAccountCodesBreakdown,
   useBudgetByCategoryChart,
   useStrategicPriorityCycleComparison,
@@ -65,6 +70,7 @@ import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
 
@@ -185,8 +191,8 @@ function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; icon
     <CurrencyAmount
       amount={amount}
       className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
-      valueClassName="break-all"
-      iconColor={iconColor}
+      valueClassName="break-words"
+      iconColor="#286CFF"
       iconSize={16}
     />
   )
@@ -323,9 +329,13 @@ export default function RespondentDashboard() {
   const [planningExpanded, setPlanningExpanded] = useState(false)
   const { selectedCycle, cyclesData } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
+  const dashboardInstanceStatus = instanceDetail?.statuscode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const dashboardBudgetMetrics = useMemo(() => getDashboardBudgetMetricsForInstanceStatus(dashboardInstanceStatus), [dashboardInstanceStatus])
+  const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
+  const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const { items: liveProjects, loading, error } = useRoleProjects('respondent', instanceId)
   const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
-  const budgetByCategory = useBudgetByCategoryChart(liveProjects)
+  const budgetByCategory = useBudgetByCategoryChart(liveProjects, dashboardBudgetMetrics)
   const {
     comparisonData,
     previousCycle,
@@ -342,9 +352,34 @@ export default function RespondentDashboard() {
         year: 'numeric',
       })
     : null
-  const totalBudget = liveProjects.reduce((sum, project) => sum + project.requestedBudget, 0)
+  const totalBudget = liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
+  const budgetPhaseTotals = {
+    requested: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'requested'), 0),
+    recommended: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'recommended'), 0),
+    allocated: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'allocated'), 0),
+    utilized: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'utilized'), 0),
+  }
   const lastYearBudget = comparisonData.reduce((sum, item) => sum + item.previous, 0)
-  const predictedBudget = liveProjects.filter((p) => p.aiScore > 70).reduce((sum, p) => sum + p.requestedBudget, 0)
+  const predictedBudget = liveProjects.filter((p) => p.aiScore > 70).reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const budgetSnapshotItems =
+    dashboardBudgetMetrics.length === 1
+      ? [
+          { label: 'Requested Budget', amount: budgetPhaseTotals.requested, iconColor: dashboardPalette.primary },
+          { label: 'Last Year Requested', amount: lastYearBudget, iconColor: dashboardPalette.primarySoft },
+          { label: 'AI Predicted Approval', amount: predictedBudget, iconColor: dashboardPalette.primary },
+        ]
+      : dashboardBudgetMetrics.map((metric) => ({
+          label: DASHBOARD_BUDGET_METRIC_LABEL[metric],
+          amount: budgetPhaseTotals[metric],
+          iconColor:
+            metric === 'recommended'
+              ? dashboardPalette.primarySoft
+              : metric === 'allocated'
+                ? dashboardPalette.primaryDeep
+                : metric === 'utilized'
+                  ? dashboardPalette.primaryInk
+                  : dashboardPalette.primary,
+        }))
   const confidenceScore = liveProjects.length > 0
     ? Math.round(liveProjects.reduce((sum, project) => sum + project.aiScore, 0) / liveProjects.length)
     : 0
@@ -355,6 +390,12 @@ export default function RespondentDashboard() {
   const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
   const submittedToDgeProjects = liveProjects.filter((project) => project.status === 'Submitted to DGE')
+  const allocationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInProgress
+  )
+  const utilizationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  )
   const reviewerStageProjects = liveProjects.filter(
     (project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed'
   )
@@ -397,6 +438,9 @@ export default function RespondentDashboard() {
     [portfolioSummary]
   )
   const storedInstanceDetail = getStoredInstanceDetail()
+  const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
+  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
+  const instanceInUtilization = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.utilization
   const planningSummaryPreview = useMemo(
     () => truncateAtWordBoundary(planningSummary || 'Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.', 210),
     [planningSummary]
@@ -405,7 +449,7 @@ export default function RespondentDashboard() {
     items: accountBreakdown,
     loading: accountBreakdownLoading,
     error: accountBreakdownError,
-  } = useAccountCodesBreakdown(liveProjects)
+  } = useAccountCodesBreakdown(liveProjects, dashboardBudgetMetrics)
   const hasPreviousCycle = Boolean(cyclesData?.previousCycle?.id && previousCycle?.id)
 
   const budgetTypeGroups = [
@@ -441,39 +485,45 @@ export default function RespondentDashboard() {
 
   const budgetTypeBreakdown = budgetTypeGroups.map((group) => {
     const items = liveProjects.filter((project) => project.budgetType === group.key)
-    const amount = items.reduce((sum, project) => sum + project.requestedBudget, 0)
+    const amount = items.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
     return {
       ...group,
       count: items.length,
       amount,
+      amounts: getMetricAmountsFromProjects(items, dashboardBudgetMetrics),
       share: totalBudget > 0 ? Math.round((amount / totalBudget) * 100) : 0,
     }
   })
 
-  const requestedBudgetByStatus = [
+  const budgetByStatus = [
     {
       name: 'Pending My Approval',
-      value: draftProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: draftProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(draftProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primary,
     },
     {
       name: 'With Reviewer',
-      value: reviewerStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: reviewerStageProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(reviewerStageProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primarySoft,
     },
     {
       name: 'With Approver',
-      value: approverStageProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: approverStageProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(approverStageProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryDeep,
     },
     {
       name: 'Clarification Open',
-      value: clarificationRequiredProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: clarificationRequiredProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(clarificationRequiredProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryMuted,
     },
     {
       name: 'Submitted to DGE',
-      value: submittedToDgeProjects.reduce((sum, project) => sum + project.requestedBudget, 0),
+      value: submittedToDgeProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(submittedToDgeProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryPale,
     },
   ].map((item) => ({
@@ -589,15 +639,17 @@ export default function RespondentDashboard() {
             href="/respondent/projects?tab=submitted-reviewer"
             description="Projects already sent forward and now tracked in review flow."
           />
-          <ActionMetricCard
-            title="Needs Work / Draft"
-            value={needsWork}
-            accent={dashboardPalette.camelYellow}
-            badge="Action Needed"
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            href="/respondent/projects?tab=needs-work"
-            description="Draft items still waiting for respondent updates and submit."
-          />
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title="Needs Work / Draft"
+              value={needsWork}
+              accent={dashboardPalette.camelYellow}
+              badge="Action Needed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=needs-work"
+              description="Draft items still waiting for respondent updates and submit."
+            />
+          )}
           <ActionMetricCard
             title="Clarification Required"
             value={clarificationRequired}
@@ -607,6 +659,28 @@ export default function RespondentDashboard() {
             href="/respondent/projects?tab=clarification"
             description="Projects returned for clarification before review can resume."
           />
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation In Progress"
+              value={allocationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Allocation"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-in-progress"
+              description="Allocation-stage projects currently owned by the respondent team."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title="Utilization In Progress"
+              value={utilizationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Utilization"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/respondent/projects?tab=utilization-in-progress"
+              description="Utilization-stage projects currently owned by the respondent team."
+            />
+          )}
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
@@ -622,25 +696,18 @@ export default function RespondentDashboard() {
             </div>
 
             <div className="mt-5 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-[#1B2A41]">
-              <div className="grid gap-4 sm:grid-cols-3 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10">
-                <div className="sm:pr-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Requested Budget</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={totalBudget} />
+              <div className={cn(
+                'grid gap-4 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10',
+                budgetSnapshotItems.length >= 4 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'
+              )}>
+                {budgetSnapshotItems.map((item, index) => (
+                  <div key={item.label} className={cn(index === 0 ? 'sm:pr-4' : 'sm:px-4', index === budgetSnapshotItems.length - 1 && 'sm:pr-0')}>
+                    <p className="flex min-h-8 items-end text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                    <div className="mt-3">
+                      <CompactAmount amount={item.amount} />
+                    </div>
                   </div>
-                </div>
-                <div className="sm:px-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Last Year Requested</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={lastYearBudget} iconColor={dashboardPalette.primarySoft} />
-                  </div>
-                </div>
-                <div className="sm:pl-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={predictedBudget} iconColor={dashboardPalette.primary} />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </CardContent>
@@ -729,7 +796,7 @@ export default function RespondentDashboard() {
         />
 
         <Card
-          title="Requested budget distribution across your current project statuses."
+          title={`${dashboardBudgetMetricLabel} distribution across your current project statuses.`}
           className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -737,11 +804,11 @@ export default function RespondentDashboard() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
-                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Requested Budget Mix</h3>
-                  <InfoHint text="A quick view of where your total requested budget currently sits by project status, helping respondents understand what is blocked, in review, or already approved." />
+                  <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Queue Mix</h3>
+                  <InfoHint text={`A quick view of where your total ${dashboardBudgetMetricLabel.toLowerCase()} currently sits by project status, helping respondents understand what is blocked, in review, or already approved.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Understand where your total requested budget is currently sitting
+                  Understand where your total {dashboardBudgetMetricLabel.toLowerCase()} is currently sitting
                 </p>
               </div>
             </div>
@@ -751,7 +818,7 @@ export default function RespondentDashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={requestedBudgetByStatus}
+                      data={budgetByStatus}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -761,7 +828,7 @@ export default function RespondentDashboard() {
                       paddingAngle={3}
                       strokeWidth={0}
                     >
-                      {requestedBudgetByStatus.map((entry) => (
+                      {budgetByStatus.map((entry) => (
                         <Cell key={entry.name} fill={entry.fill} />
                       ))}
                     </Pie>
@@ -775,7 +842,7 @@ export default function RespondentDashboard() {
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {requestedBudgetByStatus.map((item) => (
+                {budgetByStatus.map((item) => (
                   <div key={item.name} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
@@ -785,9 +852,19 @@ export default function RespondentDashboard() {
                       <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-[#64748B] dark:text-slate-100">Requested</span>
+                      <span className="text-[#64748B] dark:text-slate-100">{dashboardBudgetMetricLabel}</span>
                       <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
                     </div>
+                    {dashboardBudgetMetrics.length > 1 && (
+                      <div className="mt-3 grid gap-2">
+                        {dashboardBudgetMetrics.map((metric) => (
+                          <div key={metric} className="flex items-center justify-between gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2 text-sm dark:bg-white/5">
+                            <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                            <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={12} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -866,7 +943,7 @@ export default function RespondentDashboard() {
           </Card>
         ) : (
           <Card
-            title="Shows requested budget distribution by strategic priority for the selected cycle."
+            title={`Shows ${dashboardBudgetMetricLabel.toLowerCase()} distribution by strategic priority for the selected cycle.`}
             className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
@@ -875,19 +952,19 @@ export default function RespondentDashboard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Layers className="h-5 w-5 shrink-0 text-[#286CFF]" />
                     <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Strategic Priority</h3>
-                    <InfoHint text="Shows the selected cycle requested budget grouped by strategic priority." />
+                    <InfoHint text={`Shows the selected cycle ${dashboardBudgetMetricLabel.toLowerCase()} grouped by strategic priority.`} />
                   </div>
                   <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                    Requested budget grouped by strategic priority
+                    {dashboardBudgetMetricLabel} grouped by strategic priority
                   </p>
                 </div>
               </div>
-              <BudgetByCategory data={budgetByCategory} />
+              <BudgetByCategory data={budgetByCategory} metrics={dashboardBudgetMetrics} />
             </CardContent>
           </Card>
         )}
         <Card
-          title="Shows which account codes are driving the largest share of your requested budget."
+          title={`Shows which account codes are driving the largest share of your ${dashboardBudgetMetricLabel.toLowerCase()}.`}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -896,10 +973,10 @@ export default function RespondentDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
-                  <InfoHint text="Highlights the account codes receiving the largest share of requested budget across your submissions." />
+                  <InfoHint text={`Highlights the account codes receiving the largest share of ${dashboardBudgetMetricLabel.toLowerCase()} across your submissions.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Most-funded budget accounts across your submissions
+                  Most-funded accounts by {dashboardBudgetMetricLabel.toLowerCase()}
                 </p>
               </div>
               <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
@@ -910,6 +987,7 @@ export default function RespondentDashboard() {
               items={accountBreakdown}
               loading={accountBreakdownLoading}
               error={accountBreakdownError}
+              metrics={dashboardBudgetMetrics}
             />
           </CardContent>
         </Card>
@@ -1002,10 +1080,10 @@ export default function RespondentDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
-                  <InfoHint text="Shows how requested budget is distributed across the four ICT budget activity types in the respondent workspace." />
+                  <InfoHint text={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across the four ICT budget activity types in the respondent workspace.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Distribution of requested budget by budget type
+                  Distribution of {dashboardBudgetMetricLabel.toLowerCase()} by budget type
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" style={{marginTop: 50}}>
@@ -1018,7 +1096,17 @@ export default function RespondentDashboard() {
                       <div>
                         <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
                         <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of requested total</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of {dashboardBudgetMetricLabel.toLowerCase()} total</p>
+                        {dashboardBudgetMetrics.length > 1 && (
+                          <div className="mt-3 space-y-1.5">
+                            {dashboardBudgetMetrics.map((metric) => (
+                              <div key={metric} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                                <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1054,10 +1142,10 @@ export default function RespondentDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                 <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
-                <InfoHint text="Shows how requested budget is distributed across the four ICT budget activity types in the respondent workspace." />
+                <InfoHint text={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across the four ICT budget activity types in the respondent workspace.`} />
               </div>
               <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                Distribution of requested budget by budget type
+                Distribution of {dashboardBudgetMetricLabel.toLowerCase()} by budget type
               </p>
             </div>
             <div className="mx-auto mt-12 max-w-2xl">
@@ -1071,7 +1159,17 @@ export default function RespondentDashboard() {
                       <div className="flex-1">
                         <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
                         <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of requested total</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of {dashboardBudgetMetricLabel.toLowerCase()} total</p>
+                        {dashboardBudgetMetrics.length > 1 && (
+                          <div className="mt-3 space-y-1.5">
+                            {dashboardBudgetMetrics.map((metric) => (
+                              <div key={metric} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                                <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

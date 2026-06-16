@@ -108,6 +108,7 @@ export function AppLayout() {
       Approver: '/approver/dashboard',
       'ICT Admin': '/admin/assessment-cycles',
       'ICT - Strategy Team': '/strategy-team/dashboard',
+      'ICT - Strategy Director': '/strategy-director/dashboard',
       'ICT - SME Team': '/sme-team/dashboard',
     }
     const roleBasePaths: Record<string, string> = {
@@ -116,6 +117,7 @@ export function AppLayout() {
       Approver: '/approver',
       'ICT Admin': '/admin',
       'ICT - Strategy Team': '/strategy-team',
+      'ICT - Strategy Director': '/strategy-director',
       'ICT - SME Team': '/sme-team',
     }
     const targetBase = roleBasePaths[activeRole]
@@ -137,7 +139,9 @@ export function AppLayout() {
     )
   }
 
-  if (rolesResolved && cyclesResolved && hasAnyRole && !hasCycles) {
+  const isAdminWorkspace = activeRole === 'ICT Admin' || location.pathname.startsWith('/admin')
+
+  if (rolesResolved && cyclesResolved && hasAnyRole && !hasCycles && !isAdminWorkspace) {
     return (
       <AppEmptyState
         variant="cycle"

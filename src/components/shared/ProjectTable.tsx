@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 
 type ColumnType = 'text' | 'number' | 'option'
 type TextOperator = 'contains' | 'equals'
@@ -35,7 +37,8 @@ interface SortState {
 
 interface ColumnDefinition<T> {
   id: string
-  header: string
+  header: ReactNode
+  headerLabel?: string
   type: ColumnType
   accessor: (row: T) => string | number | null | undefined
   render?: (row: T) => ReactNode
@@ -62,6 +65,12 @@ const STATUS_FOR_ADGE_DESCRIPTIONS: Record<string, string> = {
   'Under Approver Review': 'Project is under review by the Approver.',
   'Approved by Approver': 'Project has been approved and is ready for the next stage.',
   'Under DGE Review': 'Project or entity submission is under DGE review.',
+  'Under Strategic Alignment Review': 'Project is being reviewed by the Strategy Team for strategic priority and classification alignment.',
+  'Under SME Review': 'Project is with the target SME team for domain review.',
+  'Strategic Priority Change Under Review': 'SME requested a strategic priority or classification change and Strategy Team is reviewing it.',
+  'Under Quality Check': 'Project is with Strategy Team for quality check.',
+  'Under Final Review': 'Project is with Strategy Director for final DGE review.',
+  'Review Completed': 'DGE final review has been completed for this project.',
   'Allocation In Progress': 'Budget allocation entry is pending with the Respondent.',
   'Allocation In Review': 'Budget allocation has been submitted and is awaiting Approver review.',
   'Allocation Completed': 'Budget allocation has been approved.',
@@ -77,6 +86,12 @@ const STATUS_FOR_ADGE_BADGE_CLASSES: Record<string, string> = {
   'Under Approver Review': 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400',
   'Approved by Approver': 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400',
   'Under DGE Review': 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300',
+  'Under Strategic Alignment Review': 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]',
+  'Under SME Review': 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300',
+  'Strategic Priority Change Under Review': 'bg-violet-50 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300',
+  'Under Quality Check': 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
+  'Under Final Review': 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300',
+  'Review Completed': 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
   'Allocation In Progress': 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300',
   'Allocation In Review': 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300',
   'Allocation Completed': 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300',
@@ -121,6 +136,32 @@ function normalize(value: string | number | null | undefined) {
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
+}
+
+function BudgetAmount({ amount }: { amount: number }) {
+  return (
+    <span className="text-[14px] font-semibold text-[#0F172A] dark:text-white">
+      {formatBudgetValue(amount)}
+    </span>
+  )
+}
+
+function BudgetHeader({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 leading-none">
+      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
+      <span>{label}</span>
+    </span>
+  )
+}
+
+function getColumnHeaderLabel<T>(column: ColumnDefinition<T>) {
+  if (column.headerLabel) return column.headerLabel
+  return typeof column.header === 'string' ? column.header : column.id
+}
+
+function choiceLabel(value: number | null | undefined, labels: Record<number, string>) {
+  return value != null ? labels[value] ?? '-' : '-'
 }
 
 function compareValues(a: string | number | null | undefined, b: string | number | null | undefined, type: ColumnType) {
@@ -210,6 +251,7 @@ function ColumnFilterMenu<T>({
   const currentFilter = filter ?? {}
   const textOperator = (currentFilter.operator as TextOperator | undefined) ?? 'contains'
   const numberOperator = (currentFilter.operator as NumberOperator | undefined) ?? 'equals'
+  const headerLabel = getColumnHeaderLabel(column)
 
   return (
     <DropdownMenu>
@@ -222,7 +264,7 @@ function ColumnFilterMenu<T>({
               ? 'border-[#286CFF] bg-[#E7F5FF] text-[#286CFF]'
               : 'border-transparent text-[#94A3B8] hover:border-[#B0DBFF] hover:bg-[#E7F5FF] hover:text-[#286CFF]'
           )}
-          aria-label={`Filter ${column.header}`}
+          aria-label={`Filter ${headerLabel}`}
         >
           <Filter className="h-3.5 w-3.5" />
         </button>
@@ -232,7 +274,7 @@ function ColumnFilterMenu<T>({
           <div className="flex items-start justify-between gap-3">
             <div>
               <DropdownMenuLabel className="p-0 text-xs font-semibold text-[#0F172A]">
-                Filter {column.header}
+                Filter {headerLabel}
               </DropdownMenuLabel>
               <p className="mt-0.5 text-[11px] text-[#64748B]">
                 {column.type === 'text' && 'Choose operator and value'}
@@ -245,7 +287,7 @@ function ColumnFilterMenu<T>({
                 type="button"
                 onClick={onClear}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#0F172A]"
-                aria-label={`Clear ${column.header} filter`}
+                aria-label={`Clear ${headerLabel} filter`}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -316,7 +358,7 @@ function ColumnFilterMenu<T>({
                 <Input
                   value={currentFilter.value ?? ''}
                   onChange={(event) => onFilterChange({ ...currentFilter, value: event.target.value })}
-                  placeholder={column.type === 'number' ? 'Enter amount' : `Enter ${column.header.toLowerCase()}`}
+                  placeholder={column.type === 'number' ? 'Enter amount' : `Enter ${headerLabel.toLowerCase()}`}
                   className="h-8 rounded-lg border-[#DCE6F1] pl-8 text-xs shadow-none"
                 />
               </div>
@@ -371,6 +413,7 @@ interface ProjectTableProps {
   linkBase?: string
   showCreatedBy?: boolean
   showAiScore?: boolean
+  budgetColumnMode?: 'instance' | 'all'
   portfolioSummary?: PortfolioSummaryPayload | null
   onFilterStateChange?: (active: boolean) => void
 }
@@ -404,11 +447,23 @@ export function ProjectTable({
   linkBase = '/respondent/projects',
   showCreatedBy = false,
   showAiScore = true,
+  budgetColumnMode = 'instance',
   portfolioSummary,
   onFilterStateChange,
 }: ProjectTableProps) {
   const [filters, setFilters] = useState<Record<string, ColumnFilter>>({})
   const [sort, setSort] = useState<SortState | undefined>()
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showDgeOutcomeColumns =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge)
+  const showRecommendedBudgetColumn = showDgeOutcomeColumns
+  const showAllocatedBudgetColumn =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation)
+  const showUtilizedBudgetColumn =
+    budgetColumnMode === 'all' ||
+    (typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization)
 
   const columns = useMemo<ColumnDefinition<Project>[]>(() => {
     const baseColumns: ColumnDefinition<Project>[] = [
@@ -489,15 +544,109 @@ export function ProjectTable({
       },
       {
         id: 'budget',
-        header: 'Budget',
+        header: <BudgetHeader label="Requested Budget" />,
+        headerLabel: 'Requested Budget',
         type: 'number',
         accessor: (project) => project.requestedBudget,
-        render: (project) => (
-          <span className="text-[14px] font-semibold text-[#0F172A] dark:text-white">
-            {formatBudgetValue(project.requestedBudget)}
-          </span>
-        ),
+        render: (project) => <BudgetAmount amount={project.requestedBudget} />,
       },
+      ...(showRecommendedBudgetColumn
+        ? [
+            {
+              id: 'recommendedBudget',
+              header: <BudgetHeader label="Recommended Budget" />,
+              headerLabel: 'Recommended Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.recommendedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.recommendedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showAllocatedBudgetColumn
+        ? [
+            {
+              id: 'allocatedBudget',
+              header: <BudgetHeader label="Allocated Budget" />,
+              headerLabel: 'Allocated Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.allocatedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.allocatedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showUtilizedBudgetColumn
+        ? [
+            {
+              id: 'utilizedBudget',
+              header: <BudgetHeader label="Utilized Budget" />,
+              headerLabel: 'Utilized Budget',
+              type: 'number' as const,
+              accessor: (project: Project) => project.utilizedBudget ?? 0,
+              render: (project: Project) => <BudgetAmount amount={project.utilizedBudget ?? 0} />,
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
+      ...(showDgeOutcomeColumns
+        ? [
+            {
+              id: 'planningOutcome',
+              header: 'Planning Outcome',
+              type: 'option' as const,
+              accessor: (project: Project) =>
+                choiceLabel(project.planningOutcome, {
+                  1: 'Recommended by DGE',
+                  2: 'Not Recommended',
+                }),
+              options: Array.from(
+                new Set(
+                  projects.map((project) =>
+                    choiceLabel(project.planningOutcome, {
+                      1: 'Recommended by DGE',
+                      2: 'Not Recommended',
+                    })
+                  )
+                )
+              ).sort(),
+              render: (project: Project) => (
+                <span className="whitespace-nowrap text-[14px] font-semibold text-[#0F172A] dark:text-white">
+                  {choiceLabel(project.planningOutcome, {
+                    1: 'Recommended by DGE',
+                    2: 'Not Recommended',
+                  })}
+                </span>
+              ),
+              className: 'hidden xl:table-cell',
+              headerClassName: 'hidden xl:table-cell whitespace-nowrap',
+            },
+            {
+              id: 'addedInAllocation',
+              header: 'Added In Allocation',
+              type: 'option' as const,
+              accessor: (project: Project) =>
+                choiceLabel(project.addedInAllocation, {
+                  1: 'No',
+                  2: 'Yes',
+                }),
+              options: ['No', 'Yes'],
+              render: (project: Project) => (
+                <span className="whitespace-nowrap text-[14px] font-semibold text-[#0F172A] dark:text-white">
+                  {choiceLabel(project.addedInAllocation, {
+                    1: 'No',
+                    2: 'Yes',
+                  })}
+                </span>
+              ),
+              className: 'hidden 2xl:table-cell',
+              headerClassName: 'hidden 2xl:table-cell whitespace-nowrap',
+            },
+          ]
+        : []),
       {
         id: 'status',
         header: 'Status',
@@ -598,7 +747,17 @@ export function ProjectTable({
     })
 
     return baseColumns
-  }, [linkBase, portfolioSummary, projects, showAiScore, showCreatedBy])
+  }, [
+    linkBase,
+    portfolioSummary,
+    projects,
+    showAiScore,
+    showCreatedBy,
+    showAllocatedBudgetColumn,
+    showDgeOutcomeColumns,
+    showRecommendedBudgetColumn,
+    showUtilizedBudgetColumn,
+  ])
 
   const tableRows = useMemo(() => {
     const filteredRows = projects.filter((project) =>
@@ -648,19 +807,12 @@ export function ProjectTable({
                 )}
               >
                 <div className="flex items-center gap-2">
-                  {column.id === 'budget' ? (
-                    <span className="inline-flex items-center gap-1.5 leading-none">
-                      <span>{column.header}</span>
-                      <DirhamIcon width={14} height={14} color="currentColor" className="mt-[2px] shrink-0 self-center" />
-                    </span>
-                  ) : (
-                    <span>{column.header}</span>
-                  )}
+                  <span>{column.header}</span>
                   {column.filterable !== false && (
                     <>
                       <SortButton
                         columnId={column.id}
-                        columnHeader={column.header}
+                        columnHeader={getColumnHeaderLabel(column)}
                         sort={sort}
                         onSortChange={(direction) => setSort({ columnId: column.id, direction })}
                       />

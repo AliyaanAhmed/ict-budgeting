@@ -28,6 +28,7 @@ import { useQueueCounts } from '@/context/QueueCountsContext'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
 function toDisplayText(value: unknown): string {
@@ -45,6 +46,63 @@ function toDisplayText(value: unknown): string {
 
 type ReviewFilter = 'all' | 'to-review' | 'reviewed' | 'clarification' | 'sent-approver'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
+
+function getQueueBudgetItems(
+  project: Pick<ReviewQueueProject, 'requestedBudget' | 'recommendedBudget' | 'allocatedBudget' | 'utilizedBudget'>,
+  instanceStatusCode?: number | null
+) {
+  return [
+    { label: 'Requested', amount: project.requestedBudget },
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.reviewCompletedByDge ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Recommended', amount: project.recommendedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.allocation || instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Allocated', amount: project.allocatedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Utilized', amount: project.utilizedBudget ?? 0 }]
+      : []),
+  ]
+}
+
+function QueueBudgetSummary({
+  project,
+  instanceStatusCode,
+  accent,
+}: {
+  project: ReviewQueueProject
+  instanceStatusCode?: number | null
+  accent: string
+}) {
+  const items = getQueueBudgetItems(project, instanceStatusCode)
+
+  return (
+    <div
+      className="shrink-0 rounded-xl px-4 py-3 text-left lg:min-w-[230px]"
+      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold" style={{ color: accent }}>Budget Summary</p>
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-full"
+          style={{ background: `${accent}14`, color: accent }}
+        >
+          <WalletCards className="h-3.5 w-3.5" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-white/5">
+            <p className="text-xs font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
+            <CurrencyAmount amount={item.amount} className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white" iconSize={12} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function statusAccent(status: ReviewQueueProject['status']) {
   if (status === 'To Review') return '#286CFF'
@@ -420,7 +478,7 @@ function EmptyState({ search, budgetType }: { search: string; budgetType: string
 }
 
 export default function ReviewQueue() {
-  const { instanceId } = useInstance()
+  const { instanceId, instanceDetail } = useInstance()
   const { items: cycleProjects } = useRoleProjects('reviewer', instanceId)
   const [projects, setProjects] = useState<ReviewQueueProject[]>([])
   const [loading, setLoading] = useState(true)
@@ -433,7 +491,7 @@ export default function ReviewQueue() {
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingSubmit, setPendingSubmit] = useState<string[] | null>(null)
-  const { runActionToast } = useToast()
+  const { runActionToast, showErrorToast } = useToast()
   const { setReviewCount } = useQueueCounts()
   const hasCycleDgeSubmission = cycleProjects.some(
     (cycleProject) =>
@@ -527,6 +585,23 @@ export default function ReviewQueue() {
     const project = projects.find(p => p.id === id)
     return Boolean(project && (project.status === 'To Review' || project.status === 'Reviewed') && isProjectActionable(project))
   })
+  const selectedProjects = selectedIds
+    .map((id) => projects.find((project) => project.id === id))
+    .filter((project): project is ReviewQueueProject => Boolean(project))
+  const selectedStatusKeys = Array.from(
+    new Set(selectedProjects.map((project) => `${project.status}|${project.statusForAdgeLabel ?? ''}`))
+  )
+  const hasMixedSelectedStatuses = selectedStatusKeys.length > 1
+  const guardedBulkAction = (action: () => void) => {
+    if (hasMixedSelectedStatuses) {
+      showErrorToast(
+        'Mixed statuses selected',
+        'Please select projects from the same workflow status before using bulk actions.'
+      )
+      return
+    }
+    action()
+  }
 
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => {
@@ -534,15 +609,37 @@ export default function ReviewQueue() {
       if (!project || !isProjectActionable(project)) {
         return prev
       }
-      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const nextProjects = next
+        .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
+        .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
+      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      if (nextStatusCount > 1) {
+        showErrorToast(
+          'Mixed statuses selected',
+          'Bulk workflow buttons are disabled when selected projects are in different statuses.'
+        )
+      }
+      return next
     })
 
   const toggleAllVisible = () =>
-    setSelectedIds(prev =>
-      allVisibleSelected
+    setSelectedIds(prev => {
+      const next = allVisibleSelected
         ? prev.filter(id => !visibleActionableIds.includes(id))
         : Array.from(new Set([...prev, ...visibleActionableIds]))
-    )
+      const nextProjects = next
+        .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
+        .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
+      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      if (nextStatusCount > 1) {
+        showErrorToast(
+          'Mixed statuses selected',
+          'Bulk workflow buttons are disabled when selected projects are in different statuses.'
+        )
+      }
+      return next
+    })
 
   const getIctId = (projectId: string) =>
     projects.find(p => p.id === projectId)?.ictBudgetId ?? ''
@@ -759,8 +856,8 @@ export default function ReviewQueue() {
             <Button
               variant="outline"
               size="sm"
-              disabled={clarificationSelected.length === 0}
-              onClick={() => setBulkClarificationOpen(true)}
+              disabled={clarificationSelected.length === 0 || hasMixedSelectedStatuses}
+              onClick={() => guardedBulkAction(() => setBulkClarificationOpen(true))}
             >
               <MessageSquare className="h-4 w-4" />Raise Clarification
             </Button>
@@ -768,16 +865,16 @@ export default function ReviewQueue() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={completableSelected.length === 0}
-                onClick={() => void handleCompleteReview(completableSelected)}
+                disabled={completableSelected.length === 0 || hasMixedSelectedStatuses}
+                onClick={() => guardedBulkAction(() => void handleCompleteReview(completableSelected))}
               >
                 <Check className="h-4 w-4" />Mark as Reviewed
               </Button>
             )}
             <Button
               size="sm"
-              disabled={submittableSelected.length === 0}
-              onClick={() => setPendingSubmit(submittableSelected)}
+              disabled={submittableSelected.length === 0 || hasMixedSelectedStatuses}
+              onClick={() => guardedBulkAction(() => setPendingSubmit(submittableSelected))}
             >
               <Send className="h-4 w-4" />Submit to Approver
             </Button>
@@ -842,22 +939,7 @@ export default function ReviewQueue() {
                       </div>
                     </div>
 
-                    {/* Budget box */}
-                    <div
-                      className="shrink-0 rounded-xl px-4 py-3 text-left lg:text-end"
-                      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-3 lg:justify-end">
-                        <p className="text-xs font-semibold" style={{ color: accent }}>Requested Budget</p>
-                        <div
-                          className="flex h-7 w-7 items-center justify-center rounded-full"
-                          style={{ background: `${accent}14`, color: accent }}
-                        >
-                          <WalletCards className="h-3.5 w-3.5" />
-                        </div>
-                      </div>
-                      <CurrencyAmount amount={proj.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
-                    </div>
+                    <QueueBudgetSummary project={proj} instanceStatusCode={instanceDetail?.statuscode} accent={accent} />
                   </div>
 
                   {/* Clarification banner */}
@@ -873,25 +955,12 @@ export default function ReviewQueue() {
                     </div>
                   )}
 
-                  {/* AI + CapEx/OpEx row */}
-                  <div className="mt-4 flex flex-col gap-3 sm:ml-10 lg:flex-row lg:items-start">
-                    <div className="min-w-0 flex-1">
-                      <AiInsightRow
-                        confidence={proj.aiConfidence}
-                      >
-                        <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
-                      </AiInsightRow>
-                    </div>
-                    <div className="grid shrink-0 grid-cols-2 gap-2 lg:w-[220px] lg:grid-cols-1">
-                      <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-                        <p className="text-xs text-[#64748B]">CapEx</p>
-                        <CurrencyAmount amount={proj.capex} className="font-bold" />
-                      </div>
-                      <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] px-3 py-2 dark:border-white/10 dark:bg-white/5">
-                        <p className="text-xs text-[#64748B]">OpEx</p>
-                        <CurrencyAmount amount={proj.opex} className="font-bold" />
-                      </div>
-                    </div>
+                  <div className="mt-4 sm:ml-10">
+                    <AiInsightRow
+                      confidence={proj.aiConfidence}
+                    >
+                      <BudgetOverviewInsight ictBudgetId={proj.ictBudgetId} />
+                    </AiInsightRow>
                   </div>
 
                   {/* Card actions */}

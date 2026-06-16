@@ -29,11 +29,13 @@ import { projectService } from '@/services/projectService'
 import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
+import { completeAllocationReview, submitInstanceToUtilization } from '@/services/dgeWorkflowService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { usePortfolioSummary } from '@/hooks/usePortfolioSummary'
 import { AiPortfolioSummary } from '@/components/shared/AiPortfolioSummary'
 import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
-import type { ApprovalQueueProject, ClarificationPayload } from '@/domain/types'
+import type { ApprovalQueueProject, ClarificationPayload, Project } from '@/domain/types'
 
 function toDisplayText(value: unknown): string {
   if (typeof value === 'string') return value.trim()
@@ -51,10 +53,72 @@ function toDisplayText(value: unknown): string {
 type ApprovalFilter = 'all' | 'pending' | 'approved' | 'clarification' | 'submitted-dge'
 type BudgetTypeFilter = 'all' | 'Operational Recurring' | 'Operational Non-Recurring' | 'New Project' | 'Project Continuation'
 
+function getQueueBudgetItems(
+  project: Pick<ApprovalQueueProject, 'requestedBudget' | 'recommendedBudget' | 'allocatedBudget' | 'utilizedBudget'>,
+  instanceStatusCode?: number | null
+) {
+  return [
+    { label: 'Requested', amount: project.requestedBudget },
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.reviewCompletedByDge ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
+    instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Recommended', amount: project.recommendedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.allocation || instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Allocated', amount: project.allocatedBudget ?? 0 }]
+      : []),
+    ...(instanceStatusCode === DGE_INSTANCE_STATUS.utilization
+      ? [{ label: 'Utilized', amount: project.utilizedBudget ?? 0 }]
+      : []),
+  ]
+}
+
+function QueueBudgetSummary({
+  project,
+  instanceStatusCode,
+  accent,
+}: {
+  project: ApprovalQueueProject
+  instanceStatusCode?: number | null
+  accent: string
+}) {
+  const items = getQueueBudgetItems(project, instanceStatusCode)
+
+  return (
+    <div
+      className="shrink-0 rounded-xl px-4 py-3 text-left lg:min-w-[230px]"
+      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold" style={{ color: accent }}>Budget Summary</p>
+        <div
+          className="flex h-7 w-7 items-center justify-center rounded-full"
+          style={{ background: `${accent}14`, color: accent }}
+        >
+          <WalletCards className="h-3.5 w-3.5" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {items.map((item) => (
+          <div key={item.label} className="min-w-0 rounded-lg bg-white/70 px-2.5 py-2 dark:bg-white/5">
+            <p className="text-xs font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
+            <CurrencyAmount amount={item.amount} className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white" iconSize={12} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const LOCAL_STATUSCODE_BY_STATUS = {
   Approved: 776140003,
   'Submitted to DGE': 776140004,
 } as const
+
+type StatusOverride = {
+  status: Project['status']
+  statusCode: number
+}
 
 function statusAccent(status: ApprovalQueueProject['status']) {
   if (status === 'Pending') return '#286CFF'
@@ -431,7 +495,7 @@ function EmptyState({ search, budgetType }: { search: string; budgetType: string
 
 export default function ApprovalQueue() {
   const { selectedCycle } = useCycle()
-  const { instanceId } = useInstance()
+  const { instanceId, instanceDetail } = useInstance()
   const { items: liveProjects } = useRoleProjects('approver', instanceId)
   const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
   const [projects, setProjects] = useState<ApprovalQueueProject[]>([])
@@ -446,7 +510,7 @@ export default function ApprovalQueue() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingApprove, setPendingApprove] = useState<string[] | null>(null)
   const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, 'Approved' | 'Submitted to DGE'>>({})
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>({})
   const { runActionToast } = useToast()
   const { setApprovalCount } = useQueueCounts()
 
@@ -479,8 +543,8 @@ export default function ApprovalQueue() {
 
         return {
           ...project,
-          status: override,
-          statusCode: LOCAL_STATUSCODE_BY_STATUS[override],
+          status: override.status,
+          statusCode: override.statusCode,
         }
       }),
     [liveProjects, statusOverrides]
@@ -500,13 +564,23 @@ export default function ApprovalQueue() {
   const aiSummaryReviewerCount = reviewerCount
   const aiSummaryApproverCount = approverOwnedCount
   const allProjectsApproved = cycleProjectCount > 0 && effectiveLiveProjects.every((project) => project.status === 'Approved')
+  const instanceInAllocation = instanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
+  const allocationCompletedProjectCount = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+  ).length
+  const allProjectsAllocationCompleted =
+    cycleProjectCount > 0 &&
+    allocationCompletedProjectCount === cycleProjectCount
   const hasCycleDgeSubmission = effectiveLiveProjects.some(
     (project) => project.status === 'Submitted to DGE' && project.statusCode === 776140004
   )
   const directDgeFlowActive = hasCycleDgeSubmission
   const portfolioAlreadySubmittedToDge =
     portfolioSubmittedToDge || hasCycleDgeSubmission
-  const submitToDgeDisabled = !allProjectsApproved || portfolioAlreadySubmittedToDge
+  const showSubmittedToDgeMessage = portfolioAlreadySubmittedToDge && !instanceInAllocation
+  const submitToDgeDisabled = instanceInAllocation
+    ? !allProjectsAllocationCompleted
+    : !allProjectsApproved || portfolioAlreadySubmittedToDge
 
   const filtered = useMemo(() =>
     projects
@@ -571,7 +645,11 @@ export default function ApprovalQueue() {
         setStatusOverrides((prev) => {
           const next = { ...prev }
           for (const ictBudgetId of ictBudgetIds) {
-            next[ictBudgetId] = directDgeFlowActive ? 'Submitted to DGE' : 'Approved'
+            const status = directDgeFlowActive ? 'Submitted to DGE' : 'Approved'
+            next[ictBudgetId] = {
+              status,
+              statusCode: LOCAL_STATUSCODE_BY_STATUS[status],
+            }
           }
           return next
         })
@@ -602,42 +680,100 @@ export default function ApprovalQueue() {
     setPendingApprove(null)
   }
 
+  const handleCompleteAllocation = async (project: ApprovalQueueProject) => {
+    if (!project.ictBudgetId) return
+
+    await runActionToast(
+      async () => {
+        await completeAllocationReview(project.ictBudgetId as string)
+        await invalidateBudgetOverviewRecord(project.ictBudgetId as string)
+        setStatusOverrides((prev) => ({
+          ...prev,
+          [project.ictBudgetId as string]: {
+            status: 'Submitted to DGE',
+            statusCode: DGE_BUDGET_STATUS.allocationCompleted,
+          },
+        }))
+        setProjects((prev) =>
+          prev.map((item) =>
+            item.id === project.id
+              ? {
+                  ...item,
+                  status: 'Submitted to DGE' as const,
+                  statusCode: DGE_BUDGET_STATUS.allocationCompleted,
+                  statusForAdgeLabel: 'Allocation Completed',
+                }
+              : item
+          )
+        )
+      },
+      {
+        processingTitle: 'Completing allocation',
+        processingDescription: 'Marking this project allocation as completed...',
+        successTitle: 'Allocation completed',
+        successDescription: 'The project allocation has been completed.',
+        errorTitle: 'Unable to complete allocation',
+        minDurationMs: 1200,
+      }
+    )
+  }
+
   const handleSubmitToDge = async () => {
     const projectIds = effectiveLiveProjects
-      .filter((project) => project.ictBudgetId && project.status === 'Approved')
+      .filter((project) =>
+        project.ictBudgetId &&
+        (instanceInAllocation
+          ? project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+          : project.status === 'Approved')
+      )
       .map((project) => project.ictBudgetId as string)
 
-    if (!projectIds.length) {
+    if (!projectIds.length || (instanceInAllocation && !instanceId)) {
       return
     }
 
     await runActionToast(
       async () => {
-        await projectService.approverSubmitToDge(projectIds)
-        await updateCurrentInstanceSubmissionDate()
+        if (instanceInAllocation && instanceId) {
+          await submitInstanceToUtilization(instanceId, projectIds)
+        } else {
+          await projectService.approverSubmitToDge(projectIds)
+          await updateCurrentInstanceSubmissionDate()
+        }
         await Promise.allSettled(projectIds.map(id => invalidateBudgetOverviewRecord(id)))
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
           const next = { ...prev }
           for (const projectId of projectIds) {
-            next[projectId] = 'Submitted to DGE'
+            next[projectId] = {
+              status: 'Submitted to DGE',
+              statusCode: instanceInAllocation ? DGE_BUDGET_STATUS.utilizationInProgress : DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+            }
           }
           return next
         })
         setProjects((prev) =>
           prev.map((project) =>
             projectIds.includes(project.ictBudgetId)
-              ? { ...project, status: 'Submitted to DGE' as const }
+              ? {
+                  ...project,
+                  status: 'Submitted to DGE' as const,
+                  statusCode: instanceInAllocation ? DGE_BUDGET_STATUS.utilizationInProgress : DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+                }
               : project
           )
         )
       },
       {
-        processingTitle: 'Submitting to DGE',
-        processingDescription: 'Assigning approved projects to the strategy team and moving them into DGE review...',
-        successTitle: 'Submitted to DGE',
-        successDescription: 'All approved projects were submitted to DGE successfully.',
-        errorTitle: 'Unable to submit to DGE',
+        processingTitle: instanceInAllocation ? 'Starting utilization' : 'Submitting to DGE',
+        processingDescription: instanceInAllocation
+          ? 'Moving the entity into utilization and assigning projects back to Respondent...'
+          : 'Assigning approved projects to the strategy team and moving them into DGE review...',
+        successTitle: instanceInAllocation ? 'Utilization started' : 'Submitted to DGE',
+        successDescription: instanceInAllocation
+          ? 'All allocation-completed projects are now in utilization.'
+          : 'All approved projects were submitted to DGE successfully.',
+        errorTitle: instanceInAllocation ? 'Unable to start utilization' : 'Unable to submit to DGE',
         minDurationMs: 1600,
       }
     )
@@ -734,7 +870,7 @@ export default function ApprovalQueue() {
             </div>
 
 
-            {portfolioAlreadySubmittedToDge ? (
+            {showSubmittedToDgeMessage ? (
               <div className="ml-auto flex min-w-[280px] items-start gap-3 rounded-[22px] border border-[#E9D5FF] bg-[#FDF8FF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                 <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
                 <div>
@@ -885,7 +1021,11 @@ export default function ApprovalQueue() {
             const accent = statusAccent(proj.status)
             const isSelected = selectedIds.includes(proj.id)
             const isActionable = proj.status === 'Pending'
-            const canClarify = proj.status === 'Pending' || proj.status === 'Approved'
+            const canCompleteAllocation = proj.statusCode === DGE_BUDGET_STATUS.allocationInReview
+            const canClarify =
+              proj.status === 'Pending' ||
+              proj.status === 'Approved' ||
+              proj.statusCode === DGE_BUDGET_STATUS.allocationInReview
             return (
               <article
                 key={proj.id}
@@ -918,22 +1058,7 @@ export default function ApprovalQueue() {
                       </div>
                     </div>
 
-                    {/* Budget box */}
-                    <div
-                      className="shrink-0 rounded-xl px-4 py-3 text-left lg:text-end"
-                      style={{ background: `${accent}0A`, border: `1px solid ${accent}30` }}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-3 lg:justify-end">
-                        <p className="text-xs font-semibold" style={{ color: accent }}>Requested Budget</p>
-                        <div
-                          className="flex h-7 w-7 items-center justify-center rounded-full"
-                          style={{ background: `${accent}14`, color: accent }}
-                        >
-                          <WalletCards className="h-3.5 w-3.5" />
-                        </div>
-                      </div>
-                      <CurrencyAmount amount={proj.requestedBudget} className="text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
-                    </div>
+                    <QueueBudgetSummary project={proj} instanceStatusCode={instanceDetail?.statuscode} accent={accent} />
                   </div>
 
                   {/* AI insight row */}
@@ -969,6 +1094,15 @@ export default function ApprovalQueue() {
                       {directDgeFlowActive ? <Send className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
                       {directDgeFlowActive ? 'Submit to DGE' : 'Approve Project'}
                     </Button>
+                    {canCompleteAllocation && (
+                      <Button
+                        size="sm"
+                        className="bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
+                        onClick={() => void handleCompleteAllocation(proj)}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />Complete Allocation
+                      </Button>
+                    )}
                   </div>
                 </div>
               </article>

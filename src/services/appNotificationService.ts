@@ -10,8 +10,20 @@ import {
   SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
   type ModuleConfigTeamIds,
 } from '@/services/userContextService'
+import {
+  getStoredCurrentSme,
+  getStoredStrategyDirectorTeam,
+  getStoredStrategyTeam,
+} from '@/services/dgeRoleContextService'
 
-export type NotificationRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy'
+export type NotificationRole =
+  | 'Respondent'
+  | 'Reviewer'
+  | 'Approver'
+  | 'Strategy'
+  | 'Strategy Team'
+  | 'SME Team'
+  | 'Strategy Director'
 
 export interface AppNotificationItem {
   id: string
@@ -40,6 +52,9 @@ function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
 
 function normalizeStoredRole(roleLabel: string | null): NotificationRole | null {
   const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('strategy director')) return 'Strategy Director'
+  if (value.includes('strategy')) return 'Strategy Team'
+  if (value.includes('sme')) return 'SME Team'
   if (value.includes('review')) return 'Reviewer'
   if (value.includes('approv')) return 'Approver'
   if (value.includes('respond')) return 'Respondent'
@@ -55,6 +70,11 @@ function getTargetTeamId(role: NotificationRole): string | null {
   if (role === 'Respondent') return teamIds?.respondentTeamId?.trim() || null
   if (role === 'Reviewer') return teamIds?.reviewerTeamId?.trim() || null
   if (role === 'Approver') return teamIds?.approverTeamId?.trim() || null
+  if (role === 'SME Team') return getStoredCurrentSme()?.teamId?.trim() || null
+  if (role === 'Strategy Director') return getStoredStrategyDirectorTeam()?.teamId?.trim() || null
+  if (role === 'Strategy Team') {
+    return getStoredStrategyTeam()?.teamId?.trim() || teamIds?.strategyTeamId?.trim() || null
+  }
   return teamIds?.strategyTeamId?.trim() || null
 }
 
@@ -111,6 +131,42 @@ function mapNotificationRecord(
   }
 }
 
+export async function createNotificationForTeam(
+  teamId: string | null | undefined,
+  text: string,
+  context?: Record<string, unknown>
+) {
+  const targetTeamId = teamId?.trim() || null
+  if (!targetTeamId) {
+    console.warn('[AppNotificationService] Skipping notification create because team id is missing:', {
+      text,
+      context,
+    })
+    return null
+  }
+
+  const notificationId = await generateNotificationId()
+  const payload = {
+    dga_notification_id: notificationId,
+    'dga_notification_recipient_team@odata.bind': `/teams(${targetTeamId})`,
+    dga_notification_text: text,
+    statuscode: NOTIFICATION_STATUS_OPEN,
+  } as Partial<Omit<Dga_app_notificationsesBase, 'dga_app_notificationsid'>> as Omit<
+    Dga_app_notificationsesBase,
+    'dga_app_notificationsid'
+  >
+
+  console.log('[AppNotificationService] Creating notification:', { teamId: targetTeamId, payload, context })
+
+  const result = await Dga_app_notificationsesService.create(payload)
+  if (!result.success) {
+    throw new Error(result.error?.message?.trim() || 'Failed to create notification.')
+  }
+
+  console.log('[AppNotificationService] Notification created:', result.data)
+  return result.data?.dga_app_notificationsid ?? null
+}
+
 export async function createNotificationForRole(role: NotificationRole, text: string) {
   const teamId = getTargetTeamId(role)
   if (!teamId) {
@@ -121,26 +177,7 @@ export async function createNotificationForRole(role: NotificationRole, text: st
     return null
   }
 
-  const notificationId = await generateNotificationId()
-  const payload = {
-    dga_notification_id: notificationId,
-    'dga_notification_recipient_team@odata.bind': `/teams(${teamId})`,
-    dga_notification_text: text,
-    statuscode: NOTIFICATION_STATUS_OPEN,
-  } as Partial<Omit<Dga_app_notificationsesBase, 'dga_app_notificationsid'>> as Omit<
-    Dga_app_notificationsesBase,
-    'dga_app_notificationsid'
-  >
-
-  console.log('[AppNotificationService] Creating notification:', { role, teamId, payload })
-
-  const result = await Dga_app_notificationsesService.create(payload)
-  if (!result.success) {
-    throw new Error(result.error?.message?.trim() || 'Failed to create notification.')
-  }
-
-  console.log('[AppNotificationService] Notification created:', result.data)
-  return result.data?.dga_app_notificationsid ?? null
+  return createNotificationForTeam(teamId, text, { role })
 }
 
 export async function getOpenNotificationsForCurrentRole() {

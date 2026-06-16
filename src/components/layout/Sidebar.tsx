@@ -13,6 +13,7 @@ import {
   Table2,
   Users,
   ShieldCheck,
+  ShieldAlert,
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -85,13 +86,21 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
     ],
     'ICT - Strategy Team': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-team/dashboard' },
+      { label: 'Projects', icon: FolderOpen, href: '/strategy-team/projects' },
       { label: 'Strategic Alignment', icon: ScanSearch, href: '/strategy-team/strategic-alignment' },
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-team/entity-tracker' },
       { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
       { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },
     ],
+    'ICT - Strategy Director': [
+      { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-director/dashboard' },
+      { label: 'Projects', icon: FolderOpen, href: '/strategy-director/projects' },
+      { label: 'Director Review Queue', icon: ShieldAlert, href: '/strategy-director/reviewer-queue' },
+      { label: 'Entity Tracker', icon: Table2, href: '/strategy-director/entity-tracker' },
+    ],
     'ICT - SME Team': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/sme-team/dashboard' },
+      { label: 'Projects', icon: FolderOpen, href: '/sme-team/projects' },
       { label: 'SME Review Queue', icon: ClipboardList, href: '/sme-team/reviews' },
     ],
   }
@@ -206,6 +215,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
                   activeRole === 'Approver' && 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
                   activeRole === 'ICT Admin' && 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
                   activeRole === 'ICT - Strategy Team' && 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
+                  activeRole === 'ICT - Strategy Director' && 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
                   activeRole === 'ICT - SME Team' && 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
                 )}
               >

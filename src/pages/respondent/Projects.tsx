@@ -30,8 +30,17 @@ import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
 
-type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
+type FilterTab =
+  | 'all'
+  | 'needs-work'
+  | 'clarification'
+  | 'submitted-reviewer'
+  | 'allocation-in-progress'
+  | 'utilization-in-progress'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -43,6 +52,15 @@ type AiReviewFlagFilter = 'all-ai-review-flags' | string
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
+}
+
+function BudgetCardLabel({ children }: { children: string }) {
+  return (
+    <p className="inline-flex items-center gap-1.5 text-xs text-[#64748B] dark:text-slate-200">
+      <DirhamIcon width={12} height={12} color="currentColor" />
+      <span>{children}</span>
+    </p>
+  )
 }
 
 function AiScore({ score }: { score: number }) {
@@ -74,6 +92,10 @@ function ProjectAiFlagTags({ project, portfolioSummary }: { project: Project; po
 
 function ProjectCard({ project, portfolioSummary }: { project: Project; portfolioSummary: PortfolioSummaryPayload | null }) {
   const pendingClarification = project.status === 'Clarification Required'
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showRecommended = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+  const showAllocated = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation
+  const showUtilized = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization
   const dynamicRisk = portfolioSummary
     ? getPortfolioProjectInsight(portfolioSummary, project.ictBudgetId ?? project.id, 'respondent').riskLevel
     : null
@@ -116,9 +138,27 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <BudgetCardLabel>Requested Budget</BudgetCardLabel>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
+          {showRecommended && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Recommended Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showAllocated && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Allocated Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showUtilized && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Utilized Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
+            </div>
+          )}
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Pending With</p>
             <p className="truncate text-sm font-bold text-[#0F172A] dark:text-white">{project.pendingWith || '-'}</p>
@@ -189,6 +229,9 @@ export default function RespondentProjects() {
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
   const [aiReviewFlagFilter, setAiReviewFlagFilter] = useState<AiReviewFlagFilter>('all-ai-review-flags')
   const [exporting, setExporting] = useState(false)
+  const activeInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const instanceInAllocation = activeInstanceStatusCode === DGE_INSTANCE_STATUS.allocation
+  const instanceInUtilization = activeInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
   const aiReviewFlagOptions = Array.from(
     new Map(
       projects
@@ -203,19 +246,52 @@ export default function RespondentProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'needs-work' || tab === 'clarification' || tab === 'submitted-reviewer' || tab === 'all') {
+    if (
+      tab === 'needs-work' ||
+      tab === 'clarification' ||
+      tab === 'submitted-reviewer' ||
+      (tab === 'allocation-in-progress' && instanceInAllocation) ||
+      (tab === 'utilization-in-progress' && instanceInUtilization) ||
+      tab === 'all'
+    ) {
       setActiveTab(tab)
       return
     }
 
     setActiveTab('all')
-  }, [searchParams])
+  }, [instanceInAllocation, instanceInUtilization, searchParams])
 
   const tabs: { id: FilterTab; label: string; count: number }[] = [
     { id: 'all', label: 'All Projects', count: projects.length },
-    { id: 'needs-work', label: 'Needs Work / Draft', count: projects.filter((p) => p.status === 'Draft').length },
+    ...(!instanceInAllocation && !instanceInUtilization
+      ? [
+          {
+            id: 'needs-work' as const,
+            label: 'Needs Work / Draft',
+            count: projects.filter((p) => p.status === 'Draft').length,
+          },
+        ]
+      : []),
     { id: 'clarification', label: 'Clarification Required', count: projects.filter((p) => p.status === 'Clarification Required').length },
     { id: 'submitted-reviewer', label: 'Submitted to Reviewer', count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status)).length },
+    ...(instanceInAllocation
+      ? [
+          {
+            id: 'allocation-in-progress' as const,
+            label: 'Allocation In Progress',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInProgress).length,
+          },
+        ]
+      : []),
+    ...(instanceInUtilization
+      ? [
+          {
+            id: 'utilization-in-progress' as const,
+            label: 'Utilization In Progress',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.utilizationInProgress).length,
+          },
+        ]
+      : []),
   ]
 
   const filtered = projects.filter((project) => {
@@ -228,7 +304,9 @@ export default function RespondentProjects() {
       activeTab === 'all' ||
       (activeTab === 'needs-work' && project.status === 'Draft') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status))
+      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status)) ||
+      (activeTab === 'allocation-in-progress' && project.statusCode === DGE_BUDGET_STATUS.allocationInProgress) ||
+      (activeTab === 'utilization-in-progress' && project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress)
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter

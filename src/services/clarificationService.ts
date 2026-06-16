@@ -16,17 +16,15 @@ import type {
   Dga_ict_clarificationsstatuscode,
 } from '@/generated/models/Dga_ict_clarificationsModel'
 import {
-  SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
-  SESSION_MODULE_TYPE_ID_KEY,
   SESSION_USER_ID_KEY,
-  type ModuleConfigTeamIds,
 } from '@/services/userContextService'
+import { createNotificationForTeam } from '@/services/appNotificationService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 
 export interface RaiseClarificationInput {
   budgetId: string
   message: string
-  raisedByRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  raisedByRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   clarificationStage?: Dga_ict_clarificationsdga_clarification_stage
   scope?: Dga_ict_clarificationsdga_scope
   raisedToTeamId?: string | null
@@ -37,7 +35,7 @@ export interface AddClarificationReplyInput {
   budgetId: string
   parentClarificationId: string
   message: string
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   files?: File[]
 }
 
@@ -54,8 +52,13 @@ const STATUS_OPEN = 1 as Dga_ict_clarificationsstatuscode
 const STATUS_RESPONDED = 776140002 as Dga_ict_clarificationsstatuscode
 const STATUS_CLOSED = 776140003 as Dga_ict_clarificationsstatuscode
 
-function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team' {
+function isDgeRole(role: RaiseClarificationInput['raisedByRole'] | AddClarificationReplyInput['currentRole']) {
+  return role === 'Strategy Team' || role === 'Strategy Director' || role === 'SME Team'
+}
+
+function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team' {
   const normalized = roleLabel?.trim().toLowerCase() ?? ''
+  if (normalized.includes('strategy director')) return 'Strategy Director'
   if (normalized.includes('strategy')) return 'Strategy Team'
   if (normalized.includes('sme')) return 'SME Team'
   if (normalized.includes('review')) return 'Reviewer'
@@ -63,7 +66,8 @@ function normalizeRole(roleLabel: string | null | undefined): 'Respondent' | 'Re
   return 'Respondent'
 }
 
-function toRoleLabel(role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team') {
+function toRoleLabel(role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team') {
+  if (role === 'Strategy Director') return 'ICT - Strategy Director'
   if (role === 'Strategy Team') return 'ICT - Strategy Team'
   if (role === 'SME Team') return 'ICT - SME Team'
   if (role === 'Reviewer') return 'ICT - Reviewer'
@@ -83,17 +87,6 @@ function getStoredUserId() {
   return sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || null
 }
 
-function getStoredModuleConfigTeamIds(): ModuleConfigTeamIds | null {
-  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw) as ModuleConfigTeamIds
-  } catch {
-    return null
-  }
-}
-
 function toLookupBinding(entitySetName: string, id: string | null | undefined) {
   return id ? `/${entitySetName}(${id})` : undefined
 }
@@ -103,7 +96,7 @@ function getFormattedAnnotation(record: unknown, key: string) {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team') {
+function buildClarificationName(recordType: 'Clarification' | 'Comment', role: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team') {
   return `${recordType} - ${toRoleLabel(role)} - ${toIsoDateOnly()}`
 }
 
@@ -115,18 +108,17 @@ function getScopeLabel(
   return 'Internal (Entity)'
 }
 
+function getStageLabel(
+  stage: Dga_ict_clarificationsdga_clarification_stage | null | undefined
+): Clarification['stage'] | undefined {
+  if (stage === 1) return 'Planning'
+  if (stage === 2) return 'In DGE Review'
+  if (stage === 3) return 'Allocation'
+  if (stage === 4) return 'Utilization'
+  return undefined
+}
+
 async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<string | null> {
-  const storedTeamIds = getStoredModuleConfigTeamIds()
-  const storedRespondentTeamId = storedTeamIds?.respondentTeamId?.trim() || null
-  if (storedRespondentTeamId) {
-    return storedRespondentTeamId
-  }
-
-  const moduleTypeId = sessionStorage.getItem(SESSION_MODULE_TYPE_ID_KEY)?.trim() || null
-  if (!moduleTypeId) {
-    return null
-  }
-
   const budgetResult = await Dga_ict_budgetsService.get(budgetId, {
     select: ['dga_ict_budgetid', '_dga_ict_budget_instance_value'],
   })
@@ -136,41 +128,43 @@ async function resolveRespondentTeamIdForBudget(budgetId: string): Promise<strin
   }
 
   const instanceResult = await Dga_ict_budget_instancesService.get(instanceId, {
-    select: ['dga_ict_budget_instanceid', '_dga_entity_value'],
+    select: ['dga_ict_budget_instanceid', '_dga_entity_value', '_dga_module_configuration_value'],
   })
   const accountId = instanceResult.data?._dga_entity_value?.trim() || null
-  if (!accountId) {
+  const moduleConfigurationId = instanceResult.data?._dga_module_configuration_value?.trim() || null
+  if (!moduleConfigurationId) {
     return null
   }
 
-  const configResult = await Dga_module_configurationsService.getAll({
+  const configResult = await Dga_module_configurationsService.get(moduleConfigurationId, {
     select: ['dga_module_configurationid', '_dga_respondent_team_value'],
-    filter: `_dga_account_value eq ${accountId} and _dga_module_type_value eq ${moduleTypeId}`,
-    top: 1,
   })
 
-  const respondentTeamId = configResult.data?.[0]?._dga_respondent_team_value?.trim() || null
-  if (respondentTeamId) {
-    sessionStorage.setItem(
-      SESSION_MODULE_CONFIG_TEAM_IDS_KEY,
-      JSON.stringify({
-        respondentTeamId,
-        reviewerTeamId: storedTeamIds?.reviewerTeamId ?? null,
-        approverTeamId: storedTeamIds?.approverTeamId ?? null,
-        strategyTeamId: storedTeamIds?.strategyTeamId ?? null,
-      } satisfies ModuleConfigTeamIds)
-    )
-  }
+  const respondentTeamId = configResult.data?._dga_respondent_team_value?.trim() || null
 
   console.log(`[ClarificationService ${CLARIFICATION_SERVICE_VERSION}] Resolved respondent team for budget:`, {
     budgetId,
-    moduleTypeId,
     instanceId,
     accountId,
+    moduleConfigurationId,
     respondentTeamId,
   })
 
   return respondentTeamId
+}
+
+async function getBudgetNotificationLabel(budgetId: string) {
+  try {
+    const result = await Dga_ict_budgetsService.get(budgetId, {
+      select: ['dga_ict_budgetid', 'dga_budget_ref_id', 'dga_initiative_project_requirement_name'],
+    })
+
+    const projectName = result.data?.dga_initiative_project_requirement_name?.trim()
+    const budgetRef = result.data?.dga_budget_ref_id?.trim()
+    return projectName || budgetRef || 'ICT budget'
+  } catch {
+    return 'ICT budget'
+  }
 }
 
 function mapReply(record: Dga_ict_clarifications): ClarificationReply {
@@ -206,7 +200,9 @@ function mapClarification(record: Dga_ict_clarifications, replies: Clarification
       record.dga_raised_toname?.trim() ||
       getFormattedAnnotation(record, '_dga_raised_to_value@OData.Community.Display.V1.FormattedValue') ||
       'Respondent',
+    raisedToTeamId: record._dga_raised_to_value ?? null,
     scope: getScopeLabel(record.dga_scope),
+    stage: getStageLabel(record.dga_clarification_stage),
     message: record.dga_description?.trim() || '',
     fileUrl: record.dga_file_url?.trim() || undefined,
     status,
@@ -324,6 +320,7 @@ export async function getClarificationsByBudgetId(budgetId: string): Promise<Cla
         'modifiedon',
         'dga_description',
         'dga_file_url',
+        'dga_clarification_stage',
         'dga_scope',
         '_dga_ict_budget_value',
         '_dga_parent_clarificaiton_value',
@@ -414,6 +411,19 @@ export async function raiseBudgetClarification({
   } as Record<string, unknown>
 
   await createClarificationRecord(payload)
+
+  if (isDgeRole(raisedByRole) && (scope ?? SCOPE_INTERNAL_ENTITY) === SCOPE_EXTERNAL) {
+    const budgetLabel = await getBudgetNotificationLabel(budgetId)
+    await createNotificationForTeam(
+      respondentTeamId,
+      `${budgetLabel}: DGE raised an external clarification for ADGE Respondent response.`,
+      {
+        action: 'dge-external-clarification',
+        budgetId,
+        raisedByRole,
+      }
+    )
+  }
 }
 
 export async function addClarificationReply({
@@ -432,12 +442,12 @@ export async function addClarificationReply({
     dga_description: message.trim(),
     ...(uploadedFileUrl ? { dga_file_url: uploadedFileUrl } : {}),
     dga_clarification_stage:
-      currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
         ? CLARIFICATION_STAGE_DGE_REVIEW
         : CLARIFICATION_STAGE_PLANNING,
     dga_record_type: RECORD_TYPE_COMMENT,
     dga_scope:
-      currentRole === 'Strategy Team' || currentRole === 'SME Team'
+      currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
         ? SCOPE_INTERNAL_DGE
         : SCOPE_INTERNAL_ENTITY,
     dga_response_date: today,

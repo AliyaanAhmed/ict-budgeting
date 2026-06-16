@@ -20,10 +20,13 @@ import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
 import { useCycle } from '@/context/CycleContext'
 import { useToast } from '@/context/ToastContext'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
-import { raiseBudgetClarification } from '@/services/clarificationService'
+import { getClarificationsByBudgetId, raiseBudgetClarification } from '@/services/clarificationService'
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { DGE_BUDGET_STATUS, getDgePortfolioData, type DgeBudgetRecord } from '@/services/dgePortfolioService'
+import { routeBudgetToDirectorReview } from '@/services/dgeWorkflowService'
 import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
+import { getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 
 const tabs = ['All', 'Under Quality Check', 'Under Final Review', 'Clarification Pending'] as const
 const QUALITY_CHECK_VISIBLE_STATUSES: number[] = [
@@ -122,14 +125,31 @@ type ClarificationTarget = 'adge' | 'sme'
 export default function QualityCheck() {
   const { selectedCycle } = useCycle()
   const { runActionToast } = useToast()
+  const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('All')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<DgeBudgetRecord[]>([])
+  const [directorClarificationBudgetIds, setDirectorClarificationBudgetIds] = useState<Set<string>>(new Set())
   const [clarificationBudget, setClarificationBudget] = useState<DgeBudgetRecord | null>(null)
   const [clarificationTarget, setClarificationTarget] = useState<ClarificationTarget>('adge')
   const [clarificationMessage, setClarificationMessage] = useState('')
+
+  const resolveDirectorClarificationBudgetIds = async (items: DgeBudgetRecord[]) => {
+    const clarificationItems = items.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending)
+    const matches = await Promise.all(
+      clarificationItems.map(async (budget) => {
+        const clarifications = await getClarificationsByBudgetId(budget.id)
+        return clarifications.some(
+          (clarification) => clarification.status === 'Open' && clarification.raisedBy === 'Strategy Director'
+        )
+          ? budget.id
+          : null
+      })
+    )
+    return new Set(matches.filter((id): id is string => Boolean(id)))
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -146,9 +166,10 @@ export default function QualityCheck() {
       try {
         const portfolio = await getDgePortfolioData(selectedCycle.id)
         if (!cancelled) {
-          setBudgets(
-            portfolio.budgets.filter((budget) => QUALITY_CHECK_VISIBLE_STATUSES.includes(budget.statuscode))
-          )
+          const visibleBudgets = portfolio.budgets.filter((budget) => QUALITY_CHECK_VISIBLE_STATUSES.includes(budget.statuscode))
+          const directorClarificationIds = await resolveDirectorClarificationBudgetIds(visibleBudgets)
+          setBudgets(visibleBudgets)
+          setDirectorClarificationBudgetIds(directorClarificationIds)
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -199,21 +220,16 @@ export default function QualityCheck() {
   const refresh = async () => {
     if (!selectedCycle?.id) return
     const portfolio = await getDgePortfolioData(selectedCycle.id)
-    setBudgets(
-      portfolio.budgets.filter((budget) => QUALITY_CHECK_VISIBLE_STATUSES.includes(budget.statuscode))
-    )
+    const visibleBudgets = portfolio.budgets.filter((budget) => QUALITY_CHECK_VISIBLE_STATUSES.includes(budget.statuscode))
+    const directorClarificationIds = await resolveDirectorClarificationBudgetIds(visibleBudgets)
+    setBudgets(visibleBudgets)
+    setDirectorClarificationBudgetIds(directorClarificationIds)
   }
 
   const handleRouteToDirector = async (budget: DgeBudgetRecord) => {
     await runActionToast(
       async () => {
-        const result = await Dga_ict_budgetsService.update(budget.id, {
-          statuscode: DGE_BUDGET_STATUS.underFinalReview,
-          dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
-        } as never)
-        if (!result.success) {
-          throw new Error(result.error?.message || 'Unable to route project to director review.')
-        }
+        await routeBudgetToDirectorReview(budget)
         await refresh()
       },
       {
@@ -254,6 +270,11 @@ export default function QualityCheck() {
             throw new Error('No SME team is mapped on this project.')
           }
 
+          const strategyTeam = getStoredStrategyTeam()
+          if (!strategyTeam?.teamId) {
+            throw new Error('Strategy Team is not configured for this workspace.')
+          }
+
           await raiseBudgetClarification({
             budgetId: clarificationBudget.id,
             message: clarificationMessage,
@@ -262,6 +283,8 @@ export default function QualityCheck() {
             scope: 3,
             raisedToTeamId: clarificationBudget.smeReviewerTeamId,
           })
+
+          await grantIctBudgetAccessToTeam(clarificationBudget.id, strategyTeam.teamId)
 
           const result = await Dga_ict_budgetsService.update(clarificationBudget.id, {
             statuscode: DGE_BUDGET_STATUS.clarificationPending,
@@ -353,31 +376,41 @@ export default function QualityCheck() {
             </Card>
           ) : null}
 
-          {filteredItems.map((item) => (
-            <Card key={item.id} className="overflow-hidden rounded-[22px] border-[#DCE6F6] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#BFD4FF] hover:shadow-[0_16px_34px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#162339]">
-              <CardContent className="p-0">
-                <div className="flex w-full flex-col gap-4 px-5 py-4 text-left">
-                  <div className="flex w-full items-start justify-between gap-4 border-b border-[#EEF3F8] pb-4 dark:border-white/10">
+          {filteredItems.map((item) => {
+            const isDirectorClarification = directorClarificationBudgetIds.has(item.id)
+            const isDirectorClarificationAssignedToStrategy =
+              isDirectorClarification &&
+              Boolean(
+                strategyTeamId &&
+                item.ownerId?.trim() === strategyTeamId
+              )
+            return (
+            <Card key={item.id} className="overflow-hidden rounded-[24px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+              <CardContent className="p-5">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-[17px] font-semibold text-[#0F172A] dark:text-white">
-                          {item.budgetRefId} {item.name}
-                        </p>
+                        <p className="text-lg font-bold text-[#0F172A] dark:text-white">{item.name}</p>
                         <StrategyPill tone={item.statuscode === DGE_BUDGET_STATUS.underFinalReview ? 'teal' : item.statuscode === DGE_BUDGET_STATUS.clarificationPending ? 'amber' : 'blue'}>
                           {item.statusLabel}
                         </StrategyPill>
                       </div>
-                      <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                        {item.entityName || item.instanceName || 'Unknown Entity'} · {item.strategicPriorityClassificationName || '-'} · {item.strategicPriorityName || '-'}
+                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
+                        {item.entityName || item.instanceName || 'Unknown Entity'}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <CurrencyAmount amount={item.requestedBudget} className="text-lg font-bold text-[#0F172A] dark:text-white" iconSize={15} />
-                      <p className="text-xs text-[#64748B] dark:text-slate-300">Requested Budget</p>
+                    <div className="shrink-0 text-left lg:text-right">
+                      <CurrencyAmount amount={item.recommendedBudget || item.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+                      <p className="text-xs text-[#64748B] dark:text-slate-300">Recommended Budget</p>
                     </div>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-3">
+                  <p className="max-w-3xl text-sm leading-6 text-[#475569] dark:text-slate-200">
+                    {item.summary || 'No summary is available for this project.'}
+                  </p>
+
+                  <div className="hidden">
                     <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-[#17243A]">
                       <label className="mb-2 block text-xs font-medium tracking-wide text-[#0F172A] dark:text-white">SME Recommendation</label>
                       <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#4A9D5C]/30 bg-[#4A9D5C]/10 px-4 py-2">
@@ -431,46 +464,51 @@ export default function QualityCheck() {
                     </div>
                   </div>
 
-                  <div className="mt-1 flex flex-wrap items-center justify-between gap-3 border-t border-[#EAF0F6] pt-4 dark:border-white/10">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-[#F8FBFF] px-3 py-1.5 text-xs font-semibold text-[#475569] dark:bg-white/5 dark:text-slate-300">
+                  <div className="mt-1 flex flex-wrap justify-end gap-2 border-t border-[#EEF3F8] pt-4 dark:border-white/10">
+                    <div className="hidden">
                       <ShieldCheck className="h-4 w-4 text-[#286CFF]" />
                       {item.statusLabel}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="inline-flex items-center gap-2 rounded-lg border border-[#D7E4F4] bg-white px-3 py-2 text-sm font-medium text-[#286CFF] transition-colors hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5"
-                        onClick={() => setClarificationBudget(item)}
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        Raise Clarification
-                      </Button>
-                      <Button asChild type="button" className="inline-flex items-center gap-2 rounded-lg border border-[#043DFF] bg-[#286CFF] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#0C65F5]">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button asChild variant="outline" className="rounded-lg border-[#D7E4F4] text-[#286CFF]">
                         <Link to={`/strategy-team/projects/${item.id}`}>
                           <ExternalLink className="h-4 w-4" />
-                          View Details
+                          View Detail
                         </Link>
                       </Button>
-                      <Button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-lg border border-[#043DFF] bg-[#286CFF] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#0C65F5]"
-                        onClick={() => void handleRouteToDirector(item)}
-                      >
-                        <Workflow className="h-4 w-4" />
-                        Route to Director
-                      </Button>
+                      {item.statuscode === DGE_BUDGET_STATUS.underQualityCheck && !isDirectorClarificationAssignedToStrategy ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="inline-flex items-center gap-2 rounded-lg border border-[#D7E4F4] bg-white px-3 py-2 text-sm font-medium text-[#286CFF] transition-colors hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-[#1E293B] dark:text-white dark:hover:bg-white/5"
+                          onClick={() => setClarificationBudget(item)}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          Raise Clarification
+                        </Button>
+                      ) : null}
+                      {item.statuscode === DGE_BUDGET_STATUS.underQualityCheck || isDirectorClarificationAssignedToStrategy ? (
+                        <Button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-lg border border-[#043DFF] bg-[#286CFF] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#0C65F5]"
+                          onClick={() => void handleRouteToDirector(item)}
+                        >
+                          <Workflow className="h-4 w-4" />
+                          Route to Director
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            )
+          })}
         </div>
       </section>
 
       <Dialog open={Boolean(clarificationBudget)} onOpenChange={(open) => !open && setClarificationBudget(null)}>
-        <DialogContent className="max-w-[620px] rounded-[28px] border border-[#D9E6F5] p-0 dark:border-white/10">
+        <DialogContent className="max-w-[620px] overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-0 dark:border-white/10 dark:bg-[#162339]">
           <div className="border-b border-[#EEF3F8] bg-white px-6 py-5 dark:border-white/10 dark:bg-[#162339]">
             <DialogHeader>
               <DialogTitle>Raise Clarification</DialogTitle>

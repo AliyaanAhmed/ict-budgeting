@@ -25,6 +25,7 @@ export type Role =
   | 'Approver'
   | 'ICT Admin'
   | 'ICT - Strategy Team'
+  | 'ICT - Strategy Director'
   | 'ICT - SME Team'
 
 export type ProjectStatus =
@@ -53,7 +54,7 @@ export interface BudgetItem {
 
 export interface ClarificationReply {
   id: string
-  fromRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  fromRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   fromRoleLabel?: string
   fromName: string
   message: string
@@ -63,11 +64,13 @@ export interface ClarificationReply {
 
 export interface Clarification {
   id: string
-  raisedBy: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  raisedBy: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   raisedByLabel?: string
   raisedByName: string
   raisedTo: string
+  raisedToTeamId?: string | null
   scope?: 'External' | 'Internal (Entity)' | 'Internal (DGE)'
+  stage?: 'Planning' | 'In DGE Review' | 'Allocation' | 'Utilization'
   message: string
   fileUrl?: string
   status: 'Open' | 'Closed'
@@ -97,6 +100,11 @@ export interface Project {
   classification: string
   category: string
   requestedBudget: number
+  recommendedBudget?: number
+  allocatedBudget?: number
+  utilizedBudget?: number
+  planningOutcome?: number | null
+  addedInAllocation?: number | null
   budgetItems: BudgetItem[]
   status: ProjectStatus
   approvalStatus: string

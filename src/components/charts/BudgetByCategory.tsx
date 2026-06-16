@@ -1,18 +1,35 @@
 import { useState } from 'react'
-import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { dashboardPalette } from '@/lib/dashboardPalette'
-import type { BudgetByCategoryChartItem } from '@/hooks/useDashboardBudgetCharts'
+import {
+  DASHBOARD_BUDGET_METRIC_LABEL,
+  type BudgetByCategoryChartItem,
+  type DashboardBudgetMetric,
+} from '@/hooks/useDashboardBudgetCharts'
 
 const BAR_COLORS = [
   ...dashboardPalette.primarySeries,
 ]
+const METRIC_COLORS: Record<DashboardBudgetMetric, string> = {
+  requested: '#286CFF',
+  recommended: '#5B87FF',
+  allocated: '#0C65F5',
+  utilized: '#1E3A8A',
+}
 const PAGE_SIZE = 5
+
+function formatCompactBudget(amount: number) {
+  return new Intl.NumberFormat('en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(amount)
+}
 
 interface BudgetByCategoryProps {
   data: BudgetByCategoryChartItem[]
+  metrics?: DashboardBudgetMetric[]
 }
 
-export function BudgetByCategory({ data }: BudgetByCategoryProps) {
+export function BudgetByCategory({ data, metrics = ['requested'] }: BudgetByCategoryProps) {
   const [page, setPage] = useState(0)
   const total = data.reduce((sum, item) => sum + item.value, 0)
   const chartData = data.map((item, index) => ({
@@ -34,7 +51,10 @@ export function BudgetByCategory({ data }: BudgetByCategoryProps) {
 
   return (
     <div className="space-y-4">
-      {visibleData.map((item) => (
+      {visibleData.map((item) => {
+        const metricTotal = metrics.reduce((sum, metric) => sum + (item.amounts?.[metric] ?? 0), 0)
+
+        return (
         <div key={item.name} className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 dark:bg-white/5">
           <div className="flex items-center gap-3">
             <span
@@ -45,19 +65,48 @@ export function BudgetByCategory({ data }: BudgetByCategoryProps) {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{item.name}</p>
             </div>
-            <CurrencyAmount amount={item.value} className="text-sm font-medium text-[#0F172A] dark:text-white" iconSize={13} />
           </div>
           <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white dark:bg-white/10">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${item.pct}%`,
-                backgroundColor: item.color,
-              }}
-            />
+            {metrics.length > 1 ? (
+              <div className="flex h-full">
+                {metrics.map((metric, index) => {
+                  const amount = item.amounts?.[metric] ?? 0
+                  return (
+                    <div
+                      key={metric}
+                      title={`${DASHBOARD_BUDGET_METRIC_LABEL[metric]}: ${amount.toLocaleString('en-AE')}`}
+                      className={`${index === 0 ? 'rounded-l-full' : ''} ${index === metrics.length - 1 ? 'rounded-r-full' : ''} h-full`}
+                      style={{
+                        width: `${metricTotal > 0 ? Math.max(4, Math.round((amount / metricTotal) * 100)) : 0}%`,
+                        backgroundColor: METRIC_COLORS[metric],
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            ) : (
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${item.pct}%`,
+                  backgroundColor: item.color,
+                }}
+              />
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            {metrics.map((metric) => (
+              <div key={metric} className="inline-flex items-center gap-1.5 text-xs">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: METRIC_COLORS[metric] }} />
+                <span className="font-semibold text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                <span className="font-semibold text-[#0F172A] dark:text-white">
+                  {formatCompactBudget(item.amounts?.[metric] ?? 0)}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      )})}
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 rounded-[18px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1B2A41]">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#64748B] dark:text-slate-200">

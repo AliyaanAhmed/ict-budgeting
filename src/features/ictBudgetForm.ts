@@ -2,6 +2,7 @@ import type {
   Dga_ict_budgetsdga_activity_type,
   Dga_ict_budgetsdga_budget_item_type,
   Dga_ict_budgetsdga_category,
+  Dga_ict_budgetsdga_allocation_outcome,
   Dga_ict_budgetsdga_recommended,
   Dga_ict_budgetsdga_rejection_reason,
 } from '@/generated/models/Dga_ict_budgetsModel'
@@ -27,6 +28,8 @@ export interface IctBudgetFormValues {
   rejectionReason: Dga_ict_budgetsdga_rejection_reason | null
   rejectionJustification: string
   rejectedById: string
+  allocationOutcome: Dga_ict_budgetsdga_allocation_outcome | null
+  allocationCancelationReason: string
   totalBudgetPaidPreviousYear: string
   totalBudgetPayableFutureYear: string
   totalBudgetPayableNextYear: string
@@ -99,6 +102,8 @@ export const INITIAL_ICT_BUDGET_FORM_VALUES: IctBudgetFormValues = {
   rejectionReason: null,
   rejectionJustification: '',
   rejectedById: '',
+  allocationOutcome: null,
+  allocationCancelationReason: '',
   totalBudgetPaidPreviousYear: '',
   totalBudgetPayableFutureYear: '',
   totalBudgetPayableNextYear: '',

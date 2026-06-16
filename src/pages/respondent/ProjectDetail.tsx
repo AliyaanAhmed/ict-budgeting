@@ -103,8 +103,10 @@ import {
   deleteBudgetLineItem,
   getBudgetLineItemsByBudgetId,
   toBudgetItemDraft,
+  updateBudgetLineItemAllocatedAmount,
   updateBudgetLineItemAmount,
   updateBudgetLineItemRecommendedAmount,
+  updateBudgetLineItemUtilizationAmounts,
   type BudgetLineItemRecord,
 } from '@/services/budgetLineItemService'
 import {
@@ -130,6 +132,7 @@ import {
   type WorkStreamOption,
 } from '@/services/workStreamService'
 import { DGE_BUDGET_STATUS } from '@/services/dgePortfolioService'
+import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { projectService } from '@/services/projectService'
 import { uploadFilesToRecord } from '@/services/fileUploadService'
 import { FileUploadDropzone } from '@/components/shared/FileUploadDropzone'
@@ -142,13 +145,20 @@ import {
 import {
   requestStrategicPriorityChange,
   reviewStrategicPriorityChange,
+  routeBudgetToDirectorReview,
   routeBudgetToQualityCheck,
+  completeDirectorReview,
+  completeAllocationReview,
+  completeBudgetUtilization,
+  submitAllocationToReview,
+  returnStrategyClarificationToDirector,
   sendBudgetsToSme,
   validateBudgetReadyForQualityCheck,
 } from '@/services/dgeWorkflowService'
 import { SESSION_CURRENT_ROLE_KEY } from '@/context/RoleContext'
-import { SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
-import { getStoredCurrentSme, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { SESSION_MODULE_CONFIG_TEAM_IDS_KEY, SESSION_USER_ID_KEY, SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import { getStoredCurrentSme, getStoredStrategyDirectorTeam, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
+import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 import {
   associateTechnologyProduct,
   disassociateTechnologyProduct,
@@ -206,6 +216,29 @@ interface PolicyMatchGroup {
 }
 
 const PENDING_NEW_AI_RECORD = '__pending_new_ai_record__'
+
+const ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
+  DGE_INSTANCE_STATUS.reviewCompletedByDge,
+  DGE_INSTANCE_STATUS.allocation,
+  DGE_INSTANCE_STATUS.utilization,
+])
+
+const ADGE_ALLOCATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
+  DGE_INSTANCE_STATUS.allocation,
+  DGE_INSTANCE_STATUS.utilization,
+])
+
+function isAdgeRecommendationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return typeof statuscode === 'number' && ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES.has(statuscode)
+}
+
+function isAdgeAllocationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return typeof statuscode === 'number' && ADGE_ALLOCATION_VISIBLE_INSTANCE_STATUSES.has(statuscode)
+}
+
+function isAdgeUtilizationVisibleInstanceStatus(statuscode: number | null | undefined) {
+  return statuscode === DGE_INSTANCE_STATUS.utilization
+}
 
 function toMatchTypeAccent(matchType: PolicyMatchType) {
   if (matchType === 'Potential Conflict') {
@@ -592,6 +625,12 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
       id: item.id,
       budgetRequested: item.budgetRequested,
       budgetRecommended: item.budgetRecommended,
+      budgetAllocated: item.budgetAllocated,
+      totalBudgetUtilized: item.totalBudgetUtilized,
+      utilizationQuarter1: item.utilizationQuarter1,
+      utilizationQuarter2: item.utilizationQuarter2,
+      utilizationQuarter3: item.utilizationQuarter3,
+      utilizationQuarter4: item.utilizationQuarter4,
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }
@@ -760,7 +799,44 @@ function AiSignal({ label, value, tone = 'blue' }: { label: string; value: strin
 
 function DynamicStatusBadge({ status, fallbackStatus }: { status?: string | null; fallbackStatus: string }) {
   const resolvedStatus = status?.trim() || fallbackStatus
+  const extendedClass =
+    resolvedStatus === 'Allocation In Progress' || resolvedStatus === 'Allocation in Progress'
+      ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300'
+      : resolvedStatus === 'Allocation In Review' || resolvedStatus === 'Allocation in Review'
+        ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-900/20 dark:text-cyan-300'
+        : resolvedStatus === 'Allocation Completed'
+          ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300'
+          : resolvedStatus === 'Utilization In Progress' || resolvedStatus === 'Utilization in Progress'
+            ? 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300'
+            : resolvedStatus === 'Utilization Completed'
+              ? 'bg-lime-50 text-lime-700 dark:bg-lime-900/20 dark:text-lime-300'
+              : null
+
+  if (extendedClass) {
+    return (
+      <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap', extendedClass)}>
+        {resolvedStatus}
+      </span>
+    )
+  }
+
   return <StatusBadge status={resolvedStatus as never} />
+}
+
+function HeaderInfoTag({ children, tone = 'blue' }: { children: React.ReactNode; tone?: 'blue' | 'green' | 'red' | 'amber' | 'slate' }) {
+  const toneClass = {
+    blue: 'border-[#BFD8FF] bg-[#EFF6FF] text-[#286CFF] dark:border-[#286CFF]/20 dark:bg-[#10213B] dark:text-[#BFDBFE]',
+    green: 'border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] dark:border-emerald-700/30 dark:bg-emerald-900/20 dark:text-emerald-300',
+    red: 'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] dark:border-red-700/30 dark:bg-red-900/20 dark:text-red-300',
+    amber: 'border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C] dark:border-orange-700/30 dark:bg-orange-900/20 dark:text-orange-300',
+    slate: 'border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300',
+  }[tone]
+
+  return (
+    <span className={cn('inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap', toneClass)}>
+      {children}
+    </span>
+  )
 }
 
 function getDgeHeaderStatusLabel(statusCode: number | null | undefined, fallbackStatus?: string | null) {
@@ -811,18 +887,22 @@ function EmptyAiActionCard({
   )
 }
 
-type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+type WorkflowRole = 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
 type WorkflowAction =
   | 'delete-project'
   | 'submit-reviewer'
   | 'complete-review'
   | 'submit-approver'
   | 'approve-project'
+  | 'submit-allocation-review'
+  | 'complete-allocation'
+  | 'complete-utilization'
 type PendingClarificationReply = {
   clarificationId: string
   message: string
   files?: File[]
-  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  returnToRole: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
+  stage?: 'Planning' | 'In DGE Review' | 'Allocation' | 'Utilization'
 }
 
 interface DetailSuggestionRow {
@@ -866,6 +946,22 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
     case 776140002:
     case 776140003:
       return 'Approver'
+    case DGE_BUDGET_STATUS.allocationInProgress:
+    case DGE_BUDGET_STATUS.utilizationInProgress:
+    case DGE_BUDGET_STATUS.utilizationCompleted:
+      return 'Respondent'
+    case DGE_BUDGET_STATUS.allocationInReview:
+    case DGE_BUDGET_STATUS.allocationCompleted:
+      return 'Approver'
+    case DGE_BUDGET_STATUS.underStrategicAlignmentReview:
+    case DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview:
+    case DGE_BUDGET_STATUS.underQualityCheck:
+      return 'Strategy Team'
+    case DGE_BUDGET_STATUS.underSmeReview:
+      return 'SME Team'
+    case DGE_BUDGET_STATUS.underFinalReview:
+    case DGE_BUDGET_STATUS.reviewCompleted:
+      return 'Strategy Director'
     default:
       return fallbackStatus ? getWorkflowOwner(fallbackStatus) : null
   }
@@ -873,6 +969,7 @@ function getWorkflowOwnerByStatusCode(statusCode: number | null | undefined, fal
 
 function normalizeStoredRole(roleLabel: string | null): WorkflowRole | null {
   const value = roleLabel?.trim().toLowerCase() ?? ''
+  if (value.includes('strategy director')) return 'Strategy Director'
   if (value.includes('strategy')) return 'Strategy Team'
   if (value.includes('sme')) return 'SME Team'
   if (value.includes('review')) return 'Reviewer'
@@ -894,6 +991,10 @@ function getStoredUserTeams(): UserTeam[] {
 }
 
 function getRoleTeamId(role: WorkflowRole): string | null {
+  if (role === 'Strategy Director') {
+    return getStoredStrategyDirectorTeam()?.teamId?.trim() || null
+  }
+
   if (role === 'Strategy Team') {
     return getStoredStrategyTeam()?.teamId?.trim() || null
   }
@@ -903,6 +1004,23 @@ function getRoleTeamId(role: WorkflowRole): string | null {
   }
 
   return getStoredUserTeams().find((team) => team.role === role)?.teamid?.trim() || null
+}
+
+function getStoredModuleConfigTeamId(role: 'Respondent' | 'Reviewer' | 'Approver') {
+  const raw = sessionStorage.getItem(SESSION_MODULE_CONFIG_TEAM_IDS_KEY)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as {
+      respondentTeamId?: string | null
+      reviewerTeamId?: string | null
+      approverTeamId?: string | null
+    }
+    if (role === 'Respondent') return parsed.respondentTeamId?.trim() || null
+    if (role === 'Reviewer') return parsed.reviewerTeamId?.trim() || null
+    return parsed.approverTeamId?.trim() || null
+  } catch {
+    return null
+  }
 }
 
 function isProjectOwnedByCurrentContext(project: Project, role: WorkflowRole) {
@@ -975,6 +1093,33 @@ function workflowActionDetails(
       description:
         'This will mark the reviewer assessment as completed and keep the project with the reviewer until it is submitted to the approver.',
       confirmLabel: 'Mark as Reviewed',
+      tone: 'primary' as const,
+    }
+  }
+
+  if (action === 'submit-allocation-review') {
+    return {
+      title: 'Submit allocation to review?',
+      description: 'This will send the allocated budget details to the Approver for allocation review.',
+      confirmLabel: 'Submit to Review',
+      tone: 'primary' as const,
+    }
+  }
+
+  if (action === 'complete-allocation') {
+    return {
+      title: 'Complete allocation?',
+      description: 'This will mark the allocation review as completed for this project.',
+      confirmLabel: 'Complete Allocation',
+      tone: 'primary' as const,
+    }
+  }
+
+  if (action === 'complete-utilization') {
+    return {
+      title: 'Complete utilization?',
+      description: 'This will close utilization entry for this project.',
+      confirmLabel: 'Complete Utilization',
       tone: 'primary' as const,
     }
   }
@@ -1306,12 +1451,18 @@ function BudgetItemsTable({
   error,
   editableRequested,
   editableRecommended,
+  editableAllocated,
+  editableUtilization,
   showRecommendedBudget,
+  showAllocatedBudget,
+  showUtilizedBudget,
   showActions,
   savingId,
   deletingId,
   onChangeBudgetRequested,
   onChangeBudgetRecommended,
+  onChangeBudgetAllocated,
+  onChangeUtilizationQuarters,
   onDelete,
 }: {
   items: BudgetLineItemRecord[]
@@ -1319,16 +1470,25 @@ function BudgetItemsTable({
   error: string | null
   editableRequested: boolean
   editableRecommended: boolean
+  editableAllocated: boolean
+  editableUtilization: boolean
   showRecommendedBudget: boolean
+  showAllocatedBudget: boolean
+  showUtilizedBudget: boolean
   showActions: boolean
   savingId: string | null
   deletingId: string | null
   onChangeBudgetRequested: (lineItemId: string, amount: number) => void
   onChangeBudgetRecommended: (lineItemId: string, amount: number) => void
+  onChangeBudgetAllocated: (lineItemId: string, amount: number) => void
+  onChangeUtilizationQuarters: (lineItemId: string, quarters: [number, number, number, number]) => void
   onDelete: (item: BudgetLineItemRecord) => void
 }) {
   const [draftRequestedAmounts, setDraftRequestedAmounts] = useState<Record<string, string>>({})
   const [draftRecommendedAmounts, setDraftRecommendedAmounts] = useState<Record<string, string>>({})
+  const [draftAllocatedAmounts, setDraftAllocatedAmounts] = useState<Record<string, string>>({})
+  const [utilizationModalItem, setUtilizationModalItem] = useState<BudgetLineItemRecord | null>(null)
+  const [utilizationDraft, setUtilizationDraft] = useState<[string, string, string, string]>(['', '', '', ''])
 
   useEffect(() => {
     setDraftRequestedAmounts(
@@ -1337,7 +1497,28 @@ function BudgetItemsTable({
     setDraftRecommendedAmounts(
       Object.fromEntries(items.map((item) => [item.id, item.budgetRecommended > 0 ? formatAEDFull(item.budgetRecommended) : '']))
     )
+    setDraftAllocatedAmounts(
+      Object.fromEntries(items.map((item) => [item.id, item.budgetAllocated > 0 ? formatAEDFull(item.budgetAllocated) : '']))
+    )
   }, [items])
+
+  const parseCurrencyDraft = (value: string) => {
+    const digitsAndDecimal = value.replace(/[^\d.]/g, '')
+    const [integerPart = '', decimalPart] = digitsAndDecimal.split('.')
+    const normalizedInteger = integerPart.replace(/^0+(?=\d)/, '') || (integerPart ? '0' : '')
+    const formattedInteger = normalizedInteger ? formatAEDFull(Number(normalizedInteger)) : ''
+    const nextValue = decimalPart !== undefined
+      ? `${formattedInteger}.${decimalPart.slice(0, 4)}`
+      : formattedInteger
+    const nextNumericValue = decimalPart !== undefined
+      ? Number(`${normalizedInteger || '0'}.${decimalPart.slice(0, 4)}`)
+      : Number(normalizedInteger || '0')
+
+    return {
+      text: nextValue,
+      amount: Number.isFinite(nextNumericValue) ? nextNumericValue : 0,
+    }
+  }
 
   if (loading) {
     return (
@@ -1374,6 +1555,8 @@ function BudgetItemsTable({
               'EBS Fusion Code',
               'Budget Requested',
               ...(showRecommendedBudget ? ['Recommended Budget'] : []),
+              ...(showAllocatedBudget ? ['Allocated Budget'] : []),
+              ...(showUtilizedBudget ? ['Utilized Budget'] : []),
               ...(showActions ? ['Action'] : []),
             ].map((header) => (
               <th key={header} className="whitespace-nowrap px-4 py-3 text-start text-xs font-bold text-[#64748B] dark:text-slate-200">
@@ -1399,6 +1582,12 @@ function BudgetItemsTable({
             const isValidRecommendedAmount =
               recommendedDraftValue.trim().length === 0 ||
               (Number.isFinite(parsedRecommendedAmount) && parsedRecommendedAmount >= 0)
+            const allocatedDraftValue = draftAllocatedAmounts[item.id] ?? String(item.budgetAllocated)
+            const normalizedAllocatedDraftValue = allocatedDraftValue.replace(/,/g, '')
+            const parsedAllocatedAmount = Number(normalizedAllocatedDraftValue)
+            const isValidAllocatedAmount =
+              allocatedDraftValue.trim().length === 0 ||
+              (Number.isFinite(parsedAllocatedAmount) && parsedAllocatedAmount >= 0)
             const isSaving = savingId === item.id
             const isDeleting = deletingId === item.id
 
@@ -1490,6 +1679,65 @@ function BudgetItemsTable({
                     )}
                   </td>
                 ) : null}
+                {showAllocatedBudget ? (
+                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                    {editableAllocated ? (
+                      <div className="relative min-w-[190px]">
+                        <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Input
+                          inputMode="decimal"
+                          value={allocatedDraftValue}
+                          onChange={(event) => {
+                            const parsed = parseCurrencyDraft(event.target.value)
+                            setDraftAllocatedAmounts((current) => ({ ...current, [item.id]: parsed.text }))
+                            onChangeBudgetAllocated(item.id, parsed.amount)
+                          }}
+                          placeholder="-"
+                          className={cn(
+                            'h-10 rounded-xl bg-white pl-9 pr-3 text-sm font-semibold focus-visible:ring-[#286CFF]/20 dark:border-white/10 dark:bg-[#1E293B]',
+                            isValidAllocatedAmount
+                              ? 'border-[#D9E6F7]'
+                              : 'border-[#F04438] bg-[#FFF5F5] dark:bg-[#2B1E24]'
+                          )}
+                        />
+                      </div>
+                    ) : item.budgetAllocated > 0 ? (
+                      <CurrencyAmount amount={item.budgetAllocated} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                    ) : (
+                      <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                    )}
+                  </td>
+                ) : null}
+                {showUtilizedBudget ? (
+                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {item.totalBudgetUtilized > 0 ? (
+                        <CurrencyAmount amount={item.totalBudgetUtilized} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                      ) : (
+                        <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                      )}
+                      {editableUtilization ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-lg border-[#BFD8FF] px-2.5 text-xs font-semibold text-[#286CFF] shadow-none hover:bg-[#EEF5FF]"
+                          onClick={() => {
+                            setUtilizationModalItem(item)
+                            setUtilizationDraft([
+                              item.utilizationQuarter1 ? formatAEDFull(item.utilizationQuarter1) : '',
+                              item.utilizationQuarter2 ? formatAEDFull(item.utilizationQuarter2) : '',
+                              item.utilizationQuarter3 ? formatAEDFull(item.utilizationQuarter3) : '',
+                              item.utilizationQuarter4 ? formatAEDFull(item.utilizationQuarter4) : '',
+                            ])
+                          }}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Add Quarter
+                        </Button>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
                 {showActions ? (
                   <td className="block py-2 md:table-cell md:px-4 md:py-3">
                   <div className="flex items-center gap-2">
@@ -1520,6 +1768,52 @@ function BudgetItemsTable({
           })}
         </tbody>
       </table>
+      <Dialog open={utilizationModalItem !== null} onOpenChange={(open) => !open && setUtilizationModalItem(null)}>
+        <DialogContent className="max-w-lg rounded-[28px] border-[#D9E6F5] p-0 dark:border-white/10 dark:bg-[#162339]">
+          <DialogHeader className="border-b border-[#EAF0F6] px-6 py-5 text-left dark:border-white/10">
+            <DialogTitle className="text-lg font-bold text-[#0F172A] dark:text-white">Add Quarterly Utilization</DialogTitle>
+            <DialogDescription className="text-sm text-[#64748B] dark:text-slate-300">
+              {utilizationModalItem?.accountName ?? 'Budget line item'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 px-6 py-5 sm:grid-cols-2">
+            {['Quarter 1', 'Quarter 2', 'Quarter 3', 'Quarter 4'].map((label, index) => (
+              <EditField key={label} label={label}>
+                <div className="relative">
+                  <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Input
+                    inputMode="decimal"
+                    value={utilizationDraft[index]}
+                    onChange={(event) => {
+                      const parsed = parseCurrencyDraft(event.target.value)
+                      setUtilizationDraft((current) => {
+                        const next = [...current] as [string, string, string, string]
+                        next[index] = parsed.text
+                        return next
+                      })
+                    }}
+                    className="h-10 rounded-xl border-[#D9E6F7] bg-white pl-9 dark:border-white/10 dark:bg-[#1E293B]"
+                  />
+                </div>
+              </EditField>
+            ))}
+          </div>
+          <DialogFooter className="border-t border-[#EAF0F6] px-6 py-4 dark:border-white/10">
+            <Button variant="outline" className="rounded-xl" onClick={() => setUtilizationModalItem(null)}>Cancel</Button>
+            <Button
+              className="rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+              onClick={() => {
+                if (!utilizationModalItem) return
+                const amounts = utilizationDraft.map((value) => Number(value.replace(/,/g, '')) || 0) as [number, number, number, number]
+                onChangeUtilizationQuarters(utilizationModalItem.id, amounts)
+                setUtilizationModalItem(null)
+              }}
+            >
+              Apply Quarters
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1549,6 +1843,8 @@ const VALIDATION_LABELS: Record<keyof IctBudgetFieldErrorMap, string> = {
   plannedEndDate: 'Planned End Date',
   summary: 'Summary / Description',
   activityType: 'Project Budget Type',
+  allocationOutcome: 'Allocation Outcome',
+  allocationCancelationReason: 'Allocation Cancelation Reason',
   category: 'Category',
   totalBudgetPaidPreviousYear: 'Total Budget Paid Previous Year',
   totalBudgetPayableFutureYear: 'Total Budget Payable Future Years',
@@ -2111,7 +2407,7 @@ function InteractiveBudgetOverviewCard({
   record: StoredBudgetOverviewRecord | null
   loading: boolean
   error: string | null
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   confidenceScore: number
   isRefreshing: boolean
   policyLoading: boolean
@@ -2775,6 +3071,7 @@ export default function ProjectDetail() {
   const [projectData, setProjectData] = useState<Project | null>(null)
   const [projectLoading, setProjectLoading] = useState(true)
   const [projectError, setProjectError] = useState<string | null>(null)
+  const [projectReloadToken, setProjectReloadToken] = useState(0)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [auditLogsLoading, setAuditLogsLoading] = useState(false)
   const [auditLogsError, setAuditLogsError] = useState<string | null>(null)
@@ -2785,13 +3082,16 @@ export default function ProjectDetail() {
   const isReviewerView = pathname.includes('/reviewer/')
   const isApproverView = pathname.includes('/approver/')
   const isStrategyView = pathname.includes('/strategy-team/')
+  const isStrategyDirectorView = pathname.includes('/strategy-director/')
   const isSmeView = pathname.includes('/sme-team/')
-  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isSmeView
+  const isGovernanceView = isReviewerView || isApproverView || isStrategyView || isStrategyDirectorView || isSmeView
 
   const routeRole: WorkflowRole = isReviewerView
     ? 'Reviewer'
     : isApproverView
       ? 'Approver'
+      : isStrategyDirectorView
+        ? 'Strategy Director'
       : isStrategyView
         ? 'Strategy Team'
         : isSmeView
@@ -2807,6 +3107,8 @@ export default function ProjectDetail() {
       ? '/approver/approval-queue'
       : isStrategyView
         ? '/strategy-team/strategic-alignment'
+        : isStrategyDirectorView
+          ? '/strategy-director/reviewer-queue'
         : isSmeView
           ? '/sme-team/reviews'
           : '/respondent/projects'
@@ -2816,6 +3118,8 @@ export default function ProjectDetail() {
       ? '/approver/dashboard'
       : isStrategyView
         ? '/strategy-team/dashboard'
+        : isStrategyDirectorView
+          ? '/strategy-director/dashboard'
         : isSmeView
           ? '/sme-team/dashboard'
           : '/respondent/dashboard'
@@ -2825,6 +3129,8 @@ export default function ProjectDetail() {
       ? 'Approval Queue'
       : isStrategyView
         ? 'Strategic Alignment'
+        : isStrategyDirectorView
+          ? 'Director Review Queue'
         : isSmeView
           ? 'SME Review Queue'
           : 'My Projects'
@@ -2841,7 +3147,7 @@ export default function ProjectDetail() {
   )
   const workflowOwner = getWorkflowOwnerByStatusCode(project.statusCode, project.status)
   const isCurrentOwner = isProjectOwnedByCurrentContext(project, currentRole)
-  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'SME Team'
+  const isDgeRole = currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
   const isSubmittedToDgeBudget = typeof project.statusCode === 'number' && project.statusCode >= 776140004
   const statusForAdgeLabel = (project.statusForAdgeLabel ?? '').trim().toLowerCase()
   const isAdgeClarificationPending =
@@ -2851,25 +3157,60 @@ export default function ProjectDetail() {
     project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
     !isAdgeClarificationPending &&
     isCurrentOwner &&
-    (currentRole === 'SME Team' || currentRole === 'Strategy Team')
+    (currentRole === 'SME Team' || currentRole === 'Strategy Team' || currentRole === 'Strategy Director')
   const isStrategyClarificationRequiredForSme =
     currentRole === 'SME Team' && isInternalDgeClarificationForCurrentRole
   const effectiveWorkflowOwner = isInternalDgeClarificationForCurrentRole ? currentRole : workflowOwner
   const [ictBudgetSmeReviewerTeamId, setIctBudgetSmeReviewerTeamId] = useState<string | null>(null)
   const currentSmeTeamId = getStoredCurrentSme()?.teamId?.trim() || null
   const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
+  const isCurrentSmeDomainProject =
+    currentRole === 'SME Team' &&
+    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+  const canCurrentSmeActOnProject =
+    currentRole === 'SME Team' &&
+    (isCurrentOwner || isCurrentSmeDomainProject)
   const canSmeEditRecommendedOnly =
     currentRole === 'SME Team' &&
     isCurrentOwner &&
-    Boolean(currentSmeTeamId && ictBudgetSmeReviewerTeamId && currentSmeTeamId === ictBudgetSmeReviewerTeamId)
+    isCurrentSmeDomainProject
   const canCurrentRoleEdit =
-    currentRole === 'Strategy Team'
+    currentRole === 'Strategy Team' || currentRole === 'Strategy Director'
       ? true
       : currentRole === 'SME Team'
         ? canSmeEditRecommendedOnly
         : canRoleEdit(project, currentRole)
-  const canEditFullForm = currentRole === 'Strategy Team' || (!isDgeRole && canCurrentRoleEdit)
-  const canEditDgeRecommendationOnly = currentRole === 'SME Team' && canSmeEditRecommendedOnly
+  const isAllocationOrUtilizationPhase =
+    ([
+      DGE_BUDGET_STATUS.allocationInProgress,
+      DGE_BUDGET_STATUS.allocationInReview,
+      DGE_BUDGET_STATUS.allocationCompleted,
+      DGE_BUDGET_STATUS.utilizationInProgress,
+      DGE_BUDGET_STATUS.utilizationCompleted,
+    ] as number[]).includes(project.statusCode ?? 0)
+  const canEditFullForm =
+    currentRole === 'Strategy Team' ||
+    (currentRole === 'Strategy Director' && !isAllocationOrUtilizationPhase) ||
+    (!isDgeRole && canCurrentRoleEdit && !isAllocationOrUtilizationPhase)
+  const canEditDgeRecommendationOnly =
+    currentRole === 'SME Team' &&
+    canSmeEditRecommendedOnly &&
+    !isAllocationOrUtilizationPhase
+  const isAllocationInProgress = project.statusCode === DGE_BUDGET_STATUS.allocationInProgress
+  const isAllocationInReview = project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  const isUtilizationInProgress = project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  const canEditAllocationFields =
+    (canEditFullForm && isAllocationOrUtilizationPhase) ||
+    ((currentRole === 'Respondent' || currentRole === 'Approver') &&
+      isCurrentOwner &&
+      (isAllocationInProgress || isAllocationInReview))
+  const canEditUtilizationFields =
+    (canEditFullForm && isUtilizationInProgress) ||
+    (currentRole === 'Respondent' && isCurrentOwner && isUtilizationInProgress)
+  const canEditLimitedForm =
+    !canEditFullForm &&
+    (canEditDgeRecommendationOnly || canEditAllocationFields || canEditUtilizationFields)
+  const canShowEditButton = canEditFullForm || canEditLimitedForm
   const canDeleteProject =
     currentRole === 'Respondent' &&
     isCurrentOwner &&
@@ -2899,6 +3240,18 @@ export default function ProjectDetail() {
     isCurrentOwner &&
     (project.statusCode === 776140002 ||
       (project.statusCode == null && project.status === 'Submitted to Approver'))
+  const canSubmitAllocationReview =
+    currentRole === 'Respondent' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.allocationInProgress
+  const canCompleteAllocation =
+    currentRole === 'Approver' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  const canCompleteUtilization =
+    currentRole === 'Respondent' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
   const canRaiseClarification =
     ((currentRole === 'Reviewer' &&
       (project.statusCode === 776140001 ||
@@ -2915,17 +3268,22 @@ export default function ProjectDetail() {
           project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
           project.statusCode === DGE_BUDGET_STATUS.clarificationPending
         )) ||
+      (currentRole === 'Strategy Director' &&
+        (
+          project.statusCode === DGE_BUDGET_STATUS.underFinalReview ||
+          project.statusCode === DGE_BUDGET_STATUS.clarificationPending
+        )) ||
       (currentRole === 'SME Team' &&
-        (project.statusCode === 776140005 || project.statusCode === 776140006 || project.statusCode === 776140007))) &&
-    isCurrentOwner
+        project.statusCode === DGE_BUDGET_STATUS.underSmeReview)) &&
+    (currentRole === 'SME Team' ? canCurrentSmeActOnProject : isCurrentOwner)
   const canRouteToQualityCheck =
     currentRole === 'SME Team' &&
-    isCurrentOwner &&
+    canCurrentSmeActOnProject &&
     (project.statusCode === DGE_BUDGET_STATUS.underSmeReview ||
       project.statusCode === DGE_BUDGET_STATUS.clarificationPending)
   const canRequestStrategicPriorityChange =
     currentRole === 'SME Team' &&
-    isCurrentOwner &&
+    canCurrentSmeActOnProject &&
     project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const canSendToSmeFromDetail =
     currentRole === 'Strategy Team' &&
@@ -2942,16 +3300,36 @@ export default function ProjectDetail() {
       project.statusCode === DGE_BUDGET_STATUS.underQualityCheck ||
       project.statusCode === DGE_BUDGET_STATUS.underFinalReview
     )
+  const canCompleteDirectorReviewFromDetail =
+    currentRole === 'Strategy Director' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.underFinalReview
   const approverUsesDirectDgeFlow =
     currentRole === 'Approver' &&
     hasCycleDgeSubmission &&
     isCurrentOwner &&
     (project.statusCode === 776140002 ||
       (project.statusCode == null && project.status === 'Submitted to Approver'))
-  const showPendingNotice = effectiveWorkflowOwner !== null && (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
+  const hasDgeGovernanceEditOverride = currentRole === 'Strategy Team' || currentRole === 'Strategy Director'
+  const showPendingNotice =
+    !hasDgeGovernanceEditOverride &&
+    effectiveWorkflowOwner !== null &&
+    (effectiveWorkflowOwner !== currentRole || !isCurrentOwner)
   const pendingNoticeText = effectiveWorkflowOwner
     ? `This project is currently pending with ${effectiveWorkflowOwner}. You can continue the clarification thread below, but edit and workflow actions are locked until it returns to ${currentRole}${!isCurrentOwner ? ' and is assigned to your team or user ownership' : ''}.`
     : 'This project has completed the current workflow stage and is now read-only.'
+  const availableActionHeading =
+    currentRole === 'Strategy Team' && workflowOwner && workflowOwner !== 'Strategy Team'
+      ? 'Strategy Team governance access available'
+      : currentRole === 'Strategy Director' && workflowOwner && workflowOwner !== 'Strategy Director'
+        ? 'Strategy Director governance access available'
+        : `${currentRole} actions available`
+  const availableActionDescription =
+    currentRole === 'Strategy Team' && workflowOwner && workflowOwner !== 'Strategy Team'
+      ? 'Strategy Team can edit the form and continue eligible governance actions from the panel on the right, even when the active workflow owner is another DGE or ADGE role.'
+      : currentRole === 'Strategy Director' && workflowOwner && workflowOwner !== 'Strategy Director'
+        ? 'Strategy Director can review, edit, and use eligible final-governance actions from the panel on the right, even when the active workflow owner is another DGE role.'
+        : `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
 
   useEffect(() => {
     let cancelled = false
@@ -2995,7 +3373,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, projectReloadToken])
 
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
@@ -3019,11 +3397,18 @@ export default function ProjectDetail() {
   const [ictBudgetCreatedByName, setIctBudgetCreatedByName] = useState<string | null>(null)
   const [ictBudgetCreatedOn, setIctBudgetCreatedOn] = useState<string | null>(null)
   const [ictBudgetModifiedOn, setIctBudgetModifiedOn] = useState<string | null>(null)
+  const [ictBudgetStatusLabel, setIctBudgetStatusLabel] = useState<string | null>(project.statusForAdgeLabel ?? null)
+  const [ictBudgetInstanceStatusCode, setIctBudgetInstanceStatusCode] = useState<number | null>(
+    getStoredInstanceDetail()?.statuscode ?? null
+  )
   const [ictBudgetRespondentName, setIctBudgetRespondentName] = useState<string | null>(null)
   const [ictBudgetReviewerName, setIctBudgetReviewerName] = useState<string | null>(null)
   const [ictBudgetApproverName, setIctBudgetApproverName] = useState<string | null>(null)
   const [ictBudgetRecommendedLabel, setIctBudgetRecommendedLabel] = useState<string | null>(null)
   const [ictBudgetRejectedByName, setIctBudgetRejectedByName] = useState<string | null>(null)
+  const [ictBudgetAddedInAllocation, setIctBudgetAddedInAllocation] = useState<number | null>(project.addedInAllocation ?? null)
+  const [ictBudgetPlanningOutcome, setIctBudgetPlanningOutcome] = useState<number | null>(project.planningOutcome ?? null)
+  const [ictBudgetAllocationOutcome, setIctBudgetAllocationOutcome] = useState<number | null>(null)
   const [ictBudgetPreviousStrategicPriorityId, setIctBudgetPreviousStrategicPriorityId] = useState<string | null>(null)
   const [ictBudgetPreviousStrategicPriorityName, setIctBudgetPreviousStrategicPriorityName] = useState<string | null>(null)
   const [ictBudgetPreviousStrategicPriorityClassificationId, setIctBudgetPreviousStrategicPriorityClassificationId] = useState<string | null>(null)
@@ -3174,6 +3559,34 @@ export default function ProjectDetail() {
   const latestOpenClarification = [...localClarifications]
     .filter((clarification) => clarification.status === 'Open')
     .sort((left, right) => (right.date || '').localeCompare(left.date || ''))[0] ?? null
+  const hasDirectorRaisedOpenClarification =
+    latestOpenClarification?.raisedBy === 'Strategy Director'
+  const isDirectorClarificationForStrategy =
+    currentRole === 'Strategy Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const isDirectorClarificationForSme =
+    currentRole === 'SME Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const isStrategyClarificationForSme =
+    currentRole === 'SME Team' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    latestOpenClarification?.raisedBy === 'Strategy Team'
+  const canRouteToDirectorAfterDirectorClarification =
+    currentRole === 'Strategy Team' &&
+    isCurrentOwner &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const canRouteToQualityCheckAfterDirectorClarification =
+    currentRole === 'SME Team' &&
+    canCurrentSmeActOnProject &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
+  const canCompleteDirectorReviewAfterClarification =
+    currentRole === 'Strategy Director' &&
+    project.statusCode === DGE_BUDGET_STATUS.clarificationPending &&
+    hasDirectorRaisedOpenClarification
   const clarificationReturnRole =
     currentRole === 'Respondent' &&
     project.status === 'Clarification Required' &&
@@ -3402,6 +3815,12 @@ export default function ProjectDetail() {
         fusionCode: item.glCode,
         budgetRequested: item.budgetRequested,
         budgetRecommended: 0,
+        budgetAllocated: 0,
+        totalBudgetUtilized: 0,
+        utilizationQuarter1: 0,
+        utilizationQuarter2: 0,
+        utilizationQuarter3: 0,
+        utilizationQuarter4: 0,
       })),
     [project.budgetItems]
   )
@@ -3706,7 +4125,7 @@ export default function ProjectDetail() {
     ''
   const detailActionSummaryPreview = truncateAiText(detailActionSummaryText, 220)
   const detailActionSummaryCanExpand = detailActionSummaryPreview.length < detailActionSummaryText.length
-  const canApplyDetailAi = currentRole === 'Respondent' && isEditMode && canCurrentRoleEdit
+  const canApplyDetailAi = currentRole === 'Respondent' && isEditMode && canEditFullForm
   const isActionSummaryCombined =
     actionSupportingDocumentSummary.type === 'cumulative' &&
     actionSupportingDocumentSummary.fileCount > 1
@@ -4653,12 +5072,17 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(retrievedBudget.createdByName)
           setIctBudgetCreatedOn(retrievedBudget.createdOn)
           setIctBudgetModifiedOn(retrievedBudget.modifiedOn)
+          setIctBudgetStatusLabel(retrievedBudget.statusLabel)
+          setIctBudgetInstanceStatusCode(retrievedBudget.instanceStatusCode)
           setIctBudgetRespondentName(retrievedBudget.respondentName)
           setIctBudgetReviewerName(retrievedBudget.reviewerName)
           setIctBudgetApproverName(retrievedBudget.approverName)
           setIctBudgetSmeReviewerTeamId(retrievedBudget.smeReviewerTeamId)
           setIctBudgetRecommendedLabel(retrievedBudget.recommendedLabel)
           setIctBudgetRejectedByName(retrievedBudget.rejectedByName)
+          setIctBudgetAddedInAllocation(retrievedBudget.addedInAllocation)
+          setIctBudgetPlanningOutcome(retrievedBudget.planningOutcome)
+          setIctBudgetAllocationOutcome(retrievedBudget.allocationOutcome)
           setIctBudgetPreviousStrategicPriorityId(retrievedBudget.previousStrategicPriorityId)
           setIctBudgetPreviousStrategicPriorityName(retrievedBudget.previousStrategicPriorityName)
           setIctBudgetPreviousStrategicPriorityClassificationId(retrievedBudget.previousStrategicPriorityClassificationId)
@@ -4684,9 +5108,14 @@ export default function ProjectDetail() {
           setIctBudgetCreatedByName(project.submittedBy)
           setIctBudgetCreatedOn(null)
           setIctBudgetModifiedOn(null)
+          setIctBudgetStatusLabel(project.statusForAdgeLabel ?? null)
+          setIctBudgetInstanceStatusCode(getStoredInstanceDetail()?.statuscode ?? null)
           setIctBudgetSmeReviewerTeamId(null)
           setIctBudgetRecommendedLabel(null)
           setIctBudgetRejectedByName(null)
+          setIctBudgetAddedInAllocation(project.addedInAllocation ?? null)
+          setIctBudgetPlanningOutcome(project.planningOutcome ?? null)
+          setIctBudgetAllocationOutcome(null)
           setIctBudgetPreviousStrategicPriorityId(null)
           setIctBudgetPreviousStrategicPriorityName(null)
           setIctBudgetPreviousStrategicPriorityClassificationId(null)
@@ -4714,7 +5143,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [hasDataverseBudgetProject, ictBudgetId, project.name, project.plannedEndDate, project.plannedStartDate, project.summary, project.technology.product])
+  }, [hasDataverseBudgetProject, ictBudgetId, project.name, project.plannedEndDate, project.plannedStartDate, project.summary, project.technology.product, projectReloadToken])
 
   useEffect(() => {
     if (!ictBudgetId) return
@@ -5081,7 +5510,7 @@ export default function ProjectDetail() {
     return true
   }
 
-  const saveProjectChanges = async (options?: { exitEditMode?: boolean }) => {
+  const saveProjectChanges = async (options?: { exitEditMode?: boolean; silent?: boolean }) => {
     if (!hasDataverseBudgetProject || !ictBudgetId) {
       showErrorToast(
         'ICT budget unavailable',
@@ -5090,7 +5519,11 @@ export default function ProjectDetail() {
       return
     }
 
-    if (!canEditDgeRecommendationOnly && !validateForm()) {
+    const shouldSkipFullFormValidation =
+      canEditDgeRecommendationOnly ||
+      (isAllocationOrUtilizationPhase && (canEditAllocationFields || canEditUtilizationFields))
+
+    if (!shouldSkipFullFormValidation && !validateForm()) {
       return false
     }
 
@@ -5099,8 +5532,7 @@ export default function ProjectDetail() {
 
     setSavingIctBudget(true)
     try {
-      await runActionToast(
-        async () => {
+      const persistChanges = async () => {
           await updateIctBudgetDraft(ictBudgetId, formValues)
           if (shouldInvalidateBudgetOverview) {
             await invalidateBudgetOverviewRecord(ictBudgetId)
@@ -5127,6 +5559,20 @@ export default function ProjectDetail() {
             const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
             return savedItem && savedItem.budgetRecommended !== item.budgetRecommended
           })
+          const changedAllocatedBudgetLineItems = budgetLineItems.filter((item) => {
+            const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
+            return savedItem && savedItem.budgetAllocated !== item.budgetAllocated
+          })
+          const changedUtilizedBudgetLineItems = budgetLineItems.filter((item) => {
+            const savedItem = savedBudgetLineItems.find((saved) => saved.id === item.id)
+            return savedItem && (
+              savedItem.utilizationQuarter1 !== item.utilizationQuarter1 ||
+              savedItem.utilizationQuarter2 !== item.utilizationQuarter2 ||
+              savedItem.utilizationQuarter3 !== item.utilizationQuarter3 ||
+              savedItem.utilizationQuarter4 !== item.utilizationQuarter4 ||
+              savedItem.totalBudgetUtilized !== item.totalBudgetUtilized
+            )
+          })
 
           if (changedBudgetLineItems.length > 0 && canEditFullForm) {
             await Promise.all(
@@ -5142,6 +5588,27 @@ export default function ProjectDetail() {
             )
           }
 
+          if (changedAllocatedBudgetLineItems.length > 0 && canEditAllocationFields) {
+            await Promise.all(
+              changedAllocatedBudgetLineItems.map((item) =>
+                updateBudgetLineItemAllocatedAmount(item.id, item.budgetAllocated)
+              )
+            )
+          }
+
+          if (changedUtilizedBudgetLineItems.length > 0 && canEditUtilizationFields) {
+            await Promise.all(
+              changedUtilizedBudgetLineItems.map((item) =>
+                updateBudgetLineItemUtilizationAmounts(item.id, {
+                  quarter1: item.utilizationQuarter1,
+                  quarter2: item.utilizationQuarter2,
+                  quarter3: item.utilizationQuarter3,
+                  quarter4: item.utilizationQuarter4,
+                })
+              )
+            )
+          }
+
           setSavedFormValues(formValues)
           setSavedBudgetLineItems(budgetLineItems)
           setIctBudgetRecommendedLabel(formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : null)
@@ -5152,16 +5619,23 @@ export default function ProjectDetail() {
               .map((product) => product.name) ?? []
           )
           setIctBudgetError(null)
-        },
-        {
+      }
+
+      if (options?.silent) {
+        await persistChanges()
+      } else {
+        await runActionToast(
+          persistChanges,
+          {
           processingTitle: 'Saving changes',
           processingDescription: 'Updating the ICT budget record in Dataverse...',
           successTitle: 'Changes saved',
           successDescription: 'The project details have been updated successfully.',
           errorTitle: 'Unable to save changes',
           minDurationMs: 1800,
-        }
-      )
+          }
+        )
+      }
 
       if (shouldInvalidateBudgetOverview) {
         const refreshed = await refreshPersistedDocumentSummaries({ quiet: true })
@@ -5181,6 +5655,11 @@ export default function ProjectDetail() {
 
   const handleSaveEdit = async () => {
     await saveProjectChanges()
+  }
+
+  const savePendingFormChangesBeforeDgeAction = async () => {
+    if (!isEditMode || !hasUnsavedChanges) return true
+    return Boolean(await saveProjectChanges({ exitEditMode: false, silent: true }))
   }
 
   const handleSaveBeforeNavigation = async () => {
@@ -5218,6 +5697,7 @@ export default function ProjectDetail() {
           }
         : current
     )
+    setProjectReloadToken((current) => current + 1)
   }
 
   const prepareWorkflowAction = async (action: WorkflowAction) => {
@@ -5244,9 +5724,17 @@ export default function ProjectDetail() {
       }
     }
 
+    if (action === 'submit-allocation-review' && !validateAllocationForReview()) {
+      return
+    }
+
+    if (action === 'complete-utilization' && !validateUtilizationCompletion()) {
+      return
+    }
+
     if (isEditMode) {
       try {
-        const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
+        const saveSucceeded = await saveProjectChanges({ exitEditMode: false, silent: true })
         if (!saveSucceeded) return
       } catch {
         return
@@ -5388,6 +5876,89 @@ export default function ProjectDetail() {
           successDescription: 'The project is now with the approver.',
           errorTitle: 'Unable to submit to approver',
           minDurationMs: 1800,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
+    if (pendingWorkflowAction === 'submit-allocation-review') {
+      if (!validateAllocationForReview()) return
+      const approverTeamId = getStoredModuleConfigTeamId('Approver')
+      if (!approverTeamId) {
+        showErrorToast('Approver team missing', 'Unable to resolve the Approver team for this entity.')
+        return
+      }
+
+      await runActionToast(
+        async () => {
+          const saved = await saveProjectChanges({ exitEditMode: false, silent: true })
+          if (!saved) {
+            throw new Error('Save the allocation changes before submitting to review.')
+          }
+          await submitAllocationToReview(ictBudgetId, approverTeamId)
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          syncLocalWorkflowState('Allocation in Review' as Project['status'])
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Submitting allocation',
+          processingDescription: 'Saving allocation fields and routing this project to the approver...',
+          successTitle: 'Allocation submitted',
+          successDescription: 'The project is now pending allocation review.',
+          errorTitle: 'Unable to submit allocation',
+          minDurationMs: 1400,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
+    if (pendingWorkflowAction === 'complete-allocation') {
+      await runActionToast(
+        async () => {
+          const saved = await saveProjectChanges({ exitEditMode: false, silent: true })
+          if (!saved) {
+            throw new Error('Save the allocation changes before completing allocation.')
+          }
+          await completeAllocationReview(ictBudgetId)
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          syncLocalWorkflowState('Allocation Completed' as Project['status'])
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Completing allocation',
+          processingDescription: 'Saving allocation review and marking this project complete...',
+          successTitle: 'Allocation completed',
+          successDescription: 'The project allocation has been completed.',
+          errorTitle: 'Unable to complete allocation',
+          minDurationMs: 1400,
+        }
+      )
+      setPendingWorkflowAction(null)
+      return
+    }
+
+    if (pendingWorkflowAction === 'complete-utilization') {
+      if (!validateUtilizationCompletion()) return
+      await runActionToast(
+        async () => {
+          const saved = await saveProjectChanges({ exitEditMode: false, silent: true })
+          if (!saved) {
+            throw new Error('Save the utilization changes before completing utilization.')
+          }
+          await completeBudgetUtilization(ictBudgetId)
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          syncLocalWorkflowState('Utilization Completed' as Project['status'])
+          setIsEditMode(false)
+        },
+        {
+          processingTitle: 'Completing utilization',
+          processingDescription: 'Saving utilization quarters and completing the utilization stage...',
+          successTitle: 'Utilization completed',
+          successDescription: 'The project utilization has been completed.',
+          errorTitle: 'Unable to complete utilization',
+          minDurationMs: 1400,
         }
       )
       setPendingWorkflowAction(null)
@@ -5711,6 +6282,12 @@ export default function ProjectDetail() {
         fusionCode: draft.fusionCode,
         budgetRequested: suggestion.mappedBudget,
         budgetRecommended: 0,
+        budgetAllocated: 0,
+        totalBudgetUtilized: 0,
+        utilizationQuarter1: 0,
+        utilizationQuarter2: 0,
+        utilizationQuarter3: 0,
+        utilizationQuarter4: 0,
       }
 
       setBudgetLineItems((prev) => [...prev, nextBudgetLineItem])
@@ -5801,6 +6378,12 @@ export default function ProjectDetail() {
             fusionCode: draft.fusionCode,
             budgetRequested: suggestion.mappedBudget,
             budgetRecommended: 0,
+            budgetAllocated: 0,
+            totalBudgetUtilized: 0,
+            utilizationQuarter1: 0,
+            utilizationQuarter2: 0,
+            utilizationQuarter3: 0,
+            utilizationQuarter4: 0,
           })
         })
 
@@ -5953,7 +6536,7 @@ export default function ProjectDetail() {
     clarificationId: string,
     message: string,
     files?: File[],
-    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+    returnToRole?: 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   ) => {
     if (!ictBudgetId) {
       setLocalClarifications((prev) =>
@@ -5989,16 +6572,110 @@ export default function ProjectDetail() {
           files,
         })
 
+        if (returnToRole === 'Strategy Director' && (currentRole === 'Strategy Team' || currentRole === 'SME Team')) {
+          if (currentRole === 'Strategy Team') {
+            await returnStrategyClarificationToDirector(ictBudgetId)
+            syncLocalWorkflowState('Under Final Review' as Project['status'])
+          } else {
+            const strategyTeam = getStoredStrategyTeam()
+            if (!strategyTeam?.teamId) {
+              throw new Error('Strategy Team is not configured for this workspace.')
+            }
+            const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+              statuscode: DGE_BUDGET_STATUS.underQualityCheck,
+              dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+              'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+            } as never)
+            if (!handoffResult.success) {
+              throw new Error(handoffResult.error?.message || 'Unable to return SME clarification to quality check.')
+            }
+            syncLocalWorkflowState('Under Quality Check' as Project['status'])
+          }
+
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+          setLocalClarifications(clarifications)
+          if (files?.length) void refreshSharepointDocs()
+          return
+        }
+
+        if (currentRole === 'SME Team' && returnToRole === 'Strategy Team') {
+          const strategyTeam = getStoredStrategyTeam()
+          if (!strategyTeam?.teamId) {
+            throw new Error('Strategy Team is not configured for this workspace.')
+          }
+
+          const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.underQualityCheck,
+            dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            'ownerid@odata.bind': `/teams(${strategyTeam.teamId})`,
+          } as never)
+
+          if (!handoffResult.success) {
+            throw new Error(handoffResult.error?.message || 'Unable to return SME clarification to Strategy Team.')
+          }
+
+          await invalidateBudgetOverviewRecord(ictBudgetId)
+          syncLocalWorkflowState('Under Quality Check' as Project['status'])
+
+          const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+          setLocalClarifications(clarifications)
+          if (files?.length) void refreshSharepointDocs()
+          return
+        }
+
         if (currentRole === 'Respondent' && returnToRole) {
+          const originalClarification = localClarifications.find((item) => item.id === clarificationId)
+          const isAllocationClarificationReply =
+            returnToRole === 'Approver' && originalClarification?.stage === 'Allocation'
+
+          if (isAllocationClarificationReply) {
+            const approverTeamId = getStoredModuleConfigTeamId('Approver')
+            if (!approverTeamId) {
+              throw new Error('Approver team is not configured for this entity.')
+            }
+
+            const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+              statuscode: DGE_BUDGET_STATUS.allocationInReview,
+              dga_status_for_adge: 8,
+              'ownerid@odata.bind': `/teams(${approverTeamId})`,
+            } as never)
+
+            if (!handoffResult.success) {
+              throw new Error(handoffResult.error?.message || 'Unable to return allocation clarification to Approver.')
+            }
+
+            await invalidateBudgetOverviewRecord(ictBudgetId)
+            syncLocalWorkflowState('Submitted to DGE')
+
+            const clarifications = await getClarificationsByBudgetId(ictBudgetId)
+            setLocalClarifications(clarifications)
+            if (files?.length) void refreshSharepointDocs()
+            return
+          }
+
           if (returnToRole !== 'Reviewer' && returnToRole !== 'Approver') {
             const nextStatusCode =
               returnToRole === 'Strategy Team'
                 ? DGE_BUDGET_STATUS.underStrategicAlignmentReview
                 : DGE_BUDGET_STATUS.underSmeReview
+            const targetTeamId =
+              returnToRole === 'Strategy Team'
+                ? getStoredStrategyTeam()?.teamId?.trim() || null
+                : ictBudgetSmeReviewerTeamId || null
+
+            if (!targetTeamId) {
+              throw new Error(
+                returnToRole === 'Strategy Team'
+                  ? 'Strategy Team is not configured for this workspace.'
+                  : 'No SME team is mapped on this project.'
+              )
+            }
 
             const handoffResult = await Dga_ict_budgetsService.update(ictBudgetId, {
               statuscode: nextStatusCode,
               dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+              'ownerid@odata.bind': `/teams(${targetTeamId})`,
             } as never)
 
             if (!handoffResult.success) {
@@ -6068,6 +6745,7 @@ export default function ProjectDetail() {
       clarification?.raisedBy === 'Reviewer' ||
       clarification?.raisedBy === 'Approver' ||
       clarification?.raisedBy === 'Strategy Team' ||
+      clarification?.raisedBy === 'Strategy Director' ||
       clarification?.raisedBy === 'SME Team'
         ? clarification.raisedBy
         : null
@@ -6083,6 +6761,39 @@ export default function ProjectDetail() {
         message,
         files,
         returnToRole: firstReplyReturnToRole,
+        stage: clarification.stage,
+      })
+      return
+    }
+
+    const isDgeFirstReplyToDirector =
+      (currentRole === 'Strategy Team' || currentRole === 'SME Team') &&
+      clarification?.raisedBy === 'Strategy Director' &&
+      clarification.replies.length === 0
+
+    if (isDgeFirstReplyToDirector) {
+      setPendingClarificationReply({
+        clarificationId,
+        message,
+        files,
+        returnToRole: 'Strategy Director',
+        stage: clarification.stage,
+      })
+      return
+    }
+
+    const isSmeFirstReplyToStrategy =
+      currentRole === 'SME Team' &&
+      clarification?.raisedBy === 'Strategy Team' &&
+      clarification.replies.length === 0
+
+    if (isSmeFirstReplyToStrategy) {
+      setPendingClarificationReply({
+        clarificationId,
+        message,
+        files,
+        returnToRole: 'Strategy Team',
+        stage: clarification.stage,
       })
       return
     }
@@ -6128,12 +6839,14 @@ export default function ProjectDetail() {
     )
   }
 
-  const handleRaiseClarification = ({ message, files }: { message: string; files?: File[] }) => {
+  const handleRaiseClarification = async ({ message, files, target }: { message: string; files?: File[]; target?: string }) => {
     const raisedByRole =
       currentRole === 'Approver'
         ? 'Approver'
         : currentRole === 'Strategy Team'
           ? 'Strategy Team'
+          : currentRole === 'Strategy Director'
+            ? 'Strategy Director'
           : currentRole === 'SME Team'
             ? 'SME Team'
             : 'Reviewer'
@@ -6149,6 +6862,8 @@ export default function ProjectDetail() {
               ? 'Approver'
               : raisedByRole === 'Strategy Team'
                 ? 'ICT - Strategy Team'
+                : raisedByRole === 'Strategy Director'
+                  ? 'ICT - Strategy Director'
                 : 'ICT - SME Team',
         raisedByName: currentUser.name,
         raisedTo: 'Respondent',
@@ -6162,16 +6877,42 @@ export default function ProjectDetail() {
       return
     }
 
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
     void runActionToast(
       async () => {
+        const directorClarificationTargetTeamId =
+          raisedByRole === 'Strategy Director'
+            ? target === 'sme'
+              ? ictBudgetSmeReviewerTeamId || null
+              : getStoredStrategyTeam()?.teamId?.trim() || null
+            : null
+        const strategyToSmeClarificationTargetTeamId =
+          raisedByRole === 'Strategy Team' && target === 'sme'
+            ? ictBudgetSmeReviewerTeamId || null
+            : null
         await raiseBudgetClarification({
           budgetId: ictBudgetId,
           message,
           raisedByRole,
           clarificationStage:
-            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 2 : 1,
+            raisedByRole === 'Approver' && isAllocationInReview
+              ? 3
+              : raisedByRole === 'Strategy Team' || raisedByRole === 'Strategy Director' || raisedByRole === 'SME Team'
+                ? 2
+                : 1,
           scope:
-            raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team' ? 1 : 2,
+            raisedByRole === 'Strategy Team'
+              ? target === 'sme'
+                ? 3
+                : 1
+              : raisedByRole === 'SME Team'
+                ? 1
+                : raisedByRole === 'Strategy Director'
+                  ? 3
+                  : 2,
+          raisedToTeamId: directorClarificationTargetTeamId || strategyToSmeClarificationTargetTeamId,
           files,
         })
         console.log('[ProjectDetail] Raising clarification — updating ICT budget to clarification pending:', {
@@ -6180,7 +6921,42 @@ export default function ProjectDetail() {
           status: ICT_BUDGET_STATUS.clarificationPending,
           targetOwner: 'Respondent',
         })
-        if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
+        if (raisedByRole === 'Strategy Director') {
+          if (!directorClarificationTargetTeamId) {
+            throw new Error(target === 'sme' ? 'No SME team is mapped on this project.' : 'Strategy Team is not configured for this workspace.')
+          }
+          const strategyDirectorTeam = getStoredStrategyDirectorTeam()
+          if (!strategyDirectorTeam?.teamId) {
+            throw new Error('Strategy Director team is not configured for this workspace.')
+          }
+          await grantIctBudgetAccessToTeam(ictBudgetId, strategyDirectorTeam.teamId)
+          const directorClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            'ownerid@odata.bind': `/teams(${directorClarificationTargetTeamId})`,
+          } as never)
+          if (!directorClarificationResult.success) {
+            throw new Error(directorClarificationResult.error?.message || 'Unable to send director clarification to Strategy Team.')
+          }
+        } else if (raisedByRole === 'Strategy Team' && target === 'sme') {
+          if (!strategyToSmeClarificationTargetTeamId) {
+            throw new Error('No SME team is mapped on this project.')
+          }
+          const strategyTeam = getStoredStrategyTeam()
+          if (!strategyTeam?.teamId) {
+            throw new Error('Strategy Team is not configured for this workspace.')
+          }
+          await grantIctBudgetAccessToTeam(ictBudgetId, strategyTeam.teamId)
+          const strategyToSmeResult = await Dga_ict_budgetsService.update(ictBudgetId, {
+            statuscode: DGE_BUDGET_STATUS.clarificationPending,
+            dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
+            'ownerid@odata.bind': `/teams(${strategyToSmeClarificationTargetTeamId})`,
+          } as never)
+
+          if (!strategyToSmeResult.success) {
+            throw new Error(strategyToSmeResult.error?.message || 'Unable to raise clarification to SME.')
+          }
+        } else if (raisedByRole === 'Strategy Team' || raisedByRole === 'SME Team') {
           const dgeClarificationResult = await Dga_ict_budgetsService.update(ictBudgetId, {
             statuscode: DGE_BUDGET_STATUS.clarificationPending,
             dga_status_for_adge: ICT_BUDGET_STATUS.clarificationPending,
@@ -6292,6 +7068,12 @@ export default function ProjectDetail() {
           fusionCode: draft.fusionCode,
           budgetRequested: suggestion.mappedBudget,
           budgetRecommended: 0,
+          budgetAllocated: 0,
+          totalBudgetUtilized: 0,
+          utilizationQuarter1: 0,
+          utilizationQuarter2: 0,
+          utilizationQuarter3: 0,
+          utilizationQuarter4: 0,
         })
       }
 
@@ -6344,6 +7126,45 @@ export default function ProjectDetail() {
   const budgetTotal = hasDataverseBudgetProject
     ? displayedBudgetItems.reduce((total, item) => total + item.budgetRequested, 0)
     : project.requestedBudget
+  const recommendedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.budgetRecommended, 0)
+  const allocatedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.budgetAllocated, 0)
+  const utilizedBudgetTotal = displayedBudgetItems.reduce((total, item) => total + item.totalBudgetUtilized, 0)
+  const summaryInstanceStatusCode = ictBudgetInstanceStatusCode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const isAddedInAllocationBudget = ictBudgetAddedInAllocation === 2
+  const summaryShowRecommended =
+    !isAddedInAllocationBudget &&
+    (isDgeRole ||
+      isAdgeRecommendationVisibleInstanceStatus(summaryInstanceStatusCode))
+  const summaryShowAllocated =
+    (isDgeRole && isAdgeAllocationVisibleInstanceStatus(summaryInstanceStatusCode)) ||
+    (!isDgeRole && canEditAllocationFields) ||
+    (!isDgeRole && isAdgeAllocationVisibleInstanceStatus(summaryInstanceStatusCode))
+  const summaryShowUtilized =
+    (isDgeRole && isAdgeUtilizationVisibleInstanceStatus(summaryInstanceStatusCode)) ||
+    (!isDgeRole && canEditUtilizationFields) ||
+    (!isDgeRole && isAdgeUtilizationVisibleInstanceStatus(summaryInstanceStatusCode))
+  const budgetSummaryTiles = [
+    { label: 'Total Requested Budget', amount: budgetTotal },
+    ...(summaryShowRecommended ? [{ label: 'Total Recommended Budget', amount: recommendedBudgetTotal }] : []),
+    ...(summaryShowAllocated ? [{ label: 'Total Allocated Budget', amount: allocatedBudgetTotal }] : []),
+    ...(summaryShowUtilized ? [{ label: 'Total Utilized Budget', amount: utilizedBudgetTotal }] : []),
+  ]
+  const budgetSectionAction = (
+    <div className="min-w-[240px] rounded-2xl border border-[#D9E6F5] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5 sm:min-w-[360px]">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Budget Totals</p>
+        <WalletCards className="h-4 w-4 text-[#286CFF]" />
+      </div>
+      <div className="grid grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-2">
+        {budgetSummaryTiles.map((tile) => (
+          <div key={tile.label} className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-[#64748B] dark:text-slate-300">{tile.label.replace('Total ', '')}</span>
+            <CurrencyAmount amount={tile.amount} full className="text-sm font-bold text-[#0F172A] dark:text-white" iconSize={13} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
   const existingBudgetDrafts = useMemo<BudgetItemDraft[]>(
     () =>
       displayedBudgetItems
@@ -6509,6 +7330,35 @@ export default function ProjectDetail() {
     )
   }
 
+  const handleBudgetAllocatedChange = (lineItemId: string, amount: number) => {
+    setBudgetLineItems((current) =>
+      current.map((item) =>
+        item.id === lineItemId ? { ...item, budgetAllocated: amount } : item
+      )
+    )
+  }
+
+  const handleUtilizationQuarterChange = (
+    lineItemId: string,
+    quarters: [number, number, number, number]
+  ) => {
+    const total = quarters.reduce((sum, value) => sum + (Number(value) || 0), 0)
+    setBudgetLineItems((current) =>
+      current.map((item) =>
+        item.id === lineItemId
+          ? {
+              ...item,
+              utilizationQuarter1: quarters[0],
+              utilizationQuarter2: quarters[1],
+              utilizationQuarter3: quarters[2],
+              utilizationQuarter4: quarters[3],
+              totalBudgetUtilized: total,
+            }
+          : item
+      )
+    )
+  }
+
   const validateSmeRecommendationForQualityCheck = () => {
     if (formValues.recommended == null) {
       showErrorToast('Recommendation required', 'Select Recommended before routing this project to quality check.')
@@ -6529,15 +7379,56 @@ export default function ProjectDetail() {
     return true
   }
 
-  const handleRouteToQualityCheck = async () => {
-    if (!ictBudgetId || !projectData || !canRouteToQualityCheck) return
-    if (!validateSmeRecommendationForQualityCheck()) return
-    await validateBudgetReadyForQualityCheck(ictBudgetId)
-
-    if (isEditMode) {
-      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
-      if (!saveSucceeded) return
+  const validateAllocationForReview = () => {
+    if (isAddedInAllocationBudget) {
+      if (budgetLineItems.some((item) => item.budgetAllocated <= 0)) {
+        showErrorToast('Allocated budget required', 'Enter Allocated Budget for each budget line before submitting this project for review.')
+        return false
+      }
+      return true
     }
+
+    if (formValues.allocationOutcome == null) {
+      showErrorToast('Allocation outcome required', 'Select Allocation Outcome before submitting this project for review.')
+      return false
+    }
+
+    if (formValues.allocationOutcome === 1) {
+      if (!formValues.allocationCancelationReason.trim()) {
+        showErrorToast('Cancellation reason required', 'Add Allocation Cancelation Reason before submitting this project for review.')
+        return false
+      }
+      return true
+    }
+
+    if (budgetLineItems.some((item) => item.budgetAllocated <= 0)) {
+      showErrorToast('Allocated budget required', 'Enter Allocated Budget for each budget line before submitting this project for review.')
+      return false
+    }
+
+    return true
+  }
+
+  const validateUtilizationCompletion = () => {
+    if (formValues.allocationOutcome === 1) return true
+
+    if (budgetLineItems.some((item) => item.totalBudgetUtilized <= 0)) {
+      showErrorToast('Utilized budget required', 'Add utilization quarters so each active budget line has utilized budget before completing utilization.')
+      return false
+    }
+
+    return true
+  }
+
+  const handleRouteToQualityCheck = async () => {
+    const canRouteFromDetail = canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification
+    if (!ictBudgetId || !projectData || !canRouteFromDetail) return
+    if (!validateSmeRecommendationForQualityCheck()) return
+
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
+    await validateBudgetReadyForQualityCheck(ictBudgetId)
 
     const totalRequestedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRequested, 0)
     const totalRecommendedBudget = budgetLineItems.reduce((sum, item) => sum + item.budgetRecommended, 0)
@@ -6563,8 +7454,12 @@ export default function ProjectDetail() {
       recommendedBudget: totalRecommendedBudget,
       allocatedBudget: 0,
       utilizedBudget: 0,
+      planningOutcome: project.planningOutcome ?? ictBudgetPlanningOutcome ?? null,
+      addedInAllocation: project.addedInAllocation ?? ictBudgetAddedInAllocation ?? null,
       aiConfidenceScore: project.aiScore ?? null,
+      aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,
+      ownerType: project.ownerType ?? null,
       ownerName: null,
       instanceId: null,
       instanceName: storedInstance?.name ?? null,
@@ -6617,8 +7512,12 @@ export default function ProjectDetail() {
       recommendedBudget: totalRecommendedBudget,
       allocatedBudget: 0,
       utilizedBudget: 0,
+      planningOutcome: project.planningOutcome ?? ictBudgetPlanningOutcome ?? null,
+      addedInAllocation: project.addedInAllocation ?? ictBudgetAddedInAllocation ?? null,
       aiConfidenceScore: project.aiScore ?? null,
+      aiReviewFlags: project.aiReviewFlags ?? [],
       ownerId: project.ownerId ?? null,
+      ownerType: project.ownerType ?? null,
       ownerName: null,
       instanceId: null,
       instanceName: storedInstance?.name ?? null,
@@ -6643,10 +7542,8 @@ export default function ProjectDetail() {
   const handleDetailSubmitChangeRequest = async () => {
     if (!ictBudgetId || !projectData || !detailChangePriorityId || !detailChangeClassificationId) return
 
-    if (isEditMode) {
-      const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
-      if (!saveSucceeded) return
-    }
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6671,6 +7568,8 @@ export default function ProjectDetail() {
 
   const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6697,6 +7596,8 @@ export default function ProjectDetail() {
 
   const handleDetailSendToSme = async () => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
 
     await runActionToast(
       async () => {
@@ -6717,15 +7618,12 @@ export default function ProjectDetail() {
 
   const handleDetailRouteToDirector = async () => {
     if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
     await runActionToast(
       async () => {
-        const result = await Dga_ict_budgetsService.update(ictBudgetId, {
-          statuscode: DGE_BUDGET_STATUS.underFinalReview,
-          dga_status_for_adge: ICT_BUDGET_STATUS.underDgeReview,
-        } as never)
-        if (!result.success) {
-          throw new Error(result.error?.message || 'Unable to route project to director review.')
-        }
+        await routeBudgetToDirectorReview(buildCurrentWorkflowBudget())
         syncLocalWorkflowState('Under Final Review' as Project['status'])
       },
       {
@@ -6734,6 +7632,27 @@ export default function ProjectDetail() {
         successTitle: 'Routed to director',
         successDescription: 'The project is now under final review.',
         errorTitle: 'Unable to route to director',
+        minDurationMs: 1200,
+      }
+    )
+  }
+
+  const handleDetailCompleteDirectorReview = async () => {
+    if (!ictBudgetId) return
+    const saveSucceeded = await savePendingFormChangesBeforeDgeAction()
+    if (!saveSucceeded) return
+
+    await runActionToast(
+      async () => {
+        await completeDirectorReview(buildCurrentWorkflowBudget())
+        syncLocalWorkflowState('Review Completed' as Project['status'])
+      },
+      {
+        processingTitle: 'Completing director review',
+        processingDescription: 'Marking this project as DGE review completed...',
+        successTitle: 'Director review completed',
+        successDescription: 'The project is now counted as Review Completed.',
+        errorTitle: 'Unable to complete director review',
         minDurationMs: 1200,
       }
     )
@@ -6846,6 +7765,7 @@ export default function ProjectDetail() {
   const savedActivityTypeLabel =
     ACTIVITY_TYPE_OPTIONS.find((option) => option.value === savedFormValues.activityType)?.title ?? '-'
   const headerCreatedBy = ictBudgetCreatedByName || project.submittedBy
+  const headerPendingWith = project.pendingWith || '-'
   const creationCreatedOnLabel = ictBudgetCreatedOn
     ? ictBudgetCreatedOn
     : project.submittedDate
@@ -6854,8 +7774,25 @@ export default function ProjectDetail() {
     : project.lastModified
   const resolvedStatusLabel = isDgeRole
     ? getDgeHeaderStatusLabel(project.statusCode ?? null, project.status)
-    : project.status
-  const showDgeRecommendationFields = isDgeRole && isSubmittedToDgeBudget
+    : ictBudgetStatusLabel || project.statusForAdgeLabel || project.status
+  const storedInstanceStatusCode = ictBudgetInstanceStatusCode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const isInstanceAllocationOrLater = isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode)
+  const isInstanceReviewCompletedOrLater = isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
+  const canAdgeViewDgeRecommendationFields =
+    !isDgeRole &&
+    isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
+  const showDgeRecommendationFields =
+    !isAddedInAllocationBudget &&
+    ((isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields)
+  const showAllocationFields =
+    (isDgeRole && isSubmittedToDgeBudget && isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode)) ||
+    (!isDgeRole && canEditAllocationFields) ||
+    (!isDgeRole && isAdgeAllocationVisibleInstanceStatus(storedInstanceStatusCode))
+  const showAllocationOutcomeFields = showAllocationFields && !isAddedInAllocationBudget
+  const showUtilizationFields =
+    (isDgeRole && isSubmittedToDgeBudget && isAdgeUtilizationVisibleInstanceStatus(storedInstanceStatusCode)) ||
+    (!isDgeRole && canEditUtilizationFields) ||
+    (!isDgeRole && isAdgeUtilizationVisibleInstanceStatus(storedInstanceStatusCode))
   const recommendedChoiceLabel =
     formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : '-'
   const rejectionReasonLabel =
@@ -6887,12 +7824,18 @@ export default function ProjectDetail() {
     summary: savedFormValues.summary || toPlainTextSummary(project.summary),
     status: resolvedStatusLabel,
     createdBy: headerCreatedBy,
+    pendingWith: headerPendingWith,
     createdOn: creationCreatedOnLabel,
     modifiedOn: creationModifiedOnLabel,
     recommended: ictBudgetRecommendedLabel || recommendedChoiceLabel,
     rejectionReason: rejectionReasonLabel,
     rejectionJustification: formValues.rejectionJustification.trim() || '-',
   }
+
+  const planningOutcomeLabel =
+    ictBudgetPlanningOutcome === 1 ? 'Recommended by DGE' : ictBudgetPlanningOutcome === 2 ? 'Not Recommended' : null
+  const allocationOutcomeLabel =
+    ictBudgetAllocationOutcome === 2 ? 'Used In Allocation' : ictBudgetAllocationOutcome === 1 ? 'Cancelled In Allocation' : null
 
   if (projectLoading && !projectData) {
     return <DetailPageLoadingShell />
@@ -6926,6 +7869,19 @@ export default function ProjectDetail() {
                 {display.name}
               </h1>
               <DynamicStatusBadge status={display.status} fallbackStatus={project.status} />
+              {!isDgeRole && ictBudgetAddedInAllocation === 2 ? (
+                <HeaderInfoTag tone="blue">Added in Allocation</HeaderInfoTag>
+              ) : null}
+              {!isDgeRole && isInstanceReviewCompletedOrLater && planningOutcomeLabel ? (
+                <HeaderInfoTag tone={ictBudgetPlanningOutcome === 2 ? 'red' : 'green'}>
+                  {planningOutcomeLabel}
+                </HeaderInfoTag>
+              ) : null}
+              {!isDgeRole && isInstanceAllocationOrLater && allocationOutcomeLabel ? (
+                <HeaderInfoTag tone={ictBudgetAllocationOutcome === 1 ? 'amber' : 'green'}>
+                  {allocationOutcomeLabel}
+                </HeaderInfoTag>
+              ) : null}
               <RiskBadge risk={project.riskLevel} />
               {/* Edit mode indicator chip */}
               {isEditMode && (
@@ -6942,6 +7898,11 @@ export default function ProjectDetail() {
               <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
                 Created By: <span className="font-semibold text-[#0F172A] dark:text-white">{display.createdBy}</span>
               </p>
+              {isDgeRole ? (
+                <p className="text-sm font-medium text-[#475569] dark:text-slate-200">
+                  Pending With: <span className="font-semibold text-[#0F172A] dark:text-white">{display.pendingWith}</span>
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -6980,7 +7941,7 @@ export default function ProjectDetail() {
                 </button>
               </div>
 
-              {!isEditMode && !showLogs && canCurrentRoleEdit && (
+              {!isEditMode && !showLogs && canShowEditButton && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -7102,23 +8063,31 @@ export default function ProjectDetail() {
               >
                 {showClarificationReturnNotice
                   ? `Reply Returns To ${clarificationReturnRole}`
+                  : isDirectorClarificationForStrategy
+                    ? 'Clarification Required by Strategy Director'
+                  : isDirectorClarificationForSme
+                    ? 'Clarification Required by Strategy Director'
                   : isStrategyClarificationRequiredForSme
                     ? 'Clarification Required by Strategy Team'
                   : showPendingNotice
                   ? `Pending with ${effectiveWorkflowOwner}`
-                  : canCurrentRoleEdit
-                    ? `${currentRole} actions available`
+                  : canShowEditButton
+                    ? availableActionHeading
                     : 'Read-only workflow state'}
               </p>
               <p className="text-xs text-[#64748B] dark:text-slate-300">
                 {showClarificationReturnNotice
                   ? `Reply to the latest clarification below and this ICT budget will automatically be assigned back to ${clarificationReturnRole}. You do not need to submit it manually from Quick Actions.`
+                  : isDirectorClarificationForStrategy
+                    ? 'Strategy Director requested clarification from Strategy Team. Your first reply will return this project to Director final review, and you can also use Route to Director when ready.'
+                  : isDirectorClarificationForSme
+                    ? 'Strategy Director requested clarification from SME Team. Your first reply will move this project back to Strategy Team quality check, and you can also route it to quality check when ready.'
                   : isStrategyClarificationRequiredForSme
                     ? 'Strategy Team requested clarification from SME on this project. You can update the recommendation fields, reply in the clarification thread, and still route the project to quality check once it is ready.'
                   : showPendingNotice
                   ? pendingNoticeText
-                  : canCurrentRoleEdit
-                    ? `This project is currently assigned to ${currentRole}. You can edit it and continue the workflow actions from the panel on the right.`
+                  : canShowEditButton
+                    ? availableActionDescription
                   : 'This project is currently read-only, but the clarification thread remains available for all roles.'}
             </p>
           </div>
@@ -7184,7 +8153,7 @@ export default function ProjectDetail() {
             /* ════ EDIT MODE SECTIONS ════════════════════════════════════════ */
             <>
               <DetailSection id="sec-details" title="Project Details" description="Core submission information and strategic alignment." icon={ClipboardCheck}>
-                {canEditDgeRecommendationOnly ? (
+                {canEditLimitedForm ? (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Field label="Initiative / Budget Item Name" value={display.name} />
                     <Field label="Strategic Priority" value={display.strategicPriority} />
@@ -7359,7 +8328,7 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-timelines" title="Project Timeline" description="Planned delivery window for review and governance assessment." icon={CalendarDays}>
-                {canEditDgeRecommendationOnly ? (
+                {canEditLimitedForm ? (
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Field label="Planned Start Date" value={display.plannedStartDate} />
                     <Field label="Planned End Date" value={display.plannedEndDate} />
@@ -7386,7 +8355,7 @@ export default function ProjectDetail() {
               </DetailSection>
 
               <DetailSection id="sec-summary" title="Project Summary" description="Business need, expected outcomes, beneficiaries, and delivery approach." icon={FileText}>
-                {canEditDgeRecommendationOnly ? (
+                {canEditLimitedForm ? (
                   <div className="rounded-xl border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                     <p className="text-sm leading-7 text-[#0F172A] dark:text-white">{display.summary}</p>
                   </div>
@@ -7419,15 +8388,10 @@ export default function ProjectDetail() {
                 description="Create and review project budget line items from the classification hierarchy."
                 icon={WalletCards}
                 titleAdornment={buildBudgetAccountCodesAssist()}
-                action={
-                  <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
-                    <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
-                    <CurrencyAmount amount={budgetTotal} full className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
-                  </div>
-                }
+                action={budgetSectionAction}
               >
                 <div className="mb-6 space-y-4 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  {canEditDgeRecommendationOnly ? (
+                  {canEditLimitedForm ? (
                     <>
                       <Field label="Project Budget Type" value={display.budgetActivityType} />
                       {visibleBudgetFields.length > 0 && (
@@ -7580,6 +8544,67 @@ export default function ProjectDetail() {
                       ) : null}
                     </div>
                   )}
+
+                  {showAllocationOutcomeFields && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <EditField label="Allocation Outcome" required>
+                        {canEditAllocationFields ? (
+                          <Select
+                            value={formValues.allocationOutcome ? String(formValues.allocationOutcome) : ''}
+                            onValueChange={(value) => {
+                              const nextOutcome = Number(value) as 1 | 2
+                              setFormValues((prev) => ({
+                                ...prev,
+                                allocationOutcome: nextOutcome,
+                                allocationCancelationReason: nextOutcome === 1 ? prev.allocationCancelationReason : '',
+                              }))
+                              if (nextOutcome === 1) {
+                                setBudgetLineItems((current) =>
+                                  current.map((item) => ({ ...item, budgetAllocated: 0 }))
+                                )
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-11 rounded-xl border-[#D7E4F4] bg-white px-4 dark:border-white/10 dark:bg-[#1E293B]">
+                              <SelectValue placeholder="Select allocation outcome" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="2">Used In Allocation</SelectItem>
+                              <SelectItem value="1">Cancelled In Allocation</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Field
+                            label="Allocation Outcome"
+                            value={formValues.allocationOutcome === 2 ? 'Used In Allocation' : formValues.allocationOutcome === 1 ? 'Cancelled In Allocation' : '-'}
+                          />
+                        )}
+                      </EditField>
+
+                      {formValues.allocationOutcome === 1 ? (
+                        <div className="md:col-span-2">
+                          <EditField label="Allocation Cancelation Reason" required>
+                            {canEditAllocationFields ? (
+                              <Textarea
+                                value={formValues.allocationCancelationReason}
+                                onChange={(event) =>
+                                  setFormValues((prev) => ({
+                                    ...prev,
+                                    allocationCancelationReason: event.target.value,
+                                  }))
+                                }
+                                rows={4}
+                                className="rounded-2xl border-[#D7E4F4] bg-white px-4 py-3 dark:border-white/10 dark:bg-[#1E293B]"
+                                placeholder="Explain why this budget was cancelled during allocation"
+                              />
+                            ) : (
+                              <Field label="Allocation Cancelation Reason" value={formValues.allocationCancelationReason} />
+                            )}
+                          </EditField>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
                 {hasDataverseBudgetProject && canEditFullForm && (
                   <div className="mb-4 flex justify-end">
@@ -7595,12 +8620,18 @@ export default function ProjectDetail() {
                   error={budgetItemsError}
                   editableRequested={canEditFullForm}
                   editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
+                  editableAllocated={canEditAllocationFields && (isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
+                  editableUtilization={canEditUtilizationFields}
                   showRecommendedBudget={showDgeRecommendationFields}
+                  showAllocatedBudget={showAllocationFields}
+                  showUtilizedBudget={showUtilizationFields}
                   showActions={canEditFullForm}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
                   onChangeBudgetRecommended={handleBudgetRecommendedChange}
+                  onChangeBudgetAllocated={handleBudgetAllocatedChange}
+                  onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -7694,6 +8725,61 @@ export default function ProjectDetail() {
                         Raise Clarification
                       </Button>
                     )}
+                    {(canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleRouteToQualityCheck()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Quality Check
+                      </Button>
+                    )}
+                    {canRequestStrategicPriorityChange && (
+                      <Button
+                        variant="outline"
+                        className="gap-2 rounded-xl border-blue-300 text-blue-700 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF]"
+                        onClick={openDetailChangeRequestModal}
+                      >
+                        <Layers className="h-4 w-4" />
+                        Request Strategic Priority Change
+                      </Button>
+                    )}
+                    {canSendToSmeFromDetail && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => setDetailSendToSmeConfirmOpen(true)}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Send to SME
+                      </Button>
+                    )}
+                    {canReviewStrategicPriorityChangeFromDetail && (
+                      <Button
+                        className="gap-2 rounded-xl"
+                        onClick={() => setDetailReviewChangeModalOpen(true)}
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                        Review Change Request
+                      </Button>
+                    )}
+                    {(canRouteToDirectorFromDetail || canRouteToDirectorAfterDirectorClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailRouteToDirector()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Director
+                      </Button>
+                    )}
+                    {(canCompleteDirectorReviewFromDetail || canCompleteDirectorReviewAfterClarification) && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailCompleteDirectorReview()}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Complete Review
+                      </Button>
+                    )}
                     {canCompleteReview && (
                       <Button
                         className="gap-2 rounded-xl"
@@ -7728,6 +8814,33 @@ export default function ProjectDetail() {
                       >
                         <Send className="h-4 w-4" />
                         Submit to Reviewer
+                      </Button>
+                    )}
+                    {canSubmitAllocationReview && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('submit-allocation-review')}
+                      >
+                        <Send className="h-4 w-4" />
+                        Submit to Review
+                      </Button>
+                    )}
+                    {canCompleteAllocation && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('complete-allocation')}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete Allocation
+                      </Button>
+                    )}
+                    {canCompleteUtilization && (
+                      <Button
+                        className="gap-2 rounded-xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('complete-utilization')}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete Utilization
                       </Button>
                     )}
                   </div>
@@ -7806,12 +8919,7 @@ export default function ProjectDetail() {
                 description="Account-level spend breakdown for review validation."
                 icon={WalletCards}
                 titleAdornment={buildBudgetAccountCodesAssist()}
-                action={
-                  <div className="rounded-xl bg-[#EFF6FF] px-4 py-2 text-end dark:bg-white/5">
-                    <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">Total Requested Budget</p>
-                    <CurrencyAmount amount={budgetTotal} full className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
-                  </div>
-                }
+                action={budgetSectionAction}
               >
                 <div className="mb-6 space-y-3 rounded-2xl border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                   <Field
@@ -7849,6 +8957,20 @@ export default function ProjectDetail() {
                       ) : null}
                     </div>
                   ) : null}
+
+                  {showAllocationOutcomeFields ? (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <Field
+                        label="Allocation Outcome"
+                        value={formValues.allocationOutcome === 2 ? 'Used In Allocation' : formValues.allocationOutcome === 1 ? 'Cancelled In Allocation' : '-'}
+                      />
+                      {formValues.allocationOutcome === 1 ? (
+                        <div className="md:col-span-2">
+                          <Field label="Allocation Cancelation Reason" value={formValues.allocationCancelationReason} />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <BudgetItemsTable
                   items={displayedBudgetItems}
@@ -7856,12 +8978,18 @@ export default function ProjectDetail() {
                   error={budgetItemsError}
                   editableRequested={false}
                   editableRecommended={false}
+                  editableAllocated={false}
+                  editableUtilization={false}
                   showRecommendedBudget={showDgeRecommendationFields}
+                  showAllocatedBudget={showAllocationFields}
+                  showUtilizedBudget={showUtilizationFields}
                   showActions={false}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
                   onChangeBudgetRecommended={handleBudgetRecommendedChange}
+                  onChangeBudgetAllocated={handleBudgetAllocatedChange}
+                  onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
                 />
                 {fieldErrors.budgetItems && (
@@ -7956,7 +9084,7 @@ export default function ProjectDetail() {
                         </Button>
                       </>
                     )}
-                    {canCurrentRoleEdit && !isEditMode && (
+                    {canShowEditButton && !isEditMode && (
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
@@ -7966,7 +9094,9 @@ export default function ProjectDetail() {
                         Edit Details
                       </Button>
                     )}
-                    {canRaiseClarification && (
+                    {canRaiseClarification &&
+                      !canRouteToDirectorAfterDirectorClarification &&
+                      !canRouteToQualityCheckAfterDirectorClarification && (
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
@@ -7974,6 +9104,15 @@ export default function ProjectDetail() {
                       >
                         <MessageSquare className="h-4 w-4" />
                         Raise Clarification
+                      </Button>
+                    )}
+                    {(canRouteToQualityCheck || canRouteToQualityCheckAfterDirectorClarification) && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleRouteToQualityCheck()}
+                      >
+                        <Workflow className="h-4 w-4" />
+                        Route to Quality Check
                       </Button>
                     )}
                     {canRequestStrategicPriorityChange && (
@@ -8004,13 +9143,49 @@ export default function ProjectDetail() {
                         Review Change Request
                       </Button>
                     )}
-                    {canRouteToDirectorFromDetail && (
+                    {(canRouteToDirectorFromDetail || canRouteToDirectorAfterDirectorClarification) && (
                       <Button
                         className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
                         onClick={() => void handleDetailRouteToDirector()}
                       >
                         <Workflow className="h-4 w-4" />
                         Route to Director
+                      </Button>
+                    )}
+                    {(canCompleteDirectorReviewFromDetail || canCompleteDirectorReviewAfterClarification) && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void handleDetailCompleteDirectorReview()}
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                        Complete Review
+                      </Button>
+                    )}
+                    {canSubmitAllocationReview && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('submit-allocation-review')}
+                      >
+                        <Send className="h-4 w-4" />
+                        Submit to Review
+                      </Button>
+                    )}
+                    {canCompleteAllocation && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('complete-allocation')}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete Allocation
+                      </Button>
+                    )}
+                    {canCompleteUtilization && (
+                      <Button
+                        className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                        onClick={() => void prepareWorkflowAction('complete-utilization')}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete Utilization
                       </Button>
                     )}
                     {canCompleteReview && (
@@ -8040,7 +9215,16 @@ export default function ProjectDetail() {
                         {approverUsesDirectDgeFlow ? 'Submit to DGE' : 'Approve Project'}
                       </Button>
                     )}
-                    {!canCurrentRoleEdit && !canRaiseClarification && !canCompleteReview && !canSubmitToApprover && !canApproveProject && (
+                    {!canCurrentRoleEdit &&
+                      !canRaiseClarification &&
+                      !canRouteToQualityCheck &&
+                      !canRouteToQualityCheckAfterDirectorClarification &&
+                      !canSubmitAllocationReview &&
+                      !canCompleteAllocation &&
+                      !canCompleteUtilization &&
+                      !canCompleteReview &&
+                      !canSubmitToApprover &&
+                      !canApproveProject && (
                       <p className="text-xs text-[#475569] dark:text-slate-200">
                         This record is currently pending with another role, so workflow actions are locked here.
                       </p>
@@ -8115,9 +9299,9 @@ export default function ProjectDetail() {
                       </Button>
                     </>
                   )}
-                  {(canCurrentRoleEdit || canSubmitToReviewer || canDeleteProject) ? (
+                  {(canShowEditButton || canSubmitToReviewer || canDeleteProject || canSubmitAllocationReview || canCompleteAllocation || canCompleteUtilization) ? (
                     <>
-                      {canCurrentRoleEdit && !isEditMode && (
+                      {canShowEditButton && !isEditMode && (
                         <Button
                           variant="outline"
                           className="w-full justify-start gap-2"
@@ -8153,6 +9337,33 @@ export default function ProjectDetail() {
                         >
                           <Send className="h-4 w-4" />
                           Route to Quality Check
+                        </Button>
+                      )}
+                      {canSubmitAllocationReview && (
+                        <Button
+                          className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                          onClick={() => void prepareWorkflowAction('submit-allocation-review')}
+                        >
+                          <Send className="h-4 w-4" />
+                          Submit to Review
+                        </Button>
+                      )}
+                      {canCompleteAllocation && (
+                        <Button
+                          className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                          onClick={() => void prepareWorkflowAction('complete-allocation')}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Complete Allocation
+                        </Button>
+                      )}
+                      {canCompleteUtilization && (
+                        <Button
+                          className="w-full justify-start gap-2 bg-[#286CFF] text-white hover:bg-[#0C65F5]"
+                          onClick={() => void prepareWorkflowAction('complete-utilization')}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Complete Utilization
                         </Button>
                       )}
                     </>
@@ -8427,21 +9638,39 @@ export default function ProjectDetail() {
             setPendingClarificationReply(null)
           }
         }}
-        title={`Send Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}?`}
+        title={`Send Reply And Return To ${
+          pendingClarificationReply?.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+            ? 'Strategy Team'
+            : pendingClarificationReply?.returnToRole ?? 'Reviewer'
+        }?`}
         description={
           pendingClarificationReply
-            ? `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
+            ? pendingClarificationReply.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+              ? 'After this reply is submitted, the ICT budget will move back to Strategy Team quality check so Strategy can continue governance review.'
+              : pendingClarificationReply.returnToRole === 'Strategy Director' && currentRole === 'Strategy Team'
+                ? 'After this reply is submitted, the ICT budget will return to Strategy Director final review.'
+              : pendingClarificationReply.returnToRole === 'Strategy Team' && currentRole === 'SME Team'
+                ? 'After this reply is submitted, the ICT budget will move back to Strategy Team quality check and be assigned to ICT - Strategy Team.'
+              : `After this reply is submitted, the ICT budget will be assigned back to the ${pendingClarificationReply.returnToRole.toLowerCase()} and the workflow status will move back to ${
                 pendingClarificationReply.returnToRole === 'Reviewer'
                   ? 'reviewer review'
-                  : pendingClarificationReply.returnToRole === 'Approver'
-                    ? 'approver review'
+                : pendingClarificationReply.returnToRole === 'Approver'
+                    ? pendingClarificationReply.stage === 'Allocation'
+                      ? 'allocation review'
+                      : 'approver review'
                     : pendingClarificationReply.returnToRole === 'Strategy Team'
                       ? 'strategic alignment review'
+                      : pendingClarificationReply.returnToRole === 'Strategy Director'
+                        ? 'final review'
                       : 'SME review'
               }.`
             : 'After this reply is submitted, the ICT budget will be reassigned in the workflow.'
         }
-        confirmLabel={`Reply And Return To ${pendingClarificationReply?.returnToRole ?? 'Reviewer'}`}
+        confirmLabel={`Reply And Return To ${
+          pendingClarificationReply?.returnToRole === 'Strategy Director' && currentRole === 'SME Team'
+            ? 'Strategy Team'
+            : pendingClarificationReply?.returnToRole ?? 'Reviewer'
+        }`}
         cancelLabel="Keep Editing"
         onConfirm={handleConfirmClarificationReplyHandoff}
         tone="primary"
@@ -8457,6 +9686,19 @@ export default function ProjectDetail() {
         projectName={display.name}
         onSubmit={handleRaiseClarification}
         quickPrompts={clarificationQuickPrompts}
+        targetOptions={
+          currentRole === 'Strategy Director'
+            ? [
+                { value: 'strategy', label: 'To Strategy' },
+                { value: 'sme', label: 'To SME' },
+              ]
+            : currentRole === 'Strategy Team' && project.statusCode === DGE_BUDGET_STATUS.underQualityCheck
+              ? [
+                  { value: 'adge', label: 'From ADGE' },
+                  { value: 'sme', label: 'From SME' },
+                ]
+            : undefined
+        }
       />
       <Dialog open={workStreamModalOpen} onOpenChange={setWorkStreamModalOpen}>
         <DialogContent className="max-w-[520px] p-0">

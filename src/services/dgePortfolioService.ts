@@ -1,5 +1,6 @@
 import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsService'
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
+import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
 import { getStoredCurrentSme, getStoredSmeAssignments, type DgeSmeAssignment } from '@/services/dgeRoleContextService'
 
 export const DGE_BUDGET_STATUS = {
@@ -36,6 +37,7 @@ export const DGE_STRATEGY_ALIGNMENT_VISIBLE_STATUSES = new Set<number>([
   DGE_BUDGET_STATUS.underStrategicAlignmentReview,
   DGE_BUDGET_STATUS.underSmeReview,
   DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+  DGE_BUDGET_STATUS.underQualityCheck,
   DGE_BUDGET_STATUS.clarificationPending,
 ])
 
@@ -59,8 +61,12 @@ export interface DgeBudgetRecord {
   recommendedBudget: number
   allocatedBudget: number
   utilizedBudget: number
+  planningOutcome: number | null
+  addedInAllocation: number | null
   aiConfidenceScore: number | null
+  aiReviewFlags: Dga_ict_budgetsdga_ai_flags[]
   ownerId: string | null
+  ownerType: string | null
   ownerName: string | null
   instanceId: string | null
   instanceName: string | null
@@ -100,6 +106,11 @@ function chunkArray<T>(items: T[], size: number): T[][] {
 
 function normalizeString(value: string | null | undefined) {
   return value?.trim() || ''
+}
+
+function getFormattedAnnotation(record: unknown, key: string) {
+  const value = (record as Record<string, unknown> | null)?.[key]
+  return typeof value === 'string' && value.trim() ? value : null
 }
 
 function getBudgetStatusLabel(statuscode: number | null | undefined, fallback?: string | null) {
@@ -170,11 +181,13 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
   if (!record.dga_ict_budgetid) return null
 
   const strategicPriorityName =
+    normalizeString(getFormattedAnnotation(record, '_dga_strategic_priority_value@OData.Community.Display.V1.FormattedValue')) ||
     normalizeString(record.dga_strategic_priorityname) ||
     normalizeString((record.dga_strategic_priority as { dga_name?: string } | null | undefined)?.dga_name) ||
     null
 
   const strategicPriorityClassificationName =
+    normalizeString(getFormattedAnnotation(record, '_dga_strategic_priority_classification_value@OData.Community.Display.V1.FormattedValue')) ||
     normalizeString(record.dga_strategic_priority_classificationname) ||
     normalizeString(
       (record.dga_strategic_priority_classification as { dga_name?: string } | null | undefined)?.dga_name
@@ -202,6 +215,19 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     normalizeString(record.dga_sme_reviewer_teamname) ||
     normalizeString((record.dga_sme_reviewer_team as { name?: string } | null | undefined)?.name) ||
     null
+  const ownerId =
+    getFormattedAnnotation(record, '_ownerid_value') ||
+    record.ownerid ||
+    null
+  const ownerType =
+    getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.lookuplogicalname') ||
+    getFormattedAnnotation(record, '_ownerid_value@Microsoft.Dynamics.CRM.associatednavigationproperty') ||
+    record.owneridtype ||
+    null
+  const ownerName =
+    getFormattedAnnotation(record, '_ownerid_value@OData.Community.Display.V1.FormattedValue') ||
+    normalizeString(record.owneridname) ||
+    null
 
   return {
     id: record.dga_ict_budgetid,
@@ -223,10 +249,14 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
     allocatedBudget: Number(record.dga_total_budget_allocated ?? 0),
     utilizedBudget: Number(record.dga_total_budget_utilized ?? 0),
+    planningOutcome: typeof record.dga_planning_outcome === 'number' ? record.dga_planning_outcome : null,
+    addedInAllocation: typeof record.dga_added_in_allocation === 'number' ? record.dga_added_in_allocation : null,
     aiConfidenceScore:
       typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : null,
-    ownerId: record.ownerid ?? null,
-    ownerName: normalizeString(record.owneridname) || null,
+    aiReviewFlags: record.dga_ai_flags ?? [],
+    ownerId,
+    ownerType,
+    ownerName,
     instanceId: record._dga_ict_budget_instance_value ?? null,
     instanceName,
     entityName: instanceName,
@@ -265,7 +295,9 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     'dga_summary',
     'dga_share_point_url',
     'dga_status_for_adge',
+    'dga_ai_flags',
     'statuscode',
+    '_ownerid_value',
     '_dga_strategic_priority_value',
     '_dga_strategic_priority_classification_value',
     '_dga_previous_strategic_priority_value',
@@ -275,6 +307,8 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     'dga_total_budget_recommended',
     'dga_total_budget_allocated',
     'dga_total_budget_utilized',
+    'dga_planning_outcome',
+    'dga_added_in_allocation',
     'ownerid',
     '_dga_ict_budget_instance_value',
     '_dga_sme_reviewer_team_value',
@@ -423,18 +457,28 @@ export function getInstanceStageFilterLabel(statuscode: number) {
   }
 }
 
-export function getBudgetStageBucket(statuscode: number) {
+export function getBudgetStageBucket(
+  budgetOrStatuscode: Pick<DgeBudgetRecord, 'statuscode' | 'statusForAdge'> | number
+) {
+  const statuscode =
+    typeof budgetOrStatuscode === 'number' ? budgetOrStatuscode : budgetOrStatuscode.statuscode
+  const statusForAdge =
+    typeof budgetOrStatuscode === 'number' ? null : budgetOrStatuscode.statusForAdge
+
   const planningStatuses: number[] = [
     DGE_BUDGET_STATUS.draft,
     DGE_BUDGET_STATUS.underReviewerReview,
     DGE_BUDGET_STATUS.underApproverReview,
     DGE_BUDGET_STATUS.approvedByApprover,
-    DGE_BUDGET_STATUS.clarificationPending,
     DGE_BUDGET_STATUS.reviewerReviewCompleted,
   ]
 
   if (planningStatuses.includes(statuscode)) {
     return 'planning'
+  }
+
+  if (statuscode === DGE_BUDGET_STATUS.clarificationPending) {
+    return statusForAdge === 5 ? 'planning' : 'dgeReview'
   }
 
   const dgeReviewStatuses: number[] = [

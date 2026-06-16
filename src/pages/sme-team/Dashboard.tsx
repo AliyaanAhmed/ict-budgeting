@@ -23,6 +23,7 @@ import { useCycle } from '@/context/CycleContext'
 import { useRole } from '@/context/RoleContext'
 import { cn } from '@/lib/utils'
 import {
+  StrategyDashboardEmptyState,
   StrategyPageShell,
   StrategyPill,
   StrategyProgressBar,
@@ -51,6 +52,39 @@ const SME_QUEUE_FILTER_HREFS = {
   clarificationRaised: '/sme-team/reviews?filter=clarification-raised',
   mismatch: '/sme-team/reviews?filter=change-under-review',
 } as const
+
+function sumBudgetAmounts(budgets: DgeBudgetRecord[]) {
+  return {
+    requested: budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+    recommended: budgets.reduce((sum, budget) => sum + budget.recommendedBudget, 0),
+    allocated: budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0),
+    utilized: budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0),
+  }
+}
+
+function BudgetPortfolioGrid({ budgets }: { budgets: DgeBudgetRecord[] }) {
+  const totals = sumBudgetAmounts(budgets)
+  const items = [
+    { label: 'Requested', value: totals.requested, accent: '#286CFF' },
+    { label: 'Recommended', value: totals.recommended, accent: '#5B87FF' },
+    { label: 'Allocated', value: totals.allocated, accent: '#0C65F5' },
+    { label: 'Utilized', value: totals.utilized, accent: '#1E3A8A' },
+  ]
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {items.map((item) => (
+        <div key={item.label} className="rounded-[18px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-[#64748B] dark:text-slate-300">{item.label}</p>
+            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.accent }} />
+          </div>
+          <CurrencyAmount amount={item.value} className="mt-3 text-lg font-bold text-[#0F172A] dark:text-white" iconSize={14} />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function SkeletonPanel() {
   return (
@@ -170,7 +204,7 @@ export default function SmeTeamDashboard() {
   }, [currentSme?.strategicPriorityId, selectedCycle?.id])
 
   const metrics = useMemo(() => {
-    const totalBudget = budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0)
+    const budgetTotals = sumBudgetAmounts(budgets)
     const toReview = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underSmeReview)
     const reviewed = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.underQualityCheck)
     const changeRequests = budgets.filter(
@@ -189,7 +223,7 @@ export default function SmeTeamDashboard() {
     const missingDocs = budgets.filter((budget) => !budget.sharePointUrl)
 
     return {
-      totalBudget,
+      budgetTotals,
       toReview,
       reviewed,
       changeRequests,
@@ -204,8 +238,8 @@ export default function SmeTeamDashboard() {
       {
         title: 'To Review',
         value: metrics.toReview.length,
-        budgetLabel: 'Budget to Review',
-        budget: metrics.toReview.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+        budgetLabel: 'Requested / Recommended',
+        budget: metrics.toReview.reduce((sum, budget) => sum + budget.requestedBudget + budget.recommendedBudget, 0),
         badge: 'Live queue',
         accent: '#286CFF',
         icon: ClipboardCheck,
@@ -214,8 +248,8 @@ export default function SmeTeamDashboard() {
       {
         title: 'Reviewed',
         value: metrics.reviewed.length,
-        budgetLabel: 'Budget Reviewed',
-        budget: metrics.reviewed.reduce((sum, budget) => sum + budget.requestedBudget, 0),
+        budgetLabel: 'Requested / Recommended',
+        budget: metrics.reviewed.reduce((sum, budget) => sum + budget.requestedBudget + budget.recommendedBudget, 0),
         badge: 'Quality check',
         accent: '#10B981',
         icon: CheckCircle2,
@@ -410,11 +444,11 @@ export default function SmeTeamDashboard() {
 
                 <div className="mt-4 flex-1 space-y-3">
                   {assignedVisible.length === 0 ? (
-                    <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[20px] border border-dashed border-[#D9E6F5] px-5 py-10 text-center dark:border-white/10">
-                      <FolderSearch className="h-6 w-6 text-[#94A3B8]" />
-                      <p className="mt-3 text-sm font-semibold text-[#0F172A] dark:text-white">No assigned projects</p>
-                      <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">No projects matched this SME review filter.</p>
-                    </div>
+                    <StrategyDashboardEmptyState
+                      icon={<FolderSearch className="h-6 w-6" />}
+                      title="No Assigned Projects"
+                      description="No projects match this SME review filter. Switch filters or wait for Strategy Team to route new budgets to this SME domain."
+                    />
                   ) : (
                     assignedVisible.map((budget) => (
                       <div key={budget.id} className="rounded-[20px] border border-[#DCE8F6] bg-[#FBFDFF] p-4 transition-all hover:-translate-y-0.5 hover:border-[#BFD8FF] hover:shadow-[0_14px_28px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5">
@@ -479,13 +513,15 @@ export default function SmeTeamDashboard() {
                 <div className="rounded-[24px] border border-[#DCE8F6] bg-[linear-gradient(135deg,#F8FBFF_0%,#EEF5FF_100%)] p-5 dark:border-white/10 dark:bg-[linear-gradient(135deg,#162339_0%,#1B2A41_100%)]">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Total Budget</p>
-                      <CurrencyAmount amount={metrics.totalBudget} className="mt-2 text-2xl font-bold" iconSize={16} />
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Domain Budget Portfolio</p>
                       <p className="mt-2 text-sm text-[#64748B] dark:text-slate-300">{budgets.length} projects in the SME lane</p>
                     </div>
                     <div className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]">
                       {reviewProgress}% reviewed
                     </div>
+                  </div>
+                  <div className="mt-5">
+                    <BudgetPortfolioGrid budgets={budgets} />
                   </div>
 
                   <div className="mt-5 h-4 overflow-hidden rounded-full bg-white/70 dark:bg-white/10">
@@ -520,12 +556,12 @@ export default function SmeTeamDashboard() {
 
                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#1B2A41]">
-                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Reviewed Budget</p>
-                    <CurrencyAmount amount={metrics.reviewed.reduce((sum, budget) => sum + budget.requestedBudget, 0)} className="mt-2 text-lg font-bold" iconSize={14} />
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Reviewed Recommended</p>
+                    <CurrencyAmount amount={metrics.reviewed.reduce((sum, budget) => sum + budget.recommendedBudget, 0)} className="mt-2 text-lg font-bold" iconSize={14} />
                     <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{metrics.reviewed.length} projects</p>
                   </div>
                   <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#1B2A41]">
-                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Pending Budget</p>
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Pending Requested</p>
                     <CurrencyAmount amount={metrics.toReview.reduce((sum, budget) => sum + budget.requestedBudget, 0)} className="mt-2 text-lg font-bold" iconSize={14} />
                     <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{metrics.toReview.length} projects</p>
                   </div>

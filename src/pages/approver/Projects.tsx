@@ -19,8 +19,11 @@ import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreServic
 import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
+import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { DirhamIcon } from '@/components/shared/DirhamIcon'
 
-type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge'
+type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge' | 'allocation-in-review'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -32,6 +35,15 @@ type AiReviewFlagFilter = 'all-ai-review-flags' | string
 
 function formatBudgetValue(amount: number) {
   return amount.toLocaleString('en-AE')
+}
+
+function BudgetCardLabel({ children }: { children: string }) {
+  return (
+    <p className="inline-flex items-center gap-1.5 text-xs text-[#64748B] dark:text-slate-200">
+      <DirhamIcon width={12} height={12} color="currentColor" />
+      <span>{children}</span>
+    </p>
+  )
 }
 
 function AiScore({ score }: { score: number }) {
@@ -64,6 +76,10 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
   const dynamicRisk = portfolioSummary
     ? getPortfolioProjectInsight(portfolioSummary, project.ictBudgetId ?? project.id, 'approver').riskLevel
     : null
+  const instanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const showRecommended = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.reviewCompletedByDge
+  const showAllocated = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.allocation
+  const showUtilized = typeof instanceStatusCode === 'number' && instanceStatusCode >= DGE_INSTANCE_STATUS.utilization
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-[#DDEBFF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#286CFF] hover:shadow-[0_18px_40px_rgba(40,108,255,0.12)] dark:border-white/10 dark:bg-[#1E293B]">
@@ -91,9 +107,27 @@ function ProjectCard({ project, portfolioSummary }: { project: Project; portfoli
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
-            <p className="text-xs text-[#64748B] dark:text-slate-200">Budget</p>
+            <BudgetCardLabel>Requested Budget</BudgetCardLabel>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.requestedBudget)}</p>
           </div>
+          {showRecommended && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Recommended Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.recommendedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showAllocated && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Allocated Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.allocatedBudget ?? 0)}</p>
+            </div>
+          )}
+          {showUtilized && (
+            <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+              <BudgetCardLabel>Utilized Budget</BudgetCardLabel>
+              <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
+            </div>
+          )}
           <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Budget Type</p>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{project.budgetType}</p>
@@ -172,7 +206,14 @@ export default function ApproverProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'pending-approval' || tab === 'clarification' || tab === 'approved' || tab === 'submitted-dge' || tab === 'all') {
+    if (
+      tab === 'pending-approval' ||
+      tab === 'clarification' ||
+      tab === 'approved' ||
+      tab === 'submitted-dge' ||
+      tab === 'allocation-in-review' ||
+      tab === 'all'
+    ) {
       setActiveTab(tab)
       return
     }
@@ -186,6 +227,7 @@ export default function ApproverProjects() {
     { id: 'clarification' as const, label: 'Clarification Required', count: projects.filter((project) => project.status === 'Clarification Required').length },
     { id: 'approved' as const, label: 'Approved', count: projects.filter((project) => project.status === 'Approved').length },
     { id: 'submitted-dge' as const, label: 'Submitted to DGE', count: projects.filter((project) => project.status === 'Submitted to DGE').length },
+    { id: 'allocation-in-review' as const, label: 'Allocation In Review', count: projects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview).length },
   ]
 
   const filtered = projects.filter((project) => {
@@ -199,7 +241,8 @@ export default function ApproverProjects() {
       (activeTab === 'pending-approval' && project.status === 'Submitted to Approver') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
       (activeTab === 'approved' && project.status === 'Approved') ||
-      (activeTab === 'submitted-dge' && project.status === 'Submitted to DGE')
+      (activeTab === 'submitted-dge' && project.status === 'Submitted to DGE') ||
+      (activeTab === 'allocation-in-review' && project.statusCode === DGE_BUDGET_STATUS.allocationInReview)
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter

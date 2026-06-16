@@ -5,6 +5,7 @@ import { SESSION_USER_TEAMS_KEY } from '@/services/userContextService'
 import {
   getStoredCurrentSme,
   getStoredSmeAssignments,
+  getStoredStrategyDirectorTeam,
   getStoredStrategyTeam,
   setStoredCurrentSme,
   type DgeSmeAssignment,
@@ -19,6 +20,7 @@ const ROLE_DISPLAY_NAME: Record<Role, string> = {
   Approver: 'ICT - Approver',
   'ICT Admin': 'ICT Admin',
   'ICT - Strategy Team': 'ICT - Strategy Team',
+  'ICT - Strategy Director': 'ICT - Strategy Director',
   'ICT - SME Team': 'ICT - SME Team',
 }
 
@@ -31,6 +33,7 @@ function parseStoredRoleDisplay(value: string | null): Role | null {
   if (normalized === 'ICT - Approver') return 'Approver'
   if (normalized === 'ICT Admin') return 'ICT Admin'
   if (normalized === 'ICT - Strategy Team') return 'ICT - Strategy Team'
+  if (normalized === 'ICT - Strategy Director') return 'ICT - Strategy Director'
   if (normalized === 'ICT - SME Team') return 'ICT - SME Team'
   return null
 }
@@ -112,6 +115,16 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
           role: 'ICT - Strategy Team',
           label: 'ICT - Strategy Team',
           subtitle: 'Cross-entity governance',
+        })
+      }
+
+      const strategyDirectorTeam = getStoredStrategyDirectorTeam()
+      if (strategyDirectorTeam?.users.some((user) => user.id === currentUserId)) {
+        resolvedRoleOptions.push({
+          key: 'strategy-director',
+          role: 'ICT - Strategy Director',
+          label: 'ICT - Strategy Director',
+          subtitle: 'Final DGE review and publication',
         })
       }
 

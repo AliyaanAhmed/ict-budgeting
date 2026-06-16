@@ -36,6 +36,11 @@ import { PortfolioInsightCharts } from '@/components/shared/PortfolioInsightChar
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
 import {
+  DASHBOARD_BUDGET_METRIC_LABEL,
+  getDashboardBudgetMetricForInstanceStatus,
+  getDashboardBudgetMetricsForInstanceStatus,
+  getMetricAmountsFromProjects,
+  getProjectBudgetAmount,
   useAccountCodesBreakdown,
   useBudgetByCategoryChart,
 } from '@/hooks/useDashboardBudgetCharts'
@@ -127,8 +132,8 @@ function CompactAmount({ amount, iconColor = '#286CFF' }: { amount: number; icon
     <CurrencyAmount
       amount={amount}
       className="max-w-full text-xl font-bold leading-tight sm:text-2xl xl:text-[26px]"
-      valueClassName="break-all"
-      iconColor={iconColor}
+      valueClassName="break-words"
+      iconColor="#286CFF"
       iconSize={16}
     />
   )
@@ -245,14 +250,18 @@ export default function ReviewerDashboard() {
   const [planningExpanded, setPlanningExpanded] = useState(false)
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
+  const dashboardInstanceStatus = instanceDetail?.statuscode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const dashboardBudgetMetrics = useMemo(() => getDashboardBudgetMetricsForInstanceStatus(dashboardInstanceStatus), [dashboardInstanceStatus])
+  const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
+  const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
   const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
-  const budgetByCategory = useBudgetByCategoryChart(liveProjects)
+  const budgetByCategory = useBudgetByCategoryChart(liveProjects, dashboardBudgetMetrics)
   const {
     items: accountBreakdown,
     loading: accountBreakdownLoading,
     error: accountBreakdownError,
-  } = useAccountCodesBreakdown(liveProjects)
+  } = useAccountCodesBreakdown(liveProjects, dashboardBudgetMetrics)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
@@ -280,15 +289,40 @@ export default function ReviewerDashboard() {
   const pendingRespondent = draftProjects.length
   const reviewed = sentToApproverProjects.length
 
-  const totalQueueBudget = liveProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const reviewedBudget = sentToApproverProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const approverStageBudget = approverStageProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const approvedBudget = approvedProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
-  const submittedToDgeBudget = submittedToDgeProjects.reduce((sum, p) => sum + p.requestedBudget, 0)
+  const totalQueueBudget = liveProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const budgetPhaseTotals = {
+    requested: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'requested'), 0),
+    recommended: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'recommended'), 0),
+    allocated: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'allocated'), 0),
+    utilized: liveProjects.reduce((sum, project) => sum + getProjectBudgetAmount(project, 'utilized'), 0),
+  }
+  const reviewedBudget = sentToApproverProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const approverStageBudget = approverStageProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const approvedBudget = approvedProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const submittedToDgeBudget = submittedToDgeProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
   const avgConfidence = liveProjects.length > 0
     ? Math.round(liveProjects.reduce((sum, p) => sum + p.aiScore, 0) / liveProjects.length)
     : 0
-  const predictedApproval = liveProjects.filter((p) => p.aiScore > 70).reduce((sum, p) => sum + p.requestedBudget, 0)
+  const predictedApproval = liveProjects.filter((p) => p.aiScore > 70).reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0)
+  const budgetSnapshotItems =
+    dashboardBudgetMetrics.length === 1
+      ? [
+          { label: 'Requested Budget', amount: budgetPhaseTotals.requested, iconColor: dashboardPalette.primary },
+          { label: 'Reviewed Budget', amount: reviewedBudget, iconColor: dashboardPalette.primarySoft },
+          { label: 'AI Predicted Approval', amount: predictedApproval, iconColor: dashboardPalette.primary },
+        ]
+      : dashboardBudgetMetrics.map((metric) => ({
+          label: DASHBOARD_BUDGET_METRIC_LABEL[metric],
+          amount: budgetPhaseTotals[metric],
+          iconColor:
+            metric === 'recommended'
+              ? dashboardPalette.primarySoft
+              : metric === 'allocated'
+                ? dashboardPalette.primaryDeep
+                : metric === 'utilized'
+                  ? dashboardPalette.primaryInk
+                  : dashboardPalette.primary,
+        }))
 
   const attentionCount = toReview + reviewCompleted + clarificationPending
 
@@ -359,11 +393,12 @@ export default function ReviewerDashboard() {
 
   const budgetTypeBreakdown = budgetTypeGroups.map((group) => {
     const items = liveProjects.filter((project) => project.budgetType === group.key)
-    const amount = items.reduce((sum, project) => sum + project.requestedBudget, 0)
+    const amount = items.reduce((sum, project) => sum + getProjectBudgetAmount(project, dashboardBudgetMetric), 0)
     return {
       ...group,
       count: items.length,
       amount,
+      amounts: getMetricAmountsFromProjects(items, dashboardBudgetMetrics),
       share: totalQueueBudget > 0 ? Math.round((amount / totalQueueBudget) * 100) : 0,
     }
   })
@@ -371,27 +406,32 @@ export default function ReviewerDashboard() {
   const budgetByReviewStatus = [
     {
       name: 'Pending My Approval',
-      value: pendingReviewProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      value: pendingReviewProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(pendingReviewProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primary,
     },
     {
       name: 'With Respondent',
-      value: draftProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      value: draftProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(draftProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primarySoft,
     },
     {
       name: 'With Approver',
       value: approverStageBudget,
+      amounts: getMetricAmountsFromProjects(approverStageProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryDeep,
     },
     {
       name: 'Clarification Open',
-      value: clarificationSentProjects.reduce((sum, p) => sum + p.requestedBudget, 0),
+      value: clarificationSentProjects.reduce((sum, p) => sum + getProjectBudgetAmount(p, dashboardBudgetMetric), 0),
+      amounts: getMetricAmountsFromProjects(clarificationSentProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryMuted,
     },
     {
       name: 'Submitted to DGE',
       value: submittedToDgeBudget,
+      amounts: getMetricAmountsFromProjects(submittedToDgeProjects, dashboardBudgetMetrics),
       fill: dashboardPalette.primaryPale,
     },
   ].map((item) => ({
@@ -553,25 +593,18 @@ export default function ReviewerDashboard() {
             </div>
 
             <div className="mt-5 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] px-4 py-4 dark:border-white/10 dark:bg-[#1B2A41]">
-              <div className="grid gap-4 sm:grid-cols-3 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10">
-                <div className="sm:pr-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Total Queue Budget</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={totalQueueBudget} />
+              <div className={cn(
+                'grid gap-4 sm:divide-x sm:divide-[#DCE8F6] dark:sm:divide-white/10',
+                budgetSnapshotItems.length >= 4 ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3'
+              )}>
+                {budgetSnapshotItems.map((item, index) => (
+                  <div key={item.label} className={cn(index === 0 ? 'sm:pr-4' : 'sm:px-4', index === budgetSnapshotItems.length - 1 && 'sm:pr-0')}>
+                    <p className="flex min-h-8 items-end text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">{item.label}</p>
+                    <div className="mt-3">
+                      <CompactAmount amount={item.amount} />
+                    </div>
                   </div>
-                </div>
-                <div className="sm:px-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">Reviewed Budget</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={reviewedBudget} iconColor={dashboardPalette.primarySoft} />
-                  </div>
-                </div>
-                <div className="sm:pl-4">
-                  <p className="text-xs font-semibold tracking-[0.06em] text-[#64748B] dark:text-slate-100">AI Predicted Approval</p>
-                  <div className="mt-3">
-                    <CompactAmount amount={predictedApproval} iconColor={dashboardPalette.primary} />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </CardContent>
@@ -645,7 +678,7 @@ export default function ReviewerDashboard() {
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
-                        <CurrencyAmount amount={project.requestedBudget} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={12} />
+                        <CurrencyAmount amount={getProjectBudgetAmount(project, dashboardBudgetMetric)} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={12} />
                         <MoveRight className="h-4 w-4 text-[#94A3B8] transition-transform group-hover:translate-x-0.5 group-hover:text-[#286CFF]" />
                       </div>
                     </div>
@@ -671,7 +704,7 @@ export default function ReviewerDashboard() {
         />
 
         <Card
-          title="Requested budget distribution across review statuses in the current queue."
+          title={`${dashboardBudgetMetricLabel} distribution across review statuses in the current queue.`}
           className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -680,10 +713,10 @@ export default function ReviewerDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <ClipboardCheck className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Queue Budget Mix</h3>
-                  <InfoHint text="Shows where the total requested budget currently sits across review statuses — helping reviewers understand what is pending, blocked by clarification, or already reviewed." />
+                  <InfoHint text={`Shows where the total ${dashboardBudgetMetricLabel.toLowerCase()} currently sits across review statuses — helping reviewers understand what is pending, blocked by clarification, or already reviewed.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Submitted budget split by current review status
+                  {dashboardBudgetMetricLabel} split by current review status
                 </p>
               </div>
             </div>
@@ -727,9 +760,19 @@ export default function ReviewerDashboard() {
                       <span className="text-xs font-semibold text-[#64748B] dark:text-slate-100">{item.percent}%</span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                      <span className="text-[#64748B] dark:text-slate-100">Budget</span>
+                      <span className="text-[#64748B] dark:text-slate-100">{dashboardBudgetMetricLabel}</span>
                       <CurrencyAmount amount={item.value} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
                     </div>
+                    {dashboardBudgetMetrics.length > 1 && (
+                      <div className="mt-3 grid gap-2">
+                        {dashboardBudgetMetrics.map((metric) => (
+                          <div key={metric} className="flex items-center justify-between gap-3 rounded-2xl bg-[#F8FAFC] px-3 py-2 text-sm dark:bg-white/5">
+                            <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                            <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={12} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -741,7 +784,7 @@ export default function ReviewerDashboard() {
       {/* ─── Budget by Category + Account codes ─── */}
       <section className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Card
-          title="Budget distribution across ICT strategic categories for the current review cycle."
+          title={`${dashboardBudgetMetricLabel} distribution across ICT strategic categories for the current review cycle.`}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -750,22 +793,22 @@ export default function ReviewerDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Layers className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget by Strategic Priority</h3>
-                  <InfoHint text="Shows how the total submitted budget is distributed across strategic ICT categories, helping reviewers identify where the largest funding requests are concentrated." />
+                  <InfoHint text={`Shows how the total ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across strategic ICT categories, helping reviewers identify where the largest funding requests are concentrated.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Submitted budget by strategic ICT category
+                  {dashboardBudgetMetricLabel} by strategic ICT category
                 </p>
               </div>
               <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
                 Current cycle
               </span>
             </div>
-            <BudgetByCategory data={budgetByCategory} />
+            <BudgetByCategory data={budgetByCategory} metrics={dashboardBudgetMetrics} />
           </CardContent>
         </Card>
 
         <Card
-          title="Account codes receiving the largest share of budget across submitted projects."
+          title={`Account codes receiving the largest share of ${dashboardBudgetMetricLabel.toLowerCase()} across submitted projects.`}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -774,10 +817,10 @@ export default function ReviewerDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <WalletCards className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Account Codes Breakdown</h3>
-                  <InfoHint text="Highlights which account codes are claiming the largest share of budget across all submitted projects in the review queue — useful for identifying concentration risk." />
+                  <InfoHint text={`Highlights which account codes are claiming the largest share of ${dashboardBudgetMetricLabel.toLowerCase()} across all submitted projects in the review queue — useful for identifying concentration risk.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Most-funded budget accounts across submitted projects
+                  Most-funded accounts by {dashboardBudgetMetricLabel.toLowerCase()}
                 </p>
               </div>
               <span className="inline-flex items-center rounded-full bg-[#EEF5FF] px-3 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#C6DBFF]">
@@ -788,6 +831,7 @@ export default function ReviewerDashboard() {
               items={accountBreakdown}
               loading={accountBreakdownLoading}
               error={accountBreakdownError}
+              metrics={dashboardBudgetMetrics}
             />
           </CardContent>
         </Card>
@@ -873,7 +917,7 @@ export default function ReviewerDashboard() {
             projectHrefBuilder={(projectId) => `/reviewer/review-queue/${projectId}`}
           />
           <Card
-            title="Shows how requested budget is distributed across the four ICT budget activity types in the reviewer workspace."
+            title={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across the four ICT budget activity types in the reviewer workspace.`}
             className="hidden overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
           >
             <CardContent className="p-6">
@@ -881,10 +925,10 @@ export default function ReviewerDashboard() {
                 <div className="flex flex-wrap items-center gap-2">
                   <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
-                  <InfoHint text="Shows how much of the reviewer-visible requested budget sits in each ICT budget activity type." />
+                  <InfoHint text={`Shows how much of the reviewer-visible ${dashboardBudgetMetricLabel.toLowerCase()} sits in each ICT budget activity type.`} />
                 </div>
                 <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                  Requested budget split across all four budget types
+                  {dashboardBudgetMetricLabel} split across all four budget types
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" style={{marginTop: 50}}>
@@ -897,7 +941,17 @@ export default function ReviewerDashboard() {
                       <div>
                         <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
                         <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of queue total</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of {dashboardBudgetMetricLabel.toLowerCase()} total</p>
+                        {dashboardBudgetMetrics.length > 1 && (
+                          <div className="mt-3 space-y-1.5">
+                            {dashboardBudgetMetrics.map((metric) => (
+                              <div key={metric} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                                <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -925,7 +979,7 @@ export default function ReviewerDashboard() {
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
         <Card
-          title="Shows how requested budget is distributed across the four ICT budget activity types in the reviewer workspace."
+          title={`Shows how ${dashboardBudgetMetricLabel.toLowerCase()} is distributed across the four ICT budget activity types in the reviewer workspace.`}
           className="overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]"
         >
           <CardContent className="p-6">
@@ -933,10 +987,10 @@ export default function ReviewerDashboard() {
               <div className="flex flex-wrap items-center gap-2">
                 <BadgeDollarSign className="h-5 w-5 shrink-0 text-[#286CFF]" />
                 <h3 className="text-xl font-bold text-[#0F172A] dark:text-white">Budget Type Distribution</h3>
-                <InfoHint text="Shows how much of the reviewer-visible requested budget sits in each ICT budget activity type." />
+                <InfoHint text={`Shows how much of the reviewer-visible ${dashboardBudgetMetricLabel.toLowerCase()} sits in each ICT budget activity type.`} />
               </div>
               <p className="mt-1 text-sm text-[#64748B] dark:text-slate-100">
-                Requested budget split across all four budget types
+                {dashboardBudgetMetricLabel} split across all four budget types
               </p>
             </div>
             <div className="mx-auto mt-12 max-w-2xl">
@@ -950,7 +1004,17 @@ export default function ReviewerDashboard() {
                       <div className="flex-1">
                         <p className="text-base font-bold text-[#0F172A] dark:text-white">{item.label}</p>
                         <CurrencyAmount amount={item.amount} className="mt-1 text-lg font-bold" iconColor={item.accent} iconSize={15} />
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of queue total</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-100">{item.share}% of {dashboardBudgetMetricLabel.toLowerCase()} total</p>
+                        {dashboardBudgetMetrics.length > 1 && (
+                          <div className="mt-3 space-y-1.5">
+                            {dashboardBudgetMetrics.map((metric) => (
+                              <div key={metric} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-[#64748B] dark:text-slate-300">{DASHBOARD_BUDGET_METRIC_LABEL[metric]}</span>
+                                <CurrencyAmount amount={item.amounts?.[metric] ?? 0} className="font-semibold text-[#0F172A] dark:text-white" iconSize={11} />
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

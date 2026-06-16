@@ -6,10 +6,18 @@ import { AttachmentIconPicker } from '@/components/shared/AttachmentIconPicker'
 import { cn } from '@/lib/utils'
 import type { Clarification, ClarificationReply } from '@/data/db'
 import type { WebApiPortalDocument } from '@/services/webApiForPortalService'
+import { SESSION_USER_TEAMS_KEY, type UserTeam } from '@/services/userContextService'
+import {
+  SESSION_CURRENT_SME_KEY,
+  SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY,
+  SESSION_DGE_STRATEGY_TEAM_KEY,
+  type DgeSmeAssignment,
+  type DgeTeamConfig,
+} from '@/services/dgeRoleContextService'
 
 interface ClarificationThreadProps {
   clarifications: Clarification[]
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   isEditMode: boolean
   onReply: (clarificationId: string, message: string, files?: File[]) => void
   onClose: (clarificationId: string) => void
@@ -17,6 +25,33 @@ interface ClarificationThreadProps {
 }
 
 const PAGE_SIZE = 3
+
+function getSessionJson<T>(key: string): T | null {
+  const raw = sessionStorage.getItem(key)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+function getCurrentUserTeamIds() {
+  const ids = new Set<string>()
+  const userTeams = getSessionJson<UserTeam[]>(SESSION_USER_TEAMS_KEY) ?? []
+  userTeams.forEach((team) => {
+    if (team.teamid) ids.add(team.teamid.toLowerCase())
+  })
+
+  const strategyTeam = getSessionJson<DgeTeamConfig>(SESSION_DGE_STRATEGY_TEAM_KEY)
+  const strategyDirectorTeam = getSessionJson<DgeTeamConfig>(SESSION_DGE_STRATEGY_DIRECTOR_TEAM_KEY)
+  const currentSme = getSessionJson<DgeSmeAssignment>(SESSION_CURRENT_SME_KEY)
+  ;[strategyTeam?.teamId, strategyDirectorTeam?.teamId, currentSme?.teamId].forEach((teamId) => {
+    if (teamId) ids.add(teamId.toLowerCase())
+  })
+
+  return ids
+}
 
 const ROLE_STYLE = {
   Reviewer: {
@@ -42,6 +77,12 @@ const ROLE_STYLE = {
     badge: 'bg-[#F3E8FF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#E9D5FF]',
     avatarBg: 'bg-[#7C3AED]',
     bubble: 'border border-[#D8B4FE] bg-white text-[#0F172A] dark:border-[#7C3AED]/25 dark:bg-[#211136] dark:text-white',
+  },
+  'Strategy Director': {
+    headerBg: 'bg-[#EFF6FF] dark:bg-[#0D1E35]',
+    badge: 'bg-[#DBEAFE] text-[#1D4ED8] dark:bg-[#1D4ED8]/20 dark:text-[#BFDBFE]',
+    avatarBg: 'bg-[#286CFF]',
+    bubble: 'border border-[#BFD8FF] bg-white text-[#0F172A] dark:border-[#286CFF]/25 dark:bg-[#0D1E35] dark:text-white',
   },
   'SME Team': {
     headerBg: 'bg-[#EEF5FF] dark:bg-[#0D1E35]',
@@ -171,7 +212,7 @@ function ClarificationCard({
 }: {
   clarification: Clarification
   index: number
-  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'SME Team'
+  currentRole: 'Respondent' | 'Reviewer' | 'Approver' | 'Strategy Team' | 'Strategy Director' | 'SME Team'
   isEditMode: boolean
   isExpanded: boolean
   onToggle: () => void
@@ -189,10 +230,15 @@ function ClarificationCard({
   const isAdgeRole =
     currentRole === 'Respondent' || currentRole === 'Reviewer' || currentRole === 'Approver'
   const isDgeInternal = clarification.scope === 'Internal (DGE)'
+  const currentUserTeamIds = getCurrentUserTeamIds()
+  const raisedToTeamId = clarification.raisedToTeamId?.trim().toLowerCase() || ''
+  const canReplyByRaisedToTeam = raisedToTeamId ? currentUserTeamIds.has(raisedToTeamId) : null
   const canReply = isOpen
-    ? isDgeInternal
-      ? currentRole === 'Strategy Team' || currentRole === 'SME Team'
-      : currentRole === 'Respondent' || isRaiser
+    ? canReplyByRaisedToTeam !== null
+      ? canReplyByRaisedToTeam
+      : isDgeInternal
+        ? currentRole === 'Strategy Team' || currentRole === 'Strategy Director' || currentRole === 'SME Team'
+        : currentRole === 'Respondent'
     : false
   const canClose = isOpen && isRaiser
   const replyCount = clarification.replies.length

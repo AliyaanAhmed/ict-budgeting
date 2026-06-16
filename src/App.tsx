@@ -24,8 +24,12 @@ import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
 import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
 import StrategySMETracker from '@/pages/strategy-team/SMETracker'
 import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import StrategyDirectorDashboard from '@/pages/strategy-director/Dashboard'
+import StrategyDirectorReviewerQueue from '@/pages/strategy-director/ReviewerQueue'
+import StrategyDirectorEntityTracker from '@/pages/strategy-director/EntityTracker'
 import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
 import SmeTeamReviews from '@/pages/sme-team/Reviews'
+import DgeProjects from '@/pages/dge-projects/Projects'
 
 import AssessmentCycles from '@/pages/admin/AssessmentCycles'
 import CycleDetail from '@/pages/admin/CycleDetail'
@@ -60,13 +64,23 @@ export default function App() {
                     <Route path="/approver/projects" element={<ApproverProjects />} />
                     {/* Strategy Team */}
                     <Route path="/strategy-team/dashboard" element={<StrategyTeamDashboard />} />
-                    <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
+                    <Route path="/strategy-team/projects" element={<DgeProjects role="strategy-team" />} />
                     <Route path="/strategy-team/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
                     <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
                     <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
                     <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    {/* Strategy Director */}
+                    <Route path="/strategy-director/dashboard" element={<StrategyDirectorDashboard />} />
+                    <Route path="/strategy-director/projects" element={<DgeProjects role="strategy-director" />} />
+                    <Route path="/strategy-director/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-director/reviewer-queue" element={<StrategyDirectorReviewerQueue />} />
+                    <Route path="/strategy-director/reviewer-queue/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-director/entity-tracker" element={<StrategyDirectorEntityTracker />} />
                     {/* SME Team */}
                     <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
+                    <Route path="/sme-team/projects" element={<DgeProjects role="sme-team" />} />
+                    <Route path="/sme-team/projects/:id" element={<ProjectDetail />} />
                     <Route path="/sme-team/reviews" element={<SmeTeamReviews />} />
                     <Route path="/sme-team/reviews/:id" element={<ProjectDetail />} />
                     {/* ICT Admin */}
