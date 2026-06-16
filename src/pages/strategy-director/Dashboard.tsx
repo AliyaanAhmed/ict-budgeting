@@ -7,7 +7,6 @@ import {
   DGE_BUDGET_STATUS,
   DGE_INSTANCE_STATUS,
   getDgePortfolioData,
-  getInstanceStageFilterLabel,
   type DgePortfolioData,
 } from '@/services/dgePortfolioService'
 import {
@@ -56,16 +55,20 @@ function SkeletonBlock({ className }: { className: string }) {
   return <div className={`animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10 ${className}`} />
 }
 
-function getStageAccent(stage: string) {
-  switch (stage) {
-    case 'DGE Review':
-      return '#286CFF'
-    case 'Allocation':
-      return '#D97706'
-    case 'Utilization':
-      return '#0F766E'
+function getDirectorInstanceStageMeta(statuscode: number | null | undefined) {
+  switch (statuscode) {
+    case DGE_INSTANCE_STATUS.planning:
+      return { label: 'Planning', progress: 20, accent: '#008A65' }
+    case DGE_INSTANCE_STATUS.underDgeReview:
+      return { label: 'Under DGE Review', progress: 40, accent: '#286CFF' }
+    case DGE_INSTANCE_STATUS.reviewCompletedByDge:
+      return { label: 'Review Completed by DGE', progress: 60, accent: '#7C3AED' }
+    case DGE_INSTANCE_STATUS.allocation:
+      return { label: 'Allocation', progress: 80, accent: '#D97706' }
+    case DGE_INSTANCE_STATUS.utilization:
+      return { label: 'Utilization', progress: 100, accent: '#0F9D8A' }
     default:
-      return '#64748B'
+      return { label: 'Planning', progress: 10, accent: '#008A65' }
   }
 }
 
@@ -155,10 +158,17 @@ export default function StrategyDirectorDashboard() {
 
   const entityStageRows = useMemo(() => {
     return data.instances.map((instance) => {
-      const stage = getInstanceStageFilterLabel(instance.statuscode)
+      const stage = getDirectorInstanceStageMeta(instance.statuscode)
       const completed = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted).length
-      const progress = instance.budgets.length ? Math.round((completed / instance.budgets.length) * 100) : 0
-      return { instance, stage, completed, progress, accent: getStageAccent(stage) }
+      const hasCompletedDgeReviewStage =
+        instance.statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge ||
+        instance.statuscode === DGE_INSTANCE_STATUS.allocation ||
+        instance.statuscode === DGE_INSTANCE_STATUS.utilization
+      const detail = hasCompletedDgeReviewStage
+        ? `${instance.budgets.length} projects, DGE review completed`
+        : `${instance.budgets.length} projects, ${completed} review completed`
+
+      return { instance, stage: stage.label, detail, progress: stage.progress, accent: stage.accent }
     })
   }, [data.instances])
 
@@ -282,12 +292,12 @@ export default function StrategyDirectorDashboard() {
               rightAction={<Link to="/strategy-director/entity-tracker" className="text-sm font-semibold text-[#286CFF]">Open Entity Tracker</Link>}
             >
               <div className="flex flex-1 flex-col justify-start space-y-3">
-                {entityStageRows.slice(0, 5).map(({ instance, stage, completed, progress, accent }) => (
+                {entityStageRows.slice(0, 5).map(({ instance, stage, detail, progress, accent }) => (
                   <div key={instance.id} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</p>
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{instance.budgets.length} projects, {completed} review completed</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{detail}</p>
                       </div>
                       <span className="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: `${accent}14`, color: accent }}>
                         {stage}
@@ -369,16 +379,14 @@ export default function StrategyDirectorDashboard() {
 
                 <div className="space-y-3">
                 {data.instances.slice(0, 4).map((instance) => {
-                  const completed = instance.budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.reviewCompleted).length
-                  const progress = instance.budgets.length ? Math.round((completed / instance.budgets.length) * 100) : 0
-                  const stage = getInstanceStageFilterLabel(instance.statuscode)
+                  const stage = getDirectorInstanceStageMeta(instance.statuscode)
                   return (
                     <div key={instance.id}>
                       <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                         <span className="font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</span>
-                        <span className="text-[#64748B] dark:text-slate-300">{stage}</span>
+                        <span className="text-[#64748B] dark:text-slate-300">{stage.label}</span>
                       </div>
-                      <StrategyProgressBar value={progress} accent={progress === 100 ? '#10B981' : '#286CFF'} />
+                      <StrategyProgressBar value={stage.progress} accent={stage.accent} />
                     </div>
                   )
                 })}

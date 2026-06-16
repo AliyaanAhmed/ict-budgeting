@@ -70,6 +70,7 @@ import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { isRespondentSubmittedProjectStatus } from '@/services/projectService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
 
@@ -389,6 +390,12 @@ export default function RespondentDashboard() {
   const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
   const submittedToDgeProjects = liveProjects.filter((project) => project.status === 'Submitted to DGE')
+  const allocationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInProgress
+  )
+  const utilizationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  )
   const reviewerStageProjects = liveProjects.filter(
     (project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed'
   )
@@ -431,6 +438,9 @@ export default function RespondentDashboard() {
     [portfolioSummary]
   )
   const storedInstanceDetail = getStoredInstanceDetail()
+  const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
+  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
+  const instanceInUtilization = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.utilization
   const planningSummaryPreview = useMemo(
     () => truncateAtWordBoundary(planningSummary || 'Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.', 210),
     [planningSummary]
@@ -629,15 +639,17 @@ export default function RespondentDashboard() {
             href="/respondent/projects?tab=submitted-reviewer"
             description="Projects already sent forward and now tracked in review flow."
           />
-          <ActionMetricCard
-            title="Needs Work / Draft"
-            value={needsWork}
-            accent={dashboardPalette.camelYellow}
-            badge="Action Needed"
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            href="/respondent/projects?tab=needs-work"
-            description="Draft items still waiting for respondent updates and submit."
-          />
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title="Needs Work / Draft"
+              value={needsWork}
+              accent={dashboardPalette.camelYellow}
+              badge="Action Needed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=needs-work"
+              description="Draft items still waiting for respondent updates and submit."
+            />
+          )}
           <ActionMetricCard
             title="Clarification Required"
             value={clarificationRequired}
@@ -647,6 +659,28 @@ export default function RespondentDashboard() {
             href="/respondent/projects?tab=clarification"
             description="Projects returned for clarification before review can resume."
           />
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation In Progress"
+              value={allocationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Allocation"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-in-progress"
+              description="Allocation-stage projects currently owned by the respondent team."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title="Utilization In Progress"
+              value={utilizationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Utilization"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/respondent/projects?tab=utilization-in-progress"
+              description="Utilization-stage projects currently owned by the respondent team."
+            />
+          )}
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">

@@ -466,6 +466,10 @@ export default function ApproverDashboard() {
   const allocationCompletedProjectCount = effectiveLiveProjects.filter(
     (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
   ).length
+  const allocationInReviewProjects = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  )
+  const allocationInReviewCount = allocationInReviewProjects.length
   const allProjectsAllocationCompleted =
     effectiveLiveProjects.length > 0 &&
     allocationCompletedProjectCount === effectiveLiveProjects.length
@@ -931,6 +935,17 @@ export default function ApproverDashboard() {
             href="/approver/projects?tab=approved"
             description="Approved items held until the entity moves onward to DGE."
           />
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">In Review</span></>}
+              value={allocationInReviewCount}
+              accent={dashboardPalette.seaBlue}
+              badge="Allocation"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/approver/projects?tab=allocation-in-review"
+              description="Allocation submissions waiting for approver completion."
+            />
+          )}
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-none dark:border-white/10 dark:bg-[#162339]">

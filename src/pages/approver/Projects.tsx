@@ -20,10 +20,10 @@ import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
-import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { DirhamIcon } from '@/components/shared/DirhamIcon'
 
-type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge'
+type FilterTab = 'all' | 'pending-approval' | 'clarification' | 'approved' | 'submitted-dge' | 'allocation-in-review'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -206,7 +206,14 @@ export default function ApproverProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'pending-approval' || tab === 'clarification' || tab === 'approved' || tab === 'submitted-dge' || tab === 'all') {
+    if (
+      tab === 'pending-approval' ||
+      tab === 'clarification' ||
+      tab === 'approved' ||
+      tab === 'submitted-dge' ||
+      tab === 'allocation-in-review' ||
+      tab === 'all'
+    ) {
       setActiveTab(tab)
       return
     }
@@ -220,6 +227,7 @@ export default function ApproverProjects() {
     { id: 'clarification' as const, label: 'Clarification Required', count: projects.filter((project) => project.status === 'Clarification Required').length },
     { id: 'approved' as const, label: 'Approved', count: projects.filter((project) => project.status === 'Approved').length },
     { id: 'submitted-dge' as const, label: 'Submitted to DGE', count: projects.filter((project) => project.status === 'Submitted to DGE').length },
+    { id: 'allocation-in-review' as const, label: 'Allocation In Review', count: projects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview).length },
   ]
 
   const filtered = projects.filter((project) => {
@@ -233,7 +241,8 @@ export default function ApproverProjects() {
       (activeTab === 'pending-approval' && project.status === 'Submitted to Approver') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
       (activeTab === 'approved' && project.status === 'Approved') ||
-      (activeTab === 'submitted-dge' && project.status === 'Submitted to DGE')
+      (activeTab === 'submitted-dge' && project.status === 'Submitted to DGE') ||
+      (activeTab === 'allocation-in-review' && project.statusCode === DGE_BUDGET_STATUS.allocationInReview)
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter

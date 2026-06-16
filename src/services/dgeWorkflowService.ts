@@ -39,6 +39,22 @@ async function notifyBudgetTeam(
   })
 }
 
+async function getBudgetNotificationLabelById(budgetId: string) {
+  try {
+    const result = await Dga_ict_budgetsService.get(budgetId, {
+      select: ['dga_ict_budgetid', 'dga_budget_ref_id', 'dga_initiative_project_requirement_name'],
+    })
+
+    return (
+      result.data?.dga_initiative_project_requirement_name?.trim() ||
+      result.data?.dga_budget_ref_id?.trim() ||
+      'ICT budget'
+    )
+  } catch {
+    return 'ICT budget'
+  }
+}
+
 async function prepareRecommendedBudgetForQualityCheck(budgetId: string) {
   const budgetResult = await Dga_ict_budgetsService.get(budgetId, {
     select: ['dga_ict_budgetid', 'dga_recommended', 'dga_rejection_reason', 'dga_rejection_justification'],
@@ -554,6 +570,13 @@ export async function submitAllocationToReview(budgetId: string, approverTeamId:
   } as never)
 
   assertSuccess(result.success, 'Unable to submit allocation to approver.', result.error ?? null)
+
+  const budgetLabel = await getBudgetNotificationLabelById(budgetId)
+  await createNotificationForTeam(
+    approverTeamId,
+    `${budgetLabel}: Respondent submitted allocation for Approver review.`,
+    { action: 'submit-allocation-to-review', budgetId }
+  )
 }
 
 export async function completeAllocationReview(budgetId: string) {

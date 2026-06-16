@@ -31,10 +31,16 @@ import { exportProjectsToExcel } from '@/services/projectExportService'
 import type { PortfolioSummaryPayload } from '@/services/portfolioSummaryService'
 import { getPortfolioProjectInsight } from '@/services/portfolioSummaryService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
-import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 import { DirhamIcon } from '@/components/shared/DirhamIcon'
 
-type FilterTab = 'all' | 'needs-work' | 'clarification' | 'submitted-reviewer'
+type FilterTab =
+  | 'all'
+  | 'needs-work'
+  | 'clarification'
+  | 'submitted-reviewer'
+  | 'allocation-in-progress'
+  | 'utilization-in-progress'
 type StatusFilter = 'all-statuses' | ProjectStatus
 type BudgetTypeFilter =
   | 'all-budget-types'
@@ -223,6 +229,9 @@ export default function RespondentProjects() {
   const [budgetTypeFilter, setBudgetTypeFilter] = useState<BudgetTypeFilter>('all-budget-types')
   const [aiReviewFlagFilter, setAiReviewFlagFilter] = useState<AiReviewFlagFilter>('all-ai-review-flags')
   const [exporting, setExporting] = useState(false)
+  const activeInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
+  const instanceInAllocation = activeInstanceStatusCode === DGE_INSTANCE_STATUS.allocation
+  const instanceInUtilization = activeInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
   const aiReviewFlagOptions = Array.from(
     new Map(
       projects
@@ -237,19 +246,52 @@ export default function RespondentProjects() {
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'needs-work' || tab === 'clarification' || tab === 'submitted-reviewer' || tab === 'all') {
+    if (
+      tab === 'needs-work' ||
+      tab === 'clarification' ||
+      tab === 'submitted-reviewer' ||
+      (tab === 'allocation-in-progress' && instanceInAllocation) ||
+      (tab === 'utilization-in-progress' && instanceInUtilization) ||
+      tab === 'all'
+    ) {
       setActiveTab(tab)
       return
     }
 
     setActiveTab('all')
-  }, [searchParams])
+  }, [instanceInAllocation, instanceInUtilization, searchParams])
 
   const tabs: { id: FilterTab; label: string; count: number }[] = [
     { id: 'all', label: 'All Projects', count: projects.length },
-    { id: 'needs-work', label: 'Needs Work / Draft', count: projects.filter((p) => p.status === 'Draft').length },
+    ...(!instanceInAllocation && !instanceInUtilization
+      ? [
+          {
+            id: 'needs-work' as const,
+            label: 'Needs Work / Draft',
+            count: projects.filter((p) => p.status === 'Draft').length,
+          },
+        ]
+      : []),
     { id: 'clarification', label: 'Clarification Required', count: projects.filter((p) => p.status === 'Clarification Required').length },
     { id: 'submitted-reviewer', label: 'Submitted to Reviewer', count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status)).length },
+    ...(instanceInAllocation
+      ? [
+          {
+            id: 'allocation-in-progress' as const,
+            label: 'Allocation In Progress',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInProgress).length,
+          },
+        ]
+      : []),
+    ...(instanceInUtilization
+      ? [
+          {
+            id: 'utilization-in-progress' as const,
+            label: 'Utilization In Progress',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.utilizationInProgress).length,
+          },
+        ]
+      : []),
   ]
 
   const filtered = projects.filter((project) => {
@@ -262,7 +304,9 @@ export default function RespondentProjects() {
       activeTab === 'all' ||
       (activeTab === 'needs-work' && project.status === 'Draft') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status))
+      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status)) ||
+      (activeTab === 'allocation-in-progress' && project.statusCode === DGE_BUDGET_STATUS.allocationInProgress) ||
+      (activeTab === 'utilization-in-progress' && project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress)
     const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
