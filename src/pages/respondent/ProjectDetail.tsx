@@ -1710,17 +1710,16 @@ function BudgetItemsTable({
                 ) : null}
                 {showUtilizedBudget ? (
                   <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex min-w-[150px] items-center gap-2">
                       {item.totalBudgetUtilized > 0 ? (
-                        <CurrencyAmount amount={item.totalBudgetUtilized} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                        <CurrencyAmount amount={item.totalBudgetUtilized} full className="min-w-0 shrink font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
                       ) : (
-                        <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                        <span className="min-w-0 shrink text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
                       )}
                       {editableUtilization ? (
                         <Button
                           type="button"
-                          variant="outline"
-                          className="h-8 rounded-lg border-[#BFD8FF] px-2.5 text-xs font-semibold text-[#286CFF] shadow-none hover:bg-[#EEF5FF]"
+                          className="h-8 shrink-0 rounded-lg border border-[#286CFF] bg-[#286CFF] px-2.5 text-xs font-semibold text-white shadow-none hover:bg-[#0C65F5]"
                           onClick={() => {
                             setUtilizationModalItem(item)
                             setUtilizationDraft([
@@ -1732,7 +1731,7 @@ function BudgetItemsTable({
                           }}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          Add Quarter
+                          Add
                         </Button>
                       ) : null}
                     </div>

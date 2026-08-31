@@ -37,6 +37,7 @@ import {
   type DgeBudgetRecord,
 } from '@/services/dgePortfolioService'
 import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
+import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
 
 const SME_QUEUE_VISIBLE_STATUSES = new Set<number>([
   DGE_BUDGET_STATUS.underSmeReview,
@@ -111,6 +112,7 @@ function ActionCard({
   value,
   budgetLabel,
   budget,
+  entities,
   badge,
   accent,
   icon: Icon,
@@ -120,6 +122,7 @@ function ActionCard({
   value: number
   budgetLabel: string
   budget: number | null
+  entities?: string[]
   badge: string
   accent: string
   icon: React.ElementType
@@ -148,11 +151,68 @@ function ActionCard({
         <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">{budgetLabel}</p>
         {budget !== null ? (
           <CurrencyAmount amount={budget} className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white" iconSize={13} />
-        ) : (
-          <p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{budgetLabel}</p>
-        )}
+        ) : entities?.length ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {entities.map((entity) => (
+              <span
+                key={entity}
+                className="inline-flex max-w-full items-center rounded-full border border-[#DCE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE]"
+              >
+                {entity}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </Link>
+  )
+}
+
+function ClarificationRaisedToEntitiesCard({ budgets }: { budgets: DgeBudgetRecord[] }) {
+  const visibleClarifications = budgets.slice(0, 4)
+
+  return (
+    <StrategySectionCard
+      title="Clarification Raised to Entities"
+      description="Entity-facing clarification threads opened by the SME team."
+      className="h-full"
+      headingIcon={<MessageSquareDot className="h-5 w-5 text-[#7C3AED]" />}
+    >
+      <div className="flex h-full flex-col">
+        <div className="space-y-3">
+          {visibleClarifications.map((budget) => (
+            <div
+              key={budget.id}
+              className="rounded-[20px] border border-[#DCE8F6] bg-[#FBFDFF] p-4 transition-all hover:-translate-y-0.5 hover:border-[#BFD8FF] hover:shadow-[0_14px_28px_rgba(15,23,42,0.07)] dark:border-white/10 dark:bg-white/5"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex max-w-full items-center rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                      {budget.entityName || budget.instanceName || 'Unknown Entity'}
+                    </span>
+                    <StrategyPill tone="teal">On Track</StrategyPill>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{budget.name}</p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
+                    {budget.summary || 'Clarification has been raised and is awaiting entity response.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-auto flex justify-end pt-4">
+          <Button asChild className="h-10 rounded-2xl bg-[#286CFF] px-4 text-sm font-semibold text-white hover:bg-[#0C65F5]">
+            <Link to={SME_QUEUE_FILTER_HREFS.clarificationRaised}>
+              View All
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </StrategySectionCard>
   )
 }
 
@@ -268,8 +328,15 @@ export default function SmeTeamDashboard() {
       {
         title: 'Clarification Raised',
         value: metrics.clarificationsRaised.length,
-        budgetLabel: 'Awaiting ADGE response',
+        budgetLabel: 'Entities',
         budget: null,
+        entities: [
+          ...new Set(
+            metrics.clarificationsRaised
+              .map((budget) => budget.entityName || budget.instanceName)
+              .filter((entity): entity is string => Boolean(entity))
+          ),
+        ],
         badge: 'Pending response',
         accent: '#7C3AED',
         icon: MessageSquareDot,
@@ -288,6 +355,7 @@ export default function SmeTeamDashboard() {
     ],
     [
       metrics.changeRequests.length,
+      metrics.clarificationsRaised,
       metrics.clarificationsRaised.length,
       metrics.clarificationsRequired.length,
       metrics.reviewed.length,
@@ -354,6 +422,22 @@ export default function SmeTeamDashboard() {
   const reviewProgress = budgets.length ? Math.round((metrics.reviewed.length / budgets.length) * 100) : 0
   const outstandingProgress = budgets.length ? Math.round((metrics.toReview.length / budgets.length) * 100) : 0
   const changeRequestProgress = budgets.length ? Math.round((metrics.changeRequests.length / budgets.length) * 100) : 0
+  const aiReviewFlagCounts = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number; severity: string }>()
+
+    budgets.forEach((budget) => {
+      getProjectAiReviewFlags(budget.aiReviewFlags).forEach((flag) => {
+        const current = counts.get(flag.key)
+        counts.set(flag.key, {
+          label: flag.label,
+          count: (current?.count ?? 0) + 1,
+          severity: flag.severity,
+        })
+      })
+    })
+
+    return [...counts.values()].sort((left, right) => right.count - left.count)
+  }, [budgets])
 
   return (
     <StrategyPageShell
@@ -503,6 +587,12 @@ export default function SmeTeamDashboard() {
               </div>
             </StrategySectionCard>
 
+            {metrics.clarificationsRaised.length > 0 ? (
+              <ClarificationRaisedToEntitiesCard budgets={metrics.clarificationsRaised} />
+            ) : null}
+          </section>
+
+          <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
             <StrategySectionCard
               title="Budget And Documents"
               description="Budget value and document posture across every project in this SME domain."
@@ -573,9 +663,7 @@ export default function SmeTeamDashboard() {
                 </div>
               </div>
             </StrategySectionCard>
-          </section>
 
-          <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
             <StrategySectionCard
               title="SME Progress"
               description="Live progress snapshot for the current domain, covering throughput, routed items, and strategy-review exceptions."
@@ -626,7 +714,9 @@ export default function SmeTeamDashboard() {
                 </div>
               </div>
             </StrategySectionCard>
+          </section>
 
+          <section>
             <StrategySectionCard
               title="AI Review Guidance"
               description="AI signals for this SME domain, based on queue state, document posture, and strategic mapping exceptions."
@@ -640,6 +730,41 @@ export default function SmeTeamDashboard() {
                     <span className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Review Guidance</span>
                   </div>
                   <div className="space-y-3 border-t border-[#E9D5FF] px-4 py-4 dark:border-white/10">
+                    <div className="rounded-[16px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]/40">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-[#A855F7]" />
+                          <p className="text-sm font-semibold text-[#0F172A] dark:text-white">AI Review Flags</p>
+                        </div>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                          {aiReviewFlagCounts.reduce((sum, flag) => sum + flag.count, 0)}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {aiReviewFlagCounts.length > 0 ? (
+                          aiReviewFlagCounts.map((flag) => (
+                            <span
+                              key={flag.label}
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold',
+                                flag.severity === 'High'
+                                  ? 'border-[#F4B7BE] bg-[#FFF1F3] text-[#9F1239] dark:border-[#7F1D1D] dark:bg-[#3F1118] dark:text-[#FDA4AF]'
+                                  : flag.severity === 'Medium'
+                                    ? 'border-[#F8E2B7] bg-[#FFF7E6] text-[#B45309] dark:border-[#8A6832] dark:bg-[#4A3517] dark:text-[#FCD34D]'
+                                    : 'border-[#DCE8F6] bg-white text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE]'
+                              )}
+                            >
+                              {flag.label}
+                              <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-bold dark:bg-white/10">
+                                {flag.count}
+                              </span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-sm text-[#64748B] dark:text-slate-300">No AI review flags in this SME lane.</span>
+                        )}
+                      </div>
+                    </div>
                     <div className="rounded-[16px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                       <div className="flex items-center gap-2">
                         <ClipboardCheck className="h-4 w-4 text-[#286CFF]" />

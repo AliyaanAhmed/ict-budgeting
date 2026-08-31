@@ -604,14 +604,23 @@ export default function ApprovalQueue() {
     [projects, activeFilter, search, budgetTypeFilter, sortOrder]
   )
 
-  const visibleActionableIds = filtered.filter(p => p.status === 'Pending').map(p => p.id)
+  const isSelectableProject = (project: ApprovalQueueProject) =>
+    project.status === 'Pending' || project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  const visibleActionableIds = filtered.filter(isSelectableProject).map(p => p.id)
   const allVisibleSelected = visibleActionableIds.length > 0 && visibleActionableIds.every(id => selectedIds.includes(id))
-  const actionableSelected = selectedIds.filter(id => projects.find(p => p.id === id)?.status === 'Pending')
+  const selectedProjects = selectedIds
+    .map(id => projects.find(p => p.id === id))
+    .filter((project): project is ApprovalQueueProject => Boolean(project))
+  const actionableSelected = selectedProjects.filter(isSelectableProject).map(project => project.id)
+  const pendingSelected = selectedProjects.filter(project => project.status === 'Pending').map(project => project.id)
+  const allocationSelected = selectedProjects
+    .filter(project => project.statusCode === DGE_BUDGET_STATUS.allocationInReview)
+    .map(project => project.id)
 
   const toggleSelected = (id: string) =>
     setSelectedIds(prev => {
       const project = projects.find(p => p.id === id)
-      if (!project || project.status !== 'Pending') {
+      if (!project || !isSelectableProject(project)) {
         return prev
       }
       return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -713,6 +722,57 @@ export default function ApprovalQueue() {
         successTitle: 'Allocation completed',
         successDescription: 'The project allocation has been completed.',
         errorTitle: 'Unable to complete allocation',
+        minDurationMs: 1200,
+      }
+    )
+  }
+
+  const handleCompleteAllocationBulk = async (projectIds: string[]) => {
+    const allocationProjects = projectIds
+      .map((id) => projects.find((project) => project.id === id))
+      .filter((project): project is ApprovalQueueProject => Boolean(project?.ictBudgetId))
+      .filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview)
+
+    if (!allocationProjects.length) return
+
+    await runActionToast(
+      async () => {
+        await Promise.all(
+          allocationProjects.map((project) => completeAllocationReview(project.ictBudgetId as string))
+        )
+        await Promise.allSettled(
+          allocationProjects.map((project) => invalidateBudgetOverviewRecord(project.ictBudgetId as string))
+        )
+        setStatusOverrides((prev) => {
+          const next = { ...prev }
+          for (const project of allocationProjects) {
+            next[project.ictBudgetId as string] = {
+              status: 'Submitted to DGE',
+              statusCode: DGE_BUDGET_STATUS.allocationCompleted,
+            }
+          }
+          return next
+        })
+        setProjects((prev) =>
+          prev.map((item) =>
+            allocationProjects.some((project) => project.id === item.id)
+              ? {
+                  ...item,
+                  status: 'Submitted to DGE' as const,
+                  statusCode: DGE_BUDGET_STATUS.allocationCompleted,
+                  statusForAdgeLabel: 'Allocation Completed',
+                }
+              : item
+          )
+        )
+        setSelectedIds((prev) => prev.filter((id) => !projectIds.includes(id)))
+      },
+      {
+        processingTitle: 'Completing allocations',
+        processingDescription: `Marking ${allocationProjects.length} allocation${allocationProjects.length === 1 ? '' : 's'} as completed...`,
+        successTitle: 'Allocations completed',
+        successDescription: `${allocationProjects.length} allocation${allocationProjects.length === 1 ? '' : 's'} completed successfully.`,
+        errorTitle: 'Unable to complete allocations',
         minDurationMs: 1200,
       }
     )
@@ -990,11 +1050,21 @@ export default function ApprovalQueue() {
             >
               <Undo2 className="h-4 w-4" />Raise Clarification
             </Button>
+            {allocationSelected.length > 0 && (
+              <Button
+                size="sm"
+                className="bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)]"
+                onClick={() => void handleCompleteAllocationBulk(allocationSelected)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Complete Allocation
+              </Button>
+            )}
             <Button
               size="sm"
-              disabled={actionableSelected.length === 0}
+              disabled={pendingSelected.length === 0}
               className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-              onClick={() => setPendingApprove(actionableSelected)}
+              onClick={() => setPendingApprove(pendingSelected)}
             >
               {directDgeFlowActive ? <Send className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
               {directDgeFlowActive ? 'Submit Selected to DGE' : 'Approve Selected'}
@@ -1020,8 +1090,9 @@ export default function ApprovalQueue() {
           filtered.map(proj => {
             const accent = statusAccent(proj.status)
             const isSelected = selectedIds.includes(proj.id)
-            const isActionable = proj.status === 'Pending'
             const canCompleteAllocation = proj.statusCode === DGE_BUDGET_STATUS.allocationInReview
+            const isActionable = proj.status === 'Pending'
+            const isSelectable = isSelectableProject(proj)
             const canClarify =
               proj.status === 'Pending' ||
               proj.status === 'Approved' ||
@@ -1039,7 +1110,7 @@ export default function ApprovalQueue() {
                   {/* Top row */}
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
-                      <SelectionControl selected={isSelected} disabled={!isActionable} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
+                      <SelectionControl selected={isSelected} disabled={!isSelectable} onClick={() => toggleSelected(proj.id)} label={`Select ${proj.name}`} />
                       <div className="min-w-0 flex-1">
                         <div className="mb-2 flex flex-wrap items-center gap-2">
                           <span className="font-mono text-xs text-[#94A3B8]">{proj.id}</span>

@@ -7178,9 +7178,30 @@ export default function NewProject() {
               noIconBg
             >
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <FormField label="Initiative / Budget Item Name" required error={copilotFieldErrors.initiativeName}>
-                  <Input value={copilotFormValues.initiativeName} onChange={(event) => updateCopilotField('initiativeName', event.target.value)} className={cn('h-12 rounded-xl bg-white shadow-sm dark:bg-[#1E293B]', copilotFieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]')} />
-                </FormField>
+                <div className="md:col-span-2">
+                  <FormField label="Initiative / Budget Item Name" required error={copilotFieldErrors.initiativeName}>
+                    <Input
+                      value={copilotFormValues.initiativeName}
+                      onChange={(event) => updateCopilotField('initiativeName', event.target.value)}
+                      className={cn('h-12 rounded-xl bg-white shadow-sm dark:bg-[#1E293B]', copilotFieldErrors.initiativeName ? 'border-[#F04438]' : 'border-[#D9E6F7]')}
+                      placeholder="Example: Cloud Migration Platform for Citizen Services"
+                    />
+                  </FormField>
+                </div>
+                <div className="md:col-span-2">
+                  <FormField label="Summary / Description" required error={copilotFieldErrors.summary}>
+                    <Textarea
+                      value={copilotFormValues.summary}
+                      onChange={(event) => updateCopilotField('summary', event.target.value)}
+                      rows={6}
+                      className={cn(
+                        'rounded-xl bg-white shadow-sm transition-colors hover:border-[var(--primary-light)] focus-visible:ring-[var(--primary)] dark:bg-[#1E293B]',
+                        copilotFieldErrors.summary ? 'border-[#F04438]' : 'border-[#D9E6F7]'
+                      )}
+                      placeholder="Describe the problem, proposed solution, departments impacted, measurable benefits, and any dependencies..."
+                    />
+                  </FormField>
+                </div>
                 <FormField label="Strategic Priority" required error={copilotFieldErrors.strategicPriorityId}>
                   <LookupSelect value={copilotFormValues.strategicPriorityId} onChange={handleCopilotStrategicPriorityChange} placeholder="Select parent strategic priority" options={strategicPriorityParentOptions} icon={TrendingUp} disabled={lookupLoading} invalid={Boolean(copilotFieldErrors.strategicPriorityId)} />
                 </FormField>

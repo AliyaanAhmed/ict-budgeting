@@ -56,6 +56,7 @@ import { cn } from '@/lib/utils'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { isReviewerSentToApproverProjectStatus } from '@/services/projectService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
+import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
 
 function InfoHint({ text }: { text: string }) {
   return (
@@ -251,6 +252,8 @@ export default function ReviewerDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const dashboardInstanceStatus = instanceDetail?.statuscode ?? getStoredInstanceDetail()?.statuscode ?? null
+  const instanceInAllocation = dashboardInstanceStatus === DGE_INSTANCE_STATUS.allocation
+  const instanceInUtilization = dashboardInstanceStatus === DGE_INSTANCE_STATUS.utilization
   const dashboardBudgetMetrics = useMemo(() => getDashboardBudgetMetricsForInstanceStatus(dashboardInstanceStatus), [dashboardInstanceStatus])
   const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
   const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
@@ -278,6 +281,21 @@ export default function ReviewerDashboard() {
   const sentToApproverProjects = liveProjects.filter((project) => isReviewerSentToApproverProjectStatus(project.status))
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
   const submittedToDgeProjects = liveProjects.filter((project) => project.status === 'Submitted to DGE')
+  const allocationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInProgress
+  )
+  const allocationInReviewProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview
+  )
+  const allocationCompletedProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+  )
+  const utilizationInProgressProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  )
+  const utilizationCompletedProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted
+  )
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
   const approverStageProjects = liveProjects.filter(
     (project) => project.status === 'Submitted to Approver' || project.status === 'Approved'
@@ -541,43 +559,111 @@ export default function ReviewerDashboard() {
 
       {/* ─── Metric cards ─── */}
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-          <ActionMetricCard
-            title={<><span className="block">Pending</span><span className="block">Review</span></>}
-            value={toReview}
-            accent={dashboardPalette.seaBlue}
-            badge="Pending"
-            icon={<Radar className="h-5 w-5" />}
-            href="/reviewer/projects?tab=pending-review"
-            description="Submitted items waiting for reviewer assessment and action."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Review</span><span className="block">Completed</span></>}
-            value={reviewCompleted}
-            accent={dashboardPalette.aeGreen}
-            badge="Ready"
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            href="/reviewer/projects?tab=review-completed"
-            description="Reviewer-cleared items ready for onward approver submission."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Clarification</span><span className="block">Open</span></>}
-            value={clarificationPending}
-            accent={dashboardPalette.camelYellow}
-            badge="Open"
-            icon={<MessageSquareMore className="h-5 w-5" />}
-            href="/reviewer/projects?tab=clarification"
-            description="Projects sent back to respondent for reviewer clarification."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Sent</span><span className="block">to Approver</span></>}
-            value={reviewed}
-            accent={dashboardPalette.aeGreen}
-            badge="Forwarded"
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            href="/reviewer/projects?tab=submitted-approver"
-            description="Reviewer-forwarded items now progressing in approver flow."
-          />
+        <div
+          className={cn(
+            'grid h-full grid-cols-1 gap-4 sm:grid-cols-2',
+            instanceInAllocation ? '2xl:grid-cols-3' : instanceInUtilization ? '2xl:grid-cols-2' : '2xl:grid-cols-4'
+          )}
+        >
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Pending</span><span className="block">Review</span></>}
+              value={toReview}
+              accent={dashboardPalette.seaBlue}
+              badge="Pending"
+              icon={<Radar className="h-5 w-5" />}
+              href="/reviewer/projects?tab=pending-review"
+              description="Submitted items waiting for reviewer assessment and action."
+            />
+          )}
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Review</span><span className="block">Completed</span></>}
+              value={reviewCompleted}
+              accent={dashboardPalette.aeGreen}
+              badge="Ready"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/reviewer/projects?tab=review-completed"
+              description="Reviewer-cleared items ready for onward approver submission."
+            />
+          )}
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Clarification</span><span className="block">Open</span></>}
+              value={clarificationPending}
+              accent={dashboardPalette.camelYellow}
+              badge="Open"
+              icon={<MessageSquareMore className="h-5 w-5" />}
+              href="/reviewer/projects?tab=clarification"
+              description="Projects sent back to respondent for reviewer clarification."
+            />
+          )}
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Sent</span><span className="block">to Approver</span></>}
+              value={reviewed}
+              accent={dashboardPalette.aeGreen}
+              badge="Forwarded"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/reviewer/projects?tab=submitted-approver"
+              description="Reviewer-forwarded items now progressing in approver flow."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">In Progress</span></>}
+              value={allocationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Respondent"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/reviewer/projects?tab=allocation-in-progress"
+              description="Allocation-stage budgets currently with respondent teams."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">In Review</span></>}
+              value={allocationInReviewProjects.length}
+              accent={dashboardPalette.camelYellow}
+              badge="Review"
+              icon={<Radar className="h-5 w-5" />}
+              href="/reviewer/projects?tab=allocation-in-review"
+              description="Allocation updates currently being reviewed by approver."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">Completed</span></>}
+              value={allocationCompletedProjects.length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/reviewer/projects?tab=allocation-completed"
+              description="Budgets with completed allocation decisions."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Utilization</span><span className="block">In Progress</span></>}
+              value={utilizationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Active"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/reviewer/projects?tab=utilization-in-progress"
+              description="Budgets currently capturing utilization."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Utilization</span><span className="block">Completed</span></>}
+              value={utilizationCompletedProjects.length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/reviewer/projects?tab=utilization-completed"
+              description="Budgets with completed utilization submissions."
+            />
+          )}
         </div>
 
         <Card className="h-full overflow-hidden rounded-[28px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
@@ -993,7 +1079,7 @@ export default function ReviewerDashboard() {
                 {dashboardBudgetMetricLabel} split across all four budget types
               </p>
             </div>
-            <div className="mx-auto mt-12 max-w-2xl">
+            <div className="mx-auto mt-12">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {budgetTypeBreakdown.map((item) => (
                   <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>

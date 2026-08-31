@@ -407,7 +407,19 @@ export default function ApproverDashboard() {
   } = useAccountCodesBreakdown(effectiveLiveProjects, dashboardBudgetMetrics)
   const showSkeleton = useDelayedLoading(instanceLoading || loading)
   const cycleName = selectedCycle?.name ?? 'ICT Budget Planning 2026'
-  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
+  const instanceInAllocation =
+    dashboardInstanceStatus === DGE_INSTANCE_STATUS.allocation ||
+    effectiveLiveProjects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.allocationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationInReview ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+    )
+  const instanceInUtilization =
+    dashboardInstanceStatus === DGE_INSTANCE_STATUS.utilization ||
+    effectiveLiveProjects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted
+    )
   const daysRemaining = computeDaysRemaining(selectedCycle?.endDate)
   const dueDateLabel = selectedCycle?.endDate
     ? new Date(selectedCycle.endDate).toLocaleDateString('en-AE', {
@@ -466,10 +478,19 @@ export default function ApproverDashboard() {
   const allocationCompletedProjectCount = effectiveLiveProjects.filter(
     (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
   ).length
+  const allocationCompletedProjects = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+  )
   const allocationInReviewProjects = effectiveLiveProjects.filter(
     (project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview
   )
   const allocationInReviewCount = allocationInReviewProjects.length
+  const utilizationInProgressProjects = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  )
+  const utilizationCompletedProjects = effectiveLiveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted
+  )
   const allProjectsAllocationCompleted =
     effectiveLiveProjects.length > 0 &&
     allocationCompletedProjectCount === effectiveLiveProjects.length
@@ -907,34 +928,40 @@ export default function ApproverDashboard() {
       </section>
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <ActionMetricCard
-            title={<><span className="block">Pending</span><span className="block">Approval</span></>}
-            value={pendingApproval}
-            accent={dashboardPalette.camelYellow}
-            badge="Pending"
-            icon={<ClipboardCheck className="h-5 w-5" />}
-            href="/approver/projects?tab=pending-approval"
-            description="Projects waiting for approver decision before final handoff."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Clarification</span><span className="block">Open</span></>}
-            value={clarificationCount}
-            accent={dashboardPalette.desertOrange}
-            badge="Open"
-            icon={<MessageSquareMore className="h-5 w-5" />}
-            href="/approver/projects?tab=clarification"
-            description="Approver-returned items pending respondent clarification."
-          />
-          <ActionMetricCard
-            title={<><span className="block">Approved</span><span className="block">Project</span></>}
-            value={approvedCount}
-            accent={dashboardPalette.aeGreen}
-            badge="Ready"
-            icon={<CheckCircle2 className="h-5 w-5" />}
-            href="/approver/projects?tab=approved"
-            description="Approved items held until the entity moves onward to DGE."
-          />
+        <div className={cn('grid h-full grid-cols-1 gap-4 sm:grid-cols-2', instanceInUtilization ? 'xl:grid-cols-2' : instanceInAllocation ? 'xl:grid-cols-2' : 'xl:grid-cols-3')}>
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Pending</span><span className="block">Approval</span></>}
+              value={pendingApproval}
+              accent={dashboardPalette.camelYellow}
+              badge="Pending"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/approver/projects?tab=pending-approval"
+              description="Projects waiting for approver decision before final handoff."
+            />
+          )}
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Clarification</span><span className="block">Open</span></>}
+              value={clarificationCount}
+              accent={dashboardPalette.desertOrange}
+              badge="Open"
+              icon={<MessageSquareMore className="h-5 w-5" />}
+              href="/approver/projects?tab=clarification"
+              description="Approver-returned items pending respondent clarification."
+            />
+          )}
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Approved</span><span className="block">Project</span></>}
+              value={approvedCount}
+              accent={dashboardPalette.aeGreen}
+              badge="Ready"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              href="/approver/projects?tab=approved"
+              description="Approved items held until the entity moves onward to DGE."
+            />
+          )}
           {instanceInAllocation && (
             <ActionMetricCard
               title={<><span className="block">Allocation</span><span className="block">In Review</span></>}
@@ -944,6 +971,39 @@ export default function ApproverDashboard() {
               icon={<WalletCards className="h-5 w-5" />}
               href="/approver/projects?tab=allocation-in-review"
               description="Allocation submissions waiting for approver completion."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title={<><span className="block">Allocation</span><span className="block">Completed</span></>}
+              value={allocationCompletedProjects.length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              href="/approver/projects?tab=allocation-completed"
+              description="Projects already completed in allocation and ready for utilization handoff."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Utilization</span><span className="block">In Progress</span></>}
+              value={utilizationInProgressProjects.length}
+              accent={dashboardPalette.seaBlue}
+              badge="Utilization"
+              icon={<WalletCards className="h-5 w-5" />}
+              href="/approver/projects?tab=utilization-in-progress"
+              description="Projects currently in utilization with the entity."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title={<><span className="block">Utilization</span><span className="block">Completed</span></>}
+              value={utilizationCompletedProjects.length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<CheckCircle2 className="h-5 w-5" />}
+              href="/approver/projects?tab=utilization-completed"
+              description="Projects completed in utilization."
             />
           )}
         </div>
@@ -1246,7 +1306,7 @@ export default function ApproverDashboard() {
                 {dashboardBudgetMetricLabel} split across all four budget types
               </p>
             </div>
-            <div className="mx-auto mt-8 max-w-2xl">
+            <div className="mx-auto mt-8">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {budgetTypeBreakdown.map((item) => (
                   <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-none dark:bg-[#18263F] ${item.bgClass}`}>

@@ -14,7 +14,7 @@ import {
   Users,
   ShieldCheck,
   ShieldAlert,
-  Sparkles,
+  MessageSquareMore,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
@@ -91,6 +91,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-team/entity-tracker' },
       { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
       { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },
+      { label: 'Clarification Monitor', icon: MessageSquareMore, href: '/strategy-team/clarification-monitor' },
     ],
     'ICT - Strategy Director': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-director/dashboard' },

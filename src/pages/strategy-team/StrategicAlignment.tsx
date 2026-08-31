@@ -147,31 +147,30 @@ function SkeletonBlock({ className }: { className: string }) {
 
 function StrategicAlignmentSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="space-y-4">
-        <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]">
-          <CardContent className="space-y-4 p-4">
-            <SkeletonBlock className="h-5 w-20" />
-            <SkeletonBlock className="h-10 w-full rounded-[12px]" />
-            <div className="space-y-2">
-              <SkeletonBlock className="h-4 w-32" />
-              {Array.from({ length: 5 }).map((_, index) => (
-                <SkeletonBlock key={index} className="h-12 w-full rounded-2xl" />
-              ))}
-            </div>
-            <SkeletonBlock className="h-11 w-full rounded-[10px]" />
-            <SkeletonBlock className="h-11 w-full rounded-[10px]" />
-          </CardContent>
-        </Card>
-      </aside>
+    <div className="space-y-5">
       <section className="space-y-5">
         <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white dark:border-white/10 dark:bg-[#162339]">
           <CardContent className="p-5">
-            <div className="flex items-center justify-between gap-3 border-b border-[#EEF3F8] pb-4 dark:border-white/10">
-              <SkeletonBlock className="h-5 w-36" />
-              <div className="flex gap-2">
-                <SkeletonBlock className="h-9 w-40 rounded-lg" />
-                <SkeletonBlock className="h-9 w-32 rounded-lg" />
+            <div className="space-y-4 border-b border-[#EEF3F8] pb-4 dark:border-white/10">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex flex-wrap gap-2">
+                  {Array.from({ length: 4 }).map((_, index) => (
+                    <SkeletonBlock key={index} className="h-9 w-44 rounded-full" />
+                  ))}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[660px]">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <SkeletonBlock key={index} className="h-10 w-full rounded-full" />
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <SkeletonBlock className="h-10 w-full rounded-full lg:max-w-md" />
+                <div className="flex flex-wrap gap-2">
+                  <SkeletonBlock className="h-8 w-36 rounded-full" />
+                  <SkeletonBlock className="h-9 w-40 rounded-lg" />
+                  <SkeletonBlock className="h-9 w-32 rounded-lg" />
+                </div>
               </div>
             </div>
             <div className="mt-5 overflow-hidden rounded-[12px] border border-[#DCE6F6] dark:border-white/10">
@@ -189,19 +188,32 @@ function StrategicAlignmentSkeleton() {
   )
 }
 
-const STATUS_FILTER_OPTIONS = [
-  'All',
-  'Under Strategic Alignment Review',
-  'Under SME Review',
-  'Strategic Priority Change Under Review',
-  'Under Quality Check',
-] as const
-
 const PRIORITY_ALL_KEY = '__all__'
+type StrategicAlignmentTab = 'strategic-alignment-review' | 'strategic-priority-change' | 'sent-to-smes' | 'reviewed-by-smes'
+type AiAlignmentFilter = 'all' | 'mismatch' | 'aligned'
+
+const STRATEGIC_ALIGNMENT_TABS: Array<{ id: StrategicAlignmentTab; label: string; statuses: number[] }> = [
+  { id: 'strategic-alignment-review', label: 'Strategic Alignment Review', statuses: [DGE_BUDGET_STATUS.underStrategicAlignmentReview] },
+  { id: 'strategic-priority-change', label: 'Strategic Priority Change', statuses: [DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview] },
+  { id: 'sent-to-smes', label: 'Sent to SMEs', statuses: [DGE_BUDGET_STATUS.underSmeReview] },
+  {
+    id: 'reviewed-by-smes',
+    label: 'Reviewed by SMEs',
+    statuses: [DGE_BUDGET_STATUS.underQualityCheck, DGE_BUDGET_STATUS.underFinalReview, DGE_BUDGET_STATUS.reviewCompleted],
+  },
+]
 
 interface ProjectClassificationDraft {
   priorityId: string
   classificationId: string
+}
+
+function getClassificationOptionsForPriority(
+  priorities: StrategicPriorityOption[],
+  priorityId: string | null | undefined
+) {
+  if (!priorityId) return []
+  return priorities.filter((option) => option.parentId === priorityId)
 }
 
 function trimPriorityLabel(value: string | null | undefined) {
@@ -209,11 +221,44 @@ function trimPriorityLabel(value: string | null | undefined) {
   return value.split(' - ')[0]?.trim() || value
 }
 
+function normalizeAlignmentLabel(value: string | null | undefined) {
+  return trimPriorityLabel(value).toLowerCase()
+}
+
+function getAiAlignmentState(budget: DgeBudgetRecord): 'mismatch' | 'aligned' | 'none' {
+  const actualPriority = normalizeAlignmentLabel(budget.strategicPriorityName)
+  const actualClassification = normalizeAlignmentLabel(budget.strategicPriorityClassificationName)
+  const suggestedPriority = normalizeAlignmentLabel(budget.suggestedStrategicPriorityName)
+  const suggestedClassification = normalizeAlignmentLabel(budget.suggestedStrategicPriorityClassificationName)
+  const hasSuggestion = Boolean(suggestedPriority || suggestedClassification)
+
+  if (!hasSuggestion) return 'none'
+  if (
+    (suggestedPriority && actualPriority && suggestedPriority !== actualPriority) ||
+    (suggestedClassification && actualClassification && suggestedClassification !== actualClassification)
+  ) {
+    return 'mismatch'
+  }
+
+  return 'aligned'
+}
+
+function getAlignmentCellClass(alignmentState: 'mismatch' | 'aligned' | 'none') {
+  if (alignmentState === 'mismatch') {
+    return 'border border-[#F4B7BE] bg-[#FFF1F3] text-[#9F1239] dark:border-[#7F1D1D] dark:bg-[#3F1118] dark:text-[#FDA4AF]'
+  }
+  if (alignmentState === 'aligned') {
+    return 'border border-[#A7E3C1] bg-[#F0FDF6] text-[#047857] dark:border-[#1F7A4B] dark:bg-[#103B28] dark:text-[#86EFAC]'
+  }
+  return 'text-[#0F172A] dark:text-white'
+}
+
 export default function StrategicAlignment() {
   const { selectedCycle } = useCycle()
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<string>(PRIORITY_ALL_KEY)
-  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTER_OPTIONS)[number]>('All')
+  const [activeTab, setActiveTab] = useState<StrategicAlignmentTab>('strategic-alignment-review')
+  const [aiAlignmentFilter, setAiAlignmentFilter] = useState<AiAlignmentFilter>('all')
   const [entityFilter, setEntityFilter] = useState<string>('All')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [classificationModalOpen, setClassificationModalOpen] = useState(false)
@@ -224,6 +269,8 @@ export default function StrategicAlignment() {
   const [clarificationMessage, setClarificationMessage] = useState('')
   const [priorities, setPriorities] = useState<StrategicPriorityOption[]>([])
   const [classificationDrafts, setClassificationDrafts] = useState<Record<string, ProjectClassificationDraft>>({})
+  const [inlineDrafts, setInlineDrafts] = useState<Record<string, ProjectClassificationDraft>>({})
+  const [inlineSavingIds, setInlineSavingIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -289,9 +336,14 @@ export default function StrategicAlignment() {
   )
 
   const priorityCounts = useMemo(() => {
+    const activeTabConfig = STRATEGIC_ALIGNMENT_TABS.find((tab) => tab.id === activeTab)
     const base = budgets.filter((budget) => {
+      const matchesTab = activeTabConfig?.statuses.includes(budget.statuscode) ?? true
+      const alignmentState = getAiAlignmentState(budget)
+      const matchesAiAlignment =
+        aiAlignmentFilter === 'all' ||
+        alignmentState === aiAlignmentFilter
       const matchesEntity = entityFilter === 'All' || (budget.entityName || budget.instanceName) === entityFilter
-      const matchesStatus = statusFilter === 'All' || budget.statusLabel === statusFilter
       const matchesSearch =
         !search.trim() ||
         [
@@ -305,7 +357,7 @@ export default function StrategicAlignment() {
           .join(' ')
           .toLowerCase()
           .includes(search.toLowerCase())
-      return matchesEntity && matchesStatus && matchesSearch
+      return matchesTab && matchesAiAlignment && matchesEntity && matchesSearch
     })
 
     return [
@@ -316,9 +368,10 @@ export default function StrategicAlignment() {
         count: base.filter((budget) => budget.strategicPriorityId === option.id).length,
       })),
     ]
-  }, [budgets, entityFilter, parentPriorities, search, statusFilter])
+  }, [activeTab, aiAlignmentFilter, budgets, entityFilter, parentPriorities, search])
 
   const filteredBudgets = useMemo(() => {
+    const activeTabConfig = STRATEGIC_ALIGNMENT_TABS.find((tab) => tab.id === activeTab)
     return budgets.filter((budget) => {
       const matchesSearch =
         !search.trim() ||
@@ -336,14 +389,49 @@ export default function StrategicAlignment() {
           .includes(search.toLowerCase())
 
       const matchesPriority = priorityFilter === PRIORITY_ALL_KEY || budget.strategicPriorityId === priorityFilter
-      const matchesStatus = statusFilter === 'All' || budget.statusLabel === statusFilter
+      const matchesTab = activeTabConfig?.statuses.includes(budget.statuscode) ?? true
+      const alignmentState = getAiAlignmentState(budget)
+      const matchesAiAlignment =
+        aiAlignmentFilter === 'all' ||
+        alignmentState === aiAlignmentFilter
       const matchesEntity = entityFilter === 'All' || (budget.entityName || budget.instanceName) === entityFilter
-      return matchesSearch && matchesPriority && matchesStatus && matchesEntity
+      return matchesSearch && matchesPriority && matchesTab && matchesAiAlignment && matchesEntity
     })
-  }, [budgets, entityFilter, priorityFilter, search, statusFilter])
+  }, [activeTab, aiAlignmentFilter, budgets, entityFilter, priorityFilter, search])
+
+  const tabCounts = useMemo(
+    () =>
+      STRATEGIC_ALIGNMENT_TABS.map((tab) => ({
+        ...tab,
+        count: budgets.filter((budget) => {
+          const matchesSearch =
+            !search.trim() ||
+            [
+              budget.budgetRefId,
+              budget.name,
+              budget.entityName,
+              budget.instanceName,
+              budget.strategicPriorityName,
+              budget.strategicPriorityClassificationName,
+              budget.smeReviewerTeamName,
+            ]
+              .join(' ')
+              .toLowerCase()
+              .includes(search.toLowerCase())
+          const alignmentState = getAiAlignmentState(budget)
+          const matchesAiAlignment =
+            aiAlignmentFilter === 'all' ||
+            alignmentState === aiAlignmentFilter
+          const matchesEntity = entityFilter === 'All' || (budget.entityName || budget.instanceName) === entityFilter
+          const matchesPriority = priorityFilter === PRIORITY_ALL_KEY || budget.strategicPriorityId === priorityFilter
+
+          return tab.statuses.includes(budget.statuscode) && matchesSearch && matchesAiAlignment && matchesEntity && matchesPriority
+        }).length,
+      })),
+    [aiAlignmentFilter, budgets, entityFilter, priorityFilter, search]
+  )
 
   const selectedBudgets = useMemo(() => budgets.filter((budget) => selectedIds.includes(budget.id)), [budgets, selectedIds])
-
   const selectedStatusCodes = [...new Set(selectedBudgets.map((budget) => budget.statuscode))]
   const canShowAlignmentActions =
     selectedBudgets.length > 0 &&
@@ -364,6 +452,65 @@ export default function StrategicAlignment() {
     )
       ? selectedBudgets[0]
       : null
+
+  const updateInlinePriority = (budgetId: string, priorityId: string) => {
+    setInlineDrafts((current) => {
+      return {
+        ...current,
+        [budgetId]: { priorityId, classificationId: '' },
+      }
+    })
+  }
+
+  const getInlineDraft = (budget: DgeBudgetRecord) =>
+    inlineDrafts[budget.id] ?? {
+      priorityId: budget.strategicPriorityId ?? '',
+      classificationId: budget.strategicPriorityClassificationId ?? '',
+    }
+
+  const isInlineSaving = (budgetId: string) => inlineSavingIds.includes(budgetId)
+
+  const saveInlineDraft = async (budget: DgeBudgetRecord, nextDraft: ProjectClassificationDraft) => {
+    const draft = nextDraft
+    if (!draft.priorityId || !draft.classificationId) {
+      return
+    }
+    setError(null)
+    setInlineSavingIds((current) => [...current, budget.id])
+    try {
+      await updateBudgetStrategicClassification([budget.id], draft.priorityId, draft.classificationId)
+      await refreshData()
+      setInlineDrafts((current) => {
+        const next = { ...current }
+        delete next[budget.id]
+        return next
+      })
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Unable to update classification.')
+    } finally {
+      setInlineSavingIds((current) => current.filter((id) => id !== budget.id))
+    }
+  }
+
+  const updateInlineClassification = async (budget: DgeBudgetRecord, classificationId: string) => {
+    if (budget.statuscode !== DGE_BUDGET_STATUS.underStrategicAlignmentReview) {
+      return
+    }
+
+    const nextDraft = {
+      priorityId: getInlineDraft(budget).priorityId,
+      classificationId,
+    }
+
+    setInlineDrafts((current) => ({
+      ...current,
+      [budget.id]: nextDraft,
+    }))
+
+    if (nextDraft.priorityId && nextDraft.classificationId) {
+      await saveInlineDraft(budget, nextDraft)
+    }
+  }
 
   const openClassificationModal = () => {
     if (!selectedBudgets.length) return
@@ -630,164 +777,175 @@ export default function StrategicAlignment() {
       {loading ? (
         <StrategicAlignmentSkeleton />
       ) : (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="space-y-4">
-            <Card className="overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-[#286CFF]" />
-                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Filters</p>
-                </div>
-
-                <div className="mt-4 space-y-4">
-                  <div className="w-full rounded-[12px] border border-[#D7E4F4] bg-[#F8FBFF] px-3 dark:border-white/10 dark:bg-white/5">
-                    <Input
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search project, entity, priority, or classification"
-                      className="h-10 w-full border-0 bg-transparent px-0 text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:ring-0 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <p className="mb-3 text-sm font-semibold text-[#64748B] dark:text-slate-300">Strategic Priority</p>
-                    <div className="space-y-1.5">
-                      {priorityCounts.map((option) => {
-                        const active = priorityFilter === option.key
+        <div className="space-y-5">
+          <section className="space-y-5">
+            <Card className="h-full overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
+              <CardContent className="p-5">
+                <div className="space-y-4 border-b border-[#EEF3F8] pb-4 dark:border-white/10">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      {tabCounts.map((tab) => {
+                        const active = activeTab === tab.id
                         return (
                           <button
-                            key={option.key}
+                            key={tab.id}
                             type="button"
-                            onClick={() => setPriorityFilter(option.key)}
+                            onClick={() => {
+                              setActiveTab(tab.id)
+                              setSelectedIds([])
+                            }}
                             className={cn(
-                              'flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-colors',
+                              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
                               active
-                                ? 'bg-[#286CFF] text-white dark:bg-[#286CFF] dark:text-white'
-                                : 'bg-white text-[#0F172A] hover:bg-[#F8FBFF] dark:bg-white/5 dark:text-white dark:hover:bg-white/10'
+                                ? 'border-[var(--primary)] bg-[var(--primary)] text-white'
+                                : 'border-[#DCE8F6] bg-white text-[#475569] hover:border-[var(--primary)] hover:bg-[#EEF5FF] hover:text-[var(--primary)] dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10'
                             )}
                           >
-                            <span className="text-sm font-medium">{option.label === 'All' ? 'All Priorities' : option.label}</span>
-                            <span className={cn('text-sm', active ? 'text-white/90' : 'text-[#64748B] dark:text-slate-300')}>
-                              {option.count}
+                            <span>{tab.label}</span>
+                            <span className={cn('rounded-full px-1.5 py-0.5 text-xs font-bold', active ? 'bg-white/20 text-white' : 'bg-[#EEF5FF] text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]')}>
+                              {tab.count}
                             </span>
                           </button>
                         )
                       })}
                     </div>
+
+                    <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[660px]">
+                      <Select value={entityFilter} onValueChange={setEntityFilter}>
+                        <SelectTrigger className="h-10 rounded-full border-[#D7E4F4] bg-white px-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-[#286CFF]" />
+                            <SelectValue placeholder="Entity" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {entityOptions.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option === 'All' ? 'All Entities' : option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                        <SelectTrigger className="h-10 rounded-full border-[#D7E4F4] bg-white px-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-center gap-2">
+                            <Layers className="h-4 w-4 text-[#286CFF]" />
+                            <SelectValue placeholder="Strategic Priority" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {priorityCounts.map((option) => (
+                            <SelectItem key={option.key} value={option.key}>
+                              {option.label === 'All' ? 'All Priorities' : `${option.label} (${option.count})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={aiAlignmentFilter}
+                        onValueChange={(value) => {
+                          setAiAlignmentFilter(value as AiAlignmentFilter)
+                          setSelectedIds([])
+                        }}
+                      >
+                        <SelectTrigger className="h-10 rounded-full border-[#D7E4F4] bg-white px-3 dark:border-white/10 dark:bg-white/5">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-[#286CFF]" />
+                            <SelectValue placeholder="AI Filter" />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All AI Alignment</SelectItem>
+                          <SelectItem value="mismatch">Strategic Priority Mismatches</SelectItem>
+                          <SelectItem value="aligned">AI Aligned</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-[#64748B] dark:text-slate-300">Entity</p>
-                    <Select value={entityFilter} onValueChange={setEntityFilter}>
-                      <SelectTrigger className="h-11 rounded-[10px] border-[#D7E4F4] bg-white dark:border-white/10 dark:bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-[#286CFF]" />
-                          <SelectValue placeholder="Entity" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {entityOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option === 'All' ? 'All Entities' : option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="w-full rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-4 dark:border-white/10 dark:bg-white/5 lg:max-w-md">
+                      <Input
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Search project, entity, priority, or classification"
+                        className="h-10 w-full border-0 bg-transparent px-0 text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:ring-0 dark:text-white"
+                      />
+                    </div>
 
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-[#64748B] dark:text-slate-300">Status</p>
-                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as (typeof STATUS_FILTER_OPTIONS)[number])}>
-                      <SelectTrigger className="h-11 rounded-[10px] border-[#D7E4F4] bg-white dark:border-white/10 dark:bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <Workflow className="h-4 w-4 text-[#286CFF]" />
-                          <SelectValue placeholder="Status" />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {STATUS_FILTER_OPTIONS.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option === 'All' ? 'All Statuses' : option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </aside>
+                    <div className="flex flex-wrap items-center justify-between gap-3 lg:justify-end">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-[#286CFF]" />
+                        <span className="text-sm font-medium text-[#286CFF] dark:text-[#93C5FD]">
+                          {selectedBudgets.length} projects selected
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                      {canShowAlignmentActions ? (
+                        <>
+                          <Button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 text-sm font-medium text-blue-700 transition-colors duration-150 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF] active:bg-[#D3EDFF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
+                            disabled={saving || selectedBudgets.length === 0}
+                            onClick={openClassificationModal}
+                          >
+                            <Layers className="mr-1 h-4 w-4" />
+                            Update Classification
+                          </Button>
+                          <Button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-blue-600 px-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 active:bg-[#003CFF] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={saving || selectedBudgets.length === 0}
+                            onClick={() => setPendingSendToSme(selectedBudgets.map((budget) => budget.id))}
+                          >
+                            <Workflow className="mr-1 h-4 w-4" />
+                            Send to SME
+                          </Button>
+                        </>
+                      ) : null}
 
-          <section className="space-y-5">
-            <Card className="h-full overflow-hidden rounded-[22px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-              <CardContent className="p-5">
-                <div className="flex flex-col gap-3 border-b border-[#EEF3F8] pb-4 dark:border-white/10 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#286CFF]" />
-                    <span className="text-sm font-medium text-[#286CFF] dark:text-[#93C5FD]">
-                      {selectedBudgets.length} projects selected
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canShowAlignmentActions ? (
-                      <>
-                        <Button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 text-sm font-medium text-blue-700 transition-colors duration-150 hover:border-[#043DFF] hover:bg-blue-100 hover:text-[#043DFF] active:bg-[#D3EDFF] disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
-                          disabled={saving || selectedBudgets.length === 0}
-                          onClick={openClassificationModal}
-                        >
-                          <Layers className="mr-1 h-4 w-4" />
-                          Update Classification
-                        </Button>
+                      {selectedChangeRequestBudget ? (
                         <Button
                           type="button"
                           className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-blue-600 px-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 active:bg-[#003CFF] disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={saving || selectedBudgets.length === 0}
-                          onClick={() => setPendingSendToSme(selectedBudgets.map((budget) => budget.id))}
+                          disabled={saving}
+                          onClick={() => setChangeRequestModalOpen(true)}
                         >
-                          <Workflow className="mr-1 h-4 w-4" />
-                          Send to SME
+                          <ArrowRight className="mr-1 h-4 w-4" />
+                          View Request Change
                         </Button>
-                      </>
-                    ) : null}
-
-                    {selectedChangeRequestBudget ? (
-                      <Button
-                        type="button"
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-blue-600 px-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 active:bg-[#003CFF] disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={saving}
-                        onClick={() => setChangeRequestModalOpen(true)}
-                      >
-                        <ArrowRight className="mr-1 h-4 w-4" />
-                        View Request Change
-                      </Button>
-                    ) : null}
-                    {selectedClarificationBudget ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#D7E4F4] bg-white px-3 text-sm font-medium text-[#286CFF] transition-colors hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
-                        disabled={saving}
-                        onClick={() => {
-                          setClarificationBudget(selectedClarificationBudget)
-                          setClarificationTarget('adge')
-                          setClarificationMessage('')
-                        }}
-                      >
-                        <MessageSquare className="mr-1 h-4 w-4" />
-                        Raise Clarification
-                      </Button>
-                    ) : null}
+                      ) : null}
+                      {selectedClarificationBudget ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#D7E4F4] bg-white px-3 text-sm font-medium text-[#286CFF] transition-colors hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-transparent dark:text-white dark:hover:bg-white/5"
+                          disabled={saving}
+                          onClick={() => {
+                            setClarificationBudget(selectedClarificationBudget)
+                            setClarificationTarget('adge')
+                            setClarificationMessage('')
+                          }}
+                        >
+                          <MessageSquare className="mr-1 h-4 w-4" />
+                          Raise Clarification
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
+                </div>
                 </div>
 
                 <div className="mt-5 overflow-x-auto rounded-[12px] border border-[#DCE6F6] bg-white dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="grid min-w-[1280px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(180px,1.1fr)_minmax(220px,1.35fr)_minmax(230px,1.2fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
+                <div className="grid min-w-[2240px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
                     <span />
                     <span className="whitespace-nowrap text-left">Project Name</span>
                     <span className="whitespace-nowrap text-left">Strategic Priority</span>
                     <span className="whitespace-nowrap text-left">Strategic Priority Classification</span>
+                    <span>Suggested Strategic Priority</span>
+                    <span>Suggested Strategic Priority Classification</span>
                     <span className="whitespace-nowrap text-left">Status</span>
                     <span className="whitespace-nowrap text-left">Target SME</span>
                     <span className="whitespace-nowrap text-left">Budget</span>
@@ -815,14 +973,25 @@ export default function StrategicAlignment() {
                           trimPriorityLabel(budget.strategicPriorityClassificationName) ||
                           trimPriorityLabel(priorityLookup.get(budget.strategicPriorityClassificationId ?? '') || '') ||
                           '-'
+                        const suggestedPriorityLabel =
+                          trimPriorityLabel(budget.suggestedStrategicPriorityName) || '-'
+                        const suggestedClassificationLabel =
+                          trimPriorityLabel(budget.suggestedStrategicPriorityClassificationName) || '-'
+                        const aiAlignmentState = getAiAlignmentState(budget)
+                        const alignmentCellClass = getAlignmentCellClass(aiAlignmentState)
                         const smeTeamLabel =
                           budget.smeReviewerTeamName ||
                           (budget.strategicPriorityId ? smeAssignmentByPriorityLookup.get(budget.strategicPriorityId) : null) ||
                           (budget.smeReviewerTeamId ? smeAssignmentLookup.get(budget.smeReviewerTeamId) : null) ||
                           '-'
 
+                        const inlineDraft = getInlineDraft(budget)
+                        const classificationOptions = getClassificationOptionsForPriority(priorities, inlineDraft.priorityId)
+                        const priorityOptions = parentPriorities
+                        const canEditInline = budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+
                         return (
-                        <div key={budget.id} className="grid min-w-[1280px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(180px,1.1fr)_minmax(220px,1.35fr)_minmax(230px,1.2fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
+                        <div key={budget.id} className="group grid min-w-[2240px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
                             <div className="pt-1">
                               <input
                                 type="checkbox"
@@ -842,8 +1011,77 @@ export default function StrategicAlignment() {
                                 {budget.budgetRefId} · {entityLabel}
                               </p>
                             </div>
-                            <div className="pt-1 text-sm font-medium text-[#0F172A] dark:text-white">{priorityLabel}</div>
-                            <div className="pt-1 text-sm font-medium text-[#0F172A] dark:text-white">{classificationLabel}</div>
+                            <div className="pt-1">
+                              {canEditInline ? (
+                                <Select
+                                  value={inlineDraft.priorityId}
+                                  onValueChange={(value) => {
+                                    updateInlinePriority(budget.id, value)
+                                  }}
+                                  disabled={isInlineSaving(budget.id)}
+                                >
+                                  <SelectTrigger className={cn('min-h-10 h-auto rounded-xl px-3 py-2', alignmentCellClass)}>
+                                    <div className="flex min-w-0 items-start gap-2 text-left">
+                                      <Layers className="h-4 w-4 text-[#286CFF]" />
+                                      <SelectValue className="whitespace-normal break-words leading-snug" placeholder={priorityLabel} />
+                                    </div>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {priorityOptions.map((option) => (
+                                      <SelectItem key={option.id} value={option.id}>
+                                        {option.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', alignmentCellClass)}>
+                                  {priorityLabel}
+                                </div>
+                              )}
+                            </div>
+                            <div className="pt-1">
+                              {canEditInline ? (
+                                <Select
+                                  value={inlineDraft.classificationId}
+                                  onValueChange={(value) => {
+                                    void updateInlineClassification(budget, value)
+                                  }}
+                                  disabled={!inlineDraft.priorityId || isInlineSaving(budget.id)}
+                                >
+                                  <SelectTrigger className={cn('min-h-10 h-auto rounded-xl px-3 py-2', alignmentCellClass)}>
+                                    <div className="flex min-w-0 items-start gap-2 text-left">
+                                      <Workflow className="h-4 w-4 text-[#286CFF]" />
+                                      <SelectValue
+                                        className="whitespace-normal break-words leading-snug"
+                                        placeholder={inlineDraft.priorityId ? 'Select classification' : 'Select priority first'}
+                                      />
+                                    </div>
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {classificationOptions.map((option) => (
+                                      <SelectItem key={option.id} value={option.id}>
+                                        {option.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', alignmentCellClass)}>
+                                  {classificationLabel}
+                                </div>
+                              )}
+                            </div>
+                            <div className="pt-1">
+                              <div className="rounded-xl bg-[#FDF8FF] px-3 py-2 text-sm font-medium text-[#7C3AED] dark:bg-[#A855F7]/10 dark:text-[#E9D5FF]">
+                                {suggestedPriorityLabel}
+                              </div>
+                            </div>
+                            <div className="pt-1">
+                              <div className="rounded-xl bg-[#FDF8FF] px-3 py-2 text-sm font-medium text-[#7C3AED] dark:bg-[#A855F7]/10 dark:text-[#E9D5FF]">
+                                {suggestedClassificationLabel}
+                              </div>
+                            </div>
                             <div className="pt-1">
                               <StrategyPill
                                 tone={

@@ -442,13 +442,13 @@ function applyFilters(items: Project[], filters?: RoleProjectFilters) {
   })
 }
 
-async function getAllBudgetProjects() {
+async function getAllBudgetProjects(instanceId?: string | null) {
   const portfolioSummary =
     (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
     (await getLatestPortfolioSummaryByCurrentInstance())
   const result = await Dga_ict_budgetsService.getAll({
     select: [...ICT_BUDGET_SELECT_FIELDS],
-    filter: getInstanceFilter(),
+    filter: getInstanceFilter(instanceId),
     orderBy: ['modifiedon desc'],
   })
 
@@ -477,8 +477,8 @@ function escapeODataString(value: string) {
   return value.replace(/'/g, "''")
 }
 
-function getInstanceFilter(): string | undefined {
-  const id = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
+function getInstanceFilter(instanceId?: string | null): string | undefined {
+  const id = instanceId ?? sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
   return id ? `_dga_ict_budget_instance_value eq ${id}` : undefined
 }
 
@@ -490,15 +490,15 @@ function combineFilters(...parts: (string | undefined)[]): string | undefined {
 
 export const dataverseProjectsApi: ProjectsApi = {
   async getRespondentProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getReviewerProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getApproverProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getProjectById(projectId: string) {

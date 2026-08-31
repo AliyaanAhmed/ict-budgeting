@@ -714,6 +714,58 @@ export async function getAllAiSummaryRecordsByBudgetId(budgetId: string): Promis
   }
 }
 
+export async function getBudgetOverviewRecordsByBudgetIds(
+  budgetIds: string[]
+): Promise<Map<string, StoredBudgetOverviewRecord>> {
+  const nextMap = new Map<string, StoredBudgetOverviewRecord>()
+  if (!budgetIds.length) return nextMap
+
+  const uniqueBudgetIds = Array.from(new Set(budgetIds.filter(Boolean)))
+  const chunks: string[][] = []
+  for (let index = 0; index < uniqueBudgetIds.length; index += 20) {
+    chunks.push(uniqueBudgetIds.slice(index, index + 20))
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      Dga_ict_ai_summariesService.getAll({
+        select: [
+          'dga_ict_ai_summaryid',
+          'dga_is_valid',
+          'dga_response_json',
+          'dga_response_time',
+          '_dga_referencerecordid_value',
+          'dga_summary_category',
+          'createdon',
+          'modifiedon',
+        ],
+        filter: `dga_summary_category eq ${BUDGET_OVERVIEW_SUMMARY_CATEGORY} and (${chunk
+          .map((budgetId) => `_dga_referencerecordid_value eq ${budgetId}`)
+          .join(' or ')})`,
+        orderBy: ['createdon desc'],
+        maxPageSize: 500,
+      })
+    )
+  )
+
+  const allRecords = results.flatMap((result) => {
+    if (!result.success) {
+      throw new Error(result.error?.message?.trim() || 'Failed to retrieve budget overview AI summary records.')
+    }
+    return result.data ?? []
+  })
+
+  allRecords.forEach((record) => {
+    const mapped = mapStoredBudgetOverviewRecord(record)
+    if (!mapped?.budgetId) return
+    if (!nextMap.has(mapped.budgetId)) {
+      nextMap.set(mapped.budgetId, mapped)
+    }
+  })
+
+  return nextMap
+}
+
 export async function invalidateCumulativeSummaryRecord(budgetId: string) {
   let existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
 

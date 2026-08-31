@@ -24,6 +24,7 @@ import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
 import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
 import StrategySMETracker from '@/pages/strategy-team/SMETracker'
 import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import StrategyClarificationMonitor from '@/pages/strategy-team/ClarificationMonitor'
 import StrategyDirectorDashboard from '@/pages/strategy-director/Dashboard'
 import StrategyDirectorReviewerQueue from '@/pages/strategy-director/ReviewerQueue'
 import StrategyDirectorEntityTracker from '@/pages/strategy-director/EntityTracker'
@@ -70,6 +71,7 @@ export default function App() {
                     <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
                     <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
                     <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    <Route path="/strategy-team/clarification-monitor" element={<StrategyClarificationMonitor />} />
                     {/* Strategy Director */}
                     <Route path="/strategy-director/dashboard" element={<StrategyDirectorDashboard />} />
                     <Route path="/strategy-director/projects" element={<DgeProjects role="strategy-director" />} />

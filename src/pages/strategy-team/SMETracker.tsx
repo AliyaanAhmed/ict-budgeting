@@ -21,7 +21,7 @@ function CircularMetric({
   value: number
   tone: string
 }) {
-  const pct = Math.max(8, Math.min(100, value === 0 ? 8 : value))
+  const pct = value === 0 ? 0 : Math.max(8, Math.min(100, value))
   return (
     <div className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center gap-3">
@@ -321,6 +321,13 @@ export default function SMETracker() {
                   assigned > 0
                     ? Math.round(group.budgets.reduce((sum, budget) => sum + (budget.aiConfidenceScore ?? 0), 0) / assigned)
                     : 0
+                const classificationNames = [
+                  ...new Set(
+                    group.budgets
+                      .map((budget) => budget.strategicPriorityClassificationName?.trim())
+                      .filter((name): name is string => Boolean(name))
+                  ),
+                ]
 
                 return (
                   <Card
@@ -339,9 +346,19 @@ export default function SMETracker() {
                               <p className="text-xs text-[#64748B] dark:text-slate-300">{group.assignment.teamName}</p>
                             </div>
                           </div>
-                          <p className="mt-2 text-sm leading-6 text-[#475569] dark:text-slate-300">
-                            {assigned} budgets in the selected cycle currently map to this SME track.
-                          </p>
+                          {classificationNames.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Classifications</span>
+                              {classificationNames.map((classification) => (
+                                <span
+                                  key={classification}
+                                  className="inline-flex max-w-full items-center rounded-full border border-[#DCE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE]"
+                                >
+                                  {classification}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="rounded-[16px] border border-[#DCE8F6] bg-[#F8FBFF] px-3 py-2 text-right dark:border-white/10 dark:bg-white/5">

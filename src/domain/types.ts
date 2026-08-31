@@ -85,4 +85,5 @@ export interface ClarificationPayload {
 export interface RoleProjectFilters {
   search?: string
   status?: ProjectStatus[]
+  instanceId?: string | null
 }

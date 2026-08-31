@@ -2,6 +2,7 @@ import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsServ
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
 import { getStoredCurrentSme, getStoredSmeAssignments, type DgeSmeAssignment } from '@/services/dgeRoleContextService'
+import { getBudgetOverviewRecordsByBudgetIds } from '@/services/documentAiSummaryStoreService'
 
 export const DGE_BUDGET_STATUS = {
   draft: 1,
@@ -53,6 +54,8 @@ export interface DgeBudgetRecord {
   strategicPriorityName: string | null
   strategicPriorityClassificationId: string | null
   strategicPriorityClassificationName: string | null
+  suggestedStrategicPriorityName?: string | null
+  suggestedStrategicPriorityClassificationName?: string | null
   previousStrategicPriorityId: string | null
   previousStrategicPriorityName: string | null
   previousStrategicPriorityClassificationId: string | null
@@ -86,6 +89,11 @@ export interface DgeInstanceRecord {
   planningStartDate: string | null
   planningEndDate: string | null
   submissionDate: string | null
+  allocationStartDate: string | null
+  allocationEndDate: string | null
+  previousAllocationDate: string | null
+  utilizationStartDate: string | null
+  utilizationEndDate: string | null
   statuscode: number
   statusLabel: string
   budgets: DgeBudgetRecord[]
@@ -241,6 +249,8 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     strategicPriorityName,
     strategicPriorityClassificationId: record._dga_strategic_priority_classification_value ?? null,
     strategicPriorityClassificationName,
+    suggestedStrategicPriorityName: null,
+    suggestedStrategicPriorityClassificationName: null,
     previousStrategicPriorityId: record._dga_previous_strategic_priority_value ?? null,
     previousStrategicPriorityName,
     previousStrategicPriorityClassificationId: record._dga_previous_strategic_priorityclassification_value ?? null,
@@ -279,6 +289,11 @@ function mapInstanceRecord(record: Awaited<ReturnType<typeof Dga_ict_budget_inst
     planningStartDate: record.dga_planning_start_date ?? null,
     planningEndDate: record.dga_planning_end_date ?? null,
     submissionDate: record.dga_entity_submission_date ?? null,
+    allocationStartDate: record.dga_allocation_start_date ?? null,
+    allocationEndDate: record.dga_allocation_end_date ?? null,
+    previousAllocationDate: record.dga_previous_allocation_date ?? null,
+    utilizationStartDate: record.dga_utilization_start_date ?? null,
+    utilizationEndDate: record.dga_utilization_end_date ?? null,
     statuscode: Number(record.statuscode ?? 0),
     statusLabel: getInstanceStatusLabel(record.statuscode ?? null, record.statuscodename ?? null),
     budgets: [],
@@ -352,9 +367,14 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
       '_dga_entity_value',
       'dga_entity_abbr',
       'dga_entity_submission_date',
+      'dga_allocation_end_date',
+      'dga_allocation_start_date',
       'dga_name',
       'dga_planning_end_date',
       'dga_planning_start_date',
+      'dga_previous_allocation_date',
+      'dga_utilization_end_date',
+      'dga_utilization_start_date',
       'statuscode',
     ],
     expand: ['dga_entity($select=name)'],
@@ -372,6 +392,7 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
   }
 
   const budgets = await fetchBudgetsByInstanceIds(instances.map((instance) => instance.id))
+  const budgetOverviewLookup = await getBudgetOverviewRecordsByBudgetIds(budgets.map((budget) => budget.id))
   const budgetsByInstance = new Map<string, DgeBudgetRecord[]>()
 
   budgets.forEach((budget) => {
@@ -390,10 +411,20 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
 
   const hydratedBudgets = budgets.map((budget) => {
     const linkedInstance = budget.instanceId ? instanceLookup.get(budget.instanceId) : null
+    const budgetOverview = budgetOverviewLookup.get(budget.id)?.parsedData?.strategic_alignment
+    const suggestedOption = budgetOverview?.recommended_options?.[0]
     return {
       ...budget,
       instanceName: budget.instanceName || linkedInstance?.instanceName || null,
       entityName: budget.entityName || linkedInstance?.entityName || linkedInstance?.instanceName || null,
+      suggestedStrategicPriorityName:
+        suggestedOption?.strategic_priority?.trim() ||
+        budgetOverview?.recommended_change?.strategic_priority?.trim() ||
+        null,
+      suggestedStrategicPriorityClassificationName:
+        suggestedOption?.strategic_priority_classification?.trim() ||
+        budgetOverview?.recommended_change?.strategic_priority_classification?.trim() ||
+        null,
     }
   })
 
