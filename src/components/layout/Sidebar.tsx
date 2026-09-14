@@ -98,6 +98,8 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'Projects', icon: FolderOpen, href: '/strategy-director/projects' },
       { label: 'Director Review Queue', icon: ShieldAlert, href: '/strategy-director/reviewer-queue' },
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-director/entity-tracker' },
+      { label: 'SME Tracker', icon: Users, href: '/strategy-director/sme-tracker' },
+      { label: 'Quality Check Tracker', icon: ShieldCheck, href: '/strategy-director/quality-check-tracker' },
     ],
     'ICT - SME Team': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/sme-team/dashboard' },

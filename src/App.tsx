@@ -28,6 +28,8 @@ import StrategyClarificationMonitor from '@/pages/strategy-team/ClarificationMon
 import StrategyDirectorDashboard from '@/pages/strategy-director/Dashboard'
 import StrategyDirectorReviewerQueue from '@/pages/strategy-director/ReviewerQueue'
 import StrategyDirectorEntityTracker from '@/pages/strategy-director/EntityTracker'
+import StrategyDirectorSMETracker from '@/pages/strategy-director/SMETracker'
+import StrategyDirectorQualityCheckTracker from '@/pages/strategy-director/QualityCheckTracker'
 import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
 import SmeTeamReviews from '@/pages/sme-team/Reviews'
 import DgeProjects from '@/pages/dge-projects/Projects'
@@ -79,6 +81,8 @@ export default function App() {
                     <Route path="/strategy-director/reviewer-queue" element={<StrategyDirectorReviewerQueue />} />
                     <Route path="/strategy-director/reviewer-queue/:id" element={<ProjectDetail />} />
                     <Route path="/strategy-director/entity-tracker" element={<StrategyDirectorEntityTracker />} />
+                    <Route path="/strategy-director/sme-tracker" element={<StrategyDirectorSMETracker />} />
+                    <Route path="/strategy-director/quality-check-tracker" element={<StrategyDirectorQualityCheckTracker />} />
                     {/* SME Team */}
                     <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
                     <Route path="/sme-team/projects" element={<DgeProjects role="sme-team" />} />

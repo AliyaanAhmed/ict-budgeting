@@ -422,6 +422,7 @@ export default function SmeTeamDashboard() {
   const reviewProgress = budgets.length ? Math.round((metrics.reviewed.length / budgets.length) * 100) : 0
   const outstandingProgress = budgets.length ? Math.round((metrics.toReview.length / budgets.length) * 100) : 0
   const changeRequestProgress = budgets.length ? Math.round((metrics.changeRequests.length / budgets.length) * 100) : 0
+  const hasClarificationsRaised = metrics.clarificationsRaised.length > 0
   const aiReviewFlagCounts = useMemo(() => {
     const counts = new Map<string, { label: string; count: number; severity: string }>()
 
@@ -587,12 +588,10 @@ export default function SmeTeamDashboard() {
               </div>
             </StrategySectionCard>
 
-            {metrics.clarificationsRaised.length > 0 ? (
+            {hasClarificationsRaised ? (
               <ClarificationRaisedToEntitiesCard budgets={metrics.clarificationsRaised} />
             ) : null}
-          </section>
 
-          <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-2">
             <StrategySectionCard
               title="Budget And Documents"
               description="Budget value and document posture across every project in this SME domain."
@@ -714,13 +713,11 @@ export default function SmeTeamDashboard() {
                 </div>
               </div>
             </StrategySectionCard>
-          </section>
 
-          <section>
             <StrategySectionCard
               title="AI Review Guidance"
               description="AI signals for this SME domain, based on queue state, document posture, and strategic mapping exceptions."
-              className="h-full"
+              className={cn('h-full', hasClarificationsRaised && 'xl:col-span-2')}
               headingIcon={<Sparkles className="h-5 w-5 text-[#A855F7]" />}
             >
               <div className="flex h-full flex-col justify-center space-y-3">
