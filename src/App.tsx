@@ -1,0 +1,104 @@
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { RoleProvider } from '@/context/RoleContext'
+import { ToastProvider } from '@/context/ToastContext'
+import { QueueCountsProvider } from '@/context/QueueCountsContext'
+import { CycleProvider } from '@/context/CycleContext'
+import { InstanceProvider } from '@/context/InstanceContext'
+import { AppLayout } from '@/components/layout/AppLayout'
+
+import RespondentDashboard from '@/pages/respondent/Dashboard'
+import RespondentProjects from '@/pages/respondent/Projects'
+import NewProject from '@/pages/respondent/NewProject'
+import ProjectDetail from '@/pages/respondent/ProjectDetail'
+
+import ReviewerDashboard from '@/pages/reviewer/Dashboard'
+import ReviewQueue from '@/pages/reviewer/ReviewQueue'
+import ReviewerProjects from '@/pages/reviewer/Projects'
+
+import ApproverDashboard from '@/pages/approver/Dashboard'
+import ApprovalQueue from '@/pages/approver/ApprovalQueue'
+import ApproverProjects from '@/pages/approver/Projects'
+
+import StrategyTeamDashboard from '@/pages/strategy-team/Dashboard'
+import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
+import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
+import StrategySMETracker from '@/pages/strategy-team/SMETracker'
+import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import StrategyClarificationMonitor from '@/pages/strategy-team/ClarificationMonitor'
+import StrategyDirectorDashboard from '@/pages/strategy-director/Dashboard'
+import StrategyDirectorReviewerQueue from '@/pages/strategy-director/ReviewerQueue'
+import StrategyDirectorEntityTracker from '@/pages/strategy-director/EntityTracker'
+import StrategyDirectorSMETracker from '@/pages/strategy-director/SMETracker'
+import StrategyDirectorQualityCheckTracker from '@/pages/strategy-director/QualityCheckTracker'
+import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
+import SmeTeamReviews from '@/pages/sme-team/Reviews'
+import DgeProjects from '@/pages/dge-projects/Projects'
+
+import AssessmentCycles from '@/pages/admin/AssessmentCycles'
+import CycleDetail from '@/pages/admin/CycleDetail'
+
+export default function App() {
+  return (
+    <QueueCountsProvider>
+      <RoleProvider>
+        <CycleProvider>
+          {/* InstanceProvider must be inside CycleProvider and RoleProvider
+              so it can watch both and re-fetch when either changes */}
+          <InstanceProvider>
+            <ToastProvider>
+              <HashRouter>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/respondent/dashboard" replace />} />
+                  <Route element={<AppLayout />}>
+                    {/* Respondent */}
+                    <Route path="/respondent/dashboard" element={<RespondentDashboard />} />
+                    <Route path="/respondent/projects" element={<RespondentProjects />} />
+                    <Route path="/respondent/projects/new" element={<NewProject />} />
+                    <Route path="/respondent/projects/:id" element={<ProjectDetail />} />
+                    {/* Reviewer */}
+                    <Route path="/reviewer/dashboard" element={<ReviewerDashboard />} />
+                    <Route path="/reviewer/review-queue" element={<ReviewQueue />} />
+                    <Route path="/reviewer/review-queue/:id" element={<ProjectDetail />} />
+                    <Route path="/reviewer/projects" element={<ReviewerProjects />} />
+                    {/* Approver */}
+                    <Route path="/approver/dashboard" element={<ApproverDashboard />} />
+                    <Route path="/approver/approval-queue" element={<ApprovalQueue />} />
+                    <Route path="/approver/approval-queue/:id" element={<ProjectDetail />} />
+                    <Route path="/approver/projects" element={<ApproverProjects />} />
+                    {/* Strategy Team */}
+                    <Route path="/strategy-team/dashboard" element={<StrategyTeamDashboard />} />
+                    <Route path="/strategy-team/projects" element={<DgeProjects role="strategy-team" />} />
+                    <Route path="/strategy-team/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
+                    <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
+                    <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
+                    <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    <Route path="/strategy-team/clarification-monitor" element={<StrategyClarificationMonitor />} />
+                    {/* Strategy Director */}
+                    <Route path="/strategy-director/dashboard" element={<StrategyDirectorDashboard />} />
+                    <Route path="/strategy-director/projects" element={<DgeProjects role="strategy-director" />} />
+                    <Route path="/strategy-director/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-director/reviewer-queue" element={<StrategyDirectorReviewerQueue />} />
+                    <Route path="/strategy-director/reviewer-queue/:id" element={<ProjectDetail />} />
+                    <Route path="/strategy-director/entity-tracker" element={<StrategyDirectorEntityTracker />} />
+                    <Route path="/strategy-director/sme-tracker" element={<StrategyDirectorSMETracker />} />
+                    <Route path="/strategy-director/quality-check-tracker" element={<StrategyDirectorQualityCheckTracker />} />
+                    {/* SME Team */}
+                    <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
+                    <Route path="/sme-team/projects" element={<DgeProjects role="sme-team" />} />
+                    <Route path="/sme-team/projects/:id" element={<ProjectDetail />} />
+                    <Route path="/sme-team/reviews" element={<SmeTeamReviews />} />
+                    <Route path="/sme-team/reviews/:id" element={<ProjectDetail />} />
+                    {/* ICT Admin */}
+                    <Route path="/admin/assessment-cycles" element={<AssessmentCycles />} />
+                    <Route path="/admin/cycles/:id" element={<CycleDetail />} />
+                  </Route>
+                </Routes>
+              </HashRouter>
+            </ToastProvider>
+          </InstanceProvider>
+        </CycleProvider>
+      </RoleProvider>
+    </QueueCountsProvider>
+  )
+}

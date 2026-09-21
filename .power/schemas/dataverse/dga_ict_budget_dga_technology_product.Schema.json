@@ -1,0 +1,58 @@
+{
+  "name": "dga_ict_budget_dga_technology_product",
+  "title": "dga_ict_budget_dga_technology_product",
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "x-ms-dataverse-entity": true,
+      "x-ms-dataverse-entityset": "dga_ict_budget_dga_technology_productset",
+      "x-ms-dataverse-primary-id": "dga_ict_budget_dga_technology_productid",
+      "x-ms-dataverse-primary-name": null,
+      "properties": {
+        "dga_ict_budget_dga_technology_productid": {
+          "type": "string",
+          "title": "dga_ict_budget_dga_technology_productid",
+          "x-ms-dataverse-attribute": "dga_ict_budget_dga_technology_productid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "dga_ict_budget_dga_technology_productId",
+          "x-ms-read-only": true,
+          "x-ms-dataverse-primary-id": true,
+          "required": true,
+          "x-ms-keyType": "primary"
+        },
+        "dga_ict_budgetid": {
+          "type": "string",
+          "title": "dga_ict_budgetid",
+          "x-ms-dataverse-attribute": "dga_ict_budgetid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "dga_ict_budgetid",
+          "x-ms-read-only": true,
+          "required": true
+        },
+        "dga_technologyid": {
+          "type": "string",
+          "title": "dga_technologyid",
+          "x-ms-dataverse-attribute": "dga_technologyid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "dga_technologyid",
+          "x-ms-read-only": true,
+          "required": true
+        },
+        "versionnumber": {
+          "type": "string",
+          "title": "versionnumber",
+          "x-ms-dataverse-attribute": "versionnumber",
+          "x-ms-dataverse-type": "BigIntType",
+          "x-ms-schema-name": "VersionNumber",
+          "x-ms-read-only": true
+        }
+      },
+      "required": [
+        "dga_ict_budget_dga_technology_productid",
+        "dga_ict_budgetid",
+        "dga_technologyid"
+      ]
+    }
+  }
+}

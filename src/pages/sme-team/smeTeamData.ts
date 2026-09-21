@@ -1,0 +1,233 @@
+import { AlertTriangle, CircleAlert, ClipboardCheck, FolderClock, MessageSquareDot, Scale, ShieldAlert } from 'lucide-react'
+
+export const smeActionCards = [
+  {
+    title: 'To Review',
+    value: 38,
+    budgetLabel: 'Budget to Review',
+    budget: 23000000,
+    badge: 'Live queue',
+    accent: '#286CFF',
+    icon: ClipboardCheck,
+    href: '/sme-team/reviews?tab=to-review',
+  },
+  {
+    title: 'Reviewed',
+    value: 24,
+    budgetLabel: 'Budget Reviewed',
+    budget: 12000000,
+    badge: 'Completed',
+    accent: '#10B981',
+    icon: ShieldAlert,
+    href: '/sme-team/reviews?tab=reviewed',
+  },
+  {
+    title: 'Clarifications Raised',
+    value: 4,
+    budgetLabel: 'Awaiting ADGE response',
+    budget: null,
+    badge: 'Waiting',
+    accent: '#A855F7',
+    icon: MessageSquareDot,
+    href: '/sme-team/reviews?tab=clarification',
+  },
+  {
+    title: 'To Respond',
+    value: 6,
+    budgetLabel: 'SME action required',
+    budget: null,
+    badge: 'Action needed',
+    accent: '#F97316',
+    icon: FolderClock,
+    href: '/sme-team/reviews?tab=to-respond',
+  },
+  {
+    title: 'Priority Mismatch',
+    value: 3,
+    budgetLabel: 'Strategic misalignment',
+    budget: null,
+    badge: 'Review routing',
+    accent: '#DC2626',
+    icon: AlertTriangle,
+    href: '/sme-team/reviews?tab=priority-mismatch',
+  },
+]
+
+export const clarificationMonitor = [
+  {
+    id: 'BI-1103',
+    title: 'Integrated Cloud Security Command Layer',
+    entity: 'Abu Dhabi Housing Authority',
+    state: 'Awaiting ADGE response',
+    note: 'Missing network segmentation diagram and revised quotation. 2 days left on SLA.',
+    accent: '#A855F7',
+  },
+  {
+    id: 'BI-1104',
+    title: 'AI Case Management Triage',
+    entity: 'Department of Health',
+    state: 'SME response needed',
+    note: 'Strategy Team asked SME to confirm rerouting to Data and AI.',
+    accent: '#F97316',
+  },
+  {
+    id: 'BI-1106',
+    title: 'Cloud Control Plane Review',
+    entity: 'Department of Finance',
+    state: 'Overdue risk',
+    note: 'Clarification has been open for 3 days and may miss quality check routing.',
+    accent: '#DC2626',
+  },
+  {
+    id: 'BI-1107',
+    title: 'Smart Permit Inspection Suite',
+    entity: 'Department of Municipalities',
+    state: 'Awaiting documents',
+    note: 'SME recommendation is paused until the updated inspection workflow evidence is uploaded.',
+    accent: '#286CFF',
+  },
+]
+
+export const budgetDocumentSummary = {
+  totalBudget: 142000000,
+  totalProjects: 38,
+  reviewedBudget: 89000000,
+  reviewedProjects: 24,
+  pendingBudget: 53000000,
+  pendingProjects: 14,
+  missingDocs: 4,
+  blockedLabel: 'Blocked',
+}
+
+export const smeSummaryStrip = {
+  cycle: '2026',
+  stage: 'Under DGE Review',
+  deadline: 'Apr 30, 2026',
+  daysLeft: 6,
+  team: 'Digital Transformation',
+  summary:
+    '38 projects assigned, 11 pending review, 4 clarification responses awaited, 3 projects may have incorrect strategic priority. 2 projects are overdue for review.',
+}
+
+export const reviewsTabs = [
+  { id: 'all', label: 'All', count: 38 },
+  { id: 'to-review', label: 'To Review', count: 14 },
+  { id: 'reviewed', label: 'Reviewed', count: 24 },
+  { id: 'clarification', label: 'Clarification Raised', count: 4 },
+  { id: 'to-respond', label: 'To Respond', count: 6 },
+  { id: 'priority-mismatch', label: 'Priority Mismatch', count: 3 },
+] as const
+
+export const smeReviews = [
+  {
+    id: 'BI-1101',
+    name: 'Government Data Exchange Platform',
+    entity: 'Abu Dhabi Digital Authority',
+    strategicPriority: 'Digital Government',
+    classification: 'Core Platforms',
+    status: 'To Review',
+    team: 'Digital Transformation',
+    requestedBudget: 7200000,
+    risk: 'High',
+    confidence: 84,
+    hasMismatch: true,
+    missingDocs: false,
+    clarificationState: 'None',
+    submittedDate: '02 Jun 2026',
+    aiInsight:
+      'AI suggests the architecture is strong, but the strategic priority may align more closely with Digital Infrastructure because of cross-entity platform dependency.',
+  },
+  {
+    id: 'BI-1102',
+    name: 'Smart Licensing And Permit Automation',
+    entity: 'Department of Municipalities',
+    strategicPriority: 'Smart Government',
+    classification: 'Workflow Automation',
+    status: 'Reviewed',
+    team: 'Digital Transformation',
+    requestedBudget: 5100000,
+    risk: 'Medium',
+    confidence: 91,
+    hasMismatch: false,
+    missingDocs: false,
+    clarificationState: 'None',
+    submittedDate: '31 May 2026',
+    aiInsight:
+      'Evidence is sufficient and the recommendation is likely ready for quality check. Budget breakdown aligns with other automation programmes.',
+  },
+  {
+    id: 'BI-1103',
+    name: 'Integrated Cloud Security Command Layer',
+    entity: 'Abu Dhabi Housing Authority',
+    strategicPriority: 'Cybersecurity',
+    classification: 'Threat Monitoring',
+    status: 'Clarification Raised',
+    team: 'Digital Transformation',
+    requestedBudget: 4300000,
+    risk: 'High',
+    confidence: 66,
+    hasMismatch: false,
+    missingDocs: true,
+    clarificationState: 'Awaiting ADGE response',
+    submittedDate: '29 May 2026',
+    aiInsight:
+      'Recommendation is blocked until the ADGE uploads the missing network segmentation diagram and revised commercial quotation.',
+  },
+  {
+    id: 'BI-1104',
+    name: 'AI Case Management Triage',
+    entity: 'Department of Health',
+    strategicPriority: 'Artificial Intelligence',
+    classification: 'Use Case Development',
+    status: 'To Respond',
+    team: 'Digital Transformation',
+    requestedBudget: 3900000,
+    risk: 'Medium',
+    confidence: 73,
+    hasMismatch: true,
+    missingDocs: false,
+    clarificationState: 'Strategy Team requested SME reply',
+    submittedDate: '01 Jun 2026',
+    aiInsight:
+      'Strategy Team wants SME comment on whether this should route to Data and AI instead of Innovation because of model governance scope.',
+  },
+  {
+    id: 'BI-1105',
+    name: 'Citizen Records Modernization',
+    entity: 'Ministry of Community Development',
+    strategicPriority: 'Digital Government',
+    classification: 'Enterprise Systems',
+    status: 'Priority Mismatch',
+    team: 'Digital Transformation',
+    requestedBudget: 2700000,
+    risk: 'Medium',
+    confidence: 69,
+    hasMismatch: true,
+    missingDocs: false,
+    clarificationState: 'None',
+    submittedDate: '28 May 2026',
+    aiInsight:
+      'Classification appears too broad. AI indicates this is more likely Core Systems under Operational Excellence and may need rerouting.',
+  },
+]
+
+export const smeAiSignals = [
+  {
+    title: 'Clarification pressure',
+    detail: '4 active clarification threads are blocking final recommendation on security, AI, and cloud submissions.',
+    icon: MessageSquareDot,
+    accent: '#A855F7',
+  },
+  {
+    title: 'Priority mismatch',
+    detail: '3 projects show strategic classification drift and should be returned to Strategy Team before SME completion.',
+    icon: Scale,
+    accent: '#F97316',
+  },
+  {
+    title: 'Evidence risk',
+    detail: '2 reviews are likely to remain low-confidence unless missing documents are uploaded this week.',
+    icon: CircleAlert,
+    accent: '#DC2626',
+  },
+]
