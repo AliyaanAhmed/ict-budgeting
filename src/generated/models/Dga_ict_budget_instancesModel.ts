@@ -7,6 +7,11 @@ export const Dga_ict_budget_instancesdga_extension_provided_in_allocation = {
   2: 'Yes'
 } as const;
 export type Dga_ict_budget_instancesdga_extension_provided_in_allocation = keyof typeof Dga_ict_budget_instancesdga_extension_provided_in_allocation;
+export const Dga_ict_budget_instancesdga_extension_provided_in_utilization = {
+  1: 'No',
+  2: 'Yes'
+} as const;
+export type Dga_ict_budget_instancesdga_extension_provided_in_utilization = keyof typeof Dga_ict_budget_instancesdga_extension_provided_in_utilization;
 export const Dga_ict_budget_instancesstatecode = {
   0: 'Active',
   1: 'Inactive'
@@ -33,13 +38,16 @@ export interface Dga_ict_budget_instancesBase {
   dga_entity_abbr?: string;
   dga_entity_submission_date?: string;
   dga_extension_provided_in_allocation?: Dga_ict_budget_instancesdga_extension_provided_in_allocation;
+  dga_extension_provided_in_utilization?: Dga_ict_budget_instancesdga_extension_provided_in_utilization;
   dga_ict_budget_instanceid: string;
   "dga_module_configuration@odata.bind"?: string;
   dga_name: string;
   dga_planning_end_date?: string;
   dga_planning_start_date?: string;
   dga_previous_allocation_date?: string;
+  dga_previous_utilization_date?: string;
   dga_utilization_end_date?: string;
+  dga_utilization_extension_reason?: string;
   dga_utilization_start_date?: string;
   importsequencenumber?: number;
   overriddencreatedon?: string;
@@ -62,6 +70,7 @@ export interface Dga_ict_budget_instances extends Dga_ict_budget_instancesBase {
   dga_entityname?: string;
   dga_entityyominame?: string;
   dga_extension_provided_in_allocationname?: string;
+  dga_extension_provided_in_utilizationname?: string;
   dga_module_configurationname?: string;
   modifiedbyname?: string;
   modifiedbyyominame: string;

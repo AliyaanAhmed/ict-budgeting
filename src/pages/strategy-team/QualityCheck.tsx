@@ -471,7 +471,10 @@ export default function QualityCheck() {
                     </div>
                     <div className="flex flex-wrap justify-end gap-2">
                       <Button asChild variant="outline" className="rounded-lg border-[#D7E4F4] text-[#286CFF]">
-                        <Link to={`/strategy-team/projects/${item.id}`}>
+                        <Link
+                          to={`/strategy-team/projects/${item.id}`}
+                          state={{ backTo: '/strategy-team/quality-check', backLabel: 'Quality Check' }}
+                        >
                           <ExternalLink className="h-4 w-4" />
                           View Detail
                         </Link>

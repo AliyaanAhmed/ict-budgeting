@@ -99,6 +99,10 @@ const STRATEGY_PHASE_STATUS_CODES: Record<StrategyPhase, Set<number>> = {
   utilization: new Set(STRATEGY_PHASE_STATUS_TABS.utilization.flatMap((tab) => tab.statuses ?? [])),
 }
 
+function isStrategyPhase(value: string | null): value is StrategyPhase {
+  return value === 'planning' || value === 'dge-review' || value === 'allocation' || value === 'utilization'
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return 'N/A'
   const date = new Date(value)
@@ -321,7 +325,14 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
 
   useEffect(() => {
     const status = searchParams.get('status')
+    const entity = searchParams.get('entity')
+    const phase = searchParams.get('phase')
     setStatusFilter(status || 'all-statuses')
+    setEntityFilter(entity || 'all-entities')
+    if (role === 'strategy-team' && isStrategyPhase(phase)) {
+      strategyPhaseTouchedRef.current = true
+      setStrategyPhase(phase)
+    }
   }, [searchParams])
 
   useEffect(() => {
@@ -516,6 +527,10 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
                 onClick={() => {
                   strategyPhaseTouchedRef.current = true
                   setStrategyPhase(phase.id)
+                  const next = new URLSearchParams(searchParams)
+                  next.set('phase', phase.id)
+                  next.delete('status')
+                  setSearchParams(next, { replace: true })
                 }}
                 className={cn(
                   'group inline-flex min-h-12 items-center gap-3 rounded-2xl border px-4 py-2 text-left transition-all duration-200',
@@ -617,7 +632,16 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
           </Select>
         </div>
         <div className="w-[240px]">
-          <Select value={entityFilter} onValueChange={setEntityFilter}>
+          <Select
+            value={entityFilter}
+            onValueChange={(value) => {
+              setEntityFilter(value)
+              const next = new URLSearchParams(searchParams)
+              if (value === 'all-entities') next.delete('entity')
+              else next.set('entity', value)
+              setSearchParams(next, { replace: true })
+            }}
+          >
             <SelectTrigger>
               <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
                 <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />

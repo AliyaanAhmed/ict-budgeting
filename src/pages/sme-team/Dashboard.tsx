@@ -32,9 +32,11 @@ import {
 import { getStoredCurrentSme } from '@/services/dgeRoleContextService'
 import {
   DGE_BUDGET_STATUS,
+  DGE_INSTANCE_STATUS,
   getCurrentSmeBudgets,
   getDgePortfolioData,
   type DgeBudgetRecord,
+  type DgeInstanceRecord,
 } from '@/services/dgePortfolioService'
 import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
 import { getProjectAiReviewFlags } from '@/services/documentAiSummaryStoreService'
@@ -61,6 +63,30 @@ function sumBudgetAmounts(budgets: DgeBudgetRecord[]) {
     allocated: budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0),
     utilized: budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0),
   }
+}
+
+function formatSmeReviewPhaseDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function getRemainingDays(value: string | null | undefined) {
+  if (!value) return null
+  const end = new Date(value)
+  if (Number.isNaN(end.getTime())) return null
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+
+  return Math.max(0, Math.ceil((end.getTime() - today.getTime()) / 86_400_000))
 }
 
 function BudgetPortfolioGrid({ budgets }: { budgets: DgeBudgetRecord[] }) {
@@ -224,6 +250,7 @@ export default function SmeTeamDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<DgeBudgetRecord[]>([])
+  const [instances, setInstances] = useState<DgeInstanceRecord[]>([])
   const [assignedFilter, setAssignedFilter] = useState<'all' | 'review' | 'change' | 'clarification' | 'quality'>('all')
   const [assignedPage, setAssignedPage] = useState(1)
 
@@ -234,6 +261,7 @@ export default function SmeTeamDashboard() {
       if (!selectedCycle?.id) {
         if (!cancelled) {
           setBudgets([])
+          setInstances([])
           setLoading(false)
         }
         return
@@ -246,9 +274,11 @@ export default function SmeTeamDashboard() {
         const portfolio = await getDgePortfolioData(selectedCycle.id)
         if (!cancelled) {
           setBudgets(getCurrentSmeBudgets(portfolio, currentSme))
+          setInstances(portfolio.instances)
         }
       } catch (loadError) {
         if (!cancelled) {
+          setInstances([])
           setError(loadError instanceof Error ? loadError.message : 'Unable to load SME dashboard.')
         }
       } finally {
@@ -410,7 +440,13 @@ export default function SmeTeamDashboard() {
   const assignedPageSize = 4
   const assignedTotalPages = Math.max(1, Math.ceil(assignedProjects.length / assignedPageSize))
   const assignedVisible = assignedProjects.slice((assignedPage - 1) * assignedPageSize, assignedPage * assignedPageSize)
-
+  const smeReviewPhaseEndDate = selectedCycle?.smeReviewPhaseEndDate ?? null
+  const smeReviewPhaseEndDateLabel = formatSmeReviewPhaseDate(smeReviewPhaseEndDate)
+  console.log(smeReviewPhaseEndDate)
+  const smeReviewPhaseDaysRemaining = getRemainingDays(smeReviewPhaseEndDate)
+  const showSmeReviewPhaseEndDate =
+    Boolean(selectedCycle && smeReviewPhaseEndDateLabel) &&
+    instances.some((instance) => instance.statuscode === DGE_INSTANCE_STATUS.underDgeReview)
   useEffect(() => {
     setAssignedPage(1)
   }, [assignedFilter])
@@ -480,6 +516,27 @@ export default function SmeTeamDashboard() {
                     <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">{currentSme?.teamName || '-'}</p>
                   </div>
                 </div>
+                {showSmeReviewPhaseEndDate ? (
+                  <>
+                    <div className="hidden h-10 w-px bg-[#DCE8F6] lg:block dark:bg-white/10" />
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#ECFDF5] text-[#059669] dark:bg-[#10B981]/15 dark:text-[#A7F3D0]">
+                        <Clock3 className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold tracking-[0.08em] text-[#64748B] dark:text-slate-300">SME Review Phase End Date</p>
+                        <p className="mt-1 text-sm font-bold text-[#0F172A] dark:text-white">
+                          {smeReviewPhaseEndDateLabel}
+                          {smeReviewPhaseDaysRemaining !== null ? (
+                            <span className="ml-2 font-semibold text-[#64748B] dark:text-slate-300">
+                              {smeReviewPhaseDaysRemaining} days remaining
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </div>
               <div className="mt-4 rounded-[20px] border border-[#DCE8F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-start gap-2">

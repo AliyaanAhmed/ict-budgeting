@@ -276,6 +276,23 @@ function median(values: number[]) {
   return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2)
 }
 
+function formatLongDate(value?: string | null) {
+  const date = parseDate(value)
+  if (!date) return null
+
+  return date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function getDaysFromToday(value?: string | null) {
+  const date = parseDate(value)
+  if (!date) return null
+  return Math.round((date.getTime() - today.getTime()) / 86_400_000)
+}
+
 function getStageProgress(current: number, completed: number) {
   const total = current + completed
   return total > 0 ? Math.round((completed / total) * 100) : 0
@@ -301,6 +318,69 @@ function DonutChart({ value, accent }: { value: number; accent: string }) {
       </div>
     </div>
   )
+}
+
+function getPhaseDeadlineDate(instance: DgeInstanceRecord, stage: CycleStageKey) {
+  if (stage === 'planning') return instance.submissionDate
+  if (stage === 'dge-review') return instance.allocationStartDate
+  if (stage === 'allocation') return instance.allocationEndDate
+  return instance.utilizationEndDate
+}
+
+function getSelectedDeadline(instances: DgeInstanceRecord[], stage: CycleStageKey) {
+  const dated = instances
+    .map((instance) => {
+      const value = getPhaseDeadlineDate(instance, stage)
+      const date = parseDate(value)
+      return date ? { value, date } : null
+    })
+    .filter((item): item is { value: string; date: Date } => Boolean(item))
+
+  if (!dated.length) return null
+
+  const upcoming = dated
+    .filter((item) => item.date >= today)
+    .sort((left, right) => left.date.getTime() - right.date.getTime())
+
+  if (upcoming.length) return upcoming[0].value
+
+  return dated.sort((left, right) => right.date.getTime() - left.date.getTime())[0].value
+}
+
+function isBudgetAllocationCompletedOrBeyond(budget: DgeBudgetRecord) {
+  return (
+    budget.statuscode === DGE_BUDGET_STATUS.allocationCompleted ||
+    budget.statuscode === DGE_BUDGET_STATUS.utilizationInProgress ||
+    budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted
+  )
+}
+
+function isBudgetUtilizationCompleted(budget: DgeBudgetRecord) {
+  return budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted
+}
+
+function getLeftBehindEntities(instances: DgeInstanceRecord[], stage: CycleStageKey) {
+  return instances.filter((instance) => {
+    const deadline = getPhaseDeadlineDate(instance, stage)
+    if (!isPast(deadline)) return false
+
+    if (stage === 'planning') {
+      return (
+        instance.statuscode === DGE_INSTANCE_STATUS.published ||
+        instance.statuscode === DGE_INSTANCE_STATUS.planning
+      )
+    }
+    if (stage === 'dge-review') {
+      return (
+        instance.statuscode !== DGE_INSTANCE_STATUS.allocation &&
+        instance.statuscode !== DGE_INSTANCE_STATUS.utilization
+      )
+    }
+    if (stage === 'allocation') {
+      return !instance.budgets.length || !instance.budgets.every(isBudgetAllocationCompletedOrBeyond)
+    }
+    return !instance.budgets.length || !instance.budgets.every(isBudgetUtilizationCompleted)
+  })
 }
 
 function CycleProgressExplorer({
@@ -516,6 +596,12 @@ function CycleProgressExplorer({
     { label: 'Utilized', amount: activeStageBudgetTotals.utilized, accent: '#D97706' },
   ]
   const activeStageBudgetMax = Math.max(...activeStageBudgetRows.map((item) => item.amount), 1)
+  const activeDeadline = getSelectedDeadline(instances, visibleStage)
+  const activeDeadlineLabel = formatLongDate(activeDeadline)
+  const activeDeadlineDays = getDaysFromToday(activeDeadline)
+  const activeLeftBehindEntities = getLeftBehindEntities(instances, visibleStage)
+  const activeLeftBehindPreview = activeLeftBehindEntities.slice(0, 10)
+  const hiddenLeftBehindCount = Math.max(0, activeLeftBehindEntities.length - activeLeftBehindPreview.length)
 
   useEffect(() => {
     if (didAutoSelectStage.current || !stageMeta.some((stage) => stage.count > 0)) return
@@ -632,6 +718,72 @@ function CycleProgressExplorer({
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: active.accent }}>Stage {active.number}</p>
                 <h3 className="mt-1 text-xl font-bold text-[#0F172A] dark:text-white">{active.title} Overview</h3>
+              </div>
+            </div>
+
+            <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px]" style={{ backgroundColor: `${active.accent}14`, color: active.accent }}>
+                    <CalendarClock className="h-4.5 w-4.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-[#0F172A] dark:text-white">Deadline</p>
+                    <p className="mt-2 text-base font-bold text-[#0F172A] dark:text-white">
+                      {activeDeadlineLabel ?? 'Deadline not set'}
+                    </p>
+                    {activeDeadlineDays !== null ? (
+                      <p
+                        className={cn(
+                          'mt-1 text-xs font-semibold',
+                          activeDeadlineDays < 0
+                            ? 'text-[#DC2626] dark:text-[#FCA5A5]'
+                            : 'text-[#15803D] dark:text-[#86EFAC]'
+                        )}
+                      >
+                        {activeDeadlineDays < 0
+                          ? `${Math.abs(activeDeadlineDays)} days overdue`
+                          : `${activeDeadlineDays} days remaining`}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[#0F172A] dark:text-white">Entities Left Behind</p>
+                    <p className="mt-1 text-xs font-semibold text-[#64748B] dark:text-slate-300">
+                      {activeLeftBehindEntities.length} entities left behind
+                    </p>
+                  </div>
+                  <span className="rounded-full px-2.5 py-1 text-xs font-bold text-white" style={{ backgroundColor: activeLeftBehindEntities.length ? '#DC2626' : active.accent }}>
+                    {activeLeftBehindEntities.length}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {activeLeftBehindPreview.length ? (
+                    <>
+                      {activeLeftBehindPreview.map((instance) => (
+                        <span
+                          key={instance.id}
+                          className="inline-flex max-w-full items-center rounded-full border border-[#FFD4D1] bg-[#FFF1F1] px-2.5 py-1 text-xs font-semibold text-[#DC2626] dark:border-[#7F1D1D] dark:bg-[#DC2626]/15 dark:text-[#FCA5A5]"
+                          title={instance.entityName || instance.name}
+                        >
+                          {getEntityCode(instance)}
+                        </span>
+                      ))}
+                      {hiddenLeftBehindCount > 0 ? (
+                        <span className="inline-flex items-center rounded-full border border-[#DCE8F6] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                          +{hiddenLeftBehindCount} more
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-xs font-semibold text-[#94A3B8] dark:text-slate-400">No entities are behind this phase deadline.</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -935,7 +1087,11 @@ export default function StrategyTeamDashboard() {
         instance.budgets.length === 0 &&
         (instance.statuscode === DGE_INSTANCE_STATUS.published || instance.statuscode === DGE_INSTANCE_STATUS.planning)
     )
-    const missedSubmission = instances.filter((instance) => isPast(instance.planningEndDate) && !instance.submissionDate)
+    const missedSubmission = instances.filter(
+      (instance) =>
+        isPast(instance.submissionDate) &&
+        (instance.statuscode === DGE_INSTANCE_STATUS.published || instance.statuscode === DGE_INSTANCE_STATUS.planning)
+    )
     const strategicAlignmentPendingBudgets = budgets.filter(
       (budget) => budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
     )

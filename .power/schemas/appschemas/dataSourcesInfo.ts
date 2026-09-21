@@ -12,13 +12,6 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "audits": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "auditid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "dga_ai_prompts": {
     "tableId": "",
     "version": "",
@@ -40,6 +33,179 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "tablename",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "guid1",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "action",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "targettable",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "role",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "endpoint",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "apikey",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "model",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "prompt",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "summarycategory",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarystage",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarytype",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "actionName",
+            "in": "body",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "isAdmin",
+            "in": "body",
+            "required": true,
+            "type": "boolean"
+          },
+          {
+            "name": "userId",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fetchXml",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relationship",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "dga_cycles": {
     "tableId": "",
     "version": "",
@@ -47,24 +213,17 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "dga_ict_budget_dga_technology_productset": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "dga_ict_budget_dga_technology_productid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "sharepointdocuments": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "sharepointdocumentid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "dga_ict_ai_summaries": {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_ict_ai_summaryid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_ict_budget_dga_technology_productset": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_ict_budget_dga_technology_productid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -110,45 +269,10 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "dga_module_types": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "dga_module_typeid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "roles": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "roleid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "dga_strategic_prioritieses": {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_strategic_prioritiesid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "systemuserrolescollection": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "systemuserroleid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "teammemberships": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "teammembershipid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "teams": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "teamid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -159,62 +283,12 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "systemusers": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "systemuserid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "dga_work_streams": {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_work_streamid",
     "dataSourceType": "Dataverse",
     "apis": {}
-  },
-  "dga_customwebapi": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_CustomWebApi": {
-        "path": "/api/data/v9.2/dga_CustomWebApi",
-        "method": "POST",
-        "parameters": [
-          { "name": "action", "in": "body", "required": true, "type": "string" },
-          { "name": "endpoint", "in": "body", "required": true, "type": "string" },
-          { "name": "apikey", "in": "body", "required": true, "type": "string" },
-          { "name": "model", "in": "body", "required": true, "type": "string" },
-          { "name": "prompt", "in": "body", "required": true, "type": "string" }
-        ]
-      }
-    }
-  },
-  "dga_webapiforportal": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_WebApiForPortal": {
-        "path": "/api/data/v9.2/dga_WebApiForPortal",
-        "method": "POST",
-        "parameters": [
-          { "name": "actionName", "in": "body", "required": true, "type": "string" },
-          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
-          { "name": "userId", "in": "body", "required": false, "type": "string" },
-          { "name": "fetchXml", "in": "body", "required": false, "type": "string" },
-          { "name": "targetTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "targetId", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedId", "in": "body", "required": false, "type": "string" },
-          { "name": "relationship", "in": "body", "required": false, "type": "string" },
-          { "name": "tableName", "in": "body", "required": false, "type": "string" }
-        ]
-      }
-    }
   },
   "ictbudget_clarificaitons_deletefilefromsharepoint": {
     "tableId": "",
@@ -446,5 +520,47 @@ export const dataSourcesInfo = {
         }
       }
     }
+  },
+  "roles": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "roleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "sharepointdocuments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "sharepointdocumentid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "systemuserrolescollection": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserroleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "systemusers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "teammemberships": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "teammembershipid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "teams": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "teamid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
   }
 };

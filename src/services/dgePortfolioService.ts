@@ -64,6 +64,10 @@ export interface DgeBudgetRecord {
   recommendedBudget: number
   allocatedBudget: number
   utilizedBudget: number
+  utilizedBudgetQ1?: number
+  utilizedBudgetQ2?: number
+  utilizedBudgetQ3?: number
+  utilizedBudgetQ4?: number
   planningOutcome: number | null
   addedInAllocation: number | null
   aiConfidenceScore: number | null
@@ -94,6 +98,9 @@ export interface DgeInstanceRecord {
   previousAllocationDate: string | null
   utilizationStartDate: string | null
   utilizationEndDate: string | null
+  previousUtilizationDate: string | null
+  extensionProvidedInAllocation: number | null
+  extensionProvidedInUtilization: number | null
   statuscode: number
   statusLabel: string
   budgets: DgeBudgetRecord[]
@@ -259,6 +266,10 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
     allocatedBudget: Number(record.dga_total_budget_allocated ?? 0),
     utilizedBudget: Number(record.dga_total_budget_utilized ?? 0),
+    utilizedBudgetQ1: Number(record.dga_total_budget_utilized_q1 ?? 0),
+    utilizedBudgetQ2: Number(record.dga_total_budget_utilized_q2 ?? 0),
+    utilizedBudgetQ3: Number(record.dga_total_budget_utilized_q3 ?? 0),
+    utilizedBudgetQ4: Number(record.dga_total_budget_utilized_q4 ?? 0),
     planningOutcome: typeof record.dga_planning_outcome === 'number' ? record.dga_planning_outcome : null,
     addedInAllocation: typeof record.dga_added_in_allocation === 'number' ? record.dga_added_in_allocation : null,
     aiConfidenceScore:
@@ -294,6 +305,9 @@ function mapInstanceRecord(record: Awaited<ReturnType<typeof Dga_ict_budget_inst
     previousAllocationDate: record.dga_previous_allocation_date ?? null,
     utilizationStartDate: record.dga_utilization_start_date ?? null,
     utilizationEndDate: record.dga_utilization_end_date ?? null,
+    previousUtilizationDate: record.dga_previous_utilization_date ?? null,
+    extensionProvidedInAllocation: typeof record.dga_extension_provided_in_allocation === 'number' ? record.dga_extension_provided_in_allocation : null,
+    extensionProvidedInUtilization: typeof record.dga_extension_provided_in_utilization === 'number' ? record.dga_extension_provided_in_utilization : null,
     statuscode: Number(record.statuscode ?? 0),
     statusLabel: getInstanceStatusLabel(record.statuscode ?? null, record.statuscodename ?? null),
     budgets: [],
@@ -322,6 +336,10 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     'dga_total_budget_recommended',
     'dga_total_budget_allocated',
     'dga_total_budget_utilized',
+    'dga_total_budget_utilized_q1',
+    'dga_total_budget_utilized_q2',
+    'dga_total_budget_utilized_q3',
+    'dga_total_budget_utilized_q4',
     'dga_planning_outcome',
     'dga_added_in_allocation',
     'ownerid',
@@ -373,6 +391,9 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
       'dga_planning_end_date',
       'dga_planning_start_date',
       'dga_previous_allocation_date',
+      'dga_previous_utilization_date',
+      'dga_extension_provided_in_allocation',
+      'dga_extension_provided_in_utilization',
       'dga_utilization_end_date',
       'dga_utilization_start_date',
       'statuscode',
@@ -445,6 +466,36 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
     instances: hydratedInstances,
     budgets: hydratedBudgets,
   }
+}
+
+export async function extendDgePortfolioInstances(
+  mode: 'allocation' | 'utilization',
+  instances: DgeInstanceRecord[],
+  newEndDate: string,
+  reason: string
+) {
+  const endDateIso = new Date(`${newEndDate}T00:00:00`).toISOString()
+
+  await Promise.all(
+    instances.map((instance) => {
+      const payload =
+        mode === 'allocation'
+          ? {
+              dga_previous_allocation_date: instance.allocationEndDate ?? undefined,
+              dga_allocation_end_date: endDateIso,
+              dga_allocation_extension_reason: reason.trim(),
+              dga_extension_provided_in_allocation: 2 as const,
+            }
+          : {
+              dga_previous_utilization_date: instance.utilizationEndDate ?? undefined,
+              dga_utilization_end_date: endDateIso,
+              dga_utilization_extension_reason: reason.trim(),
+              dga_extension_provided_in_utilization: 2 as const,
+            }
+
+      return Dga_ict_budget_instancesService.update(instance.id, payload)
+    })
+  )
 }
 
 export function getStrategyAlignmentBudgets(data: DgePortfolioData) {

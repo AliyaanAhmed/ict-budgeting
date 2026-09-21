@@ -1,10 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, ChevronDown, Clock3, CircleCheckBig, Route, Sparkles, Waypoints } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, CalendarPlus, Check, ChevronDown, Clock3, CircleCheckBig, Route, Search, Sparkles, Waypoints } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { DatePickerField } from '@/components/shared/DatePickerField'
 import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
+import { useToast } from '@/context/ToastContext'
 import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
 import {
+  DGE_BUDGET_STATUS,
+  DGE_INSTANCE_STATUS,
+  extendDgePortfolioInstances,
   getBudgetStageBucket,
   getDgePortfolioData,
   getInstanceStageFilterLabel,
@@ -13,6 +24,7 @@ import {
 
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
+type ExtendMode = 'allocation' | 'utilization'
 
 const stepIcons = {
   Planning: Clock3,
@@ -35,6 +47,436 @@ function getActiveStepIndex(instance: DgeInstanceRecord) {
   if (stage === 'Allocation') return 3
   if (stage === 'Utilization') return 4
   return 0
+}
+
+function parseDeadlineDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function formatLongDate(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return null
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function getDeadlineDays(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000)
+}
+
+function getEntityDeadline(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Planning') return instance.submissionDate
+  if (phase === 'DGE Review') return instance.allocationStartDate
+  if (phase === 'Allocation') return instance.allocationEndDate
+  if (phase === 'Utilization') return instance.utilizationEndDate
+  return null
+}
+
+function getExtensionCapsuleLabel(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Allocation' && instance.extensionProvidedInAllocation === 2) return 'Allocation Extended'
+  if (phase === 'Utilization' && instance.extensionProvidedInUtilization === 2) return 'Utilization Extended'
+  return null
+}
+
+function getEntityInitials(instance: DgeInstanceRecord) {
+  const source = (instance.entityAbbr || instance.entityName || instance.name).trim()
+  if (!source) return '--'
+
+  const words = source.split(/\s+/).filter(Boolean)
+  if (words.length >= 2) {
+    return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase()
+  }
+
+  return source.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '--'
+}
+
+function getEntityProjectPhaseParam(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Planning') return 'planning'
+  if (phase === 'DGE Review') return 'dge-review'
+  if (phase === 'Allocation') return 'allocation'
+  if (phase === 'Utilization') return 'utilization'
+  return 'planning'
+}
+
+function formatRemaining(days: number | null) {
+  if (days === null) return null
+  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`
+  return `${days} day${days === 1 ? '' : 's'} remaining`
+}
+
+function formatCurrency(amount: number) {
+  return `AED ${amount.toLocaleString('en-AE')}`
+}
+
+function countStatuses(instance: DgeInstanceRecord, statuses: number[]) {
+  return instance.budgets.filter((budget) => statuses.includes(budget.statuscode)).length
+}
+
+function sumBudgetField(instance: DgeInstanceRecord, field: 'requestedBudget' | 'recommendedBudget' | 'allocatedBudget' | 'utilizedBudget' | 'utilizedBudgetQ1' | 'utilizedBudgetQ2' | 'utilizedBudgetQ3' | 'utilizedBudgetQ4') {
+  return instance.budgets.reduce((sum, budget) => sum + (budget[field] ?? 0), 0)
+}
+
+function getEntityPhaseStats(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+
+  if (phase === 'DGE Review') {
+    return [
+      { label: 'Strategic Alignment', value: countStatuses(instance, [DGE_BUDGET_STATUS.underStrategicAlignmentReview]) },
+      { label: 'SME Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underSmeReview]) },
+      { label: 'Quality Check', value: countStatuses(instance, [DGE_BUDGET_STATUS.underQualityCheck]) },
+      { label: 'Director Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underFinalReview]) },
+      { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+    ]
+  }
+
+  if (phase === 'Allocation') {
+    return [
+      { label: 'Allocation In Progress', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationInProgress]) },
+      { label: 'Allocation In Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationInReview]) },
+      { label: 'Allocation Completed', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationCompleted]) },
+      { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
+    ]
+  }
+
+  if (phase === 'Utilization') {
+    const enteredCount = instance.budgets.filter(
+      (budget) => budget.utilizedBudget > 0 || budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted
+    ).length
+
+    return [
+      { label: 'Utilization Entered', value: `${enteredCount} / ${instance.budgets.length}` },
+      { label: 'Q1 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ1')) },
+      { label: 'Q2 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ2')) },
+      { label: 'Q3 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ3')) },
+      { label: 'Q4 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ4')) },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
+      { label: 'Utilization Budget', value: formatCurrency(sumBudgetField(instance, 'utilizedBudget')) },
+    ]
+  }
+
+  return [
+    { label: 'Draft', value: countStatuses(instance, [DGE_BUDGET_STATUS.draft]) },
+    { label: 'Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underReviewerReview, DGE_BUDGET_STATUS.reviewerReviewCompleted]) },
+    { label: 'Approval', value: countStatuses(instance, [DGE_BUDGET_STATUS.underApproverReview, DGE_BUDGET_STATUS.approvedByApprover]) },
+    { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+  ]
+}
+
+function formatShortDate(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return '-'
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function getModeEndDate(instance: DgeInstanceRecord, mode: ExtendMode) {
+  return mode === 'allocation' ? instance.allocationEndDate : instance.utilizationEndDate
+}
+
+function isNewDateLater(newDate: string, currentDate: string | null | undefined) {
+  const next = parseDeadlineDate(newDate)
+  const current = parseDeadlineDate(currentDate)
+  if (!next || !current) return false
+  return next.getTime() > current.getTime()
+}
+
+function ExtendPortfolioModal({
+  open,
+  onOpenChange,
+  instances,
+  onExtended,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instances: DgeInstanceRecord[]
+  onExtended: () => Promise<void>
+}) {
+  const { runActionToast } = useToast()
+  const [mode, setMode] = useState<ExtendMode>('allocation')
+  const [newEndDate, setNewEndDate] = useState('')
+  const [reason, setReason] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setSelectedIds([])
+    setSearchTerm('')
+    setValidationMessage(null)
+  }, [mode])
+
+  useEffect(() => {
+    if (!open) {
+      setMode('allocation')
+      setNewEndDate('')
+      setReason('')
+      setSearchTerm('')
+      setSelectedIds([])
+      setValidationMessage(null)
+      setSaving(false)
+    }
+  }, [open])
+
+  const modeInstances = useMemo(
+    () =>
+      instances.filter((instance) =>
+        mode === 'allocation'
+          ? instance.statuscode === DGE_INSTANCE_STATUS.allocation
+          : instance.statuscode === DGE_INSTANCE_STATUS.utilization
+      ),
+    [instances, mode]
+  )
+
+  const filteredInstances = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    if (!normalizedSearch) return modeInstances
+    return modeInstances.filter(
+      (instance) =>
+        instance.name.toLowerCase().includes(normalizedSearch) ||
+        instance.entityName.toLowerCase().includes(normalizedSearch) ||
+        instance.entityAbbr.toLowerCase().includes(normalizedSearch)
+    )
+  }, [modeInstances, searchTerm])
+
+  const selectedInstances = useMemo(
+    () => modeInstances.filter((instance) => selectedIds.includes(instance.id)),
+    [modeInstances, selectedIds]
+  )
+
+  const toggleSelected = (instanceId: string) => {
+    setSelectedIds((current) =>
+      current.includes(instanceId) ? current.filter((id) => id !== instanceId) : [...current, instanceId]
+    )
+    setValidationMessage(null)
+  }
+
+  const validate = () => {
+    if (selectedInstances.length === 0) return 'Select at least one entity to extend.'
+    if (!newEndDate) return `New ${mode === 'allocation' ? 'allocation' : 'utilization'} end date is required.`
+    if (!reason.trim()) return 'Reason is required.'
+
+    const missingCurrentDate = selectedInstances.find((instance) => !getModeEndDate(instance, mode))
+    if (missingCurrentDate) {
+      return `${missingCurrentDate.entityName || missingCurrentDate.name} does not have a current ${mode === 'allocation' ? 'allocation' : 'utilization'} end date.`
+    }
+
+    const invalidDateEntity = selectedInstances.find((instance) => !isNewDateLater(newEndDate, getModeEndDate(instance, mode)))
+    if (invalidDateEntity) {
+      return `New end date must be later than the current end date for ${invalidDateEntity.entityName || invalidDateEntity.name}.`
+    }
+
+    return null
+  }
+
+  const handleSubmit = async () => {
+    const validation = validate()
+    if (validation) {
+      setValidationMessage(validation)
+      return
+    }
+
+    setSaving(true)
+    try {
+      await runActionToast(
+        async () => {
+          await extendDgePortfolioInstances(mode, selectedInstances, newEndDate, reason)
+          await onExtended()
+        },
+        {
+          processingTitle: 'Extending portfolio',
+          processingDescription: `Updating ${selectedInstances.length} ${selectedInstances.length === 1 ? 'entity' : 'entities'}.`,
+          successTitle: 'Portfolio extended',
+          successDescription: `${mode === 'allocation' ? 'Allocation' : 'Utilization'} end date updated successfully.`,
+          errorTitle: 'Extension failed',
+          minDurationMs: 1200,
+        }
+      )
+      onOpenChange(false)
+    } catch (submitError) {
+      setValidationMessage(submitError instanceof Error ? submitError.message : 'Unable to extend portfolio.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const modeLabel = mode === 'allocation' ? 'Allocation' : 'Utilization'
+  const currentDateLabel = mode === 'allocation' ? 'Allocation dates' : 'Utilization dates'
+
+  return (
+    <Dialog open={open} onOpenChange={saving ? undefined : onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+        <div className="border-b border-[#EEF3F8] px-6 py-5 dark:border-white/10">
+          <DialogHeader className="pr-12">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                <CalendarPlus className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Extend Portfolio</DialogTitle>
+                <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                  Select entities and apply a new phase end date with an extension reason.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+        </div>
+
+        <div className="max-h-[calc(90vh-154px)] overflow-y-auto px-6 py-5">
+          <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="space-y-4">
+              <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{modeLabel} extension</p>
+                    <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Switch between portfolio phases.</p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-[#DDEBFF] bg-white px-3 py-2 dark:border-white/10 dark:bg-[#162339]">
+                    <span className={cn('text-xs font-semibold', mode === 'allocation' ? 'text-[#286CFF]' : 'text-[#64748B] dark:text-slate-300')}>
+                      Allocation
+                    </span>
+                    <Switch
+                      checked={mode === 'utilization'}
+                      onCheckedChange={(checked) => setMode(checked ? 'utilization' : 'allocation')}
+                      disabled={saving}
+                    />
+                    <span className={cn('text-xs font-semibold', mode === 'utilization' ? 'text-[#286CFF]' : 'text-[#64748B] dark:text-slate-300')}>
+                      Utilization
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <DatePickerField
+                id="portfolio-extension-date"
+                label={`New ${modeLabel} End Date`}
+                value={newEndDate}
+                required
+                disabled={saving}
+                onChange={(value) => {
+                  setNewEndDate(value)
+                  setValidationMessage(null)
+                }}
+              />
+
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-[#0F172A] dark:text-white" htmlFor="portfolio-extension-reason">
+                  Reason <span className="text-[#EA4F49]">*</span>
+                </label>
+                <Textarea
+                  id="portfolio-extension-reason"
+                  value={reason}
+                  onChange={(event) => {
+                    setReason(event.target.value)
+                    setValidationMessage(null)
+                  }}
+                  disabled={saving}
+                  placeholder={`Enter ${modeLabel.toLowerCase()} extension reason`}
+                  className="min-h-[150px] rounded-xl"
+                />
+              </div>
+
+              {validationMessage ? (
+                <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+                  {validationMessage}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Entities</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {selectedInstances.length} selected from {modeInstances.length} {modeLabel.toLowerCase()} entities
+                  </p>
+                </div>
+                <div className="relative sm:w-[260px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search entity..."
+                    disabled={saving}
+                    className="h-10 rounded-xl pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {filteredInstances.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#CFE0F5] bg-[#F8FBFF] px-4 py-8 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                    No {modeLabel.toLowerCase()} entities found.
+                  </div>
+                ) : (
+                  filteredInstances.map((instance) => {
+                    const selected = selectedIds.includes(instance.id)
+                    return (
+                      <button
+                        key={instance.id}
+                        type="button"
+                        onClick={() => toggleSelected(instance.id)}
+                        disabled={saving}
+                        className={cn(
+                          'flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition-colors',
+                          selected
+                            ? 'border-[#286CFF] bg-[#EEF5FF] dark:border-[#4F98FF] dark:bg-[#286CFF]/15'
+                            : 'border-[#EAF0F6] bg-white hover:border-[#BFD8FF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border leading-none',
+                            selected ? 'border-[#286CFF] bg-[#286CFF] text-white' : 'border-[#CBD5E1] bg-white dark:bg-[#162339]'
+                          )}
+                        >
+                          {selected ? <Check className="block h-3.5 w-3.5" strokeWidth={3} /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</span>
+                            <StrategyPill tone={mode === 'allocation' ? 'amber' : 'teal'}>{instance.statusLabel}</StrategyPill>
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                            {instance.entityAbbr || instance.name.slice(0, 3).toUpperCase()} · {currentDateLabel}:{' '}
+                            {mode === 'allocation'
+                              ? `${formatShortDate(instance.allocationStartDate)} to ${formatShortDate(instance.allocationEndDate)}`
+                              : `${formatShortDate(instance.utilizationStartDate)} to ${formatShortDate(instance.utilizationEndDate)}`}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-[#EEF3F8] px-6 py-4 dark:border-white/10">
+          <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button className="rounded-2xl" onClick={() => void handleSubmit()} disabled={saving}>
+            {saving ? 'Saving...' : `Extend ${modeLabel}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function EntityTrackerSummary() {
@@ -248,35 +690,33 @@ export default function EntityTracker() {
   const [instances, setInstances] = useState<DgeInstanceRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [extendModalOpen, setExtendModalOpen] = useState(false)
+
+  const loadPortfolio = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!selectedCycle?.id) {
+      setInstances([])
+      setLoading(false)
+      return
+    }
+
+    if (!options.silent) setLoading(true)
+    setError(null)
+    try {
+      const portfolio = await getDgePortfolioData(selectedCycle.id)
+      setInstances(portfolio.instances)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker data.')
+    } finally {
+      if (!options.silent) setLoading(false)
+    }
+  }, [selectedCycle?.id])
 
   useEffect(() => {
     let cancelled = false
 
     const load = async () => {
-      if (!selectedCycle?.id) {
-        if (!cancelled) {
-          setInstances([])
-          setLoading(false)
-        }
-        return
-      }
-
-      setLoading(true)
-      setError(null)
-      try {
-        const portfolio = await getDgePortfolioData(selectedCycle.id)
-        if (!cancelled) {
-          setInstances(portfolio.instances)
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker data.')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+      if (cancelled) return
+      await loadPortfolio()
     }
 
     void load()
@@ -284,7 +724,7 @@ export default function EntityTracker() {
     return () => {
       cancelled = true
     }
-  }, [selectedCycle?.id])
+  }, [loadPortfolio])
 
   const stageCounts = useMemo(
     () =>
@@ -311,6 +751,12 @@ export default function EntityTracker() {
       eyebrow="ICT - Strategy Team"
       title="Entity Tracker"
       description="Portfolio-level monitoring for every participating government entity across the budgeting cycle."
+      actions={
+        <Button className="h-11 rounded-2xl shadow-none" onClick={() => setExtendModalOpen(true)}>
+          <CalendarPlus className="h-4 w-4" />
+          Extend Portfolio
+        </Button>
+      }
     >
       <section className="space-y-5">
         <EntityTrackerSummary />
@@ -354,6 +800,13 @@ export default function EntityTracker() {
               const reviewCompletedCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'reviewCompleted').length
               const allocationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'allocation').length
               const utilizationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'utilization').length
+              const deadline = getEntityDeadline(entity)
+              const deadlineLabel = formatLongDate(deadline)
+              const remainingDays = getDeadlineDays(deadline)
+              const remainingLabel = formatRemaining(remainingDays)
+              const extensionCapsuleLabel = getExtensionCapsuleLabel(entity)
+              const phaseStats = getEntityPhaseStats(entity)
+              const entityBudgetUrl = `/strategy-team/projects?entity=${encodeURIComponent(entity.entityName || entity.name)}&phase=${getEntityProjectPhaseParam(entity)}`
 
               return (
                 <Card
@@ -365,7 +818,7 @@ export default function EntityTracker() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                            {entity.entityAbbr || entity.name.slice(0, 3).toUpperCase()}
+                            {getEntityInitials(entity)}
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -373,6 +826,26 @@ export default function EntityTracker() {
                               <StrategyPill tone={entity.statusLabel === 'Planning' ? 'blue' : entity.statusLabel === 'Under DGE Review' ? 'violet' : entity.statusLabel === 'Allocation' ? 'amber' : 'teal'}>
                                 {entity.statusLabel}
                               </StrategyPill>
+                              <span className="inline-flex items-center rounded-full border border-[#DDEBFF] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                                End date: {deadlineLabel ?? 'Deadline not set'}
+                              </span>
+                              {remainingLabel ? (
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
+                                    remainingDays !== null && remainingDays < 0
+                                      ? 'bg-[#FEF2F2] text-[#B91C1C] dark:bg-[#7F1D1D]/30 dark:text-[#FCA5A5]'
+                                      : 'bg-[#ECFDF5] text-[#047857] dark:bg-emerald-900/20 dark:text-emerald-300'
+                                  )}
+                                >
+                                  {remainingLabel}
+                                </span>
+                              ) : null}
+                              {extensionCapsuleLabel ? (
+                                <span className="inline-flex items-center rounded-full bg-[#F5EEFF] px-2.5 py-1 text-xs font-semibold text-[#9333EA] dark:bg-[#9333EA]/15 dark:text-[#E9D5FF]">
+                                  {extensionCapsuleLabel}
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-xs text-[#64748B] dark:text-slate-300">
                               {entity.planningStartDate?.slice(0, 10) || '-'} to {entity.planningEndDate?.slice(0, 10) || '-'}
@@ -380,28 +853,21 @@ export default function EntityTracker() {
                           </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
+                      <Link
+                        to={entityBudgetUrl}
                         className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1F5BFF]"
                       >
                         View Entity Budgets
                         <ArrowRight className="h-4 w-4" />
-                      </button>
+                      </Link>
                     </div>
 
                     <div className="border-t border-[#EEF3F8] px-5 py-5 dark:border-white/10">
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                        {[
-                          { label: 'Budget Items', value: entity.budgets.length },
-                          { label: 'Requested Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Recommended Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.recommendedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Allocation Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Utilization Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Pending ADGE Clarification', value: entity.budgets.filter((budget) => budget.statuscode === 776140010).length },
-                        ].map((item) => (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {phaseStats.map((item) => (
                           <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                             <p className="text-[12px] font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
-                            <p className="mt-2 text-sm font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                            <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{item.value}</p>
                           </div>
                         ))}
                       </div>
@@ -463,6 +929,12 @@ export default function EntityTracker() {
           )}
         </div>
       </section>
+      <ExtendPortfolioModal
+        open={extendModalOpen}
+        onOpenChange={setExtendModalOpen}
+        instances={instances}
+        onExtended={() => loadPortfolio({ silent: true })}
+      />
     </StrategyPageShell>
   )
 }

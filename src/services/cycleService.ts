@@ -8,6 +8,7 @@ export interface AppCycle {
   name: string
   startDate: string
   endDate: string
+  smeReviewPhaseEndDate: string | null
 }
 
 export interface CyclesSessionData {
@@ -53,6 +54,7 @@ export async function initCycleContext(): Promise<void> {
         '_dga_module_type_value',
         'dga_planned_start_date',
         'dga_planned_end_date',
+        'dga_sme_review_phase_end_date',
       ],
     })
 
@@ -81,6 +83,7 @@ export async function initCycleContext(): Promise<void> {
         name: c.dga_name,
         startDate: c.dga_planned_start_date,
         endDate: c.dga_planned_end_date,
+        smeReviewPhaseEndDate: c.dga_sme_review_phase_end_date ?? null,
       }))
 
     if (!allCycles.length) {

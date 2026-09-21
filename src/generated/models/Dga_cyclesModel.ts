@@ -21,6 +21,7 @@ export interface Dga_cyclesBase {
   dga_name: string;
   dga_planned_end_date: string;
   dga_planned_start_date: string;
+  dga_sme_review_phase_end_date?: string;
   importsequencenumber?: number;
   overriddencreatedon?: string;
   ownerid: string;

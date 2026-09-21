@@ -216,6 +216,7 @@ interface PolicyMatchGroup {
 }
 
 const PENDING_NEW_AI_RECORD = '__pending_new_ai_record__'
+const HISTORY_BACK_NAVIGATION = '__history_back__'
 
 const ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
   DGE_INSTANCE_STATUS.reviewCompletedByDge,
@@ -3032,6 +3033,15 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const { pathname } = location
+  const navigationState = location.state as { backTo?: string; backLabel?: string } | null
+  const contextualBackHref =
+    typeof navigationState?.backTo === 'string' && navigationState.backTo.startsWith('/')
+      ? navigationState.backTo
+      : null
+  const contextualBackLabel =
+    typeof navigationState?.backLabel === 'string' && navigationState.backLabel.trim()
+      ? navigationState.backLabel.trim()
+      : null
   const navigate = useNavigate()
   const { instanceId } = useInstance()
   const { runActionToast, showErrorToast, showSuccessToast } = useToast()
@@ -3100,7 +3110,7 @@ export default function ProjectDetail() {
   const roleProjectScope =
     currentRole === 'Reviewer' ? 'reviewer' : currentRole === 'Approver' ? 'approver' : 'respondent'
   const { items: cycleProjects } = useRoleProjects(roleProjectScope, instanceId)
-  const backHref = isReviewerView
+  const fallbackBackHref = isReviewerView
     ? '/reviewer/review-queue'
     : isApproverView
       ? '/approver/approval-queue'
@@ -3111,6 +3121,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? '/sme-team/reviews'
           : '/respondent/projects'
+  const backHref = contextualBackHref ?? fallbackBackHref
   const homeHref = isReviewerView
     ? '/reviewer/dashboard'
     : isApproverView
@@ -3122,7 +3133,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? '/sme-team/dashboard'
           : '/respondent/dashboard'
-  const queueLabel = isReviewerView
+  const fallbackQueueLabel = isReviewerView
     ? 'Review Queue'
     : isApproverView
       ? 'Approval Queue'
@@ -3133,6 +3144,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? 'SME Review Queue'
           : 'My Projects'
+  const queueLabel = contextualBackLabel ?? fallbackQueueLabel
   const pageTitle = project.name
   const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
@@ -5030,6 +5042,25 @@ export default function ProjectDetail() {
     }
   }
 
+  const navigateToPreviousScreen = () => {
+    const historyIndex = typeof window !== 'undefined' ? window.history.state?.idx : 0
+    if (typeof historyIndex === 'number' && historyIndex > 0) {
+      navigate(-1)
+      return
+    }
+
+    navigate(backHref)
+  }
+
+  const handleProtectedBackNavigation = () => {
+    if (isEditMode && hasUnsavedChanges) {
+      setPendingNavigationHref(HISTORY_BACK_NAVIGATION)
+      return
+    }
+
+    navigateToPreviousScreen()
+  }
+
   useEffect(() => {
     let cancelled = false
     let budgetStage = false
@@ -5666,14 +5697,22 @@ export default function ProjectDetail() {
 
     const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
     if (saveSucceeded) {
-      navigate(pendingNavigationHref)
+      if (pendingNavigationHref === HISTORY_BACK_NAVIGATION) {
+        navigateToPreviousScreen()
+      } else {
+        navigate(pendingNavigationHref)
+      }
       setPendingNavigationHref(null)
     }
   }
 
   const handleDiscardAndNavigate = () => {
     if (!pendingNavigationHref) return
-    navigate(pendingNavigationHref)
+    if (pendingNavigationHref === HISTORY_BACK_NAVIGATION) {
+      navigateToPreviousScreen()
+    } else {
+      navigate(pendingNavigationHref)
+    }
     setPendingNavigationHref(null)
   }
 
@@ -7854,10 +7893,14 @@ export default function ProjectDetail() {
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <Link to={backHref} onClick={(event) => handleProtectedNavigation(event, backHref)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200">
+            <button
+              type="button"
+              onClick={handleProtectedBackNavigation}
+              className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200"
+            >
               <ArrowLeft className="h-4 w-4" />
               Back
-            </Link>
+            </button>
             {display.budgetRefId ? (
               <p className="mb-1 text-xs font-medium text-[#475569] dark:text-slate-300">
                 {display.budgetRefId}

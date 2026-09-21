@@ -1,0 +1,132 @@
+{
+  "name": "dga_CustomWebApi",
+  "title": "dga_CustomWebApi",
+  "type": "Microsoft.PowerApps/dataverseOperation",
+  "properties": {
+    "displayName": "dga_CustomWebApi",
+    "swagger": {
+      "swagger": "2.0",
+      "info": {
+        "title": "dga_CustomWebApi",
+        "version": "1.0"
+      },
+      "basePath": "/api/data/v9.2",
+      "paths": {
+        "/dga_CustomWebApi": {
+          "post": {
+            "operationId": "dga_CustomWebApi",
+            "parameters": [
+              {
+                "name": "tablename",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "guid1",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "format": "guid",
+                "x-ms-dataverse-type": "UniqueidentifierType",
+                "x-ms-csdl-type": "Edm.Guid"
+              },
+              {
+                "name": "action",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "targettable",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "role",
+                "in": "body",
+                "required": false,
+                "type": "number",
+                "x-ms-dataverse-type": "IntegerType",
+                "x-ms-csdl-type": "Edm.Int32"
+              },
+              {
+                "name": "endpoint",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "apikey",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "model",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "prompt",
+                "in": "body",
+                "required": false,
+                "type": "string",
+                "x-ms-dataverse-type": "StringType",
+                "x-ms-csdl-type": "Edm.String"
+              },
+              {
+                "name": "summarycategory",
+                "in": "body",
+                "required": false,
+                "type": "number",
+                "x-ms-dataverse-type": "IntegerType",
+                "x-ms-csdl-type": "Edm.Int32"
+              },
+              {
+                "name": "summarystage",
+                "in": "body",
+                "required": false,
+                "type": "number",
+                "x-ms-dataverse-type": "IntegerType",
+                "x-ms-csdl-type": "Edm.Int32"
+              },
+              {
+                "name": "summarytype",
+                "in": "body",
+                "required": false,
+                "type": "number",
+                "x-ms-dataverse-type": "IntegerType",
+                "x-ms-csdl-type": "Edm.Int32"
+              }
+            ],
+            "responses": {
+              "200": {
+                "description": "Success",
+                "schema": {
+                  "type": "object",
+                  "x-ms-dataverse-type": "LookupType",
+                  "x-ms-csdl-type": "mscrm.dga_CustomWebApiResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

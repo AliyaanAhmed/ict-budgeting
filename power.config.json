@@ -131,13 +131,11 @@
         },
         "cycles": {
           "entitySetName": "dga_cycles",
-          "logicalName": "dga_cycle",
-          "isHidden": false
+          "logicalName": "dga_cycle"
         },
         "ictbudgetinstances": {
           "entitySetName": "dga_ict_budget_instances",
-          "logicalName": "dga_ict_budget_instance",
-          "isHidden": false
+          "logicalName": "dga_ict_budget_instance"
         },
         "moduleconfigurations": {
           "entitySetName": "dga_module_configurations",
@@ -202,6 +200,11 @@
         "ictaisummaries": {
           "entitySetName": "dga_ict_ai_summaries",
           "logicalName": "dga_ict_ai_summary",
+          "isHidden": false
+        },
+        "environment_39a902ba": {
+          "entitySetName": "Environment",
+          "logicalName": "environment_39a902ba",
           "isHidden": false
         }
       },

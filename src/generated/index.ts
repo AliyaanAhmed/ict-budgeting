@@ -7,6 +7,7 @@
 export * as AccountsModel from './models/AccountsModel';
 export * as AuditsModel from './models/AuditsModel';
 export * as CommonModels from './models/CommonModels';
+export * as Dga_CustomWebApiModel from './models/Dga_CustomWebApiModel';
 export * as Dga_ai_promptsModel from './models/Dga_ai_promptsModel';
 export * as Dga_app_notificationsesModel from './models/Dga_app_notificationsesModel';
 export * as Dga_classificationsModel from './models/Dga_classificationsModel';
@@ -39,6 +40,7 @@ export * as TeamsModel from './models/TeamsModel';
 // Services
 export * from './services/AccountsService';
 export * from './services/AuditsService';
+export * from './services/Dga_CustomWebApiService';
 export * from './services/Dga_ai_promptsService';
 export * from './services/Dga_app_notificationsesService';
 export * from './services/Dga_classificationsService';
