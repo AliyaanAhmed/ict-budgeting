@@ -43,46 +43,81 @@ import { getStrategicPriorityOptions, type StrategicPriorityOption } from '@/ser
 import { getStoredSmeAssignments, getStoredStrategyTeam } from '@/services/dgeRoleContextService'
 import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 
-function AssistantSummary() {
+function AssistantSummary({ budgets }: { budgets: DgeBudgetRecord[] }) {
   const [open, setOpen] = useState(false)
+  const mismatchProjects = budgets.filter((budget) => getAiAlignmentState(budget) === 'mismatch')
+  const alignedProjects = budgets.filter((budget) => getAiAlignmentState(budget) === 'aligned')
+  const clarificationProjects = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending)
+  const activeSignalCount = mismatchProjects.length + clarificationProjects.length
+  const projectLabel = (count: number) => `${count} project${count === 1 ? '' : 's'}`
+  const renderProjectLinks = (projects: DgeBudgetRecord[]) => {
+    const visibleProjects = projects.slice(0, 8)
+    const hiddenCount = Math.max(0, projects.length - visibleProjects.length)
+
+    if (!projects.length) {
+      return (
+        <span className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+          No related projects
+        </span>
+      )
+    }
+
+    return (
+      <>
+        {visibleProjects.map((project) => (
+          <Link
+            key={project.id}
+            to={`/strategy-team/projects/${project.id}`}
+            className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]"
+          >
+            {project.budgetRefId || project.name}
+          </Link>
+        ))}
+        {hiddenCount > 0 ? (
+          <span className="rounded-full border border-[#D7E4F4] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+            +{hiddenCount} more
+          </span>
+        ) : null}
+      </>
+    )
+  }
+
   const sections = [
     {
       title: 'Priority Mismatch',
       icon: CircleAlert,
-      items: [
-        '18 projects likely mapped to wrong strategic priority',
-        'DoH has highest cluster: 5 projects',
-        'Cybersecurity most common correct priority',
-      ],
+      count: mismatchProjects.length,
+      tone: 'mismatch',
+      description:
+        mismatchProjects.length > 0
+          ? `${projectLabel(mismatchProjects.length)} have a difference between selected strategic priority/classification and AI suggested values. Review these before sending to SMEs.`
+          : 'No priority or classification mismatches are currently detected in the strategic alignment grid.',
+      projects: mismatchProjects,
     },
     {
-      title: 'Classification Issues',
-      icon: Layers,
-      items: [
-        '12 projects have weak or broad classification',
-        '"Platform Modernization" used too broadly in 4 cases',
-        '5 "Enterprise Systems" likely should be "Core Systems"',
-      ],
+      title: 'AI Aligned',
+      icon: CheckCircle2,
+      count: alignedProjects.length,
+      tone: 'aligned',
+      description:
+        alignedProjects.length > 0
+          ? `${projectLabel(alignedProjects.length)} match the AI suggested strategic priority and classification. These are lower-friction candidates for the next governance step.`
+          : 'No projects are currently fully aligned with AI suggested strategic priority and classification.',
+      projects: alignedProjects,
     },
     {
-      title: 'Routing Impact',
-      icon: Workflow,
-      items: [
-        '6 projects likely routed to wrong SME team',
-        '4 Security projects incorrectly going to Infrastructure Team',
-        '2 Data & AI projects misrouted to Innovation Team',
-      ],
-    },
-    {
-      title: 'Clarification Likelihood',
-      icon: Sparkles,
-      items: [
-        '9 projects likely need clarification before SME review',
-        '3 have weak descriptions, 4 have unclear scope',
-        '2 have insufficient supporting evidence',
-      ],
+      title: 'Clarification Pending',
+      icon: MessageSquare,
+      count: clarificationProjects.length,
+      tone: 'clarification',
+      description:
+        clarificationProjects.length > 0
+          ? `${projectLabel(clarificationProjects.length)} are currently paused for clarification. Resolve these threads before continuing strategic alignment or quality-check handoff.`
+          : 'No projects are currently paused for clarification in this strategic alignment view.',
+      projects: clarificationProjects,
     },
   ] as const
+  const assistantStatus = activeSignalCount > 0 ? `${activeSignalCount} signals` : 'All Clear'
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
@@ -99,11 +134,13 @@ function AssistantSummary() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Strategic Alignment Assistant</h2>
               <span className="rounded-full bg-[#FDF8FF] px-2.5 py-1 text-[11px] font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Action Required
+                {assistantStatus}
               </span>
             </div>
             <p className="mt-1 text-sm text-[#475569] dark:text-slate-300">
-              Focus first on projects with likely priority mismatch, broad classification, and wrong SME routing before they move deeper into DGE review.
+              {mismatchProjects.length > 0 || clarificationProjects.length > 0
+                ? `Focus on ${projectLabel(mismatchProjects.length)} with AI mismatch and ${projectLabel(clarificationProjects.length)} needing clarification before moving deeper into DGE review.`
+                : `${projectLabel(alignedProjects.length)} are currently AI aligned, with no mismatch or clarification signals detected.`}
             </p>
           </div>
         </div>
@@ -117,20 +154,34 @@ function AssistantSummary() {
               const Icon = section.icon
               return (
                 <div key={section.title} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F5EEFF] text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                       <Icon className="h-4 w-4" />
                     </div>
-                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{section.title}</p>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{section.title}:</p>
+                        <span
+                          className={cn(
+                            'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                            section.tone === 'mismatch' &&
+                              'border-[#F4B7BE] bg-[#FFF1F3] text-[#9F1239] dark:border-[#7F1D1D] dark:bg-[#3F1118] dark:text-[#FDA4AF]',
+                            section.tone === 'aligned' &&
+                              'border-[#A7E3C1] bg-[#F0FDF6] text-[#047857] dark:border-[#1F7A4B] dark:bg-[#103B28] dark:text-[#86EFAC]',
+                            section.tone === 'clarification' &&
+                              'border-[#FED7AA] bg-[#FFF7ED] text-[#C2410C] dark:border-[#7C2D12] dark:bg-[#3B1D0B] dark:text-[#FDBA74]'
+                          )}
+                        >
+                          {projectLabel(section.count)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-200">{section.description}</p>
+                      <div className="mt-2">
+                        <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">Related Projects</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">{renderProjectLinks(section.projects)}</div>
+                      </div>
+                    </div>
                   </div>
-                  <ul className="mt-3 space-y-2 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                    {section.items.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#A855F7]" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               )
             })}
@@ -251,6 +302,22 @@ function getAlignmentCellClass(alignmentState: 'mismatch' | 'aligned' | 'none') 
     return 'border border-[#A7E3C1] bg-[#F0FDF6] text-[#047857] dark:border-[#1F7A4B] dark:bg-[#103B28] dark:text-[#86EFAC]'
   }
   return 'text-[#0F172A] dark:text-white'
+}
+
+function getAlignmentBadgeClass(alignmentState: 'mismatch' | 'aligned' | 'none') {
+  if (alignmentState === 'mismatch') {
+    return 'border-[#F4B7BE] bg-[#FFF1F3] text-[#9F1239] dark:border-[#7F1D1D] dark:bg-[#3F1118] dark:text-[#FDA4AF]'
+  }
+  if (alignmentState === 'aligned') {
+    return 'border-[#A7E3C1] bg-[#F0FDF6] text-[#047857] dark:border-[#1F7A4B] dark:bg-[#103B28] dark:text-[#86EFAC]'
+  }
+  return 'border-[#DCE8F6] bg-[#F8FBFF] text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
+}
+
+function getAlignmentBadgeLabel(alignmentState: 'mismatch' | 'aligned' | 'none') {
+  if (alignmentState === 'mismatch') return 'Mismatch'
+  if (alignmentState === 'aligned') return 'AI Aligned'
+  return 'Not Available'
 }
 
 export default function StrategicAlignment() {
@@ -766,7 +833,7 @@ export default function StrategicAlignment() {
       description="Review submitted projects against strategic priorities. Identify misalignment, duplicates, and projects requiring follow-up."
     >
       <section className="space-y-5">
-        <AssistantSummary />
+        <AssistantSummary budgets={budgets} />
         {error ? (
           <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
             {error}
@@ -939,13 +1006,14 @@ export default function StrategicAlignment() {
                 </div>
 
                 <div className="mt-5 overflow-x-auto rounded-[12px] border border-[#DCE6F6] bg-white dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="grid min-w-[2240px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
+                <div className="grid min-w-[2520px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(270px,1.2fr)_minmax(200px,1fr)_minmax(150px,0.9fr)] gap-5 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
                     <span />
                     <span className="whitespace-nowrap text-left">Project Name</span>
                     <span className="whitespace-nowrap text-left">Strategic Priority</span>
                     <span className="whitespace-nowrap text-left">Strategic Priority Classification</span>
                     <span>Suggested Strategic Priority</span>
                     <span>Suggested Strategic Priority Classification</span>
+                    <span className="whitespace-nowrap text-left">AI Alignment</span>
                     <span className="whitespace-nowrap text-left">Status</span>
                     <span className="whitespace-nowrap text-left">Target SME</span>
                     <span className="whitespace-nowrap text-left">Budget</span>
@@ -991,7 +1059,7 @@ export default function StrategicAlignment() {
                         const canEditInline = budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
 
                         return (
-                        <div key={budget.id} className="group grid min-w-[2240px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(180px,1fr)_minmax(150px,0.9fr)] gap-5 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
+                        <div key={budget.id} className="group grid min-w-[2520px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(270px,1.2fr)_minmax(200px,1fr)_minmax(150px,0.9fr)] gap-5 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
                             <div className="pt-1">
                               <input
                                 type="checkbox"
@@ -1083,6 +1151,16 @@ export default function StrategicAlignment() {
                               </div>
                             </div>
                             <div className="pt-1">
+                              <span
+                                className={cn(
+                                  'inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-bold',
+                                  getAlignmentBadgeClass(aiAlignmentState)
+                                )}
+                              >
+                                {getAlignmentBadgeLabel(aiAlignmentState)}
+                              </span>
+                            </div>
+                            <div className="pt-1">
                               <StrategyPill
                                 tone={
                                   budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
@@ -1094,7 +1172,7 @@ export default function StrategicAlignment() {
                                         ? 'teal'
                                         : 'blue'
                                 }
-                                className="whitespace-nowrap"
+                                className="max-w-full whitespace-normal break-words text-center leading-5"
                               >
                                 {budget.statusLabel}
                               </StrategyPill>

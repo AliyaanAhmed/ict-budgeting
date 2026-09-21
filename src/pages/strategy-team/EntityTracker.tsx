@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
 import { useToast } from '@/context/ToastContext'
 import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
+import { Dga_ict_ai_summariesService } from '@/generated/services/Dga_ict_ai_summariesService'
+import type { Dga_ict_ai_summaries } from '@/generated/models/Dga_ict_ai_summariesModel'
 import {
   DGE_BUDGET_STATUS,
   DGE_INSTANCE_STATUS,
@@ -25,6 +27,14 @@ import {
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
 type ExtendMode = 'allocation' | 'utilization'
+type EntityAiSummary = {
+  id: string
+  name: string | null
+  referenceRecordId: string
+  modifiedOn: string | null
+  responseJson: string
+  parsed: Record<string, unknown> | null
+}
 
 const stepIcons = {
   Planning: Clock3,
@@ -36,6 +46,238 @@ const stepIcons = {
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10', className)} />
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
+}
+
+function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
+  if (!value?.trim()) return null
+
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  } catch {
+    return null
+  }
+}
+
+function getNestedObject(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return null
+    current = (current as Record<string, unknown>)[key]
+  }
+  return current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : null
+}
+
+function getProjectIds(source: Record<string, unknown> | null, path: string[]) {
+  const node = getNestedObject(source, path)
+  const projectIds = node?.project_ids
+  return Array.isArray(projectIds) ? projectIds.filter((item): item is string => typeof item === 'string') : []
+}
+
+function getStringValue(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return ''
+    current = (current as Record<string, unknown>)[key]
+  }
+  return typeof current === 'string' ? current.trim() : ''
+}
+
+function getStringArray(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return []
+    current = (current as Record<string, unknown>)[key]
+  }
+  return Array.isArray(current) ? current.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+}
+
+function getHighlightTemplates(source: Record<string, unknown> | null) {
+  const highlights = source?.cycle_highlights
+  if (!Array.isArray(highlights)) return []
+  const values = getTemplateValueMap(source)
+
+  return highlights
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const highlight = item as Record<string, unknown>
+      const includeWhen = highlight.include_when
+      if (includeWhen && typeof includeWhen === 'object') {
+        const condition = includeWhen as Record<string, unknown>
+        const metric = typeof condition.metric === 'string' ? condition.metric : ''
+        const operator = typeof condition.operator === 'string' ? condition.operator : ''
+        const value = typeof condition.value === 'number' ? condition.value : 0
+        const current = values[metric as keyof typeof values] ?? 0
+        const shouldInclude =
+          operator === '>'
+            ? current > value
+            : operator === '>='
+              ? current >= value
+              : operator === '<'
+                ? current < value
+                : operator === '<='
+                  ? current <= value
+                  : operator === '=='
+                    ? current === value
+                    : true
+        if (!shouldInclude) return null
+      }
+
+      return highlight.text_template
+    })
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+function getTemplateValueMap(source: Record<string, unknown> | null) {
+  const calculationSources = getNestedObject(source, ['calculation_sources'])
+  const planning = getNestedObject(calculationSources, ['planning'])
+  const allocation = getNestedObject(calculationSources, ['allocation'])
+  const utilization = getNestedObject(calculationSources, ['utilization'])
+  const entityIds = calculationSources?.entity_ids
+
+  return {
+    total_entity_count: Array.isArray(entityIds) ? entityIds.length : 0,
+    submitted_to_dge_count: getStringArray(planning, ['submitted_to_dge_entity_ids']).length,
+    not_submitted_to_dge_count: getStringArray(planning, ['not_submitted_to_dge_entity_ids']).length,
+    under_dge_review_count: getStringArray(planning, ['under_dge_review_entity_ids']).length,
+    dge_review_completed_count: getStringArray(planning, ['dge_review_completed_entity_ids']).length,
+    currently_in_allocation_count: getStringArray(allocation, ['currently_in_allocation_entity_ids']).length,
+    allocation_not_started_count: getStringArray(allocation, ['not_started_entity_ids']).length,
+    allocation_in_progress_count: getStringArray(allocation, ['in_progress_entity_ids']).length,
+    allocation_with_approver_count: getStringArray(allocation, ['with_approver_entity_ids']).length,
+    allocation_partially_completed_count: getStringArray(allocation, ['partially_completed_entity_ids']).length,
+    allocation_completed_count: getStringArray(allocation, ['completed_entity_ids']).length,
+    currently_in_utilization_count: getStringArray(utilization, ['currently_in_utilization_entity_ids']).length,
+    utilization_in_progress_count: getStringArray(utilization, ['in_progress_entity_ids']).length,
+    utilization_partially_completed_count: getStringArray(utilization, ['partially_completed_entity_ids']).length,
+    utilization_completed_count: getStringArray(utilization, ['completed_entity_ids']).length,
+  }
+}
+
+function resolveSummaryTemplate(template: string, source: Record<string, unknown> | null) {
+  const values = getTemplateValueMap(source)
+  return template.replace(/\{([^}]+)\}/g, (_, key: string) => String(values[key as keyof typeof values] ?? 0))
+}
+
+function extractOpenAiOutputJson(responseJson: string) {
+  const wrapper = parseJsonObject(responseJson)
+  if (!wrapper) return null
+
+  const output = wrapper.output
+  if (Array.isArray(output)) {
+    for (const outputItem of output) {
+      if (!outputItem || typeof outputItem !== 'object') continue
+      const content = (outputItem as Record<string, unknown>).content
+      if (!Array.isArray(content)) continue
+
+      for (const contentItem of content) {
+        if (!contentItem || typeof contentItem !== 'object') continue
+        const text = (contentItem as Record<string, unknown>).text
+        const parsedText = typeof text === 'string' ? parseJsonObject(text) : null
+        if (parsedText) return parsedText
+      }
+    }
+  }
+
+  return wrapper
+}
+
+function toEntityAiSummary(record: Dga_ict_ai_summaries): EntityAiSummary | null {
+  if (!record.dga_ict_ai_summaryid || !record._dga_referencerecordid_value) return null
+  const responseJson = typeof record.dga_response_json === 'string' ? record.dga_response_json : ''
+
+  return {
+    id: record.dga_ict_ai_summaryid,
+    name: record.dga_name ?? null,
+    referenceRecordId: record._dga_referencerecordid_value,
+    modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
+    responseJson,
+    parsed: extractOpenAiOutputJson(responseJson),
+  }
+}
+
+async function getEntityAiSummariesByInstanceIds(instanceIds: string[]) {
+  const summariesByInstance = new Map<string, EntityAiSummary>()
+  const uniqueInstanceIds = Array.from(new Set(instanceIds.filter(Boolean)))
+  if (!uniqueInstanceIds.length) return summariesByInstance
+
+  const chunks = chunkArray(uniqueInstanceIds, 15)
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      Dga_ict_ai_summariesService.getAll({
+        select: [
+          'dga_ict_ai_summaryid',
+          '_dga_referencerecordid_value',
+          'dga_response_json',
+          'dga_name',
+          'dga_summary_category',
+          'dga_summary_type',
+          'modifiedon',
+          'createdon',
+        ],
+        filter: `(${chunk.map((instanceId) => `_dga_referencerecordid_value eq ${instanceId}`).join(' or ')})`,
+        orderBy: ['modifiedon desc', 'createdon desc'],
+        maxPageSize: 500,
+      })
+    )
+  )
+
+  results
+    .flatMap((result) => result.data ?? [])
+    .map(toEntityAiSummary)
+    .filter((summary): summary is EntityAiSummary => Boolean(summary))
+    .forEach((summary) => {
+      if (!summariesByInstance.has(summary.referenceRecordId)) {
+        summariesByInstance.set(summary.referenceRecordId, summary)
+      }
+    })
+
+  return summariesByInstance
+}
+
+function getCurrentCycleIdFromStorage() {
+  if (typeof window === 'undefined') return null
+  const rawCycle = window.sessionStorage.getItem('currentCycle')
+  if (!rawCycle) return null
+
+  try {
+    const parsed = JSON.parse(rawCycle) as { id?: unknown }
+    return typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : null
+  } catch {
+    return null
+  }
+}
+
+async function getCycleAiSummaryByCycleId(cycleId: string) {
+  if (!cycleId) return null
+
+  const result = await Dga_ict_ai_summariesService.getAll({
+    select: [
+      'dga_ict_ai_summaryid',
+      '_dga_referencerecordid_value',
+      'dga_response_json',
+      'dga_name',
+      'dga_summary_category',
+      'dga_summary_type',
+      'modifiedon',
+      'createdon',
+    ],
+    filter: `_dga_referencerecordid_value eq ${cycleId}`,
+    orderBy: ['modifiedon desc', 'createdon desc'],
+    top: 1,
+    maxPageSize: 1,
+  })
+
+  const record = result.data?.[0]
+  return record ? toEntityAiSummary(record) : null
 }
 
 function getActiveStepIndex(instance: DgeInstanceRecord) {
@@ -174,6 +416,136 @@ function getEntityPhaseStats(instance: DgeInstanceRecord) {
     { label: 'Approval', value: countStatuses(instance, [DGE_BUDGET_STATUS.underApproverReview, DGE_BUDGET_STATUS.approvedByApprover]) },
     { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
   ]
+}
+
+function getEntityAiInsightRows(summary: EntityAiSummary | null) {
+  const parsed = summary?.parsed
+  if (!parsed) return []
+
+  const highRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'issue_severity', 'high'])
+  const evidenceRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'ai_review_flags', 'evidence_risk'])
+  const strategicRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'ai_review_flags', 'strategic_alignment_risk'])
+  const clarificationProjects = getProjectIds(parsed, ['portfolio_statistics', 'clarification', 'attention_union'])
+  const recommendedActions = parsed.recommended_next_actions
+  const firstAction =
+    Array.isArray(recommendedActions)
+      ? recommendedActions
+          .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>).text : null))
+          .find((text): text is string => typeof text === 'string' && text.trim().length > 0)
+      : null
+
+  return [
+    {
+      label: 'High Severity',
+      count: highRiskProjects.length,
+      text:
+        highRiskProjects.length > 0
+          ? `${highRiskProjects.length} project${highRiskProjects.length === 1 ? '' : 's'} have high-severity AI findings and should be prioritized for governance follow-up.`
+          : 'No high-severity AI findings are currently reported for this entity.',
+    },
+    {
+      label: 'Evidence Risk',
+      count: evidenceRiskProjects.length,
+      text:
+        evidenceRiskProjects.length > 0
+          ? `${evidenceRiskProjects.length} project${evidenceRiskProjects.length === 1 ? '' : 's'} have evidence gaps or weak supporting documentation.`
+          : 'No evidence-risk projects are currently reported for this entity.',
+    },
+    {
+      label: 'Strategic Alignment Risk',
+      count: strategicRiskProjects.length,
+      text:
+        strategicRiskProjects.length > 0
+          ? `${strategicRiskProjects.length} project${strategicRiskProjects.length === 1 ? '' : 's'} may need strategic priority or classification correction.`
+          : 'No strategic alignment risks are currently reported for this entity.',
+    },
+    {
+      label: 'Clarification Attention',
+      count: clarificationProjects.length,
+      text:
+        clarificationProjects.length > 0
+          ? `${clarificationProjects.length} project${clarificationProjects.length === 1 ? '' : 's'} either have clarifications raised or are likely to need clarification.`
+          : 'No clarification attention items are currently reported for this entity.',
+    },
+    firstAction
+      ? {
+          label: 'Recommended Action',
+          count: null,
+          text: firstAction,
+        }
+      : null,
+  ].filter((item): item is { label: string; count: number | null; text: string } => Boolean(item))
+}
+
+function EntityAiPortfolioInsights({
+  entity,
+  summary,
+  loading,
+  error,
+}: {
+  entity: DgeInstanceRecord
+  summary: EntityAiSummary | null
+  loading: boolean
+  error: string | null
+}) {
+  const rows = getEntityAiInsightRows(summary)
+
+  return (
+    <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
+          <Sparkles className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-[#0F172A] dark:text-white">AI Portfolio Insights</p>
+            {summary?.name ? (
+              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                {summary.name}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.name}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-[58px] rounded-[16px] bg-white/80 dark:bg-white/10" />
+          ))
+        ) : error ? (
+          <div className="rounded-[16px] border border-[#FECACA] bg-white px-3 py-2.5 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-white/5 dark:text-[#FCA5A5]">
+            {error}
+          </div>
+        ) : rows.length > 0 ? (
+          rows.slice(0, 5).map((insight) => (
+            <div key={`${insight.label}-${insight.text}`} className="flex items-start gap-2 rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#A855F7]" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{insight.label}</p>
+                  {typeof insight.count === 'number' ? (
+                    <span className="rounded-full border border-[#E2E8F0] bg-[#F8FBFF] px-2 py-0.5 text-[11px] font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                      {insight.count}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-sm leading-6 text-[#475569] dark:text-slate-200">{insight.text}</p>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">No AI summary yet</p>
+            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+              AI portfolio insights have not been generated for this entity yet.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function formatShortDate(value: string | null | undefined) {
@@ -479,8 +851,33 @@ function ExtendPortfolioModal({
   )
 }
 
-function EntityTrackerSummary() {
+function EntityTrackerSummary({
+  summary,
+  loading,
+  error,
+}: {
+  summary: EntityAiSummary | null
+  loading: boolean
+  error: string | null
+}) {
   const [expanded, setExpanded] = useState(false)
+  const parsed = summary?.parsed ?? null
+  const executiveSummaryTemplate = getStringValue(parsed, ['cycle_summary', 'executive_summary_template'])
+  const executiveSummary = executiveSummaryTemplate
+    ? resolveSummaryTemplate(executiveSummaryTemplate, parsed)
+    : 'Portfolio-level progress across every participating entity, with stage pressure, routing signals, and governance focus.'
+  const highlights = getHighlightTemplates(parsed)
+  const resolvedHighlights =
+    highlights.length > 0
+      ? highlights.map((item) => resolveSummaryTemplate(item, parsed))
+      : [
+          getStringValue(parsed, ['cycle_summary', 'planning_summary_template']),
+          getStringValue(parsed, ['cycle_summary', 'allocation_summary_template']),
+          getStringValue(parsed, ['cycle_summary', 'utilization_summary_template']),
+        ].filter(Boolean).map((item) => resolveSummaryTemplate(item, parsed))
+  const recommendedActions = getStringArray(parsed, ['recommended_next_actions']).map((item) => resolveSummaryTemplate(item, parsed))
+  const displayItems = [...resolvedHighlights, ...recommendedActions].filter(Boolean)
+
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
       <button
@@ -496,11 +893,11 @@ function EntityTrackerSummary() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Entity Tracker Summary</h2>
               <span className="inline-flex rounded-full bg-[#F5EEFF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Governing View
+                {loading ? 'Loading' : summary?.name ?? 'Governing View'}
               </span>
             </div>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-              Portfolio-level progress across every participating entity, with stage pressure, routing signals, and governance focus.
+              {loading ? 'Loading latest AI cycle summary...' : error ? 'Unable to load AI cycle summary right now.' : executiveSummary}
             </p>
           </div>
         </div>
@@ -509,17 +906,32 @@ function EntityTrackerSummary() {
 
       {expanded ? (
         <div className="border-t border-[#DDEBFF] px-6 py-5 dark:border-white/10">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {[
-              'Planning pressure remains highest where ADGE submissions are still incomplete.',
-              'Entities already in DGE review should be watched for routing and clarification bottlenecks.',
-              'Allocation and utilization readiness depends on how smoothly projects clear review completed status.',
-            ].map((item) => (
-              <div key={item} className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                {item}
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <SkeletonBlock key={index} className="h-24 rounded-[18px] bg-[#FDF8FF] dark:bg-white/10" />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+              {error}
+            </div>
+          ) : displayItems.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {displayItems.slice(0, 6).map((item) => (
+                <div key={item} className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                  {item}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-white/5">
+              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">No AI cycle summary yet</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                AI Entity Tracker Summary has not been generated for the selected cycle yet.
+              </p>
+            </div>
+          )}
         </div>
       ) : null}
     </section>
@@ -688,6 +1100,12 @@ export default function EntityTracker() {
   const { selectedCycle } = useCycle()
   const [activeStage, setActiveStage] = useState<(typeof stages)[number]>('All Stages')
   const [instances, setInstances] = useState<DgeInstanceRecord[]>([])
+  const [aiSummariesByInstance, setAiSummariesByInstance] = useState<Map<string, EntityAiSummary>>(new Map())
+  const [aiSummariesLoading, setAiSummariesLoading] = useState(false)
+  const [aiSummariesError, setAiSummariesError] = useState<string | null>(null)
+  const [cycleAiSummary, setCycleAiSummary] = useState<EntityAiSummary | null>(null)
+  const [cycleAiSummaryLoading, setCycleAiSummaryLoading] = useState(false)
+  const [cycleAiSummaryError, setCycleAiSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [extendModalOpen, setExtendModalOpen] = useState(false)
@@ -695,6 +1113,12 @@ export default function EntityTracker() {
   const loadPortfolio = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!selectedCycle?.id) {
       setInstances([])
+      setAiSummariesByInstance(new Map())
+      setAiSummariesError(null)
+      setAiSummariesLoading(false)
+      setCycleAiSummary(null)
+      setCycleAiSummaryError(null)
+      setCycleAiSummaryLoading(false)
       setLoading(false)
       return
     }
@@ -704,8 +1128,35 @@ export default function EntityTracker() {
     try {
       const portfolio = await getDgePortfolioData(selectedCycle.id)
       setInstances(portfolio.instances)
+      setAiSummariesLoading(true)
+      setCycleAiSummaryLoading(true)
+      setAiSummariesError(null)
+      setCycleAiSummaryError(null)
+      try {
+        const cycleId = getCurrentCycleIdFromStorage() ?? selectedCycle.id
+        const [summaries, cycleSummary] = await Promise.all([
+          getEntityAiSummariesByInstanceIds(portfolio.instances.map((instance) => instance.id)),
+          getCycleAiSummaryByCycleId(cycleId),
+        ])
+        setAiSummariesByInstance(summaries)
+        setCycleAiSummary(cycleSummary)
+      } catch (summaryError) {
+        setAiSummariesByInstance(new Map())
+        setCycleAiSummary(null)
+        setAiSummariesError(summaryError instanceof Error ? summaryError.message : 'Unable to load AI portfolio insights.')
+        setCycleAiSummaryError(summaryError instanceof Error ? summaryError.message : 'Unable to load AI entity tracker summary.')
+      } finally {
+        setAiSummariesLoading(false)
+        setCycleAiSummaryLoading(false)
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker data.')
+      setAiSummariesByInstance(new Map())
+      setAiSummariesError(null)
+      setAiSummariesLoading(false)
+      setCycleAiSummary(null)
+      setCycleAiSummaryError(null)
+      setCycleAiSummaryLoading(false)
     } finally {
       if (!options.silent) setLoading(false)
     }
@@ -759,7 +1210,11 @@ export default function EntityTracker() {
       }
     >
       <section className="space-y-5">
-        <EntityTrackerSummary />
+        <EntityTrackerSummary
+          summary={cycleAiSummary}
+          loading={cycleAiSummaryLoading}
+          error={cycleAiSummaryError}
+        />
         {error ? (
           <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
             {error}
@@ -897,29 +1352,12 @@ export default function EntityTracker() {
                           </div>
                         </div>
 
-                        <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
-                              <Sparkles className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[#0F172A] dark:text-white">AI Portfolio Insights</p>
-                              <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.name}</p>
-                            </div>
-                          </div>
-                          <div className="mt-4 space-y-2">
-                            {[
-                              `${planningRisk} projects are still in planning-side workflow states.`,
-                              `${dgeReviewCount} projects remain active in DGE review stages for this entity.`,
-                              `${reviewCompletedCount} projects have cleared DGE review and are ready for the next stage.`,
-                            ].map((insight) => (
-                              <div key={insight} className="flex items-start gap-2 rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#A855F7]" />
-                                <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">{insight}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        <EntityAiPortfolioInsights
+                          entity={entity}
+                          summary={aiSummariesByInstance.get(entity.id) ?? null}
+                          loading={aiSummariesLoading}
+                          error={aiSummariesError}
+                        />
                       </div>
                     </div>
                   </CardContent>
