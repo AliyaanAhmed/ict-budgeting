@@ -394,19 +394,14 @@ function getEntityPhaseStats(instance: DgeInstanceRecord) {
   }
 
   if (phase === 'Utilization') {
-    const enteredCount = instance.budgets.filter(
-      (budget) => budget.utilizedBudget > 0 || budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted
-    ).length
-
     return [
-      { label: 'Utilization Entered', value: `${enteredCount} / ${instance.budgets.length}` },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
+      { label: 'Utilized Budget', value: formatCurrency(sumBudgetField(instance, 'utilizedBudget')) },
       { label: 'Q1 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ1')) },
       { label: 'Q2 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ2')) },
       { label: 'Q3 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ3')) },
       { label: 'Q4 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ4')) },
-      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
-      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
-      { label: 'Utilization Budget', value: formatCurrency(sumBudgetField(instance, 'utilizedBudget')) },
     ]
   }
 
@@ -437,22 +432,25 @@ function getEntityAiInsightRows(summary: EntityAiSummary | null) {
   return [
     {
       label: 'High Severity',
+      projectIds: highRiskProjects,
       count: highRiskProjects.length,
       text:
         highRiskProjects.length > 0
-          ? `${highRiskProjects.length} project${highRiskProjects.length === 1 ? '' : 's'} have high-severity AI findings and should be prioritized for governance follow-up.`
+          ? `${highRiskProjects.length} project${highRiskProjects.length === 1 ? ' has' : 's have'} high-severity AI findings and should be prioritized for governance follow-up.`
           : 'No high-severity AI findings are currently reported for this entity.',
     },
     {
       label: 'Evidence Risk',
+      projectIds: evidenceRiskProjects,
       count: evidenceRiskProjects.length,
       text:
         evidenceRiskProjects.length > 0
-          ? `${evidenceRiskProjects.length} project${evidenceRiskProjects.length === 1 ? '' : 's'} have evidence gaps or weak supporting documentation.`
+          ? `${evidenceRiskProjects.length} project${evidenceRiskProjects.length === 1 ? ' has' : 's have'} evidence gaps or weak supporting documentation.`
           : 'No evidence-risk projects are currently reported for this entity.',
     },
     {
       label: 'Strategic Alignment Risk',
+      projectIds: strategicRiskProjects,
       count: strategicRiskProjects.length,
       text:
         strategicRiskProjects.length > 0
@@ -461,20 +459,22 @@ function getEntityAiInsightRows(summary: EntityAiSummary | null) {
     },
     {
       label: 'Clarification Attention',
+      projectIds: clarificationProjects,
       count: clarificationProjects.length,
       text:
         clarificationProjects.length > 0
-          ? `${clarificationProjects.length} project${clarificationProjects.length === 1 ? '' : 's'} either have clarifications raised or are likely to need clarification.`
+          ? `${clarificationProjects.length} project${clarificationProjects.length === 1 ? ' has an open or potential clarification' : 's have open or potential clarifications'}.`
           : 'No clarification attention items are currently reported for this entity.',
     },
     firstAction
       ? {
           label: 'Recommended Action',
+          projectIds: [] as string[],
           count: null,
           text: firstAction,
         }
       : null,
-  ].filter((item): item is { label: string; count: number | null; text: string } => Boolean(item))
+  ].filter((item): item is { label: string; count: number | null; text: string; projectIds: string[] } => Boolean(item))
 }
 
 function EntityAiPortfolioInsights({
@@ -532,6 +532,27 @@ function EntityAiPortfolioInsights({
                   ) : null}
                 </div>
                 <p className="mt-0.5 text-sm leading-6 text-[#475569] dark:text-slate-200">{insight.text}</p>
+                {insight.projectIds.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">Related Projects</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {[...new Set(insight.projectIds)].map((projectId) => {
+                        const normalizeId = (value: string) => value.trim().replace(/[{}]/g, '').toLowerCase()
+                        const project = entity.budgets.find((budget) =>
+                          normalizeId(budget.id) === normalizeId(projectId) ||
+                          normalizeId(budget.budgetRefId || '') === normalizeId(projectId)
+                        )
+                        return project ? (
+                          <Link key={projectId} to={`/strategy-team/projects/${project.id}`} title={project.name} className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]">
+                            {project.budgetRefId || project.name}
+                          </Link>
+                        ) : (
+                          <span key={projectId} title="This project is not available in the current entity portfolio." className="rounded-full border border-[#E2E8F0] px-2.5 py-1 text-[11px] text-[#64748B] dark:border-white/10 dark:text-slate-400">{projectId}</span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -1009,13 +1030,13 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
   return (
     <div className="space-y-4">
       <div className="rounded-[20px] border border-[#DDEBFF] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#1E293B]">
-        <div className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <ol className="grid min-w-0 grid-cols-1 sm:grid-cols-5">
           {stepStages.map((stage, index) => {
             const StageIcon = stepIcons[stage]
             const active = index <= activeIndex
             return (
-              <div key={stage} className="flex min-w-0 flex-1 items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
+              <li key={stage} aria-current={index === activeIndex ? 'step' : undefined} className="relative min-w-0 pb-6 last:pb-0 sm:pb-0">
+                <div className="relative z-10 flex min-w-0 items-center gap-3 sm:flex-col sm:gap-2 sm:px-2">
                   <div
                     className={cn(
                       'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold transition-all duration-200',
@@ -1026,23 +1047,21 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
                   >
                     <StageIcon className="h-4.5 w-4.5" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{stage}</p>
-                    <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-400">{active ? 'Active' : 'Upcoming'}</p>
+                  <div className="min-w-0 sm:w-full sm:text-center">
+                    <p className="whitespace-normal break-words text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">{stage}</p>
                   </div>
                 </div>
                 {index < stepStages.length - 1 ? (
-                  <div className="mx-2 h-0.5 min-w-[18px] flex-1 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                  <div aria-hidden="true" className="absolute bottom-0 left-5 top-10 w-0.5 -translate-x-1/2 rounded-full bg-[#EEF3F8] dark:bg-white/10 sm:bottom-auto sm:left-[calc(50%+20px)] sm:top-5 sm:h-0.5 sm:w-[calc(100%-40px)] sm:translate-x-0">
                     <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{ width: index < activeIndex ? '100%' : '0%', backgroundColor: '#286CFF' }}
+                      className={cn('h-full w-full rounded-full bg-[#286CFF] transition-opacity duration-300', index < activeIndex ? 'opacity-100' : 'opacity-0')}
                     />
                   </div>
                 ) : null}
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ol>
       </div>
 
       <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
@@ -1328,6 +1347,11 @@ export default function EntityTracker() {
                       </div>
 
                       <div className="mt-4">
+                        {getInstanceStageFilterLabel(entity.statuscode) === 'Utilization' && (
+                          <p className="mb-3 text-xs text-[#64748B] dark:text-slate-400">
+                            Utilization Entered: {entity.budgets.filter((budget) => budget.utilizedBudget > 0 || budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted).length} / {entity.budgets.length} Projects
+                          </p>
+                        )}
                         <EntityStageTracker instance={entity} />
                       </div>
 
@@ -1342,7 +1366,8 @@ export default function EntityTracker() {
                               { label: 'Planning', value: planningRisk },
                               { label: 'DGE Review', value: dgeReviewCount },
                               { label: 'Review Completed', value: reviewCompletedCount },
-                              { label: 'Allocation / Utilization', value: allocationCount + utilizationCount },
+                              { label: 'Allocation', value: allocationCount },
+                              { label: 'Utilization', value: utilizationCount },
                             ].map((item) => (
                               <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
                                 <p className="text-[12px] font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>

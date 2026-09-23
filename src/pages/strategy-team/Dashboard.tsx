@@ -521,14 +521,13 @@ function CycleProgressExplorer({
       budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
     ).length
     const published = instances.filter((instance) => instance.statuscode === DGE_INSTANCE_STATUS.published).length
-    const total = Math.max(1, budgets.length + planningNotStarted)
     return [
-      { label: 'Planning Not Started', count: planningNotStarted, unit: 'entities', progress: Math.round((planningNotStarted / total) * 100) },
-      { label: 'Drafting Projects', count: draftingProjects, progress: Math.round((draftingProjects / total) * 100) },
-      { label: 'Submitted to Reviewer', count: submittedToReviewer, progress: Math.round((submittedToReviewer / total) * 100) },
-      { label: 'Submitted to Approver', count: submittedToApprover, progress: Math.round((submittedToApprover / total) * 100) },
-      { label: 'DGE Review', count: dgeReview, progress: Math.round((dgeReview / total) * 100) },
-      { label: 'Published', count: published, unit: 'entities', progress: Math.round((published / total) * 100) },
+      { label: 'Planning Not Started', count: planningNotStarted, unit: 'entities' },
+      { label: 'Drafting Projects', count: draftingProjects },
+      { label: 'Submitted to Reviewer', count: submittedToReviewer },
+      { label: 'Submitted to Approver', count: submittedToApprover },
+      { label: 'DGE Review', count: dgeReview },
+      { label: 'Published', count: published, unit: 'entities' },
     ]
   }, [budgets, instances])
 
@@ -550,16 +549,17 @@ function CycleProgressExplorer({
   }, [utilizationBudgets])
 
   const utilizationQuarters = useMemo(() => {
-    const utilizedTotal = budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0)
-    const allocatedTotal = budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0)
-    const baseProgress = allocatedTotal > 0 ? Math.round((utilizedTotal / allocatedTotal) * 100) : 0
+    const allocatedTotal = utilizationBudgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0)
     return [
-      { label: 'Q1', value: Math.min(100, baseProgress), amount: utilizedTotal * 0.25 },
-      { label: 'Q2', value: Math.min(100, Math.round(baseProgress * 0.75)), amount: utilizedTotal * 0.25 },
-      { label: 'Q3', value: Math.min(100, Math.round(baseProgress * 0.5)), amount: utilizedTotal * 0.25 },
-      { label: 'Q4', value: Math.min(100, Math.round(baseProgress * 0.25)), amount: utilizedTotal * 0.25 },
-    ]
-  }, [budgets])
+      { label: 'Q1', field: 'utilizedBudgetQ1' as const },
+      { label: 'Q2', field: 'utilizedBudgetQ2' as const },
+      { label: 'Q3', field: 'utilizedBudgetQ3' as const },
+      { label: 'Q4', field: 'utilizedBudgetQ4' as const },
+    ].map((quarter) => {
+      const amount = utilizationBudgets.reduce((sum, budget) => sum + (budget[quarter.field] ?? 0), 0)
+      return { label: quarter.label, amount, value: allocatedTotal > 0 ? Math.round(amount / allocatedTotal * 100) : null }
+    })
+  }, [utilizationBudgets])
 
   const stageMeta = useMemo(() => {
     const planningActive = planningBudgets.length
@@ -567,7 +567,9 @@ function CycleProgressExplorer({
     const reviewCompleted = dgeReviewSteps.find((step) => step.label === 'Review Completed')?.current ?? 0
     const allocationActive = allocationBudgets.length
     const utilizationActive = utilizationBudgets.length
-    const utilizationProgress = utilizationQuarters.length ? Math.round(utilizationQuarters.reduce((sum, quarter) => sum + quarter.value, 0) / utilizationQuarters.length) : 0
+    const allocatedTotal = utilizationBudgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0)
+    const utilizedTotal = utilizationBudgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0)
+    const utilizationProgress = allocatedTotal > 0 ? Math.min(100, Math.round(utilizedTotal / allocatedTotal * 100)) : 0
 
     return [
       { key: 'planning' as const, number: '01', eyebrow: 'Planning', title: 'Planning', subtitle: 'Projects moving from drafting to DGE submission', count: planningActive, unit: 'projects', progress: Math.min(100, Math.round(((planningSteps[2]?.count ?? 0) + (planningSteps[3]?.count ?? 0) + (planningSteps[4]?.count ?? 0)) / Math.max(1, planningActive) * 100)), accent: '#286CFF', soft: '#EEF5FF' },
@@ -577,7 +579,7 @@ function CycleProgressExplorer({
     ]
   }, [allocationBudgets.length, allocationSteps, dgeReviewSteps, planningBudgets.length, planningSteps, utilizationBudgets.length, utilizationQuarters])
 
-  const visibleStage = hoverStage ?? activeStage
+  const visibleStage = activeStage
   const active = stageMeta.find((stage) => stage.key === visibleStage) ?? stageMeta[1]
   const dominantStage = stageMeta.find((stage) => stage.count > 0)?.key ?? 'planning'
   const activeStageBudgets =
@@ -653,10 +655,15 @@ function CycleProgressExplorer({
               <button
                 key={stage.key}
                 type="button"
-                onMouseEnter={() => setHoverStage(stage.key)}
+                onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoverStage(stage.key) }}
                 onFocus={() => setHoverStage(stage.key)}
                 onBlur={() => setHoverStage(null)}
-                onClick={() => setActiveStage(stage.key)}
+                aria-pressed={selected}
+                onClick={() => {
+                  didAutoSelectStage.current = true
+                  setHoverStage(null)
+                  setActiveStage(stage.key)
+                }}
                 className={cn(
                   'group relative min-w-0 overflow-hidden rounded-[22px] border px-4 py-4 text-left outline-none transition-[flex-grow,border-color,box-shadow,background-color] duration-500 ease-out will-change-[flex-grow] focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10 xl:flex-1',
                   highlighted
@@ -712,8 +719,8 @@ function CycleProgressExplorer({
           })}
         </div>
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,0.65fr)]">
-          <div key={active.key} className="animate-[cyclePanelIn_0.36s_cubic-bezier(0.2,0.8,0.2,1)_both] rounded-[26px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+        <div className="mt-5 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+          <div key={active.key} className="min-w-0 animate-[cyclePanelIn_0.36s_cubic-bezier(0.2,0.8,0.2,1)_both] rounded-[26px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: active.accent }}>Stage {active.number}</p>
@@ -788,15 +795,12 @@ function CycleProgressExplorer({
             </div>
 
             {visibleStage === 'planning' ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                 {planningSteps.map((step) => (
                   <div key={step.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
                     <p className="min-h-10 text-sm font-bold text-[#0F172A] dark:text-white">{step.label}</p>
                     <p className="mt-3 text-3xl font-bold" style={{ color: active.accent }}>{step.count}</p>
                     <p className="text-xs text-[#64748B] dark:text-slate-300">{step.unit ?? 'projects'}</p>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
-                      <span className="block h-full rounded-full transition-[width] duration-700" style={{ width: `${step.progress}%`, backgroundColor: active.accent }} />
-                    </div>
                   </div>
                 ))}
               </div>
@@ -835,9 +839,6 @@ function CycleProgressExplorer({
                     <p className="text-sm font-bold text-[#0F172A] dark:text-white">{step.label}</p>
                     <p className="mt-5 text-3xl font-bold" style={{ color: active.accent }}>{step.count}</p>
                     <p className="text-xs text-[#64748B] dark:text-slate-300">projects</p>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
-                      <span className="block h-full rounded-full transition-[width] duration-700" style={{ width: `${step.progress}%`, backgroundColor: active.accent }} />
-                    </div>
                   </div>
                 ))}
               </div>
@@ -847,13 +848,13 @@ function CycleProgressExplorer({
                   <div key={quarter.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-bold text-[#0F172A] dark:text-white">{quarter.label} Utilization</p>
-                      <StrategyPill tone={quarter.value >= 75 ? 'teal' : quarter.value >= 40 ? 'blue' : 'amber'}>{quarter.value}%</StrategyPill>
+                      {quarter.value !== null && <StrategyPill tone="blue">{quarter.value}%</StrategyPill>}
                     </div>
                     <div className="mt-4 flex items-center justify-between gap-4">
-                      <DonutChart value={quarter.value} accent={active.accent} />
+                      {quarter.value !== null && <DonutChart value={Math.min(100, Math.max(0, quarter.value))} accent={active.accent} />}
                       <div className="min-w-0">
                         <CurrencyAmount amount={quarter.amount} className="text-lg font-bold text-[#0F172A] dark:text-white" iconSize={14} />
-                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">utilized budget</p>
+                        <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{quarter.value !== null ? 'of allocated budget utilized' : 'utilized budget; allocation not available'}</p>
                       </div>
                     </div>
                   </div>
@@ -891,23 +892,23 @@ function CycleProgressExplorer({
             </div>
           </div>
 
-          <div className="grid gap-4">
-            <div className="rounded-[26px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#162339]">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5 text-[#286CFF]" />
+          <div className="grid w-full min-w-0 grid-cols-1 gap-4">
+            <div className="min-w-0 rounded-[26px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#162339]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <BarChart3 className="h-5 w-5 shrink-0 text-[#286CFF]" />
                   <p className="text-sm font-bold text-[#0F172A] dark:text-white">{active.title} Budget Lens</p>
                 </div>
                 <span className="text-xs font-bold" style={{ color: active.accent }}>{activeStageBudgets.length} projects</span>
               </div>
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 min-w-0 space-y-3">
                 {activeStageBudgetRows.map((item) => {
                   const width = item.amount > 0 ? Math.max(8, Math.round((item.amount / activeStageBudgetMax) * 100)) : 0
                   return (
-                    <div key={item.label} className="rounded-[18px] bg-[#F8FBFF] px-3 py-3 dark:bg-white/5">
-                      <div className="mb-2 flex items-center justify-between gap-3">
+                    <div key={item.label} className="min-w-0 rounded-[18px] bg-[#F8FBFF] px-3 py-3 dark:bg-white/5">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                         <span className="text-xs font-bold text-[#475569] dark:text-slate-200">{item.label}</span>
-                        <CurrencyAmount amount={item.amount} className="text-xs font-black text-[#0F172A] dark:text-white" iconColor={item.accent} iconSize={10} />
+                        <CurrencyAmount amount={item.amount} className="max-w-full text-xs font-black text-[#0F172A] dark:text-white" valueClassName="[overflow-wrap:anywhere]" iconColor={item.accent} iconSize={10} />
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-white dark:bg-white/10">
                         <span className="block h-full rounded-full transition-[width] duration-700" style={{ width: `${width}%`, backgroundColor: item.accent }} />

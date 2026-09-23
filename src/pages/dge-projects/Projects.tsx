@@ -281,9 +281,9 @@ function DgeProjectCard({ project, linkBase }: { project: Project; linkBase: str
             <BudgetCardLabel>Utilized Budget</BudgetCardLabel>
             <p className="text-sm font-bold text-[#0F172A] dark:text-white">{formatBudgetValue(project.utilizedBudget ?? 0)}</p>
           </div>
-          <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
+          <div className="col-span-2 min-w-0 rounded-xl bg-[#EFF6FF] px-3 py-2 dark:bg-white/5">
             <p className="text-xs text-[#64748B] dark:text-slate-200">Pending With</p>
-            <p className="truncate text-sm font-bold text-[#0F172A] dark:text-white">{project.pendingWith || '-'}</p>
+            <p className="whitespace-normal text-sm font-bold leading-5 text-[#0F172A] [overflow-wrap:anywhere] dark:text-white">{project.pendingWith || '-'}</p>
           </div>
         </div>
 
