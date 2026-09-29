@@ -277,6 +277,8 @@ export default function DirectorReviewerQueue() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-lg font-bold text-[#0F172A] dark:text-white">{item.name}</p>
+                        <span className="text-xs font-semibold text-[#286CFF]">AI Score: {item.aiConfidenceScore ?? 'Not Available'}</span>
+                        <SmeReviewScore status={item.statuscode} score={item.smeReviewScore} />
                         <StrategyPill tone={item.statuscode === DGE_BUDGET_STATUS.reviewCompleted ? 'teal' : item.statuscode === DGE_BUDGET_STATUS.clarificationPending ? 'amber' : 'blue'}>{item.statusLabel}</StrategyPill>
                       </div>
                       <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{item.budgetRefId} · {item.entityName || item.instanceName || 'Unknown entity'}</p>
@@ -349,3 +351,4 @@ export default function DirectorReviewerQueue() {
     </StrategyPageShell>
   )
 }
+import { SmeReviewScore } from '@/components/shared/SmeReviewScore'

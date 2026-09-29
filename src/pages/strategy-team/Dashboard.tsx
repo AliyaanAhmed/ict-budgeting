@@ -667,15 +667,16 @@ function CycleProgressExplorer({
                 className={cn(
                   'group relative min-w-0 overflow-hidden rounded-[22px] border px-4 py-4 text-left outline-none transition-[flex-grow,border-color,box-shadow,background-color] duration-500 ease-out will-change-[flex-grow] focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10 xl:flex-1',
                   highlighted
-                    ? 'border-[#80808024] xl:flex-[1.65]'
+                    ? 'border-[#80808024] dark:border-white/15 dark:[--cycle-card-base:#162339] dark:[--cycle-card-tint:color-mix(in_srgb,var(--cycle-card-accent)_18%,#162339)] dark:[--cycle-card-text:color-mix(in_srgb,var(--cycle-card-accent)_55%,white)] xl:flex-[1.65]'
                     : 'border-[#DCE8F6] bg-[#F8FBFF] hover:border-[#BFD4FF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
                 )}
                 style={
                   highlighted
                     ? {
-                        background: `linear-gradient(135deg, ${stage.soft} 0%, #FFFFFF 72%)`,
+                        '--cycle-card-accent': stage.accent,
+                        background: `linear-gradient(135deg, var(--cycle-card-tint, ${stage.soft}) 0%, var(--cycle-card-base, #FFFFFF) 72%)`,
                         boxShadow: selected ? `0 12px 28px ${stage.accent}1F` : `0 8px 20px ${stage.accent}14`,
-                      }
+                      } as React.CSSProperties
                     : undefined
                 }
               >
@@ -694,7 +695,7 @@ function CycleProgressExplorer({
                       {stage.number}
                     </span>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: stage.accent }}>{stage.eyebrow}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: `var(--cycle-card-text, ${stage.accent})` }}>{stage.eyebrow}</p>
                       <h3 className="mt-1 text-[17px] font-bold tracking-tight text-[#0F172A] dark:text-white">{stage.title}</h3>
                     </div>
                   </div>
@@ -712,7 +713,7 @@ function CycleProgressExplorer({
                   <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white shadow-inner dark:bg-white/10">
                     <span className="block h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${stage.progress}%`, backgroundColor: stage.accent }} />
                   </span>
-                  <strong className="text-[11px]" style={{ color: stage.accent }}>{stage.progress}%</strong>
+                  <strong className="text-[11px]" style={{ color: `var(--cycle-card-text, ${stage.accent})` }}>{stage.progress}%</strong>
                 </div>
               </button>
             )

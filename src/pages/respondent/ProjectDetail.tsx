@@ -184,6 +184,7 @@ import {
   type ComputedSupportingDocumentAccountCodeSuggestion,
 } from '@/features/supportingDocumentAccountCodes'
 import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
+import { LARGE_DOCUMENT_THRESHOLD, getDocumentAnalysisStatus, startLargeDocumentAnalysis, type DocumentAnalysisStatus } from '@/services/largeDocumentAnalysisService'
 import {
   createDocumentSummaryRecords,
   deleteDocumentSummaryRecordsByDocumentName,
@@ -1546,9 +1547,14 @@ function BudgetItemsTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white dark:border-white/10 dark:bg-[#0F172A]/20">
-      <table className="w-full text-sm">
-        <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
+    <div
+      role="region"
+      aria-label="Budget account codes table, scroll horizontally for more columns"
+      tabIndex={0}
+      className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#DDEBFF] bg-white [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] dark:border-white/10 dark:bg-[#0F172A]/20"
+    >
+      <table className="w-full min-w-[760px] text-sm">
+        <thead className="bg-[#F8FAFC] dark:bg-white/5">
           <tr>
             {[
               'Account Name',
@@ -1593,18 +1599,18 @@ function BudgetItemsTable({
             const isDeleting = deletingId === item.id
 
             return (
-              <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
-                <td className="block py-2 font-medium text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">{item.accountName}</td>
-                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+              <tr key={item.id} className="table-row border-t border-[#F1F5F9] dark:border-white/5">
+                <td className="table-cell px-4 py-3 font-medium text-[#0F172A] dark:text-white">{item.accountName}</td>
+                <td className="table-cell px-4 py-3">
                   <div className="text-xs text-[#475569] dark:text-slate-200">{item.l1} / {item.l2} / {item.l3}</div>
                   <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', isCapex ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400')}>
                     {classificationLabel}
                   </span>
                 </td>
-                <td className="block py-2 text-xs font-mono text-[#475569] dark:text-slate-200 md:table-cell md:px-4 md:py-3">
+                <td className="table-cell px-4 py-3 text-xs font-mono text-[#475569] dark:text-slate-200">
                   EBS {item.ebsCode} / Fusion {item.fusionCode}
                 </td>
-                <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                   {editableRequested ? (
                     <div className="relative min-w-[190px]">
                       <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1642,7 +1648,7 @@ function BudgetItemsTable({
                   )}
                 </td>
                 {showRecommendedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                     {editableRecommended ? (
                       <div className="relative min-w-[190px]">
                         <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1681,7 +1687,7 @@ function BudgetItemsTable({
                   </td>
                 ) : null}
                 {showAllocatedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                     {editableAllocated ? (
                       <div className="relative min-w-[190px]">
                         <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1710,7 +1716,7 @@ function BudgetItemsTable({
                   </td>
                 ) : null}
                 {showUtilizedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                     <div className="flex min-w-[150px] items-center gap-2">
                       {item.totalBudgetUtilized > 0 ? (
                         <CurrencyAmount amount={item.totalBudgetUtilized} full className="min-w-0 shrink font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
@@ -1739,7 +1745,7 @@ function BudgetItemsTable({
                   </td>
                 ) : null}
                 {showActions ? (
-                  <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3">
                   <div className="flex items-center gap-2">
                     {editableRequested ? (
                       <>
@@ -1862,7 +1868,7 @@ interface UploadedSupportingDocumentAnalysis {
   fileSize: number | null
   fileLastModified: number | null
   uploadedToSharePoint: boolean
-  status: 'queued' | 'analyzing' | 'complete' | 'error'
+  status: DocumentAnalysisStatus
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
   responseTimeMs?: number | null
@@ -1895,7 +1901,7 @@ function createUploadedSupportingDocumentAnalysis(file: File): UploadedSupportin
     fileSize: file.size,
     fileLastModified: file.lastModified,
     uploadedToSharePoint: false,
-    status: 'queued',
+    status: 'uploading',
     parsedSummary: null,
     rawSummary: '',
     responseTimeMs: null,
@@ -2566,7 +2572,7 @@ function InteractiveBudgetOverviewCard({
   const renderPolicyCards = () => <BudgetConsiderationCompactCards groups={policyMatchGroups} />
 
   function fileEvidenceTone(score: number | null, status: SupportingDocumentAiInsightItem['status']) {
-    if (status === 'analyzing' || status === 'queued') {
+    if (status === 'uploading' || status === 'analyzing' || status === 'queued') {
       return {
         card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
         score: 'text-[#A855F7] dark:text-[#E9D5FF]',
@@ -3451,6 +3457,8 @@ export default function ProjectDetail() {
   const supportingDocumentAnalysisInFlightRef = useRef<Set<string>>(new Set())
   const [documentUploadInFlight, setDocumentUploadInFlight] = useState(false)
   const [persistedDocumentSummaries, setPersistedDocumentSummaries] = useState<StoredDocumentSummaryRecord[]>([])
+  const persistedDocumentSummariesRef = useRef<StoredDocumentSummaryRecord[]>([])
+  useEffect(() => { persistedDocumentSummariesRef.current = persistedDocumentSummaries }, [persistedDocumentSummaries])
   const [persistedDocumentSummariesLoading, setPersistedDocumentSummariesLoading] = useState(false)
   const [persistedDocumentSummariesError, setPersistedDocumentSummariesError] = useState<string | null>(null)
   const [supportingDocumentCumulativeAnalysis, setSupportingDocumentCumulativeAnalysis] = useState<UploadedSupportingDocumentCumulativeAnalysis>({
@@ -3463,6 +3471,12 @@ export default function ProjectDetail() {
     scopeKey: null,
   })
   const supportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
+  const documentUploadAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    documentUploadAbortRef.current = controller
+    return () => controller.abort()
+  }, [ictBudgetId])
   const [storedCumulativeSummaryRecord, setStoredCumulativeSummaryRecord] = useState<StoredBudgetAiSummaryRecord | null>(null)
   const [budgetOverviewRecord, setBudgetOverviewRecord] = useState<StoredBudgetOverviewRecord | null>(null)
   const lastSyncedBudgetOverviewAiFlagsKeyRef = useRef<string | null>(null)
@@ -3703,7 +3717,7 @@ export default function ProjectDetail() {
     documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
   const detailEntityName = getStoredInstanceDetail()?.name?.trim() || currentUser.entity
 
-  const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean }) => {
+  const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean; summariesOnly?: boolean }) => {
     if (!ictBudgetId) return
 
     if (!options?.quiet) {
@@ -3712,7 +3726,7 @@ export default function ProjectDetail() {
     setPersistedDocumentSummariesError(null)
     try {
       const [documentSummaries, { cumulativeRecord, budgetOverviewRecord: overviewRecord }] = await Promise.all([
-        getDocumentSummaryRecordsByBudgetId(ictBudgetId),
+        options?.summariesOnly ? Promise.resolve(persistedDocumentSummariesRef.current) : getDocumentSummaryRecordsByBudgetId(ictBudgetId),
         getAllAiSummaryRecordsByBudgetId(ictBudgetId),
       ])
 
@@ -3755,7 +3769,7 @@ export default function ProjectDetail() {
         setPendingCumulativeRefreshModifiedOn(null)
       }
 
-      setPersistedDocumentSummaries(documentSummaries)
+      if (!options?.summariesOnly) setPersistedDocumentSummaries(documentSummaries)
       setBudgetOverviewRecord(overviewRecord)
       setStoredCumulativeSummaryRecord(cumulativeRecord)
       setSupportingDocumentCumulativeAnalysis((current) => {
@@ -3784,7 +3798,7 @@ export default function ProjectDetail() {
         }
       })
 
-      if (id) {
+      if (id && !options?.summariesOnly) {
         const refreshedProject = await projectService.getProjectById(id)
         if (refreshedProject) {
           setProjectData(refreshedProject)
@@ -3925,14 +3939,14 @@ export default function ProjectDetail() {
       const stored = persistedDocumentSummaryByName.get(name.toLowerCase()) ?? null
       const localAnalysis = localAnalysisByName.get(name.toLowerCase()) ?? null
 
-      if (!stored && localAnalysis && localAnalysis.status !== 'error') {
+      if (localAnalysis) {
         return null
       }
 
       return {
         id: stored?.id ?? `stored:${name.toLowerCase()}`,
         file: { name, size: null },
-        status: stored ? 'complete' : 'error',
+        status: stored ? getDocumentAnalysisStatus(stored) : 'error',
         parsedSummary: stored?.parsedSummary ?? null,
         rawSummary: stored?.documentSummary,
         error: stored ? null : 'No persisted AI summary is currently available for this document.',
@@ -3940,14 +3954,6 @@ export default function ProjectDetail() {
     }).filter(Boolean) as SupportingDocumentAiInsightItem[]
 
     for (const [signature, analysis] of Object.entries(supportingDocumentAnalyses)) {
-      const normalizedName = analysis.fileName.trim().toLowerCase()
-      const hasPersistedSummary = persistedDocumentSummaryByName.has(normalizedName)
-      if (analysis.status === 'complete' && hasPersistedSummary) {
-        continue
-      }
-      if (analysis.status === 'error' && hasPersistedSummary) {
-        continue
-      }
 
       items.unshift({
         id: signature,
@@ -3976,7 +3982,7 @@ export default function ProjectDetail() {
           }
 
           const nextStatus =
-            analysis.status === 'queued'
+            analysis.status === 'uploading'
               ? 'uploading'
               : analysis.status === 'analyzing'
                 ? 'analyzing'
@@ -3997,6 +4003,7 @@ export default function ProjectDetail() {
       persistedDocumentSummaries
         .filter(
           (item) =>
+            getDocumentAnalysisStatus(item) === 'complete' &&
             item.documentSummary.trim() &&
             !clarificationDocumentNames.has(item.documentName.trim().toLowerCase())
         )
@@ -5182,22 +5189,6 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!ictBudgetId) return
-    if (persistedDocumentSummariesLoading) return
-    if (budgetOverviewRecord) return
-    if (pendingBudgetOverviewRefreshModifiedOn !== null) return
-    if (persistedDocumentSummariesError) return
-
-    setPendingBudgetOverviewRefreshModifiedOn(PENDING_NEW_AI_RECORD)
-  }, [
-    budgetOverviewRecord,
-    ictBudgetId,
-    pendingBudgetOverviewRefreshModifiedOn,
-    persistedDocumentSummariesError,
-    persistedDocumentSummariesLoading,
-  ])
-
-  useEffect(() => {
-    if (!ictBudgetId) return
 
     const shouldPoll =
       pendingCumulativeRefreshModifiedOn !== null ||
@@ -5206,7 +5197,7 @@ export default function ProjectDetail() {
     if (!shouldPoll) return
 
     const intervalId = window.setInterval(() => {
-      void refreshPersistedDocumentSummaries({ quiet: true })
+      void refreshPersistedDocumentSummaries({ quiet: true, summariesOnly: true })
     }, 5000)
 
     return () => window.clearInterval(intervalId)
@@ -5227,7 +5218,7 @@ export default function ProjectDetail() {
           return true
         }
 
-        if (analysis.status === 'queued' || analysis.status === 'analyzing') {
+        if (analysis.status === 'uploading' || analysis.status === 'queued' || analysis.status === 'analyzing') {
           return true
         }
 
@@ -5235,7 +5226,7 @@ export default function ProjectDetail() {
           return !persistedDocumentSummaryByName.has(analysis.fileName.trim().toLowerCase())
         }
 
-        return false
+        return analysis.uploadedToSharePoint === true && !persistedDocumentSummaryByName.has(analysis.fileName.trim().toLowerCase())
       })
       return Object.fromEntries(nextEntries)
     })
@@ -5262,7 +5253,7 @@ export default function ProjectDetail() {
     const queuedFiles = uploadedFiles.filter((file) => {
       const signature = getUploadedFileSignature(file)
       return (
-        supportingDocumentAnalyses[signature]?.status === 'queued' &&
+        supportingDocumentAnalyses[signature]?.status === 'uploading' &&
         !supportingDocumentAnalysisInFlightRef.current.has(signature)
       )
     })
@@ -5271,6 +5262,8 @@ export default function ProjectDetail() {
 
     for (const file of queuedFiles) {
       const signature = getUploadedFileSignature(file)
+      const signal = documentUploadAbortRef.current?.signal
+      if (!signal || signal.aborted) continue
       supportingDocumentAnalysisInFlightRef.current.add(signature)
       setDocumentUploadInFlight(true)
 
@@ -5280,6 +5273,53 @@ export default function ProjectDetail() {
           const uploadedFileName = preparedUpload.preparedFile.name.trim().toLowerCase()
 
           await uploadFilesToRecord(ictBudgetId, [file])
+          signal.throwIfAborted()
+
+          if (file.size > LARGE_DOCUMENT_THRESHOLD) {
+            setUploadedFiles((current) => current.filter((existing) => getUploadedFileSignature(existing) !== signature))
+            setSupportingDocumentAnalyses((current) => ({
+              ...current,
+              [signature]: {
+                ...(current[signature] ?? createUploadedSupportingDocumentAnalysis(file)),
+                fileName: preparedUpload.preparedFile.name,
+                uploadedToSharePoint: true,
+                status: 'uploading',
+                error: null,
+              },
+            }))
+            await refreshSharepointDocs()
+            signal.throwIfAborted()
+            await startLargeDocumentAnalysis({
+              budgetId: ictBudgetId,
+              file: preparedUpload.preparedFile,
+              signal,
+              onAccepted: () => {
+                setSupportingDocumentAnalyses((current) => ({
+                  ...current,
+                  [signature]: { ...current[signature], status: 'queued' },
+                }))
+              },
+              onStatus: (record) => {
+                const status = getDocumentAnalysisStatus(record)
+                setSupportingDocumentAnalyses((current) => ({
+                  ...current,
+                  [signature]: {
+                    ...(current[signature] ?? createUploadedSupportingDocumentAnalysis(file)),
+                    fileName: preparedUpload.preparedFile.name,
+                    uploadedToSharePoint: true,
+                    status,
+                    parsedSummary: status === 'complete' ? record.parsedSummary : null,
+                    rawSummary: record.documentSummary,
+                    error: status === 'error' ? 'Document analysis failed.' : status === 'cancelled' ? 'Document analysis was cancelled.' : status === 'incomplete' ? 'Document analysis is incomplete.' : null,
+                  },
+                }))
+                setPersistedDocumentSummaries((current) => [...current.filter((item) => item.id !== record.id), record])
+              },
+            })
+            signal.throwIfAborted()
+            await refreshPersistedDocumentSummaries({ quiet: true })
+            return
+          }
 
           const refreshedDocs = await refreshSharepointDocs()
           const uploadedDocumentConfirmed = (refreshedDocs ?? []).some((doc) => {
@@ -5331,6 +5371,7 @@ export default function ProjectDetail() {
               },
             ])
             await syncCumulativeSummaryForBudget(ictBudgetId)
+            await invalidateBudgetOverviewRecord(ictBudgetId)
             const [refreshed] = await Promise.all([
               refreshPersistedDocumentSummaries({ quiet: true }),
               refreshSharepointDocs(),
@@ -5338,12 +5379,16 @@ export default function ProjectDetail() {
             setPendingCumulativeRefreshModifiedOn(
               refreshed?.cumulativeRecord?.modifiedOn ?? storedCumulativeSummaryRecord?.modifiedOn ?? null
             )
+            setPendingBudgetOverviewRefreshModifiedOn(
+              refreshed?.budgetOverviewRecord?.modifiedOn ?? budgetOverviewRecord?.modifiedOn ?? null
+            )
           }
 
           setUploadedFiles((current) =>
             current.filter((existing) => getUploadedFileSignature(existing) !== signature)
           )
         } catch (error) {
+          if (signal.aborted) return
           setSupportingDocumentAnalyses((current) => ({
             ...current,
             [signature]: {
@@ -5354,7 +5399,7 @@ export default function ProjectDetail() {
           }))
         } finally {
           supportingDocumentAnalysisInFlightRef.current.delete(signature)
-          setDocumentUploadInFlight(supportingDocumentAnalysisInFlightRef.current.size > 0)
+          if (!signal.aborted) setDocumentUploadInFlight(supportingDocumentAnalysisInFlightRef.current.size > 0)
         }
       })()
     }
@@ -6483,12 +6528,15 @@ export default function ProjectDetail() {
   }
 
   // ── Clarification State ──────────────────────────────────────────────────────
+  const fallbackClarifications = ictBudgetId ? null : project.clarifications
+
   useEffect(() => {
     let cancelled = false
 
     const loadClarifications = async () => {
       if (!ictBudgetId) {
-        setLocalClarifications(project.clarifications)
+        setLocalClarifications(fallbackClarifications ?? [])
+        setClarificationsLoading(false)
         return
       }
 
@@ -6516,7 +6564,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [ictBudgetId, project.clarifications])
+  }, [ictBudgetId, fallbackClarifications])
 
   const handleDeleteDocument = async (doc: WebApiPortalDocument) => {
     if (doc.sharepointdocumentid.startsWith('clarification-url:')) {
@@ -7997,6 +8045,9 @@ export default function ProjectDetail() {
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+              {(isStrategyView || isStrategyDirectorView) && (
+                <SmeReviewScore status={project.statusCode} score={project.smeReviewScore} />
+              )}
               <div
                 className={cn(
                   'rounded-xl px-3 py-3 text-center dark:bg-white/5',
@@ -8188,7 +8239,7 @@ export default function ProjectDetail() {
         {/* ── Left column: view or edit content ──────────────────────────────── */}
         <div
           key={isEditMode ? 'edit-mode' : 'view-mode'}
-          className="space-y-5"
+          className="min-w-0 space-y-5"
           style={{ animation: 'fadeInUp 0.25s ease-out' }}
         >
           {isEditMode ? (
@@ -9946,3 +9997,4 @@ export default function ProjectDetail() {
     </div>
   )
 }
+import { SmeReviewScore } from '@/components/shared/SmeReviewScore'

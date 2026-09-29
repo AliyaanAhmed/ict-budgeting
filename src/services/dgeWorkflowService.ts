@@ -532,9 +532,12 @@ export async function publishDgeReviewedInstance(instanceId: string) {
 
 export async function startInstanceAllocation(instanceId: string, budgetIds: string[]) {
   const { respondentTeamId } = await getInstanceRespondentTeamId(instanceId)
+  const startedAt = new Date()
 
   const instanceResult = await Dga_ict_budget_instancesService.update(instanceId, {
     statuscode: DGE_INSTANCE_STATUS.allocation,
+    dga_allocation_start_date: startedAt.toISOString().slice(0, 10),
+    dga_allocation_end_date: `${startedAt.getUTCFullYear() + 1}-03-31`,
   } as never)
 
   assertSuccess(instanceResult.success, 'Unable to start allocation for this entity.', instanceResult.error ?? null)
@@ -590,9 +593,12 @@ export async function completeAllocationReview(budgetId: string) {
 
 export async function submitInstanceToUtilization(instanceId: string, budgetIds: string[]) {
   const { respondentTeamId } = await getInstanceRespondentTeamId(instanceId)
+  const startedAt = new Date()
 
   const instanceResult = await Dga_ict_budget_instancesService.update(instanceId, {
     statuscode: DGE_INSTANCE_STATUS.utilization,
+    dga_utilization_start_date: startedAt.toISOString().slice(0, 10),
+    dga_utilization_end_date: `${startedAt.getUTCFullYear() + 1}-12-31`,
   } as never)
 
   assertSuccess(instanceResult.success, 'Unable to move this entity into utilization.', instanceResult.error ?? null)

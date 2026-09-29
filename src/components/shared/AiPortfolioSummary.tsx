@@ -37,6 +37,7 @@ import {
   getPortfolioCounts,
   getPortfolioProjectInsight,
   getPortfolioSummaryRoleView,
+  getPortfolioRoleStatusSummary,
   getRoleRecommendedActions,
   resolvePortfolioTemplate,
 } from '@/services/portfolioSummaryService'
@@ -351,8 +352,8 @@ export function AiPortfolioSummary({
   const counts = useMemo(() => getPortfolioCounts(summary), [summary])
   const roleView = useMemo(() => getPortfolioSummaryRoleView(summary, role), [summary, role])
   const roleSummary = useMemo(
-    () => toDisplayText(resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary)),
-    [roleView?.summary_template, roleView?.summary, summary]
+    () => getPortfolioRoleStatusSummary(summary, role),
+    [summary, role]
   )
   const planningSummary = useMemo(
     () => toDisplayText(resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary)),

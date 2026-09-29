@@ -178,6 +178,8 @@ export interface StoredBudgetOverviewRecord {
 }
 
 export interface StoredDocumentSummaryRecord {
+  statusCode: number | null
+  modifiedOn: string | null
   id: string
   budgetId: string | null
   documentName: string
@@ -475,6 +477,7 @@ function asDocumentCreatePayload(input: CreateDocumentSummaryInput) {
     'dga_ict_budget@odata.bind': `/dga_ict_budgets(${input.budgetId})`,
     dga_document_name: input.documentName.trim(),
     dga_document_summary: input.documentSummary,
+    statuscode: 576610001,
   } as Partial<Omit<Dga_ict_document_summariesBase, 'dga_ict_document_summaryid'>> as Omit<
     Dga_ict_document_summariesBase,
     'dga_ict_document_summaryid'
@@ -525,16 +528,18 @@ function asCumulativeUpdatePayload(input: UpsertCumulativeSummaryInput) {
 function mapStoredDocumentSummaryRecord(
   record: Awaited<ReturnType<typeof Dga_ict_document_summariesService.getAll>>['data'][number]
 ): StoredDocumentSummaryRecord | null {
-  if (!record.dga_ict_document_summaryid || !record.dga_document_name || !record.dga_document_summary) {
+  if (!record.dga_ict_document_summaryid || !record.dga_document_name) {
     return null
   }
 
   return {
     id: record.dga_ict_document_summaryid,
+    statusCode: record.statuscode ?? null,
+    modifiedOn: record.modifiedon ?? null,
     budgetId: record._dga_ict_budget_value ?? null,
     documentName: record.dga_document_name,
-    documentSummary: record.dga_document_summary,
-    parsedSummary: parseSupportingDocumentEvaluationSummary(record.dga_document_summary),
+    documentSummary: record.dga_document_summary ?? '',
+    parsedSummary: parseSupportingDocumentEvaluationSummary(record.dga_document_summary ?? ''),
   }
 }
 
@@ -580,6 +585,8 @@ export async function getDocumentSummaryRecordsByBudgetId(budgetId: string) {
       'dga_ict_document_summaryid',
       'dga_document_name',
       'dga_document_summary',
+      'statuscode',
+      'modifiedon',
       '_dga_ict_budget_value',
       'createdon',
     ],
@@ -766,7 +773,7 @@ export async function getBudgetOverviewRecordsByBudgetIds(
   return nextMap
 }
 
-export async function invalidateCumulativeSummaryRecord(budgetId: string) {
+export async function ensureCumulativeSummaryRecord(budgetId: string) {
   let existing = await getLatestCumulativeSummaryByBudgetId(budgetId)
 
   if (!existing) {
@@ -786,6 +793,11 @@ export async function invalidateCumulativeSummaryRecord(budgetId: string) {
     }
   }
 
+  return existing
+}
+
+export async function invalidateCumulativeSummaryRecord(budgetId: string) {
+  const existing = await ensureCumulativeSummaryRecord(budgetId)
   const result = await Dga_ict_ai_summariesService.update(existing.id, {
     dga_is_valid: false,
   } as Partial<Omit<Dga_ict_ai_summariesBase, 'dga_ict_ai_summaryid'>>)

@@ -186,6 +186,7 @@ function mapDgeBudgetToProject(budget: DgeBudgetRecord): Project {
     summary: budget.summary || '',
     documents: budget.sharePointUrl ? [{ name: 'Supporting document folder', size: '', uploadedDate: '' }] : [],
     clarifications: [],
+    smeReviewScore: budget.smeReviewScore,
     aiScore: budget.aiConfidenceScore ?? 0,
     riskLevel: null,
     capex: 0,

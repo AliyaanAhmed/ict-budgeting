@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/restore-manual-data-sources.mjs",
+    "prebuild": "node scripts/restore-manual-data-sources.mjs",
+    "restore:data-sources": "node scripts/restore-manual-data-sources.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

@@ -443,6 +443,7 @@ export default function QualityCheck() {
                         </div>
                       </div>
                       <div className="mt-auto">
+                        <SmeReviewScore status={item.statuscode} score={item.smeReviewScore} />
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-[#286CFF]">
@@ -562,3 +563,4 @@ export default function QualityCheck() {
     </StrategyPageShell>
   )
 }
+import { SmeReviewScore } from '@/components/shared/SmeReviewScore'

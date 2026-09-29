@@ -456,6 +456,29 @@ export function getPortfolioProjectInsight(
   }
 }
 
+export function getPortfolioRoleStatusSummary(
+  summary: PortfolioSummaryPayload | null | undefined,
+  role: PortfolioRole
+) {
+  const statuses = summary?.calculation_sources?.status_project_ids
+  if (!statuses) return ''
+
+  const count = (status: string) => new Set(
+    (statuses[status] ?? []).filter((id) => typeof id === 'string' && id.trim())
+      .map((id) => id.trim().toUpperCase())
+  ).size
+  const projects = (value: number) => `${value} project${value === 1 ? '' : 's'}`
+
+  switch (role) {
+    case 'respondent':
+      return `You have ${projects(count('Draft'))} in Draft and ${projects(count('Clarification Pending'))} with clarifications pending.`
+    case 'reviewer':
+      return `You have ${projects(count('Under Reviewer Review'))} under review and ${projects(count('Reviewer Review Completed'))} reviewed but not yet routed to the approver.`
+    case 'approver':
+      return `You have ${projects(count('Under Approver Review'))} pending with you and ${projects(count('Approved by Approver'))} approved by you.`
+  }
+}
+
 export function getPortfolioCounts(summary: PortfolioSummaryPayload | null | undefined) {
   const clarification = getClarificationGroups(summary)
   return {

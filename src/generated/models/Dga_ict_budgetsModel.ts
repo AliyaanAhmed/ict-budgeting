@@ -108,6 +108,7 @@ export interface Dga_ict_budgetsBase {
   dga_abbr_of_entity?: string;
   dga_activity_type?: Dga_ict_budgetsdga_activity_type;
   dga_added_in_allocation?: Dga_ict_budgetsdga_added_in_allocation;
+  dga_sme_review_score?: number;
   dga_ai_confidence_score?: number;
   dga_ai_flags?: Dga_ict_budgetsdga_ai_flags[];
   dga_allocation_cancelation_reason?: string;

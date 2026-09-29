@@ -335,7 +335,7 @@ export default function StrategicAlignment() {
   const [clarificationTarget, setClarificationTarget] = useState<'adge' | 'sme'>('adge')
   const [clarificationMessage, setClarificationMessage] = useState('')
   const [priorities, setPriorities] = useState<StrategicPriorityOption[]>([])
-  const [classificationDrafts, setClassificationDrafts] = useState<Record<string, ProjectClassificationDraft>>({})
+  const [bulkClassification, setBulkClassification] = useState<ProjectClassificationDraft>({ priorityId: '', classificationId: '' })
   const [inlineDrafts, setInlineDrafts] = useState<Record<string, ProjectClassificationDraft>>({})
   const [inlineSavingIds, setInlineSavingIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -581,17 +581,7 @@ export default function StrategicAlignment() {
 
   const openClassificationModal = () => {
     if (!selectedBudgets.length) return
-    setClassificationDrafts(
-      Object.fromEntries(
-        selectedBudgets.map((budget) => [
-          budget.id,
-          {
-            priorityId: budget.strategicPriorityId ?? '',
-            classificationId: budget.strategicPriorityClassificationId ?? '',
-          },
-        ])
-      )
-    )
+    setBulkClassification({ priorityId: '', classificationId: '' })
     setClassificationModalOpen(true)
   }
 
@@ -602,22 +592,17 @@ export default function StrategicAlignment() {
   }
 
   const handleApplyClassification = async () => {
-    const validDraftEntries = selectedBudgets
-      .map((budget) => ({
-        budget,
-        draft: classificationDrafts[budget.id],
-      }))
-      .filter((entry) => entry.draft?.priorityId && entry.draft?.classificationId)
-
-    if (!validDraftEntries.length) return
+    if (saving || !selectedBudgets.length || !bulkClassification.priorityId || !priorities.some(
+      (option) => option.id === bulkClassification.classificationId && option.parentId === bulkClassification.priorityId
+    )) return
 
     setSaving(true)
     setError(null)
     try {
-      await Promise.all(
-        validDraftEntries.map(({ budget, draft }) =>
-          updateBudgetStrategicClassification([budget.id], draft.priorityId, draft.classificationId)
-        )
+      await updateBudgetStrategicClassification(
+        selectedBudgets.map((budget) => budget.id),
+        bulkClassification.priorityId,
+        bulkClassification.classificationId
       )
       await refreshData()
       setClassificationModalOpen(false)
@@ -770,36 +755,9 @@ export default function StrategicAlignment() {
     setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]))
   }
 
-  const modalProjects = useMemo(
-    () =>
-      selectedBudgets.map((budget) => {
-        const draft = classificationDrafts[budget.id] ?? {
-          priorityId: budget.strategicPriorityId ?? '',
-          classificationId: budget.strategicPriorityClassificationId ?? '',
-        }
-
-        const classificationOptions = priorities.filter((option) => option.parentId === draft.priorityId)
-
-        return {
-          budget,
-          draft,
-          classificationOptions,
-          priorityName:
-            parentPriorities.find((option) => option.id === draft.priorityId)?.name ||
-            priorityLookup.get(draft.priorityId) ||
-            'Not selected',
-          classificationName:
-            classificationOptions.find((option) => option.id === draft.classificationId)?.name ||
-            priorityLookup.get(draft.classificationId) ||
-            'Not selected',
-        }
-      }),
-    [classificationDrafts, parentPriorities, priorities, priorityLookup, selectedBudgets]
-  )
-
-  const readyProjectCount = modalProjects.filter(
-    (project) => project.draft.priorityId && project.draft.classificationId
-  ).length
+  const bulkClassificationOptions = getClassificationOptionsForPriority(priorities, bulkClassification.priorityId)
+  const canApplyBulkClassification = selectedBudgets.length > 0 && Boolean(bulkClassification.priorityId) &&
+    bulkClassificationOptions.some((option) => option.id === bulkClassification.classificationId)
 
   const selectedChangeRequestDetails = selectedChangeRequestBudget
     ? {
@@ -1088,10 +1046,12 @@ export default function StrategicAlignment() {
                                   }}
                                   disabled={isInlineSaving(budget.id)}
                                 >
-                                  <SelectTrigger className={cn('min-h-10 h-auto rounded-xl px-3 py-2', alignmentCellClass)}>
-                                    <div className="flex min-w-0 items-start gap-2 text-left">
-                                      <Layers className="h-4 w-4 text-[#286CFF]" />
-                                      <SelectValue className="whitespace-normal break-words leading-snug" placeholder={priorityLabel} />
+                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', alignmentCellClass)}>
+                                    <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                                      <Layers className="mt-0.5 h-4 w-4 shrink-0 text-[#286CFF]" />
+                                      <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] leading-snug">
+                                        <SelectValue placeholder={priorityLabel} />
+                                      </span>
                                     </div>
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1117,13 +1077,14 @@ export default function StrategicAlignment() {
                                   }}
                                   disabled={!inlineDraft.priorityId || isInlineSaving(budget.id)}
                                 >
-                                  <SelectTrigger className={cn('min-h-10 h-auto rounded-xl px-3 py-2', alignmentCellClass)}>
-                                    <div className="flex min-w-0 items-start gap-2 text-left">
-                                      <Workflow className="h-4 w-4 text-[#286CFF]" />
+                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', alignmentCellClass)}>
+                                    <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
+                                      <Workflow className="mt-0.5 h-4 w-4 shrink-0 text-[#286CFF]" />
+                                      <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] leading-snug">
                                       <SelectValue
-                                        className="whitespace-normal break-words leading-snug"
                                         placeholder={inlineDraft.priorityId ? 'Select classification' : 'Select priority first'}
                                       />
+                                      </span>
                                     </div>
                                   </SelectTrigger>
                                   <SelectContent>
@@ -1196,7 +1157,7 @@ export default function StrategicAlignment() {
       )}
 
       <Dialog open={classificationModalOpen} onOpenChange={setClassificationModalOpen}>
-        <DialogContent className="max-w-6xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+        <DialogContent className="max-w-2xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
           <div className="border-b border-[#EEF3F8] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)] px-7 py-6 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.04)_0%,rgba(255,255,255,0.02)_100%)]">
             <DialogHeader className="space-y-0">
               <div className="flex items-start gap-4">
@@ -1222,89 +1183,40 @@ export default function StrategicAlignment() {
                   <span>{selectedBudgets.length} selected</span>
                 </div>
                 <p className="text-sm text-[#475569] dark:text-slate-300">
-                  Update each selected project with its own strategic priority and classification before applying all changes together.
+                  The same strategic priority and classification will be applied to all selected projects.
                 </p>
               </div>
             </div>
 
-            <div className="space-y-4">
-              {modalProjects.map(({ budget, draft, classificationOptions }) => (
-                <div key={budget.id} className="rounded-[24px] border border-[#DCE8F6] bg-white p-5 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#1B2A41]">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-base font-semibold text-[#0F172A] dark:text-white">{budget.name}</p>
-                      <span className="rounded-full bg-[#EEF5FF] px-2.5 py-1 text-xs font-semibold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                        {budget.budgetRefId}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
-                      {budget.entityName || budget.instanceName || 'Unknown Entity'}
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                    <div>
-                      <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Strategic Priority</p>
-                      <Select
-                        value={draft.priorityId}
-                        onValueChange={(value) =>
-                          setClassificationDrafts((current) => ({
-                            ...current,
-                            [budget.id]: {
-                              priorityId: value,
-                              classificationId: '',
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-[#F8FBFF] px-4 dark:border-white/10 dark:bg-white/5">
-                          <div className="flex items-center gap-2 text-left">
-                            <Layers className="h-4 w-4 text-[#286CFF]" />
-                            <SelectValue placeholder="Select strategic priority" />
-                          </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {parentPriorities.map((option) => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Strategic Priority Classification</p>
-                      <Select
-                        value={draft.classificationId}
-                        onValueChange={(value) =>
-                          setClassificationDrafts((current) => ({
-                            ...current,
-                            [budget.id]: {
-                              ...(current[budget.id] ?? { priorityId: '', classificationId: '' }),
-                              classificationId: value,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-12 rounded-[14px] border-[#D7E4F4] bg-[#F8FBFF] px-4 dark:border-white/10 dark:bg-white/5">
-                          <div className="flex items-center gap-2 text-left">
-                            <Workflow className="h-4 w-4 text-[#286CFF]" />
-                            <SelectValue placeholder="Select strategic priority classification" />
-                          </div>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {classificationOptions.map((option) => (
-                            <SelectItem key={option.id} value={option.id}>
-                              {option.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Strategic Priority</p>
+                <Select value={bulkClassification.priorityId} disabled={saving}
+                  onValueChange={(priorityId) => setBulkClassification({ priorityId, classificationId: '' })}>
+                  <SelectTrigger aria-label="Strategic Priority" className="min-h-12 h-auto rounded-[14px] [&_span]:whitespace-normal [&_span]:text-left">
+                    <SelectValue placeholder="Select strategic priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {parentPriorities.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0">
+                <p className="mb-2 text-sm font-semibold text-[#0F172A] dark:text-white">Strategic Priority Classification</p>
+                <Select value={bulkClassification.classificationId} disabled={saving || !bulkClassification.priorityId}
+                  onValueChange={(classificationId) => setBulkClassification((current) => ({ ...current, classificationId }))}>
+                  <SelectTrigger aria-label="Strategic Priority Classification" className="min-h-12 h-auto rounded-[14px] [&_span]:whitespace-normal [&_span]:text-left">
+                    <SelectValue placeholder={bulkClassification.priorityId ? 'Select classification' : 'Select priority first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bulkClassificationOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             </div>
           </div>
@@ -1315,10 +1227,10 @@ export default function StrategicAlignment() {
             </Button>
             <Button
               className="rounded-2xl bg-[#286CFF] text-white hover:bg-[#0C65F5]"
-              disabled={saving || readyProjectCount === 0}
+              disabled={saving || !canApplyBulkClassification}
               onClick={() => void handleApplyClassification()}
             >
-              Apply to Selected
+              {saving ? 'Updating...' : 'Confirm Bulk Update'}
             </Button>
           </DialogFooter>
         </DialogContent>

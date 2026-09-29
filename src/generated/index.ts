@@ -29,6 +29,7 @@ export * as ICTBudget_Clarifications_UploadFilesinSharepointModel from './models
 export * as PowerAppV2_CallUploadFileFlowModel from './models/PowerAppV2_CallUploadFileFlowModel';
 export * as PowerAppV2_GetCumulativeDocumentSummaryfromCompassModel from './models/PowerAppV2_GetCumulativeDocumentSummaryfromCompassModel';
 export * as PowerAppV2_GetDocumentSummaryfromCompassModel from './models/PowerAppV2_GetDocumentSummaryfromCompassModel';
+export * as PowerAppV2_GetDocumentSummaryfromCompass_LargeFileModel from './models/PowerAppV2_GetDocumentSummaryfromCompass_LargeFileModel';
 export * as PowerAppV2_GetICTBudgetAIOverviewModel from './models/PowerAppV2_GetICTBudgetAIOverviewModel';
 export * as RolesModel from './models/RolesModel';
 export * as SharepointdocumentsModel from './models/SharepointdocumentsModel';
@@ -62,6 +63,7 @@ export * from './services/ICTBudget_Clarifications_UploadFilesinSharepointServic
 export * from './services/PowerAppV2_CallUploadFileFlowService';
 export * from './services/PowerAppV2_GetCumulativeDocumentSummaryfromCompassService';
 export * from './services/PowerAppV2_GetDocumentSummaryfromCompassService';
+export * from './services/PowerAppV2_GetDocumentSummaryfromCompass_LargeFileService';
 export * from './services/PowerAppV2_GetICTBudgetAIOverviewService';
 export * from './services/RolesService';
 export * from './services/SharepointdocumentsService';

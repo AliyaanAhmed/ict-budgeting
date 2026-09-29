@@ -81,6 +81,18 @@
         "workflowDisplayName": "PowerAppV2 - Get ICT Budget AI Overview",
         "workflowName": "6874f7eb-4d97-ca55-88ff-0c708bf65493"
       }
+    },
+    "2aa85871-3f75-4bed-8f27-0c3fd184068b": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_getdocumentsummaryfromcompass_largefile"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "9dbbb81c-dfb7-f111-aaac-002248cc1a86",
+        "workflowDisplayName": "PowerAppV2 - Get Document Summary from Compass - Large File",
+        "workflowName": "d4896078-7eab-b9db-4183-da42fdd5cd65"
+      }
     }
   },
   "databaseReferences": {

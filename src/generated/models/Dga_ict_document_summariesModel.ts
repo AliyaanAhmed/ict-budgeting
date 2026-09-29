@@ -9,7 +9,12 @@ export const Dga_ict_document_summariesstatecode = {
 export type Dga_ict_document_summariesstatecode = keyof typeof Dga_ict_document_summariesstatecode;
 export const Dga_ict_document_summariesstatuscode = {
   1: 'Active',
-  2: 'Inactive'
+  2: 'Inactive',
+  576610001: 'Completed',
+  576610002: 'Failed',
+  576610003: 'Cancelled',
+  576610004: 'Incomplete',
+  576610005: 'Queued'
 } as const;
 export type Dga_ict_document_summariesstatuscode = keyof typeof Dga_ict_document_summariesstatuscode;
 

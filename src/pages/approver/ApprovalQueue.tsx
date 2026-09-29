@@ -507,7 +507,7 @@ export default function ApprovalQueue() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [clarificationProject, setClarificationProject] = useState<ApprovalQueueProject | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [storedSelectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingApprove, setPendingApprove] = useState<string[] | null>(null)
   const [portfolioSubmittedToDge, setPortfolioSubmittedToDge] = useState(false)
   const [statusOverrides, setStatusOverrides] = useState<Record<string, StatusOverride>>({})
@@ -607,6 +607,15 @@ export default function ApprovalQueue() {
   const isSelectableProject = (project: ApprovalQueueProject) =>
     project.status === 'Pending' || project.statusCode === DGE_BUDGET_STATUS.allocationInReview
   const visibleActionableIds = filtered.filter(isSelectableProject).map(p => p.id)
+  const selectedIds = storedSelectedIds.filter(id => visibleActionableIds.includes(id))
+  const selectionScope = JSON.stringify(visibleActionableIds)
+  useEffect(() => {
+    const visibleIds = new Set<string>(JSON.parse(selectionScope))
+    setSelectedIds(current => {
+      const next = current.filter(id => visibleIds.has(id))
+      return next.length === current.length ? current : next
+    })
+  }, [selectionScope])
   const allVisibleSelected = visibleActionableIds.length > 0 && visibleActionableIds.every(id => selectedIds.includes(id))
   const selectedProjects = selectedIds
     .map(id => projects.find(p => p.id === id))
@@ -623,14 +632,15 @@ export default function ApprovalQueue() {
       if (!project || !isSelectableProject(project)) {
         return prev
       }
-      return prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const visibleSelection = prev.filter(value => visibleActionableIds.includes(value))
+      return visibleSelection.includes(id) ? visibleSelection.filter(x => x !== id) : [...visibleSelection, id]
     })
 
   const toggleAllVisible = () =>
     setSelectedIds(prev =>
       allVisibleSelected
-        ? prev.filter(id => !visibleActionableIds.includes(id))
-        : Array.from(new Set([...prev, ...visibleActionableIds]))
+        ? []
+        : [...visibleActionableIds]
     )
 
   const getIctId = (projectId: string) =>

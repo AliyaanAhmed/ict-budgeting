@@ -33,6 +33,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "dga_cycles": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "dga_cycleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_customwebapi": {
     "tableId": "",
     "version": "",
@@ -206,10 +213,17 @@ export const dataSourcesInfo = {
       }
     }
   },
-  "dga_cycles": {
+  "dga_ict_budget_dga_technology_productset": {
     "tableId": "",
     "version": "",
-    "primaryKey": "dga_cycleid",
+    "primaryKey": "dga_ict_budget_dga_technology_productid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "sharepointdocuments": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "sharepointdocumentid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -217,13 +231,6 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_ict_ai_summaryid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "dga_ict_budget_dga_technology_productset": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "dga_ict_budget_dga_technology_productid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -269,6 +276,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "roles": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "roleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_strategic_prioritieses": {
     "tableId": "",
     "version": "",
@@ -276,10 +290,38 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "systemuserrolescollection": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserroleid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "teammemberships": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "teammembershipid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "teams": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "teamid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "dga_technologies": {
     "tableId": "",
     "version": "",
     "primaryKey": "dga_technologyid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "systemusers": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "systemuserid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
@@ -484,6 +526,43 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "powerappv2_getdocumentsummaryfromcompass_largefile": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
   "powerappv2_getictbudgetaioverview": {
     "tableId": "",
     "version": "",
@@ -521,45 +600,10 @@ export const dataSourcesInfo = {
       }
     }
   },
-  "roles": {
+  "audits": {
     "tableId": "",
     "version": "",
-    "primaryKey": "roleid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "sharepointdocuments": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "sharepointdocumentid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "systemuserrolescollection": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "systemuserroleid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "systemusers": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "systemuserid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "teammemberships": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "teammembershipid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
-  "teams": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "teamid",
+    "primaryKey": "auditid",
     "dataSourceType": "Dataverse",
     "apis": {}
   }
