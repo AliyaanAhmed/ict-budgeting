@@ -40,6 +40,8 @@ type FilterTab =
   | 'clarification'
   | 'submitted-reviewer'
   | 'allocation-in-progress'
+  | 'allocation-in-review'
+  | 'allocation-completed'
   | 'utilization-in-progress'
   | 'utilization-completed'
 type StatusFilter = 'all-statuses' | string
@@ -220,7 +222,7 @@ export default function RespondentProjects() {
   const { runActionToast } = useToast()
   const cycleName = selectedCycle?.name ?? 'ICT Budget Cycle'
   const { items: projects, loading, error } = useRoleProjects('respondent', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
@@ -233,7 +235,11 @@ export default function RespondentProjects() {
   const activeInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
   const instanceInAllocation =
     activeInstanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
-    projects.some((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInProgress)
+    (activeInstanceStatusCode == null && projects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.allocationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationInReview ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+    ))
   const instanceInUtilization =
     activeInstanceStatusCode === DGE_INSTANCE_STATUS.utilization ||
     projects.some((project) =>
@@ -268,16 +274,18 @@ export default function RespondentProjects() {
       tab === 'clarification' ||
       tab === 'submitted-reviewer' ||
       (tab === 'allocation-in-progress' && instanceInAllocation) ||
+      (tab === 'allocation-in-review' && instanceInAllocation) ||
+      (tab === 'allocation-completed' && instanceInAllocation) ||
       (tab === 'utilization-in-progress' && instanceInUtilization) ||
       (tab === 'utilization-completed' && instanceInUtilization) ||
       tab === 'all'
     ) {
       const planningOnlyTabs = tab === 'needs-work' || tab === 'submitted-reviewer' || tab === 'clarification'
-      const allocationOnlyTabs = tab === 'allocation-in-progress'
+      const allocationOnlyTabs = tab === 'allocation-in-progress' || tab === 'allocation-in-review' || tab === 'allocation-completed'
       const utilizationOnlyTabs = tab === 'utilization-in-progress' || tab === 'utilization-completed'
       if (
         (instanceInUtilization && planningOnlyTabs) ||
-        (instanceInAllocation && tab === 'needs-work') ||
+        (instanceInAllocation && planningOnlyTabs) ||
         (!instanceInAllocation && allocationOnlyTabs) ||
         (!instanceInUtilization && utilizationOnlyTabs)
       ) {
@@ -303,19 +311,21 @@ export default function RespondentProjects() {
           },
         ]
       : []),
-    ...(!instanceInUtilization
+    ...(!instanceInAllocation && !instanceInUtilization
       ? [
           {
             id: 'clarification' as const,
             label: 'Clarification Required',
             count: projects.filter((p) => p.status === 'Clarification Required').length,
           },
-          {
-            id: 'submitted-reviewer' as const,
-            label: 'Submitted to Reviewer',
-            count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status)).length,
-          },
         ]
+      : []),
+    ...(!instanceInAllocation && !instanceInUtilization
+      ? [{
+          id: 'submitted-reviewer' as const,
+          label: 'Submitted to Reviewer',
+          count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status, p.statusCode)).length,
+        }]
       : []),
     ...(instanceInAllocation
       ? [
@@ -323,6 +333,16 @@ export default function RespondentProjects() {
             id: 'allocation-in-progress' as const,
             label: 'Allocation In Progress',
             count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInProgress).length,
+          },
+          {
+            id: 'allocation-in-review' as const,
+            label: 'Allocation In Review',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInReview).length,
+          },
+          {
+            id: 'allocation-completed' as const,
+            label: 'Allocation Completed',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationCompleted).length,
           },
         ]
       : []),
@@ -352,8 +372,10 @@ export default function RespondentProjects() {
       activeTab === 'all' ||
       (activeTab === 'needs-work' && project.status === 'Draft') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status)) ||
+      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status, project.statusCode)) ||
       (activeTab === 'allocation-in-progress' && project.statusCode === DGE_BUDGET_STATUS.allocationInProgress) ||
+      (activeTab === 'allocation-in-review' && project.statusCode === DGE_BUDGET_STATUS.allocationInReview) ||
+      (activeTab === 'allocation-completed' && project.statusCode === DGE_BUDGET_STATUS.allocationCompleted) ||
       (activeTab === 'utilization-in-progress' && project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress) ||
       (activeTab === 'utilization-completed' && project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted)
     const projectStatusLabel = project.statusForAdgeLabel || project.status
@@ -447,6 +469,7 @@ export default function RespondentProjects() {
         role="respondent"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={projects}
         variant="projects"

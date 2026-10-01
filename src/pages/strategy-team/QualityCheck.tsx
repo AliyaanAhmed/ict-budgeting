@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ChevronDown,
@@ -13,6 +13,9 @@ import {
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { getProjectAiReviewFlags, parseBudgetOverviewData } from '@/services/documentAiSummaryStoreService'
+import { aiFlagTone } from '@/components/shared/aiRiskStyles'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
@@ -128,6 +131,32 @@ export default function QualityCheck() {
   const strategyTeamId = getStoredStrategyTeam()?.teamId?.trim() || null
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('All')
   const [search, setSearch] = useState('')
+  const [matchFilter, setMatchFilter] = useState('all')
+  const [scoreMin, setScoreMin] = useState('')
+  const [scoreMax, setScoreMax] = useState('')
+  const scoreFilterRef = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const element = scoreFilterRef.current
+      if (element?.open && !element.contains(event.target as Node)) element.open = false
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      const element = scoreFilterRef.current
+      if (event.key === 'Escape' && element?.open) {
+        element.open = false
+        element.querySelector('summary')?.focus()
+      }
+    }
+    document.addEventListener('pointerdown', closeOutside)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [])
+  const invalidScoreRange = (scoreMin !== '' && (Number(scoreMin) < 0 || Number(scoreMin) > 100)) ||
+    (scoreMax !== '' && (Number(scoreMax) < 0 || Number(scoreMax) > 100)) ||
+    (scoreMin !== '' && scoreMax !== '' && Number(scoreMin) > Number(scoreMax))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [budgets, setBudgets] = useState<DgeBudgetRecord[]>([])
@@ -202,11 +231,17 @@ export default function QualityCheck() {
   )
 
   const filteredItems = useMemo(() => {
-    const searched = budgets.filter((item) =>
+    const scored = budgets.filter((item) => {
+      if (invalidScoreRange || (scoreMin === '' && scoreMax === '')) return true
+      return typeof item.smeReviewScore === 'number' && Number.isFinite(item.smeReviewScore) &&
+        item.smeReviewScore >= (scoreMin === '' ? 0 : Number(scoreMin)) &&
+        item.smeReviewScore <= (scoreMax === '' ? 100 : Number(scoreMax))
+    })
+    const searched = scored.filter((item) =>
       `${item.budgetRefId} ${item.name} ${item.entityName} ${item.strategicPriorityClassificationName} ${item.strategicPriorityName}`.toLowerCase().includes(search.toLowerCase())
     )
 
-    return searched.filter((item) =>
+    return searched.filter((item) => matchFilter === 'all' || (canShowStrategyAiRecommendation(item.statuscode) && getSmeDecisionMatch(item.projectPortfolioForDge, item.recommended) === matchFilter)).filter((item) =>
       activeTab === 'Under Quality Check'
         ? item.statuscode === DGE_BUDGET_STATUS.underQualityCheck
         : activeTab === 'Under Final Review'
@@ -215,7 +250,7 @@ export default function QualityCheck() {
             ? item.statuscode === DGE_BUDGET_STATUS.clarificationPending
             : true
     )
-  }, [activeTab, budgets, search])
+  }, [activeTab, budgets, search, matchFilter, scoreMin, scoreMax, invalidScoreRange])
 
   const refresh = async () => {
     if (!selectedCycle?.id) return
@@ -335,7 +370,7 @@ export default function QualityCheck() {
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative w-full max-w-md">
+          <div className="relative w-full sm:w-60 sm:shrink-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
             <Input
               value={search}
@@ -344,7 +379,7 @@ export default function QualityCheck() {
               className="h-10 rounded-2xl border-[#D7E4F4] bg-white pl-10 text-sm dark:border-white/10 dark:bg-[#1E293B]"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             {tabCounts.map((tab) => (
               <button
                 key={tab.label}
@@ -363,20 +398,67 @@ export default function QualityCheck() {
               </button>
             ))}
           </div>
+          <details ref={scoreFilterRef} className="group/score relative ml-auto w-full sm:w-auto">
+            <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-xl border border-[#D7E4F4] bg-white px-3 text-sm font-medium text-[#286CFF] hover:border-[#286CFF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#286CFF] dark:border-white/10 dark:bg-[#1E293B] dark:text-blue-200 [&::-webkit-details-marker]:hidden">
+              <ShieldCheck className="h-4 w-4" />
+              SME Score {scoreMin !== '' || scoreMax !== '' ? `: ${scoreMin || '0'}-${scoreMax || '100'}%` : 'Range'}
+              <ChevronDown className="ml-auto h-4 w-4 transition-transform group-open/score:rotate-180" />
+            </summary>
+            <div className="absolute right-0 top-full z-40 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#D7E4F4] bg-white p-4 shadow-lg dark:border-white/10 dark:bg-[#1E293B]">
+              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">SME Review Score</p>
+              <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">Choose a range or fine-tune the limits.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[[0, 49], [50, 69], [70, 100]].map(([min, max]) => <button key={min} type="button" aria-pressed={scoreMin === String(min) && scoreMax === String(max)} onClick={() => { setScoreMin(String(min)); setScoreMax(String(max)) }} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#286CFF] ${scoreMin === String(min) && scoreMax === String(max) ? 'border-[#286CFF] bg-[#286CFF] text-white' : 'border-[#D7E4F4] bg-[#F8FBFF] text-[#286CFF] hover:border-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-blue-200'}`}>{min}-{max}%</button>)}
+              </div>
+              <div className="mt-4 space-y-3 rounded-xl bg-[#F8FBFF] p-3 dark:bg-white/5">
+                <label className="block text-xs font-medium text-[#475569] dark:text-slate-300">Minimum: {scoreMin || '0'}%<input type="range" min="0" max="100" value={scoreMin || '0'} onChange={(event) => { setScoreMin(event.target.value); if (Number(event.target.value) > Number(scoreMax || 100)) setScoreMax(event.target.value) }} className="mt-2 block w-full cursor-pointer accent-[#286CFF]" /></label>
+                <label className="block text-xs font-medium text-[#475569] dark:text-slate-300">Maximum: {scoreMax || '100'}%<input type="range" min="0" max="100" value={scoreMax || '100'} onChange={(event) => { setScoreMax(event.target.value); if (Number(event.target.value) < Number(scoreMin || 0)) setScoreMin(event.target.value) }} className="mt-2 block w-full cursor-pointer accent-[#286CFF]" /></label>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="text-xs text-slate-500 dark:text-slate-300">Minimum (%)<Input type="number" min={0} max={100} value={scoreMin} onChange={(event) => setScoreMin(event.target.value)} placeholder="0" aria-invalid={invalidScoreRange} /></label>
+                <label className="text-xs text-slate-500 dark:text-slate-300">Maximum (%)<Input type="number" min={0} max={100} value={scoreMax} onChange={(event) => setScoreMax(event.target.value)} placeholder="100" aria-invalid={invalidScoreRange} /></label>
+              </div>
+              {invalidScoreRange && <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-300">Use 0-100, with minimum not above maximum. This range has not been applied.</p>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="ghost" size="sm" onClick={() => { setScoreMin(''); setScoreMax('') }}>Clear</Button>
+                <Button size="sm" disabled={invalidScoreRange} className="ml-auto" onClick={() => { if (scoreFilterRef.current) { scoreFilterRef.current.open = false; scoreFilterRef.current.querySelector('summary')?.focus() } }}>Done</Button>
+              </div>
+            </div>
+          </details>
+          <div className="w-full shrink-0 sm:w-52">
+          <Select value={matchFilter} onValueChange={setMatchFilter}>
+            <SelectTrigger aria-label="AI Filter" className="h-10 w-full gap-2 rounded-xl border-[#E9D5FF] bg-[#FDF7FF] text-[#9333EA] hover:border-[#D8B4FE] hover:bg-[#FAF5FF] focus:ring-[#A855F7] dark:border-purple-900 dark:bg-[#2A123D]/50 dark:text-[#E9D5FF] dark:hover:bg-purple-900/30">
+              <Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]" />
+              <span className="min-w-0 flex-1 text-left"><SelectValue /></span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">AI Filter</SelectItem>
+              <SelectItem value="matched">Matched</SelectItem>
+              <SelectItem value="mismatched">Mismatched</SelectItem>
+            </SelectContent>
+          </Select>
+          </div>
         </div>
-
         <div className="space-y-4">
           {!loading && filteredItems.length === 0 ? (
             <Card className="rounded-[22px] border-[#DCE6F6] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#162339]">
               <CardContent className="px-5 py-10 text-center">
                 <Workflow className="mx-auto h-8 w-8 text-[#94A3B8]" />
                 <p className="mt-3 text-sm font-semibold text-[#0F172A] dark:text-white">No quality-check projects found</p>
-                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">No live projects matched this status filter.</p>
+                <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">No projects match the current search and filters.</p>
               </CardContent>
             </Card>
           ) : null}
 
           {filteredItems.map((item) => {
+            const reviewFlags = getProjectAiReviewFlags(item.aiReviewFlags)
+            const reportedFlags = parseBudgetOverviewData(item.projectPortfolioForDge)?.ai_review_flags
+            const flagKeys = { 1: 'evidence_risk', 2: 'dge_budget_consideration_risk', 3: 'strategic_alignment_risk', 4: 'budget_accuracy_risk', 8: 'clarification_required' } as const
+            const confidence = item.aiConfidenceScore
+            const hasConfidence = typeof confidence === 'number' && Number.isFinite(confidence)
+            const confidenceColor = !hasConfidence ? 'text-[#64748B] dark:text-slate-300' : confidence >= 80 ? 'text-[#059669] dark:text-emerald-300' : confidence >= 60 ? 'text-[#D97706] dark:text-amber-300' : 'text-[#DC2626] dark:text-red-300'
+            const hasScore = typeof item.smeReviewScore === 'number' && Number.isFinite(item.smeReviewScore)
+            const decisionMatch = canShowStrategyAiRecommendation(item.statuscode) ? getSmeDecisionMatch(item.projectPortfolioForDge, item.recommended) : 'unavailable'
             const isDirectorClarification = directorClarificationBudgetIds.has(item.id)
             const isDirectorClarificationAssignedToStrategy =
               isDirectorClarification &&
@@ -385,19 +467,25 @@ export default function QualityCheck() {
                 item.ownerId?.trim() === strategyTeamId
               )
             return (
-            <Card key={item.id} className="overflow-hidden rounded-[24px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-              <CardContent className="p-5">
-                <div className="flex flex-col gap-4">
+            <Card key={item.id} className="group overflow-hidden rounded-[24px] border-[#D9E6F5] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow] duration-200 hover:border-[#AFCBFF] hover:shadow-[0_12px_30px_rgba(40,108,255,0.09)] focus-within:border-[#286CFF] dark:border-white/10 dark:bg-[#162339] dark:hover:border-[#4F98FF]/50 motion-reduce:transition-none">
+              <CardContent className="grid p-0 lg:grid-cols-[190px_minmax(0,1fr)]">
+                <aside className="flex flex-col justify-center gap-3 border-b border-[#DCE8F6] bg-gradient-to-b from-[#EEF5FF] to-[#F8FBFF] p-6 lg:border-b-0 lg:border-r dark:border-white/10 dark:from-[#203352] dark:to-[#162339]">
+                  <div className="flex items-center gap-2 text-[#286CFF] dark:text-blue-200"><ShieldCheck className="h-5 w-5" /><p className="text-sm font-semibold">SME Review Score</p></div>
+                  <p className="text-4xl font-bold tabular-nums text-[#0F172A] dark:text-white">{hasScore ? <>{item.smeReviewScore}<span className="ml-1 text-xl text-[#64748B] dark:text-slate-300">%</span></> : <span className="text-lg">Not Available</span>}</p>
+                  {hasScore && <div role="meter" aria-label="SME Review Score" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.min(100, Math.max(0, item.smeReviewScore!))} className="h-2 overflow-hidden rounded-full bg-[#DCE8F6] dark:bg-white/10"><div className="h-full rounded-full bg-[#286CFF]" style={{ width: `${Math.min(100, Math.max(0, item.smeReviewScore!))}%` }} /></div>}
+                  <p className="text-xs leading-5 text-[#64748B] dark:text-slate-300">{hasScore ? 'SME review quality assessment' : 'A review score has not been recorded yet.'}</p>
+                </aside>
+                <div className="flex min-w-0 flex-col gap-4 p-5 sm:p-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-lg font-bold text-[#0F172A] dark:text-white">{item.name}</p>
+                        <Link to={`/strategy-team/projects/${item.id}`} state={{ backTo: '/strategy-team/quality-check', backLabel: 'Quality Check' }} className="min-w-0 break-words rounded text-lg font-bold text-[#0F172A] transition-colors hover:text-[#286CFF] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#286CFF] dark:text-white dark:hover:text-[#BFDBFE]">{item.name}</Link>
                         <StrategyPill tone={item.statuscode === DGE_BUDGET_STATUS.underFinalReview ? 'teal' : item.statuscode === DGE_BUDGET_STATUS.clarificationPending ? 'amber' : 'blue'}>
                           {item.statusLabel}
                         </StrategyPill>
                       </div>
                       <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
-                        {item.entityName || item.instanceName || 'Unknown Entity'}
+                        {item.budgetRefId} · {item.entityName || item.instanceName || 'Unknown Entity'}
                       </p>
                     </div>
                     <div className="shrink-0 text-left lg:text-right">
@@ -410,12 +498,39 @@ export default function QualityCheck() {
                     {item.summary || 'No summary is available for this project.'}
                   </p>
 
+                  <div className="flex flex-wrap items-center gap-2">
+                    {decisionMatch !== 'unavailable' && <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${decisionMatch === 'matched' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'}`}>AI Decision: {decisionMatch === 'matched' ? 'Matched' : 'Mismatched'}</span>}
+                    <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
+                      <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#A855F7] dark:text-purple-200" />
+                      <span className="text-[#64748B] dark:text-slate-300">AI Confidence Score:</span>
+                      <span className={`tabular-nums ${confidenceColor}`}>{hasConfidence ? `${confidence}%` : 'Not Available'}</span>
+                    </span>
+                  </div>
+                  {reviewFlags.length > 0 && <div className="flex flex-wrap items-center gap-2"><p className="mr-1 text-xs font-semibold text-[#64748B] dark:text-slate-300">AI Review Flags</p>{reviewFlags.map((flag) => {
+                    const key = flagKeys[flag.code as keyof typeof flagKeys]
+                    const reported = key ? reportedFlags?.[key] : undefined
+                    const severity = reported?.severity || flag.severity
+                    return <span key={flag.key} title={`${severity} Risk${reported?.reason ? `: ${reported.reason}` : ''}`} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${aiFlagTone(severity)}`}><Sparkles className="h-3 w-3 shrink-0" />{flag.label}<span className="sr-only">: {severity} Risk</span></span>
+                  })}</div>}
+                  <div className="grid auto-rows-fr items-stretch gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                      <p className="text-xs font-semibold text-[#64748B] dark:text-slate-300">Actual SME Decision</p>
+                      <span className={`mt-2 inline-flex rounded-full px-3 py-1 text-sm font-semibold ${item.recommended === 2 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200' : item.recommended === 1 ? 'bg-rose-50 text-rose-800 dark:bg-rose-900/30 dark:text-rose-200' : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}>
+                        {item.recommended === 2 ? 'Recommended' : item.recommended === 1 ? 'Not Recommended' : 'Not Yet Finalized'}
+                      </span>
+                      {item.recommended === 1 && <p className="mt-2 text-sm text-[#64748B] dark:text-slate-300">{item.rejectionReason === 1 ? 'Not Advised' : item.rejectionReason === 2 ? 'Not ICT Related' : item.rejectionReason === 3 ? 'No Evidence Provided' : 'No rejection reason provided'}</p>}
+                    </div>
+                    {canShowStrategyAiRecommendation(item.statuscode) && <SmeAiRecommendation raw={item.projectPortfolioForDge} variant="static" />}
+                  </div>
+
                   <div className="hidden">
                     <div className="flex flex-col rounded-[20px] border border-[#EAF0F6] bg-white p-4 dark:border-white/10 dark:bg-[#17243A]">
                       <label className="mb-2 block text-xs font-medium tracking-wide text-[#0F172A] dark:text-white">SME Recommendation</label>
                       <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#4A9D5C]/30 bg-[#4A9D5C]/10 px-4 py-2">
                         <ShieldCheck className="h-5 w-5 text-[#4A9D5C]" />
-                        <span className="font-medium text-[#4A9D5C]">{item.recommendedBudget > 0 ? 'Recommended — Approve' : 'Not yet finalized'}</span>
+                        <span className="font-medium text-[#475569] dark:text-slate-200">{item.recommended === 2 ? 'Recommended' : item.recommended === 1 ? 'Not Recommended' : 'Not yet finalized'}</span>
+                        {item.recommended === 1 && <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{item.rejectionReason === 1 ? 'Not Advised' : item.rejectionReason === 2 ? 'Not ICT Related' : item.rejectionReason === 3 ? 'No Evidence Provided' : 'No rejection reason provided'}</p>}
+                        {canShowStrategyAiRecommendation(item.statuscode) && <SmeAiRecommendation raw={item.projectPortfolioForDge} />}
                       </div>
                       <p className="text-sm leading-6 text-[#0F172A] dark:text-white">
                         {item.summary || 'No SME summary is available yet for this project.'}
@@ -564,3 +679,6 @@ export default function QualityCheck() {
   )
 }
 import { SmeReviewScore } from '@/components/shared/SmeReviewScore'
+import { SmeAiRecommendation } from '@/components/shared/SmeAiRecommendation'
+import { canShowStrategyAiRecommendation } from '@/services/smeAiRecommendation'
+import { getSmeDecisionMatch } from '@/services/smeAiRecommendation'

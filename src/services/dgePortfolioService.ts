@@ -62,6 +62,9 @@ export interface DgeBudgetRecord {
   previousStrategicPriorityClassificationName: string | null
   requestedBudget: number
   recommendedBudget: number
+  recommended?: number | null
+  rejectionReason?: number | null
+  projectPortfolioForDge?: string | null
   allocatedBudget: number
   utilizedBudget: number
   utilizedBudgetQ1?: number
@@ -265,6 +268,9 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     previousStrategicPriorityClassificationName,
     requestedBudget: Number(record.dga_total_budget_requested ?? 0),
     recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
+    recommended: record.dga_recommended ?? null,
+    rejectionReason: record.dga_rejection_reason ?? null,
+    projectPortfolioForDge: record.dga_project_portfolio_for_dge ?? null,
     allocatedBudget: Number(record.dga_total_budget_allocated ?? 0),
     utilizedBudget: Number(record.dga_total_budget_utilized ?? 0),
     utilizedBudgetQ1: Number(record.dga_total_budget_utilized_q1 ?? 0),
@@ -337,6 +343,9 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     'dga_ai_confidence_score',
     'dga_total_budget_requested',
     'dga_total_budget_recommended',
+    'dga_recommended',
+    'dga_rejection_reason',
+    'dga_project_portfolio_for_dge',
     'dga_total_budget_allocated',
     'dga_total_budget_utilized',
     'dga_total_budget_utilized_q1',

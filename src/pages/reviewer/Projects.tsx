@@ -193,7 +193,7 @@ export default function ReviewerProjects() {
   const { runActionToast } = useToast()
   const cycleName = selectedCycle?.name ?? 'ICT Budget Cycle'
   const { items: projects, loading, error } = useRoleProjects('reviewer', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
@@ -389,6 +389,7 @@ export default function ReviewerProjects() {
         role="reviewer"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={projects}
         variant="projects"

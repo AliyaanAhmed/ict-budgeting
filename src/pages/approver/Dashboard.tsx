@@ -64,6 +64,7 @@ import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import { useToast } from '@/context/ToastContext'
 import { updateCurrentInstanceSubmissionDate } from '@/services/instanceService'
+import { sendApproverSubmissionEmail } from '@/services/approverSubmissionEmailService'
 import { getStoredInstanceDetail } from '@/services/instanceService'
 import { submitInstanceToUtilization } from '@/services/dgeWorkflowService'
 import { DGE_BUDGET_STATUS, DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
@@ -377,8 +378,8 @@ export default function ApproverDashboard() {
   const { selectedCycle } = useCycle()
   const { instanceId, instanceDetail, instanceLoading } = useInstance()
   const { items: liveProjects, loading, error } = useRoleProjects('approver', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
-  const { runActionToast } = useToast()
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('approver', instanceId)
+  const { runActionToast, showErrorToast } = useToast()
   const storedInstanceDetail = getStoredInstanceDetail()
   const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
   const dashboardInstanceStatus = activeInstanceDetail?.statuscode ?? null
@@ -780,7 +781,12 @@ export default function ApproverDashboard() {
           await submitInstanceToUtilization(instanceId, projectIds)
         } else {
           await projectService.approverSubmitToDge(projectIds)
-          await updateCurrentInstanceSubmissionDate()
+          const submittedInstanceId = await updateCurrentInstanceSubmissionDate()
+          try {
+            await sendApproverSubmissionEmail(submittedInstanceId)
+          } catch (error) {
+            showErrorToast('Submitted to DGE; email notification failed', error instanceof Error ? error.message : 'Unable to notify Strategy Team. Do not resubmit the portfolio.')
+          }
         }
         setPortfolioSubmittedToDge(true)
         setStatusOverrides((prev) => {
@@ -1051,6 +1057,7 @@ export default function ApproverDashboard() {
         role="approver"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={effectiveLiveProjects}
         variant="dashboard"

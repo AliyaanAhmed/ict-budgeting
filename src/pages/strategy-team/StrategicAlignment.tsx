@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight,
   ArrowRightLeft,
   Building2,
   CheckCircle2,
@@ -45,8 +44,11 @@ import { grantIctBudgetAccessToTeam } from '@/services/recordShareService'
 
 function AssistantSummary({ budgets }: { budgets: DgeBudgetRecord[] }) {
   const [open, setOpen] = useState(false)
-  const mismatchProjects = budgets.filter((budget) => getAiAlignmentState(budget) === 'mismatch')
-  const alignedProjects = budgets.filter((budget) => getAiAlignmentState(budget) === 'aligned')
+  const strategicAlignmentReviewProjects = budgets.filter(
+    (budget) => budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
+  )
+  const mismatchProjects = strategicAlignmentReviewProjects.filter((budget) => getAiAlignmentState(budget) === 'mismatch')
+  const alignedProjects = strategicAlignmentReviewProjects.filter((budget) => getAiAlignmentState(budget) === 'aligned')
   const clarificationProjects = budgets.filter((budget) => budget.statuscode === DGE_BUDGET_STATUS.clarificationPending)
   const activeSignalCount = mismatchProjects.length + clarificationProjects.length
   const projectLabel = (count: number) => `${count} project${count === 1 ? '' : 's'}`
@@ -240,12 +242,11 @@ function StrategicAlignmentSkeleton() {
 }
 
 const PRIORITY_ALL_KEY = '__all__'
-type StrategicAlignmentTab = 'strategic-alignment-review' | 'strategic-priority-change' | 'sent-to-smes' | 'reviewed-by-smes'
+type StrategicAlignmentTab = 'strategic-alignment-review' | 'sent-to-smes' | 'reviewed-by-smes'
 type AiAlignmentFilter = 'all' | 'mismatch' | 'aligned'
 
 const STRATEGIC_ALIGNMENT_TABS: Array<{ id: StrategicAlignmentTab; label: string; statuses: number[] }> = [
   { id: 'strategic-alignment-review', label: 'Strategic Alignment Review', statuses: [DGE_BUDGET_STATUS.underStrategicAlignmentReview] },
-  { id: 'strategic-priority-change', label: 'Strategic Priority Change', statuses: [DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview] },
   { id: 'sent-to-smes', label: 'Sent to SMEs', statuses: [DGE_BUDGET_STATUS.underSmeReview] },
   {
     id: 'reviewed-by-smes',
@@ -292,6 +293,13 @@ function getAiAlignmentState(budget: DgeBudgetRecord): 'mismatch' | 'aligned' | 
   }
 
   return 'aligned'
+}
+
+function getFieldAlignmentState(actual: string | null | undefined, suggested: string | null | undefined): 'mismatch' | 'aligned' | 'none' {
+  const actualLabel = normalizeAlignmentLabel(actual)
+  const suggestedLabel = normalizeAlignmentLabel(suggested)
+  if (!actualLabel || !suggestedLabel) return 'none'
+  return actualLabel === suggestedLabel ? 'aligned' : 'mismatch'
 }
 
 function getAlignmentCellClass(alignmentState: 'mismatch' | 'aligned' | 'none') {
@@ -505,11 +513,9 @@ export default function StrategicAlignment() {
     selectedStatusCodes.length === 1 &&
     selectedStatusCodes[0] === DGE_BUDGET_STATUS.underStrategicAlignmentReview
 
-  const selectedChangeRequestBudget =
-    selectedBudgets.length === 1 &&
-    selectedBudgets[0].statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
-      ? selectedBudgets[0]
-      : null
+  const selectedChangeRequestBudget = selectedBudgets.find(
+    (budget) => budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
+  ) ?? null
 
   const selectedClarificationBudget =
     selectedBudgets.length === 1 &&
@@ -649,32 +655,11 @@ export default function StrategicAlignment() {
   const handleReviewChangeRequest = async (decision: 'approve' | 'reject') => {
     if (!selectedChangeRequestBudget) return
     setSaving(true)
-    setError(null)
     try {
-      await runActionToast(
-        async () => {
-          await reviewStrategicPriorityChange(selectedChangeRequestBudget, decision)
-          await refreshData()
-          setChangeRequestModalOpen(false)
-          setSelectedIds([])
-        },
-        {
-          processingTitle: decision === 'approve' ? 'Approving requested change' : 'Rejecting requested change',
-          processingDescription:
-            decision === 'approve'
-              ? 'Updating the project mapping and routing it back to the correct SME team...'
-              : 'Clearing the requested change and returning the project to SME review...',
-          successTitle: decision === 'approve' ? 'Change approved' : 'Change rejected',
-          successDescription:
-            decision === 'approve'
-              ? 'The new strategic priority mapping is now active.'
-              : 'The requested change was cleared and the project was returned to SME review.',
-          errorTitle: 'Unable to process strategic change review',
-          minDurationMs: 1400,
-        }
-      )
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Unable to process the strategic priority change request.')
+      await reviewStrategicPriorityChange(selectedChangeRequestBudget, decision)
+      await refreshData()
+      setChangeRequestModalOpen(false)
+      setSelectedIds([])
     } finally {
       setSaving(false)
     }
@@ -761,26 +746,10 @@ export default function StrategicAlignment() {
 
   const selectedChangeRequestDetails = selectedChangeRequestBudget
     ? {
-        currentPriority:
-          trimPriorityLabel(
-            priorityLookup.get(selectedChangeRequestBudget.strategicPriorityId ?? '') ||
-              selectedChangeRequestBudget.strategicPriorityName
-          ) || '-',
-        currentClassification:
-          trimPriorityLabel(
-            priorityLookup.get(selectedChangeRequestBudget.strategicPriorityClassificationId ?? '') ||
-              selectedChangeRequestBudget.strategicPriorityClassificationName
-          ) || '-',
-        requestedPriority:
-          trimPriorityLabel(
-            priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityId ?? '') ||
-              selectedChangeRequestBudget.previousStrategicPriorityName
-          ) || '-',
-        requestedClassification:
-          trimPriorityLabel(
-            priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityClassificationId ?? '') ||
-              selectedChangeRequestBudget.previousStrategicPriorityClassificationName
-          ) || '-',
+        currentPriority: trimPriorityLabel(priorityLookup.get(selectedChangeRequestBudget.strategicPriorityId ?? '') || selectedChangeRequestBudget.strategicPriorityName) || '-',
+        currentClassification: trimPriorityLabel(priorityLookup.get(selectedChangeRequestBudget.strategicPriorityClassificationId ?? '') || selectedChangeRequestBudget.strategicPriorityClassificationName) || '-',
+        requestedPriority: trimPriorityLabel(priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityId ?? '') || selectedChangeRequestBudget.previousStrategicPriorityName) || '-',
+        requestedClassification: trimPriorityLabel(priorityLookup.get(selectedChangeRequestBudget.previousStrategicPriorityClassificationId ?? '') || selectedChangeRequestBudget.previousStrategicPriorityClassificationName) || '-',
       }
     : null
 
@@ -931,17 +900,6 @@ export default function StrategicAlignment() {
                         </>
                       ) : null}
 
-                      {selectedChangeRequestBudget ? (
-                        <Button
-                          type="button"
-                          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-transparent bg-blue-600 px-3 text-sm font-medium text-white transition-colors duration-150 hover:bg-blue-700 active:bg-[#003CFF] disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={saving}
-                          onClick={() => setChangeRequestModalOpen(true)}
-                        >
-                          <ArrowRight className="mr-1 h-4 w-4" />
-                          View Request Change
-                        </Button>
-                      ) : null}
                       {selectedClarificationBudget ? (
                         <Button
                           type="button"
@@ -964,7 +922,7 @@ export default function StrategicAlignment() {
                 </div>
 
                 <div className="mt-5 overflow-x-auto rounded-[12px] border border-[#DCE6F6] bg-white dark:border-white/10 dark:bg-[#1B2A41]">
-                <div className="grid min-w-[2520px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(270px,1.2fr)_minmax(200px,1fr)_minmax(150px,0.9fr)] gap-5 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
+                <div className="grid min-w-[2180px] grid-cols-[36px_minmax(240px,1.6fr)_minmax(210px,1.15fr)_minmax(230px,1.25fr)_minmax(210px,1.15fr)_minmax(240px,1.3fr)_minmax(150px,0.8fr)_minmax(190px,0.95fr)_minmax(190px,1fr)_minmax(140px,0.75fr)] gap-3 border-b border-[#EEF3F8] px-5 py-3 text-sm font-semibold text-[#0F172A] dark:border-white/10 dark:text-white">
                     <span />
                     <span className="whitespace-nowrap text-left">Project Name</span>
                     <span className="whitespace-nowrap text-left">Strategic Priority</span>
@@ -1004,7 +962,6 @@ export default function StrategicAlignment() {
                         const suggestedClassificationLabel =
                           trimPriorityLabel(budget.suggestedStrategicPriorityClassificationName) || '-'
                         const aiAlignmentState = getAiAlignmentState(budget)
-                        const alignmentCellClass = getAlignmentCellClass(aiAlignmentState)
                         const smeTeamLabel =
                           budget.smeReviewerTeamName ||
                           (budget.strategicPriorityId ? smeAssignmentByPriorityLookup.get(budget.strategicPriorityId) : null) ||
@@ -1012,12 +969,20 @@ export default function StrategicAlignment() {
                           '-'
 
                         const inlineDraft = getInlineDraft(budget)
+                        const priorityCellClass = getAlignmentCellClass(getFieldAlignmentState(
+                          priorityLookup.get(inlineDraft.priorityId) || budget.strategicPriorityName,
+                          budget.suggestedStrategicPriorityName
+                        ))
+                        const classificationCellClass = getAlignmentCellClass(getFieldAlignmentState(
+                          inlineDraft.classificationId ? priorityLookup.get(inlineDraft.classificationId) || budget.strategicPriorityClassificationName : null,
+                          budget.suggestedStrategicPriorityClassificationName
+                        ))
                         const classificationOptions = getClassificationOptionsForPriority(priorities, inlineDraft.priorityId)
                         const priorityOptions = parentPriorities
                         const canEditInline = budget.statuscode === DGE_BUDGET_STATUS.underStrategicAlignmentReview
 
                         return (
-                        <div key={budget.id} className="group grid min-w-[2520px] grid-cols-[44px_minmax(250px,1.75fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(230px,1.2fr)_minmax(260px,1.35fr)_minmax(260px,1.35fr)_minmax(170px,0.95fr)_minmax(270px,1.2fr)_minmax(200px,1fr)_minmax(150px,0.9fr)] gap-5 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
+                        <div key={budget.id} className="group grid min-w-[2180px] grid-cols-[36px_minmax(240px,1.6fr)_minmax(210px,1.15fr)_minmax(230px,1.25fr)_minmax(210px,1.15fr)_minmax(240px,1.3fr)_minmax(150px,0.8fr)_minmax(190px,0.95fr)_minmax(190px,1fr)_minmax(140px,0.75fr)] items-start gap-3 px-5 py-4 hover:bg-[#F8FBFF] dark:hover:bg-white/5">
                             <div className="pt-1">
                               <input
                                 type="checkbox"
@@ -1046,7 +1011,7 @@ export default function StrategicAlignment() {
                                   }}
                                   disabled={isInlineSaving(budget.id)}
                                 >
-                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', alignmentCellClass)}>
+                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', priorityCellClass)}>
                                     <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
                                       <Layers className="mt-0.5 h-4 w-4 shrink-0 text-[#286CFF]" />
                                       <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] leading-snug">
@@ -1063,7 +1028,7 @@ export default function StrategicAlignment() {
                                   </SelectContent>
                                 </Select>
                               ) : (
-                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', alignmentCellClass)}>
+                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', priorityCellClass)}>
                                   {priorityLabel}
                                 </div>
                               )}
@@ -1077,7 +1042,7 @@ export default function StrategicAlignment() {
                                   }}
                                   disabled={!inlineDraft.priorityId || isInlineSaving(budget.id)}
                                 >
-                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', alignmentCellClass)}>
+                                  <SelectTrigger className={cn('min-h-10 h-auto min-w-0 max-w-full gap-2 rounded-xl px-3 py-2 [&>svg]:shrink-0', classificationCellClass)}>
                                     <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
                                       <Workflow className="mt-0.5 h-4 w-4 shrink-0 text-[#286CFF]" />
                                       <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere] leading-snug">
@@ -1096,7 +1061,7 @@ export default function StrategicAlignment() {
                                   </SelectContent>
                                 </Select>
                               ) : (
-                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', alignmentCellClass)}>
+                                <div className={cn('rounded-xl px-3 py-2 text-sm font-medium', classificationCellClass)}>
                                   {classificationLabel}
                                 </div>
                               )}

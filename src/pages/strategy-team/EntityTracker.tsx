@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { DatePickerField } from '@/components/shared/DatePickerField'
+import { AiSummaryProcessingState } from '@/components/shared/AiPortfolioSummary'
 import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
 import { useToast } from '@/context/ToastContext'
@@ -34,6 +35,7 @@ type EntityAiSummary = {
   modifiedOn: string | null
   responseJson: string
   parsed: Record<string, unknown> | null
+  isValid: boolean | null
 }
 
 const stepIcons = {
@@ -201,6 +203,7 @@ function toEntityAiSummary(record: Dga_ict_ai_summaries): EntityAiSummary | null
     modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     responseJson,
     parsed: extractOpenAiOutputJson(responseJson),
+    isValid: typeof record.dga_is_valid === 'boolean' ? record.dga_is_valid : null,
   }
 }
 
@@ -220,6 +223,7 @@ async function getEntityAiSummariesByInstanceIds(instanceIds: string[]) {
           'dga_name',
           'dga_summary_category',
           'dga_summary_type',
+          'dga_is_valid',
           'modifiedon',
           'createdon',
         ],
@@ -267,6 +271,7 @@ async function getCycleAiSummaryByCycleId(cycleId: string) {
       'dga_name',
       'dga_summary_category',
       'dga_summary_type',
+      'dga_is_valid',
       'modifiedon',
       'createdon',
     ],
@@ -488,11 +493,20 @@ function EntityAiPortfolioInsights({
   loading: boolean
   error: string | null
 }) {
+  if (summary?.isValid === false) {
+    return (
+      <AiSummaryProcessingState
+        title="AI Portfolio Insights are being calculated"
+        description={`The latest analysis for ${entity.name} is processing. Refresh or return later to view the completed insights.`}
+      />
+    )
+  }
+
   const rows = getEntityAiInsightRows(summary)
 
   return (
-    <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
-      <div className="flex items-center gap-3">
+    <details className="group/insights rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#A855F7] [&::-webkit-details-marker]:hidden">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
           <Sparkles className="h-4 w-4" />
         </div>
@@ -507,7 +521,8 @@ function EntityAiPortfolioInsights({
           </div>
           <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.name}</p>
         </div>
-      </div>
+        <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-[#A855F7] transition-transform group-open/insights:rotate-180 motion-reduce:transition-none" />
+      </summary>
 
       <div className="mt-4 space-y-2">
         {loading ? (
@@ -565,7 +580,7 @@ function EntityAiPortfolioInsights({
           </div>
         )}
       </div>
-    </div>
+    </details>
   )
 }
 
@@ -882,6 +897,16 @@ function EntityTrackerSummary({
   error: string | null
 }) {
   const [expanded, setExpanded] = useState(false)
+
+  if (summary?.isValid === false) {
+    return (
+      <AiSummaryProcessingState
+        title="AI Entity Tracker Summary is being calculated"
+        description="The latest cycle-level entity analysis is processing. Refresh or return later to view the completed summary."
+      />
+    )
+  }
+
   const parsed = summary?.parsed ?? null
   const executiveSummaryTemplate = getStringValue(parsed, ['cycle_summary', 'executive_summary_template'])
   const executiveSummary = executiveSummaryTemplate
@@ -1296,7 +1321,7 @@ export default function EntityTracker() {
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
+                              <p className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
                               <StrategyPill tone={entity.statusLabel === 'Planning' ? 'blue' : entity.statusLabel === 'Under DGE Review' ? 'violet' : entity.statusLabel === 'Allocation' ? 'amber' : 'teal'}>
                                 {entity.statusLabel}
                               </StrategyPill>
@@ -1355,12 +1380,13 @@ export default function EntityTracker() {
                         <EntityStageTracker instance={entity} />
                       </div>
 
-                      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.95fr]">
-                        <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
-                          <div className="flex items-center gap-2">
+                      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_0.95fr]">
+                        <details className="group/summary rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
+                          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#286CFF] [&::-webkit-details-marker]:hidden">
                             <Clock3 className="h-4.5 w-4.5 text-[#286CFF]" />
                             <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Portfolio Summary</p>
-                          </div>
+                            <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-[#286CFF] transition-transform group-open/summary:rotate-180 motion-reduce:transition-none" />
+                          </summary>
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             {[
                               { label: 'Planning', value: planningRisk },
@@ -1375,7 +1401,7 @@ export default function EntityTracker() {
                               </div>
                             ))}
                           </div>
-                        </div>
+                        </details>
 
                         <EntityAiPortfolioInsights
                           entity={entity}

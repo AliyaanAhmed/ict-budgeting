@@ -129,6 +129,7 @@ export interface Dga_ict_budgetsBase {
   "dga_previous_strategic_priorityclassification@odata.bind"?: string;
   "dga_quality_checker@odata.bind"?: string;
   dga_quality_checkeridtype?: string;
+  dga_project_portfolio_for_dge?: string;
   dga_recommended?: Dga_ict_budgetsdga_recommended;
   "dga_rejected_by@odata.bind"?: string;
   dga_rejection_justification?: string;

@@ -258,7 +258,7 @@ export default function ReviewerDashboard() {
   const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
   const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const { items: liveProjects, loading, error } = useRoleProjects('reviewer', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('reviewer', instanceId)
   const budgetByCategory = useBudgetByCategoryChart(liveProjects, dashboardBudgetMetrics)
   const {
     items: accountBreakdown,
@@ -701,6 +701,7 @@ export default function ReviewerDashboard() {
         role="reviewer"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={liveProjects}
         variant="dashboard"

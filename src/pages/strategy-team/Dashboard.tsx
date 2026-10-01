@@ -579,9 +579,18 @@ function CycleProgressExplorer({
     ]
   }, [allocationBudgets.length, allocationSteps, dgeReviewSteps, planningBudgets.length, planningSteps, utilizationBudgets.length, utilizationQuarters])
 
-  const visibleStage = activeStage
+  const visibleStages = stageMeta.filter((stage) => instances.some((instance) =>
+    stage.key === 'planning'
+      ? instance.statuscode === DGE_INSTANCE_STATUS.planning || instance.statuscode === DGE_INSTANCE_STATUS.published
+      : stage.key === 'dge-review'
+        ? instance.statuscode === DGE_INSTANCE_STATUS.underDgeReview || instance.statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge
+        : stage.key === 'allocation'
+          ? instance.statuscode === DGE_INSTANCE_STATUS.allocation
+          : instance.statuscode === DGE_INSTANCE_STATUS.utilization
+  ))
+  const visibleStage = visibleStages.some((stage) => stage.key === activeStage) ? activeStage : visibleStages[0]?.key ?? 'planning'
   const active = stageMeta.find((stage) => stage.key === visibleStage) ?? stageMeta[1]
-  const dominantStage = stageMeta.find((stage) => stage.count > 0)?.key ?? 'planning'
+  const dominantStage = visibleStages.find((stage) => stage.count > 0)?.key ?? visibleStages[0]?.key ?? 'planning'
   const activeStageBudgets =
     visibleStage === 'planning'
       ? planningBudgets
@@ -622,6 +631,8 @@ function CycleProgressExplorer({
     )
     .slice(0, 4)
 
+  if (!visibleStages.length) return null
+
   return (
     <section className="overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white shadow-[0_16px_46px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#162339]">
       <div className="flex flex-col gap-4 border-b border-[#EEF3F8] bg-[radial-gradient(circle_at_12%_0%,#EEF5FF_0%,#FFFFFF_45%,#F8FBFF_100%)] px-5 py-5 dark:border-white/10 dark:bg-none lg:flex-row lg:items-center lg:justify-between">
@@ -648,9 +659,9 @@ function CycleProgressExplorer({
 
       <div className="p-5">
         <div className="flex flex-col gap-3 xl:flex-row" onMouseLeave={() => setHoverStage(null)}>
-          {stageMeta.map((stage) => {
-            const selected = activeStage === stage.key
-            const highlighted = (hoverStage ?? activeStage) === stage.key
+          {visibleStages.map((stage) => {
+            const selected = visibleStage === stage.key
+            const highlighted = (hoverStage ?? visibleStage) === stage.key
             return (
               <button
                 key={stage.key}
@@ -684,7 +695,7 @@ function CycleProgressExplorer({
                   <div className="flex items-center gap-3">
                     <span
                       className={cn(
-                        'relative grid h-9 w-9 shrink-0 place-items-center rounded-full border-4 border-white text-[10px] font-black shadow-sm transition-colors duration-200 dark:border-[#162339]',
+                        'relative grid h-9 w-9 shrink-0 place-items-center rounded-full border-4 border-white text-xs font-semibold shadow-sm transition-colors duration-200 dark:border-[#162339]',
                         highlighted ? 'text-white' : 'bg-white dark:bg-white/10'
                       )}
                       style={{ backgroundColor: highlighted ? stage.accent : undefined, color: highlighted ? '#FFFFFF' : stage.accent }}
@@ -695,11 +706,10 @@ function CycleProgressExplorer({
                       {stage.number}
                     </span>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: `var(--cycle-card-text, ${stage.accent})` }}>{stage.eyebrow}</p>
-                      <h3 className="mt-1 text-[17px] font-bold tracking-tight text-[#0F172A] dark:text-white">{stage.title}</h3>
+                      <h3 className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{stage.title}</h3>
                     </div>
                   </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-[#586A84] shadow-sm dark:bg-white/10 dark:text-slate-200">
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#586A84] shadow-sm dark:bg-white/10 dark:text-slate-200">
                     {stage.count} {stage.unit}
                   </span>
                 </div>
@@ -724,7 +734,7 @@ function CycleProgressExplorer({
           <div key={active.key} className="min-w-0 animate-[cyclePanelIn_0.36s_cubic-bezier(0.2,0.8,0.2,1)_both] rounded-[26px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: active.accent }}>Stage {active.number}</p>
+                <p className="text-xs font-semibold" style={{ color: active.accent }}>Stage {active.number}</p>
                 <h3 className="mt-1 text-xl font-bold text-[#0F172A] dark:text-white">{active.title} Overview</h3>
               </div>
             </div>
@@ -909,7 +919,7 @@ function CycleProgressExplorer({
                     <div key={item.label} className="min-w-0 rounded-[18px] bg-[#F8FBFF] px-3 py-3 dark:bg-white/5">
                       <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                         <span className="text-xs font-bold text-[#475569] dark:text-slate-200">{item.label}</span>
-                        <CurrencyAmount amount={item.amount} className="max-w-full text-xs font-black text-[#0F172A] dark:text-white" valueClassName="[overflow-wrap:anywhere]" iconColor={item.accent} iconSize={10} />
+                        <CurrencyAmount amount={item.amount} className="max-w-full text-sm font-semibold text-[#0F172A] dark:text-white" valueClassName="[overflow-wrap:anywhere]" iconColor={item.accent} iconSize={10} />
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-white dark:bg-white/10">
                         <span className="block h-full rounded-full transition-[width] duration-700" style={{ width: `${width}%`, backgroundColor: item.accent }} />

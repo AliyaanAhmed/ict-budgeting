@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { aiFlagTone } from '@/components/shared/aiRiskStyles'
 import { useBeforeUnload, useLocation, useParams, Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -637,6 +638,8 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 
+import { CalendarYearSelect } from '@/components/shared/CalendarYearSelect'
+
 function EditDatePickerField({
   value,
   onChange,
@@ -721,8 +724,9 @@ function EditDatePickerField({
                 </button>
               </nav>
 
-              <div className="flex h-8 w-full items-center justify-center px-8">
-                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMMM yyyy')}</span>
+              <div className="relative mx-8 flex h-8 items-center justify-center gap-1">
+                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMM')}</span>
+                <CalendarYearSelect month={viewMonth} onChange={setViewMonth} />
               </div>
 
               <div className="grid w-56 grid-cols-7 gap-y-2">
@@ -2551,16 +2555,6 @@ function InteractiveBudgetOverviewCard({
     .filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
     .filter((flag) => flag.severity.trim().toLowerCase() !== 'low')
 
-  function aiFlagTone(severity?: string) {
-    const normalized = severity?.toLowerCase()
-    if (normalized === 'high') {
-      return 'border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
-    }
-    if (normalized === 'medium') {
-      return 'border-[#E2E8F0] bg-white text-[#92400E] dark:border-white/10 dark:bg-white/5 dark:text-[#F6D28A]'
-    }
-    return 'border-[#E2E8F0] bg-white text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-[#CBD5E1]'
-  }
 
   const togglePolicyTextSection = (sectionKey: string) => {
     setExpandedPolicyTextSections((current) => ({
@@ -3394,6 +3388,17 @@ export default function ProjectDetail() {
 
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
+  function handleEnterEditMode() {
+    setIsEditMode(true)
+    if (isSmeView && project?.statusCode === DGE_BUDGET_STATUS.underSmeReview) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById('sec-budget')?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start',
+        })
+      }))
+    }
+  }
   const [showLogs, setShowLogs] = useState(false)
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
@@ -3479,6 +3484,7 @@ export default function ProjectDetail() {
   }, [ictBudgetId])
   const [storedCumulativeSummaryRecord, setStoredCumulativeSummaryRecord] = useState<StoredBudgetAiSummaryRecord | null>(null)
   const [budgetOverviewRecord, setBudgetOverviewRecord] = useState<StoredBudgetOverviewRecord | null>(null)
+  const [projectPortfolioForDge, setProjectPortfolioForDge] = useState<string | null>(null)
   const lastSyncedBudgetOverviewAiFlagsKeyRef = useRef<string | null>(null)
   const [pendingBudgetOverviewRefreshModifiedOn, setPendingBudgetOverviewRefreshModifiedOn] = useState<string | null>(null)
   const [pendingCumulativeRefreshModifiedOn, setPendingCumulativeRefreshModifiedOn] = useState<string | null>(null)
@@ -5103,6 +5109,7 @@ export default function ProjectDetail() {
 
           if (cancelled) return
 
+          setProjectPortfolioForDge(retrievedBudget.projectPortfolioForDge)
           setFormValues(retrievedBudget.formValues)
           setSavedFormValues(retrievedBudget.formValues)
           setSavedTechnologyProductNames(retrievedBudget.displayTechnologyProducts)
@@ -7867,6 +7874,7 @@ export default function ProjectDetail() {
   const canAdgeViewDgeRecommendationFields =
     !isDgeRole &&
     isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
+  const showStrategyAiRecommendation = isStrategyView && canShowStrategyAiRecommendation(project.statusCode)
   const showDgeRecommendationFields =
     !isAddedInAllocationBudget &&
     ((isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields)
@@ -8035,7 +8043,7 @@ export default function ProjectDetail() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setIsEditMode(true)}
+                  onClick={handleEnterEditMode}
                   className="h-9 gap-2 rounded-xl border-[#DDEBFF] text-[#475569] hover:border-[#286CFF] hover:text-[#286CFF] dark:border-white/10 dark:text-slate-200"
                 >
                   <Pencil className="h-4 w-4" />
@@ -8046,7 +8054,7 @@ export default function ProjectDetail() {
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
               {(isStrategyView || isStrategyDirectorView) && (
-                <SmeReviewScore status={project.statusCode} score={project.smeReviewScore} />
+                <SmeReviewScore status={project.statusCode} score={project.smeReviewScore} variant="card" />
               )}
               <div
                 className={cn(
@@ -8567,7 +8575,19 @@ export default function ProjectDetail() {
                   )}
 
                   {showDgeRecommendationFields && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div id="sme-recommendation-fields" className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {showStrategyAiRecommendation && (
+                        <div className="order-1 md:col-span-2">
+                          <SmeAiRecommendation raw={projectPortfolioForDge} onApply={(suggestion) => {
+                            applyRecommendedDecisionToBudgetLines(suggestion.recommended)
+                            setFormValues((prev) => ({ ...prev, recommended: suggestion.recommended,
+                              rejectionReason: suggestion.recommended === 1 ? suggestion.rejectionReason : null,
+                              rejectionJustification: suggestion.recommended === 1 ? suggestion.reason : '',
+                              rejectedById: suggestion.recommended === 1 ? sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById : '',
+                            }))
+                          }} />
+                        </div>
+                      )}
                       <EditField label="Recommended">
                         <Select
                           value={formValues.recommended ? String(formValues.recommended) : ''}
@@ -9039,7 +9059,7 @@ export default function ProjectDetail() {
 
                   {showDgeRecommendationFields ? (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <Field label="Recommended" value={display.recommended} />
+                      <Field label="Recommended" value={display.recommended} aiAssist={showStrategyAiRecommendation ? <SmeAiRecommendation raw={projectPortfolioForDge} /> : undefined} />
                       {formValues.recommended === 1 ? (
                         <>
                           <Field label="Rejection Reason" value={display.rejectionReason} />
@@ -9181,7 +9201,7 @@ export default function ProjectDetail() {
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
-                        onClick={() => setIsEditMode(true)}
+                        onClick={handleEnterEditMode}
                       >
                         <Pencil className="h-4 w-4" />
                         Edit Details
@@ -9398,7 +9418,7 @@ export default function ProjectDetail() {
                         <Button
                           variant="outline"
                           className="w-full justify-start gap-2"
-                          onClick={() => setIsEditMode(true)}
+                          onClick={handleEnterEditMode}
                         >
                           <Edit className="h-4 w-4" />
                           Edit Project
@@ -9998,3 +10018,5 @@ export default function ProjectDetail() {
   )
 }
 import { SmeReviewScore } from '@/components/shared/SmeReviewScore'
+import { SmeAiRecommendation } from '@/components/shared/SmeAiRecommendation'
+import { canShowStrategyAiRecommendation } from '@/services/smeAiRecommendation'

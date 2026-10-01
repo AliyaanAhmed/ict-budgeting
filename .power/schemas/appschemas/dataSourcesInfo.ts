@@ -132,87 +132,6 @@ export const dataSourcesInfo = {
       }
     }
   },
-  "dga_webapiforportal": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_WebApiForPortal": {
-        "path": "/api/data/v9.2/dga_WebApiForPortal",
-        "method": "POST",
-        "parameters": [
-          {
-            "name": "actionName",
-            "in": "body",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "isAdmin",
-            "in": "body",
-            "required": true,
-            "type": "boolean"
-          },
-          {
-            "name": "userId",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "fetchXml",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "tableName",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "relatedId",
-            "in": "body",
-            "required": false,
-            "type": "string",
-            "format": "guid"
-          },
-          {
-            "name": "targetId",
-            "in": "body",
-            "required": false,
-            "type": "string",
-            "format": "guid"
-          },
-          {
-            "name": "targetTableName",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "relatedTableName",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          },
-          {
-            "name": "relationship",
-            "in": "body",
-            "required": false,
-            "type": "string"
-          }
-        ],
-        "responseInfo": {
-          "200": {
-            "type": "object"
-          }
-        }
-      }
-    }
-  },
   "dga_ict_budget_dga_technology_productset": {
     "tableId": "",
     "version": "",
@@ -600,11 +519,129 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "powerappv2_onsubmittodgebyapprover_sendemailtostrategyteam": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
   "audits": {
     "tableId": "",
     "version": "",
     "primaryKey": "auditid",
     "dataSourceType": "Dataverse",
     "apis": {}
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "actionName",
+            "in": "body",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "isAdmin",
+            "in": "body",
+            "required": true,
+            "type": "boolean"
+          },
+          {
+            "name": "userId",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fetchXml",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relationship",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
   }
 };

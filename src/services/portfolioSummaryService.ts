@@ -91,6 +91,7 @@ export interface PortfolioSummaryPayload {
 export interface PortfolioSummaryRecord {
   id: string
   instanceId: string
+  isValid: boolean
   modifiedOn: string | null
   responseJson: string
   parsedSummary: PortfolioSummaryPayload | null
@@ -538,6 +539,7 @@ export async function getLatestPortfolioSummaryByCurrentInstance() {
     select: [
       'dga_ict_ai_summaryid',
       'dga_response_json',
+      'dga_is_valid',
       'dga_summary_category',
       'dga_summary_stage',
       'dga_summary_type',
@@ -560,6 +562,7 @@ export async function getLatestPortfolioSummaryByCurrentInstance() {
   return {
     id: record.dga_ict_ai_summaryid,
     instanceId,
+    isValid: record.dga_is_valid === true,
     modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     responseJson,
     parsedSummary: responseJson ? parsePortfolioSummaryData(responseJson) : null,
@@ -574,6 +577,7 @@ export async function getLatestPlanningPortfolioSummaryByCurrentInstance() {
     select: [
       'dga_ict_ai_summaryid',
       'dga_response_json',
+      'dga_is_valid',
       'dga_summary_category',
       'dga_summary_stage',
       'dga_summary_type',
@@ -598,6 +602,7 @@ export async function getLatestPlanningPortfolioSummaryByCurrentInstance() {
   return {
     id: record.dga_ict_ai_summaryid,
     instanceId,
+    isValid: record.dga_is_valid === true,
     modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     responseJson,
     parsedSummary: responseJson ? parsePortfolioSummaryData(responseJson) : null,

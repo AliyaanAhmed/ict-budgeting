@@ -242,15 +242,17 @@ export async function markCurrentInstancePlanningIfFirstProject(): Promise<boole
   return true
 }
 
-export async function updateCurrentInstanceSubmissionDate(submittedAt: Date = new Date()): Promise<void> {
+export async function updateCurrentInstanceSubmissionDate(submittedAt: Date = new Date()): Promise<string> {
   const instanceId = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)?.trim() || null
   if (!instanceId) {
     throw new Error('Current ICT budget instance is missing from session storage.')
   }
 
-  await Dga_ict_budget_instancesService.update(instanceId, {
+  const result = await Dga_ict_budget_instancesService.update(instanceId, {
     dga_entity_submission_date: submittedAt.toISOString(),
     statuscode: INSTANCE_STATUS_DGE_REVIEW,
   })
+  if (!result.success) throw new Error('Unable to mark the instance as submitted to DGE.')
   patchStoredInstanceDetail({ statuscode: INSTANCE_STATUS_DGE_REVIEW })
+  return instanceId
 }

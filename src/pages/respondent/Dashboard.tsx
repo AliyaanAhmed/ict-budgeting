@@ -334,7 +334,7 @@ export default function RespondentDashboard() {
   const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
   const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const { items: liveProjects, loading, error } = useRoleProjects('respondent', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
   const budgetByCategory = useBudgetByCategoryChart(liveProjects, dashboardBudgetMetrics)
   const {
     comparisonData,
@@ -385,7 +385,7 @@ export default function RespondentDashboard() {
     : 0
 
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
-  const submittedToReviewerProjects = liveProjects.filter((project) => isRespondentSubmittedProjectStatus(project.status))
+  const submittedToReviewerProjects = liveProjects.filter((project) => isRespondentSubmittedProjectStatus(project.status, project.statusCode))
   const clarificationRequiredProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
   const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
@@ -444,7 +444,11 @@ export default function RespondentDashboard() {
   const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
   const instanceInAllocation =
     dashboardInstanceStatus === DGE_INSTANCE_STATUS.allocation ||
-    allocationInProgressProjects.length > 0
+    (dashboardInstanceStatus == null && liveProjects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.allocationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationInReview ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+    ))
   const instanceInUtilization =
     dashboardInstanceStatus === DGE_INSTANCE_STATUS.utilization ||
     utilizationInProgressProjects.length > 0 ||
@@ -638,7 +642,7 @@ export default function RespondentDashboard() {
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
         <div className={cn('grid h-full grid-cols-1 gap-4 sm:grid-cols-2', instanceInUtilization ? 'xl:grid-cols-2' : 'xl:grid-cols-3')}>
-          {!instanceInUtilization && (
+          {!instanceInAllocation && !instanceInUtilization && (
             <ActionMetricCard
               title="Submitted to Reviewer"
               value={submittedToReviewer}
@@ -660,7 +664,7 @@ export default function RespondentDashboard() {
               description="Draft items still waiting for respondent updates and submit."
             />
           )}
-          {!instanceInUtilization && (
+          {!instanceInAllocation && !instanceInUtilization && (
             <ActionMetricCard
               title="Clarification Required"
               value={clarificationRequired}
@@ -676,10 +680,32 @@ export default function RespondentDashboard() {
               title="Allocation In Progress"
               value={allocationInProgressProjects.length}
               accent={dashboardPalette.seaBlue}
-              badge="Allocation"
+              badge="Respondent"
               icon={<WalletCards className="h-5 w-5" />}
               href="/respondent/projects?tab=allocation-in-progress"
               description="Allocation-stage projects currently owned by the respondent team."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation In Review"
+              value={liveProjects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview).length}
+              accent={dashboardPalette.camelYellow}
+              badge="Review"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-in-review"
+              description="Allocation submissions awaiting approver review."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation Completed"
+              value={liveProjects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted).length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-completed"
+              description="Projects with completed allocation."
             />
           )}
           {instanceInUtilization && (
@@ -741,6 +767,7 @@ export default function RespondentDashboard() {
         role="respondent"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={liveProjects}
         variant="dashboard"

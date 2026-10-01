@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   MessageSquareMore,
+  GitPullRequestArrow,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
@@ -88,6 +89,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-team/dashboard' },
       { label: 'Projects', icon: FolderOpen, href: '/strategy-team/projects' },
       { label: 'Strategic Alignment', icon: ScanSearch, href: '/strategy-team/strategic-alignment' },
+      { label: 'Strategic Priority CR', icon: GitPullRequestArrow, href: '/strategy-team/strategic-priority-change-requests' },
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-team/entity-tracker' },
       { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
       { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },

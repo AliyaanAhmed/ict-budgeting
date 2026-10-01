@@ -162,6 +162,7 @@ export async function getAuditLogsByBudgetId(budgetId: string) {
     }
 
     changedAttributes.forEach((attribute, index) => {
+      if (['dga_project_portfolio', 'dga_project_portfolio_for_dge'].includes(attribute.logicalName?.toLowerCase() ?? '')) return
       rows.push({
         id: `${record.auditid}-${index}`,
         fieldName: normalizeFieldLabel(attribute.logicalName),

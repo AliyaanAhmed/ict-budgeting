@@ -290,13 +290,13 @@ export default function DirectorEntityTracker() {
                 <Card key={entity.id} className="overflow-hidden rounded-[20px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-[#162339]">
                   <CardContent className="p-0">
                     <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="flex min-h-11 min-w-11 max-w-[35%] shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] px-2 py-2 text-center text-sm font-bold leading-5 [overflow-wrap:anywhere] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
                           {entity.entityAbbr || entity.name.slice(0, 3).toUpperCase()}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
+                            <p className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
                             <StrategyPill tone={canStartAllocation ? 'teal' : publishReady ? 'violet' : 'blue'}>{entity.statusLabel}</StrategyPill>
                           </div>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.budgets.length} projects in cycle</p>

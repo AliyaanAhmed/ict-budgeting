@@ -93,6 +93,18 @@
         "workflowDisplayName": "PowerAppV2 - Get Document Summary from Compass - Large File",
         "workflowName": "d4896078-7eab-b9db-4183-da42fdd5cd65"
       }
+    },
+    "915f2ae3-210a-4f04-b8f2-ee5b092da277": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_onsubmittodgebyapprover_sendemailtostrategyteam"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "61ba7a64-bbbc-f111-aaae-70a8a5200365",
+        "workflowDisplayName": "PowerAppV2 - On Submit to DGE by Approver - Send Email to Strategy Team",
+        "workflowName": "67295ccf-b8dc-870f-04ec-8ea1bdb46212"
+      }
     }
   },
   "databaseReferences": {
