@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, CalendarPlus, Check, ChevronDown, Clock3, CircleCheckBig, Route, Search, Sparkles, Waypoints } from 'lucide-react'
+import { ArrowRight, CalendarPlus, Check, ChevronDown, Clock3, CircleCheckBig, RefreshCcw, Route, Search, Sparkles, Waypoints } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { DatePickerField } from '@/components/shared/DatePickerField'
 import { AiSummaryProcessingState } from '@/components/shared/AiPortfolioSummary'
 import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
 import { useToast } from '@/context/ToastContext'
+import { sendEntityBackToPlanning } from '@/services/smeReviewResetService'
 import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
 import { Dga_ict_ai_summariesService } from '@/generated/services/Dga_ict_ai_summariesService'
 import type { Dga_ict_ai_summaries } from '@/generated/models/Dga_ict_ai_summariesModel'
@@ -27,7 +27,7 @@ import {
 
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
-type ExtendMode = 'allocation' | 'utilization'
+type ExtendMode = 'allocation' | 'utilization' | 'sme-review'
 type EntityAiSummary = {
   id: string
   name: string | null
@@ -591,7 +591,21 @@ function formatShortDate(value: string | null | undefined) {
 }
 
 function getModeEndDate(instance: DgeInstanceRecord, mode: ExtendMode) {
-  return mode === 'allocation' ? instance.allocationEndDate : instance.utilizationEndDate
+  if (mode === 'allocation') return instance.allocationEndDate
+  if (mode === 'utilization') return instance.utilizationEndDate
+  return null
+}
+
+const SME_REVIEW_RESET_STATUSES = new Set<number>([
+  DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+  DGE_BUDGET_STATUS.underSmeReview,
+  DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+])
+
+function canResetSmeReviewEntity(instance: DgeInstanceRecord) {
+  return instance.statuscode === DGE_INSTANCE_STATUS.underDgeReview &&
+    instance.budgets.length > 0 &&
+    instance.budgets.every((budget) => SME_REVIEW_RESET_STATUSES.has(budget.statuscode))
 }
 
 function isNewDateLater(newDate: string, currentDate: string | null | undefined) {
@@ -624,6 +638,8 @@ function ExtendPortfolioModal({
   useEffect(() => {
     setSelectedIds([])
     setSearchTerm('')
+    setNewEndDate('')
+    setReason('')
     setValidationMessage(null)
   }, [mode])
 
@@ -644,7 +660,9 @@ function ExtendPortfolioModal({
       instances.filter((instance) =>
         mode === 'allocation'
           ? instance.statuscode === DGE_INSTANCE_STATUS.allocation
-          : instance.statuscode === DGE_INSTANCE_STATUS.utilization
+          : mode === 'utilization'
+            ? instance.statuscode === DGE_INSTANCE_STATUS.utilization
+            : canResetSmeReviewEntity(instance)
       ),
     [instances, mode]
   )
@@ -666,14 +684,16 @@ function ExtendPortfolioModal({
   )
 
   const toggleSelected = (instanceId: string) => {
-    setSelectedIds((current) =>
-      current.includes(instanceId) ? current.filter((id) => id !== instanceId) : [...current, instanceId]
-    )
+    setSelectedIds((current) => {
+      if (current.includes(instanceId)) return current.filter((id) => id !== instanceId)
+      return mode === 'sme-review' ? [instanceId] : [...current, instanceId]
+    })
     setValidationMessage(null)
   }
 
   const validate = () => {
-    if (selectedInstances.length === 0) return 'Select at least one entity to extend.'
+    if (selectedInstances.length === 0) return mode === 'sme-review' ? 'Select an eligible entity to move back to Planning.' : 'Select at least one entity to extend.'
+    if (mode === 'sme-review') return null
     if (!newEndDate) return `New ${mode === 'allocation' ? 'allocation' : 'utilization'} end date is required.`
     if (!reason.trim()) return 'Reason is required.'
 
@@ -694,6 +714,40 @@ function ExtendPortfolioModal({
     const validation = validate()
     if (validation) {
       setValidationMessage(validation)
+      return
+    }
+
+    if (mode === 'sme-review') {
+      const selectedInstance = selectedInstances[0]
+      const instanceId = selectedInstance?.id
+      if (!instanceId) {
+        setValidationMessage('The selected entity does not have a valid ICT budget instance ID.')
+        return
+      }
+
+      setSaving(true)
+      try {
+        await runActionToast(
+          async () => {
+            const response = await sendEntityBackToPlanning(instanceId)
+            await onExtended()
+            return response
+          },
+          {
+            processingTitle: 'Moving entity to Planning',
+            processingDescription: `${selectedInstance.entityName || selectedInstance.name} and its projects are being moved back to the Planning stage. This may take a moment.`,
+            successTitle: 'Entity moved to Planning',
+            successDescription: (response) => response,
+            errorTitle: 'Unable to move entity',
+            minDurationMs: 1200,
+          }
+        )
+        onOpenChange(false)
+      } catch (submitError) {
+        setValidationMessage(submitError instanceof Error ? submitError.message : 'Unable to move the entity back to Planning.')
+      } finally {
+        setSaving(false)
+      }
       return
     }
 
@@ -721,8 +775,13 @@ function ExtendPortfolioModal({
     }
   }
 
-  const modeLabel = mode === 'allocation' ? 'Allocation' : 'Utilization'
+  const modeLabel = mode === 'allocation' ? 'Allocation' : mode === 'utilization' ? 'Utilization' : 'Under SME Review'
   const currentDateLabel = mode === 'allocation' ? 'Allocation dates' : 'Utilization dates'
+  const modeOptions: Array<{ id: ExtendMode; label: string; description: string }> = [
+    { id: 'allocation', label: 'Allocation', description: 'Extend allocation end dates' },
+    { id: 'utilization', label: 'Utilization', description: 'Extend utilization end dates' },
+    { id: 'sme-review', label: 'Under SME Review', description: 'Return an eligible entity to Planning' },
+  ]
 
   return (
     <Dialog open={open} onOpenChange={saving ? undefined : onOpenChange}>
@@ -736,7 +795,7 @@ function ExtendPortfolioModal({
               <div>
                 <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Extend Portfolio</DialogTitle>
                 <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                  Select entities and apply a new phase end date with an extension reason.
+                  Extend an active phase or prepare an eligible SME review portfolio to return to Planning.
                 </DialogDescription>
               </div>
             </div>
@@ -747,55 +806,72 @@ function ExtendPortfolioModal({
           <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="space-y-4">
               <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{modeLabel} extension</p>
-                    <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Switch between portfolio phases.</p>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-[#DDEBFF] bg-white px-3 py-2 dark:border-white/10 dark:bg-[#162339]">
-                    <span className={cn('text-xs font-semibold', mode === 'allocation' ? 'text-[#286CFF]' : 'text-[#64748B] dark:text-slate-300')}>
-                      Allocation
-                    </span>
-                    <Switch
-                      checked={mode === 'utilization'}
-                      onCheckedChange={(checked) => setMode(checked ? 'utilization' : 'allocation')}
+                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Choose portfolio action</p>
+                <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Only entities eligible for the selected action will be listed.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                  {modeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={mode === option.id}
                       disabled={saving}
-                    />
-                    <span className={cn('text-xs font-semibold', mode === 'utilization' ? 'text-[#286CFF]' : 'text-[#64748B] dark:text-slate-300')}>
-                      Utilization
-                    </span>
-                  </div>
+                      onClick={() => setMode(option.id)}
+                      className={cn(
+                        'rounded-2xl border px-3 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]',
+                        mode === option.id
+                          ? 'border-[#286CFF] bg-white shadow-[0_8px_20px_rgba(40,108,255,0.10)] dark:border-[#4F98FF] dark:bg-[#286CFF]/15'
+                          : 'border-[#DDEBFF] bg-white/60 hover:border-[#9EC1FF] dark:border-white/10 dark:bg-white/5'
+                      )}
+                    >
+                      <span className={cn('block text-xs font-semibold', mode === option.id ? 'text-[#286CFF] dark:text-blue-300' : 'text-[#0F172A] dark:text-white')}>{option.label}</span>
+                      <span className="mt-1 block text-[11px] leading-4 text-[#64748B] dark:text-slate-300">{option.description}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <DatePickerField
-                id="portfolio-extension-date"
-                label={`New ${modeLabel} End Date`}
-                value={newEndDate}
-                required
-                disabled={saving}
-                onChange={(value) => {
-                  setNewEndDate(value)
-                  setValidationMessage(null)
-                }}
-              />
+              {mode === 'sme-review' ? (
+                <div className="rounded-[20px] border border-[#E9D5FF] bg-gradient-to-br from-[#FDF8FF] to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:to-[#162339]">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F3E8FF] text-[#9333EA] dark:bg-purple-900/30 dark:text-purple-200"><RefreshCcw className="h-4 w-4" /></span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Return to Planning</p>
+                      <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">The selected entity and its projects will be moved back to the Planning draft stage by the upcoming automation.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <DatePickerField
+                    id="portfolio-extension-date"
+                    label={`New ${modeLabel} End Date`}
+                    value={newEndDate}
+                    required
+                    disabled={saving}
+                    onChange={(value) => {
+                      setNewEndDate(value)
+                      setValidationMessage(null)
+                    }}
+                  />
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-[#0F172A] dark:text-white" htmlFor="portfolio-extension-reason">
-                  Reason <span className="text-[#EA4F49]">*</span>
-                </label>
-                <Textarea
-                  id="portfolio-extension-reason"
-                  value={reason}
-                  onChange={(event) => {
-                    setReason(event.target.value)
-                    setValidationMessage(null)
-                  }}
-                  disabled={saving}
-                  placeholder={`Enter ${modeLabel.toLowerCase()} extension reason`}
-                  className="min-h-[150px] rounded-xl"
-                />
-              </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-[#0F172A] dark:text-white" htmlFor="portfolio-extension-reason">
+                      Reason <span className="text-[#EA4F49]">*</span>
+                    </label>
+                    <Textarea
+                      id="portfolio-extension-reason"
+                      value={reason}
+                      onChange={(event) => {
+                        setReason(event.target.value)
+                        setValidationMessage(null)
+                      }}
+                      disabled={saving}
+                      placeholder={`Enter ${modeLabel.toLowerCase()} extension reason`}
+                      className="min-h-[150px] rounded-xl"
+                    />
+                  </div>
+                </>
+              )}
 
               {validationMessage ? (
                 <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
@@ -809,7 +885,7 @@ function ExtendPortfolioModal({
                 <div>
                   <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Entities</p>
                   <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                    {selectedInstances.length} selected from {modeInstances.length} {modeLabel.toLowerCase()} entities
+                    {selectedInstances.length} selected from {modeInstances.length} eligible {modeLabel.toLowerCase()} entities
                   </p>
                 </div>
                 <div className="relative sm:w-[260px]">
@@ -856,14 +932,20 @@ function ExtendPortfolioModal({
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-center gap-2">
                             <span className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</span>
-                            <StrategyPill tone={mode === 'allocation' ? 'amber' : 'teal'}>{instance.statusLabel}</StrategyPill>
+                            <StrategyPill tone={mode === 'allocation' ? 'amber' : mode === 'utilization' ? 'teal' : 'violet'}>{instance.statusLabel}</StrategyPill>
                           </span>
+                          {mode === 'sme-review' ? (
+                            <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                              {instance.entityAbbr || instance.name.slice(0, 3).toUpperCase()} {' / '}{instance.budgets.length} eligible project{instance.budgets.length === 1 ? '' : 's'}
+                            </span>
+                          ) : (
                           <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-300">
                             {instance.entityAbbr || instance.name.slice(0, 3).toUpperCase()} · {currentDateLabel}:{' '}
                             {mode === 'allocation'
                               ? `${formatShortDate(instance.allocationStartDate)} to ${formatShortDate(instance.allocationEndDate)}`
                               : `${formatShortDate(instance.utilizationStartDate)} to ${formatShortDate(instance.utilizationEndDate)}`}
                           </span>
+                          )}
                         </span>
                       </button>
                     )
@@ -879,7 +961,7 @@ function ExtendPortfolioModal({
             Cancel
           </Button>
           <Button className="rounded-2xl" onClick={() => void handleSubmit()} disabled={saving}>
-            {saving ? 'Saving...' : `Extend ${modeLabel}`}
+            {saving ? (mode === 'sme-review' ? 'Moving...' : 'Saving...') : mode === 'sme-review' ? 'Move to Planning' : `Extend ${modeLabel}`}
           </Button>
         </DialogFooter>
       </DialogContent>

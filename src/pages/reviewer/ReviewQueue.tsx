@@ -29,6 +29,7 @@ import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { notifyApproverWhenInstanceIsReady } from '@/services/approverReviewNotificationService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
 function toDisplayText(value: unknown): string {
@@ -688,6 +689,7 @@ export default function ReviewQueue() {
         for (const id of projectIds) {
           await projectService.reviewerApprove(getIctId(id))
         }
+        await notifyApproverWhenInstanceIsReady()
         await Promise.allSettled(projectIds.map(id => {
           const ictId = getIctId(id)
           return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()

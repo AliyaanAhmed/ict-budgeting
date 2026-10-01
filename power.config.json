@@ -105,6 +105,30 @@
         "workflowDisplayName": "PowerAppV2 - On Submit to DGE by Approver - Send Email to Strategy Team",
         "workflowName": "67295ccf-b8dc-870f-04ec-8ea1bdb46212"
       }
+    },
+    "ea086ff3-fe78-4f9c-8c4f-12d1d299d6cd": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "ondemand_sendentitybacktoplanning_fromsmereview"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "77a4e414-70bd-f111-aaae-6045bd143907",
+        "workflowDisplayName": "On Demand - Send Entity Back to Planning - From SME Review",
+        "workflowName": "f2113820-cad6-1a07-f622-f07d9ee84c3b"
+      }
+    },
+    "8424aafa-b9a6-44b0-bf1c-211f5ef36485": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_ictbudget_onmodifystatustounderapproverreview_sendemailtoapprover"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "e5edc88d-64bd-f111-aaae-7ced8dab5bd0",
+        "workflowDisplayName": "PowerAppV2 - ICT Budget - On Modify Status to Under Approver Review - Send Email to Approver",
+        "workflowName": "c143d079-ea51-d6ba-19c8-d838a4659ab3"
+      }
     }
   },
   "databaseReferences": {

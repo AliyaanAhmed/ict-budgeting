@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 :root {
+  --font-sans: 'Plus Jakarta Sans', 'Source Sans 3', Inter, system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Source Sans 3', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
   --primary: #286CFF;
   --primary-hover: #4F98FF;
   --primary-light: #B0DBFF;
@@ -22,7 +25,7 @@
   --ai-accent: #D946EF;
   --ai-text: #E879F9;
   --radius: 12px;
-  font-family: 'Segoe UI', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
@@ -43,6 +46,62 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root,
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+select,
+textarea {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block-start: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+h3 {
+  font-weight: 700;
+  letter-spacing: -0.018em;
+}
+
+h4,
+h5,
+h6,
+strong,
+b {
+  font-weight: 600;
+}
+
+.font-mono,
+input[type='date'],
+input[type='datetime-local'],
+input[type='time'] {
+  font-family: var(--font-mono);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -51,6 +110,10 @@ body {
     radial-gradient(circle at 100% 100%, rgba(129, 193, 255, 0.14) 0%, transparent 36%),
     var(--background);
   color: var(--foreground);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
 }
 
 .dark body {

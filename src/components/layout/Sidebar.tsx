@@ -155,7 +155,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--foreground)] leading-tight truncate">ICT Budgeting</p>
+            <p className="truncate text-sm font-semibold leading-tight text-[var(--foreground)]">ICT Budgeting</p>
             <p className="text-xs text-[var(--muted-foreground)] leading-tight truncate">Department of Government Enablement</p>
           </div>
         )}
@@ -194,7 +194,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
               <item.icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
               {!collapsed && 'badge' in item && item.badge != null && (item.badge as number) > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-[var(--primary)] text-white text-xs font-bold px-1">
+                <span className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-white">
                   {item.badge as number}
                 </span>
               )}

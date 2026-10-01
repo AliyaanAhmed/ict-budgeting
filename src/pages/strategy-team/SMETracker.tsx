@@ -18,7 +18,6 @@ const metrics = [
   { key: 'reviewed', label: 'Reviewed Items', short: 'Reviewed', color: '#047857', tint: '#ECFDF5' },
 ] as const
 const panelClass = 'min-w-0 rounded-2xl border border-[#DCE6F1] bg-white shadow-[0_3px_14px_rgba(15,23,42,0.025)] dark:border-white/10 dark:bg-[#162339]'
-const projectHref = (budget: DgeBudgetRecord) => `/strategy-team/projects/${budget.id}`
 
 function getSummary(budgets: DgeBudgetRecord[]) {
   return {
@@ -48,7 +47,7 @@ function SummaryStrip({ summary }: { summary: ReviewSummary }) {
   )
 }
 
-function ClassificationDetails({ budgets }: { budgets: DgeBudgetRecord[] }) {
+function ClassificationDetails({ budgets, projectBasePath }: { budgets: DgeBudgetRecord[]; projectBasePath: string }) {
   const [query, setQuery] = useState('')
   const [clarificationsOnly, setClarificationsOnly] = useState(false)
   const [page, setPage] = useState(1)
@@ -96,7 +95,7 @@ function ClassificationDetails({ budgets }: { budgets: DgeBudgetRecord[] }) {
           </thead>
           <tbody className="divide-y divide-[#E3EBF5] bg-white/60 dark:divide-white/10 dark:bg-white/[0.02]">
             {visibleProjects.map((budget) => <tr key={budget.id} className="transition-colors hover:bg-[#E3EEFF] dark:hover:bg-white/5">
-              <td className="px-4 py-2.5"><Link to={projectHref(budget)} className="block truncate font-semibold text-[#286CFF] hover:underline dark:text-blue-300" title={`${budget.budgetRefId} ${budget.name}`}>{budget.budgetRefId || budget.name}</Link>{budget.budgetRefId && <p title={budget.name} className="mt-0.5 truncate text-[#475569] dark:text-slate-300">{budget.name}</p>}</td>
+              <td className="px-4 py-2.5"><Link to={`${projectBasePath}/${budget.id}`} className="block truncate font-semibold text-[#286CFF] hover:underline dark:text-blue-300" title={`${budget.budgetRefId} ${budget.name}`}>{budget.budgetRefId || budget.name}</Link>{budget.budgetRefId && <p title={budget.name} className="mt-0.5 truncate text-[#475569] dark:text-slate-300">{budget.name}</p>}</td>
               <td className="px-3 py-2.5 text-[#475569] dark:text-slate-300"><span className="block truncate" title={budget.entityName || budget.instanceName || 'Entity unavailable'}>{budget.entityName || budget.instanceName || 'Entity unavailable'}</span></td>
               <td className="px-3 py-2.5"><span title={budget.statusLabel} className={cn('block truncate', budget.statuscode === DGE_BUDGET_STATUS.clarificationPending ? 'text-[#9F1239] dark:text-rose-300' : 'text-[#475569] dark:text-slate-300')}>{budget.statusLabel}</span></td>
               <td className="px-3 py-2.5 text-[#475569] dark:text-slate-300"><span className="block truncate" title={budget.smeReviewerTeamName || budget.ownerName || 'Not assigned'}>{budget.smeReviewerTeamName || budget.ownerName || 'Not assigned'}</span></td>
@@ -117,7 +116,7 @@ function ClassificationDetails({ budgets }: { budgets: DgeBudgetRecord[] }) {
   )
 }
 
-function ClassificationTable({ budgets }: { budgets: DgeBudgetRecord[] }) {
+function ClassificationTable({ budgets, projectBasePath }: { budgets: DgeBudgetRecord[]; projectBasePath: string }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const tableId = useId()
   const classifications = new Map<string, { name: string; budgets: DgeBudgetRecord[] }>()
@@ -150,7 +149,7 @@ function ClassificationTable({ budgets }: { budgets: DgeBudgetRecord[] }) {
                   <td className="px-3 py-4"><Progress summary={summary} /></td>
                   <td className="px-4 py-4"><span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium', pending ? 'bg-[#FFF1F2] text-[#9F1239] dark:bg-red-900/25 dark:text-rose-300' : summary.reviewed === summary.total ? 'bg-[#ECFDF5] text-[#047857] dark:bg-emerald-900/25 dark:text-emerald-300' : 'bg-[#F1F5F9] text-[#475569] dark:bg-white/10 dark:text-slate-300')}>{pending ? 'Needs Clarification' : summary.reviewed === summary.total ? 'Reviewed' : summary.awaiting ? 'Awaiting Review' : 'In Progress'}</span></td>
                 </tr>
-                {isOpen && <tr id={detailsId}><td colSpan={8} className="p-4"><ClassificationDetails budgets={group.budgets} /></td></tr>}
+                {isOpen && <tr id={detailsId}><td colSpan={8} className="p-4"><ClassificationDetails budgets={group.budgets} projectBasePath={projectBasePath} /></td></tr>}
               </Fragment>
             })}
           </tbody>
@@ -161,7 +160,7 @@ function ClassificationTable({ budgets }: { budgets: DgeBudgetRecord[] }) {
   )
 }
 
-function PrioritySection({ group }: { group: TrackerGroup }) {
+function PrioritySection({ group, projectBasePath, queueHref, queueLabel }: { group: TrackerGroup; projectBasePath: string; queueHref: string; queueLabel: string }) {
   const summary = getSummary(group.budgets)
   const pending = summary.sme + summary.adge
   return <section className={cn(panelClass, 'overflow-hidden')}>
@@ -170,10 +169,10 @@ function PrioritySection({ group }: { group: TrackerGroup }) {
       <div className="min-w-0 flex-1"><h2 className="break-words text-lg font-bold text-[#0F172A] dark:text-white">{group.assignment.strategicPriorityName}</h2><p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">{group.assignment.teamName}</p></div>
       {pending > 0 && <span className="rounded-full bg-[#FFF1F2] px-3 py-1.5 text-xs font-medium text-[#9F1239] dark:bg-rose-900/25 dark:text-rose-300">{pending} Clarification{pending === 1 ? '' : 's'} Pending</span>}
       <div className="w-44"><p className="mb-2 text-xs text-[#64748B] dark:text-slate-300">Reviewed</p><Progress summary={summary} /></div>
-      <Link to="/strategy-team/projects?phase=dge-review&status=Under%20SME%20Review" className="inline-flex items-center gap-3 rounded-xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]">Open SME Queue<ArrowRight className="h-4 w-4" /></Link>
+      <Link to={queueHref} className="inline-flex items-center gap-3 rounded-xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]">{queueLabel}<ArrowRight className="h-4 w-4" /></Link>
     </div>
     <SummaryStrip summary={summary} />
-    <ClassificationTable budgets={group.budgets} />
+    <ClassificationTable budgets={group.budgets} projectBasePath={projectBasePath} />
   </section>
 }
 
@@ -194,7 +193,15 @@ function TrackerSkeleton() {
   )
 }
 
-export default function SMETracker() {
+type SMETrackerViewProps = {
+  eyebrow: string
+  description: string
+  projectBasePath: string
+  queueHref: string
+  queueLabel: string
+}
+
+export function SMETrackerView({ eyebrow, description, projectBasePath, queueHref, queueLabel }: SMETrackerViewProps) {
   const { selectedCycle } = useCycle()
   const [groups, setGroups] = useState<TrackerGroup[]>([])
   const [loading, setLoading] = useState(true)
@@ -227,7 +234,7 @@ export default function SMETracker() {
     return value === 'clarification' ? summary.sme + summary.adge > 0 : value === 'awaiting' ? summary.awaiting > 0 : true
   }
   const visible = groups.filter((group) => matchesFilter(group, filter) && `${group.assignment.strategicPriorityName} ${group.assignment.teamName} ${group.budgets.map((b) => b.strategicPriorityClassificationName || '').join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
-  return <StrategyPageShell eyebrow="ICT - Strategy Team" title="SME Tracker" description="Review classifications, track SME input, and move items towards resolution.">
+  return <StrategyPageShell eyebrow={eyebrow} title="SME Tracker" description={description}>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">{[{ id: 'all', label: 'All Priorities' }, { id: 'awaiting', label: 'Awaiting Review' }, { id: 'clarification', label: 'Clarification Needed' }].map((tab) => <button key={tab.id} type="button" aria-pressed={filter === tab.id} onClick={() => setFilter(tab.id)} className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors', filter === tab.id ? 'border-[#286CFF] bg-[#286CFF] text-white' : 'border-[#DCE6F1] bg-white text-[#475569] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-[#162339] dark:text-slate-300')}>
@@ -235,7 +242,19 @@ export default function SMETracker() {
         </button>)}</div>
         <label className="flex w-full items-center gap-2 rounded-xl border border-[#DCE6F1] bg-white px-3 py-2.5 focus-within:border-[#286CFF] dark:border-white/10 dark:bg-[#162339] sm:w-72"><Search className="h-4 w-4 shrink-0 text-[#64748B]" /><input aria-label="Search priorities, teams or classifications" placeholder="Search priority or classification" value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 w-full bg-transparent text-sm text-[#0F172A] outline-none dark:text-white" /></label>
       </div>
-      {loading ? <TrackerSkeleton /> : error ? <p role="alert" className="rounded-xl bg-red-50 p-5 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">{error}</p> : visible.length ? <div className="space-y-8">{visible.map((group) => <PrioritySection key={`${selectedCycle?.id}-${group.assignment.strategicPriorityId}`} group={group} />)}</div> : <p className={cn(panelClass, 'p-8 text-center text-sm text-[#64748B] dark:text-slate-300')}>{groups.length ? 'No priorities match your filters.' : 'No SME assignments or projects were found for this cycle.'}</p>}
+      {loading ? <TrackerSkeleton /> : error ? <p role="alert" className="rounded-xl bg-red-50 p-5 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">{error}</p> : visible.length ? <div className="space-y-8">{visible.map((group) => <PrioritySection key={`${selectedCycle?.id}-${group.assignment.strategicPriorityId}`} group={group} projectBasePath={projectBasePath} queueHref={queueHref} queueLabel={queueLabel} />)}</div> : <p className={cn(panelClass, 'p-8 text-center text-sm text-[#64748B] dark:text-slate-300')}>{groups.length ? 'No priorities match your filters.' : 'No SME assignments or projects were found for this cycle.'}</p>}
     </div>
   </StrategyPageShell>
+}
+
+export default function SMETracker() {
+  return (
+    <SMETrackerView
+      eyebrow="ICT - Strategy Team"
+      description="Review classifications, track SME input, and move items towards resolution."
+      projectBasePath="/strategy-team/projects"
+      queueHref="/strategy-team/projects?phase=dge-review&status=Under%20SME%20Review"
+      queueLabel="Open SME Queue"
+    />
+  )
 }

@@ -1,4 +1,95 @@
 {
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "tablename",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "guid1",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "targettable",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "role",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "endpoint",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "apikey",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "model",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "prompt",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "summarycategory",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarystage",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarytype",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "audits": {
     "tableId": "",
     "version": "",

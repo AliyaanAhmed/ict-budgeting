@@ -60,8 +60,7 @@ export const dataSourcesInfo = {
             "name": "guid1",
             "in": "body",
             "required": false,
-            "type": "string",
-            "format": "guid"
+            "type": "string"
           },
           {
             "name": "action",
@@ -328,6 +327,46 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "ondemand_sendentitybacktoplanning_fromsmereview": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
   "powerappv2_calluploadfileflow": {
     "tableId": "",
     "version": "",
@@ -483,6 +522,43 @@ export const dataSourcesInfo = {
     }
   },
   "powerappv2_getictbudgetaioverview": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_ictbudget_onmodifystatustounderapproverreview_sendemailtoapprover": {
     "tableId": "",
     "version": "",
     "primaryKey": "",

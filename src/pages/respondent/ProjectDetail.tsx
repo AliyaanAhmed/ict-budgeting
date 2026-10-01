@@ -76,6 +76,7 @@ import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
 import { useInstance } from '@/context/InstanceContext'
 import { useToast } from '@/context/ToastContext'
+import { notifyApproverWhenInstanceIsReady } from '@/services/approverReviewNotificationService'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { cn } from '@/lib/utils'
 import { formatAEDFull } from '@/lib/utils'
@@ -5953,6 +5954,7 @@ export default function ProjectDetail() {
             'Reviewer',
             'A budget item has been submitted to Approver for final review.'
           )
+          await notifyApproverWhenInstanceIsReady()
           await invalidateBudgetOverviewRecord(ictBudgetId)
           syncLocalWorkflowState('Submitted to Approver')
           setIsEditMode(false)

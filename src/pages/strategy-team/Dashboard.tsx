@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
+  ArrowRightLeft,
   BarChart3,
   Building2,
   CalendarClock,
@@ -19,6 +20,7 @@ import {
   Workflow,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PolarAngleAxis, PolarGrid, Radar as RechartsRadar, RadarChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { CurrencyAmount } from '@/components/shared/CurrencyAmount'
 import { useCycle } from '@/context/CycleContext'
 import type { Clarification } from '@/data/db'
@@ -177,6 +179,29 @@ function ClarificationDirectionCard({
   )
 }
 
+function ClarificationMonitorPanel({
+  stats,
+}: {
+  stats: Record<ClarificationType, { total: number; onTrack: number; overdue: number }>
+}) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-6 shadow-[0_10px_28px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#162339]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2"><MessageSquareMore className="h-5 w-5 text-[#286CFF]" /><h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">Clarification Monitor</h2></div>
+          <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">Open-thread health across DGE internal and entity-facing clarification flows.</p>
+        </div>
+        <Button asChild className="h-10 shrink-0 rounded-2xl shadow-none"><Link to="/strategy-team/clarification-monitor">View More<ArrowRight className="h-4 w-4" /></Link></Button>
+      </div>
+      <div className="mt-5 grid flex-1 gap-3">
+        <ClarificationDirectionCard label="DGE Internal" total={stats['within-dge'].total} onTrack={stats['within-dge'].onTrack} overdue={stats['within-dge'].overdue} accent="#286CFF" />
+        <ClarificationDirectionCard label="DGE to ADGE" total={stats['dge-to-adge'].total} onTrack={stats['dge-to-adge'].onTrack} overdue={stats['dge-to-adge'].overdue} accent="#286CFF" />
+        <ClarificationDirectionCard label="ADGE Internal" total={stats['adge-to-adge'].total} onTrack={stats['adge-to-adge'].onTrack} overdue={stats['adge-to-adge'].overdue} accent="#286CFF" />
+      </div>
+    </div>
+  )
+}
+
 function ExceptionRow({ item, compact = false }: { item: ExceptionItem; compact?: boolean }) {
   const toneClass = {
     blue: 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]',
@@ -227,21 +252,21 @@ function ExceptionStageSummary({
 
   return (
     <div className="rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-3 dark:border-white/10 dark:bg-white/5">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
             {icon}
           </div>
           <h3 className="text-sm font-bold text-[#0F172A] dark:text-white">{title}</h3>
+          <span className={cn(
+            'shrink-0 rounded-full px-2.5 py-1 text-xs font-bold',
+            count > 0
+              ? 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]'
+              : 'bg-[#ECFDF3] text-[#15803D] dark:bg-[#15803D]/15 dark:text-[#86EFAC]'
+          )}>
+            {count}
+          </span>
         </div>
-        <span className={cn(
-          'rounded-full px-2.5 py-1 text-xs font-bold',
-          count > 0
-            ? 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/15 dark:text-[#FCD34D]'
-            : 'bg-[#ECFDF3] text-[#15803D] dark:bg-[#15803D]/15 dark:text-[#86EFAC]'
-        )}>
-          {count}
-        </span>
       </div>
       <div className="space-y-2">
         {items.map((item) => <ExceptionRow key={item.label} item={item} compact />)}
@@ -634,7 +659,7 @@ function CycleProgressExplorer({
   if (!visibleStages.length) return null
 
   return (
-    <section className="overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white shadow-[0_16px_46px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#162339]">
+    <section className="overflow-hidden rounded-[26px] border border-[#D9E6F5] bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#162339]">
       <div className="flex flex-col gap-4 border-b border-[#EEF3F8] bg-[radial-gradient(circle_at_12%_0%,#EEF5FF_0%,#FFFFFF_45%,#F8FBFF_100%)] px-5 py-5 dark:border-white/10 dark:bg-none lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
@@ -643,7 +668,7 @@ function CycleProgressExplorer({
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Cycle Progress</h2>
+              <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">Cycle Progress</h2>
               <StrategyPill tone="blue">{instances.length} entities</StrategyPill>
             </div>
             <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">Live movement across planning, DGE review, allocation, and utilization.</p>
@@ -658,7 +683,7 @@ function CycleProgressExplorer({
       </div>
 
       <div className="p-5">
-        <div className="flex flex-col gap-3 xl:flex-row" onMouseLeave={() => setHoverStage(null)}>
+        <div className="grid grid-cols-2 gap-2" onMouseLeave={() => setHoverStage(null)}>
           {visibleStages.map((stage) => {
             const selected = visibleStage === stage.key
             const highlighted = (hoverStage ?? visibleStage) === stage.key
@@ -676,9 +701,9 @@ function CycleProgressExplorer({
                   setActiveStage(stage.key)
                 }}
                 className={cn(
-                  'group relative min-w-0 overflow-hidden rounded-[22px] border px-4 py-4 text-left outline-none transition-[flex-grow,border-color,box-shadow,background-color] duration-500 ease-out will-change-[flex-grow] focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10 xl:flex-1',
+                  'group relative min-w-0 overflow-hidden rounded-[18px] border px-3 py-3 text-left outline-none transition-[border-color,box-shadow,background-color] duration-300 focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10',
                   highlighted
-                    ? 'border-[#80808024] dark:border-white/15 dark:[--cycle-card-base:#162339] dark:[--cycle-card-tint:color-mix(in_srgb,var(--cycle-card-accent)_18%,#162339)] dark:[--cycle-card-text:color-mix(in_srgb,var(--cycle-card-accent)_55%,white)] xl:flex-[1.65]'
+                    ? 'border-[#80808024] dark:border-white/15 dark:[--cycle-card-base:#162339] dark:[--cycle-card-tint:color-mix(in_srgb,var(--cycle-card-accent)_18%,#162339)] dark:[--cycle-card-text:color-mix(in_srgb,var(--cycle-card-accent)_55%,white)]'
                     : 'border-[#DCE8F6] bg-[#F8FBFF] hover:border-[#BFD4FF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
                 )}
                 style={
@@ -706,31 +731,20 @@ function CycleProgressExplorer({
                       {stage.number}
                     </span>
                     <div>
-                      <h3 className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{stage.title}</h3>
+                      <h3 className="min-w-0 max-w-full [overflow-wrap:anywhere] text-sm font-semibold text-[#0F172A] dark:text-white">{stage.title}</h3>
                     </div>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#586A84] shadow-sm dark:bg-white/10 dark:text-slate-200">
                     {stage.count} {stage.unit}
                   </span>
                 </div>
-                <p className={cn(
-                  'relative mt-3 max-w-[300px] text-xs leading-5 text-[#64748B] transition-opacity duration-300 dark:text-slate-300',
-                  highlighted ? 'opacity-100' : 'opacity-75 xl:opacity-0'
-                )}>
-                  {stage.subtitle}
-                </p>
-                <div className="relative mt-3 flex items-center gap-3">
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white shadow-inner dark:bg-white/10">
-                    <span className="block h-full rounded-full transition-[width] duration-700 ease-out" style={{ width: `${stage.progress}%`, backgroundColor: stage.accent }} />
-                  </span>
-                  <strong className="text-[11px]" style={{ color: `var(--cycle-card-text, ${stage.accent})` }}>{stage.progress}%</strong>
-                </div>
+                <p className="relative mt-2 text-xs text-[#64748B] dark:text-slate-300">{stage.progress}% complete</p>
               </button>
             )
           })}
         </div>
 
-        <div className="mt-5 grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+        <div className="mt-4 min-w-0">
           <div key={active.key} className="min-w-0 animate-[cyclePanelIn_0.36s_cubic-bezier(0.2,0.8,0.2,1)_both] rounded-[26px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -739,8 +753,8 @@ function CycleProgressExplorer({
               </div>
             </div>
 
-            <div className="mb-4 grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+            <div className="mb-4 grid overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white sm:grid-cols-2 dark:border-white/10 dark:bg-[#162339]">
+              <div className="px-4 py-3">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px]" style={{ backgroundColor: `${active.accent}14`, color: active.accent }}>
                     <CalendarClock className="h-4.5 w-4.5" />
@@ -768,7 +782,7 @@ function CycleProgressExplorer({
                 </div>
               </div>
 
-              <div className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+              <div className="border-t border-[#DCE8F6] px-4 py-3 sm:border-l sm:border-t-0 dark:border-white/10">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-bold text-[#0F172A] dark:text-white">Entities Left Behind</p>
@@ -806,19 +820,31 @@ function CycleProgressExplorer({
             </div>
 
             {visibleStage === 'planning' ? (
-              <div className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-                {planningSteps.map((step) => (
-                  <div key={step.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
-                    <p className="min-h-10 text-sm font-bold text-[#0F172A] dark:text-white">{step.label}</p>
-                    <p className="mt-3 text-3xl font-bold" style={{ color: active.accent }}>{step.count}</p>
-                    <p className="text-xs text-[#64748B] dark:text-slate-300">{step.unit ?? 'projects'}</p>
-                  </div>
-                ))}
+              <div className="grid min-w-0 overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white lg:grid-cols-[minmax(0,1fr)_220px] dark:border-white/10 dark:bg-[#162339]">
+                <div className="min-h-[300px] p-3">
+                  <div className="mb-1 px-2"><p className="text-sm font-semibold text-[#0F172A] dark:text-white">Planning Workload Shape</p><p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">Relative volume across the planning workflow</p></div>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <RadarChart data={planningSteps.map((step) => ({ stage: step.label.replace('Submitted to ', '').replace('Planning ', ''), value: step.count }))} outerRadius="68%">
+                      <PolarGrid stroke="#DCE8F6" />
+                      <PolarAngleAxis dataKey="stage" tick={{ fill: '#64748B', fontSize: 10 }} />
+                      <Tooltip contentStyle={{ borderRadius: 14, borderColor: '#DCE8F6', fontSize: 12 }} />
+                      <RechartsRadar dataKey="value" stroke="#286CFF" fill="#286CFF" fillOpacity={0.2} strokeWidth={2} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="divide-y divide-[#E8EEF5] border-t border-[#DCE8F6] lg:border-l lg:border-t-0 dark:divide-white/10 dark:border-white/10">
+                  {planningSteps.map((step) => (
+                    <div key={step.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                      <div><p className="text-xs font-medium text-[#475569] dark:text-slate-200">{step.label}</p><p className="mt-0.5 text-[11px] text-[#94A3B8]">{step.unit ?? 'projects'}</p></div>
+                      <span className="text-lg font-semibold tabular-nums text-[#286CFF] dark:text-blue-300">{step.count}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : visibleStage === 'dge-review' ? (
-              <div className="grid gap-3 lg:grid-cols-5">
+              <div className="grid overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white sm:grid-cols-2 dark:border-white/10 dark:bg-[#162339]">
                 {dgeReviewSteps.map((step) => (
-                  <div key={step.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+                  <div key={step.label} className="border-b border-[#E8EEF5] p-4 transition-colors hover:bg-[#F8FBFF] odd:sm:border-r dark:border-white/10 dark:hover:bg-white/5">
                     <p className="min-h-10 text-sm font-bold text-[#0F172A] dark:text-white">{step.label}</p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       {[
@@ -844,9 +870,9 @@ function CycleProgressExplorer({
                 ))}
               </div>
             ) : visibleStage === 'allocation' ? (
-              <div className="grid gap-3 md:grid-cols-4">
+              <div className="grid overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white sm:grid-cols-2 dark:border-white/10 dark:bg-[#162339]">
                 {allocationSteps.map((step) => (
-                  <div key={step.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+                  <div key={step.label} className="border-b border-[#E8EEF5] p-4 transition-colors hover:bg-[#F8FBFF] odd:sm:border-r dark:border-white/10 dark:hover:bg-white/5">
                     <p className="text-sm font-bold text-[#0F172A] dark:text-white">{step.label}</p>
                     <p className="mt-5 text-3xl font-bold" style={{ color: active.accent }}>{step.count}</p>
                     <p className="text-xs text-[#64748B] dark:text-slate-300">projects</p>
@@ -854,9 +880,9 @@ function CycleProgressExplorer({
                 ))}
               </div>
             ) : (
-              <div className="grid gap-3 md:grid-cols-4">
+              <div className="grid overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white sm:grid-cols-2 dark:border-white/10 dark:bg-[#162339]">
                 {utilizationQuarters.map((quarter) => (
-                  <div key={quarter.label} className="rounded-[20px] border border-[#DCE8F6] bg-white p-4 transition-colors duration-200 hover:border-[#BFD4FF] dark:border-white/10 dark:bg-[#162339]">
+                  <div key={quarter.label} className="border-b border-[#E8EEF5] p-4 transition-colors hover:bg-[#F8FBFF] odd:sm:border-r dark:border-white/10 dark:hover:bg-white/5">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-bold text-[#0F172A] dark:text-white">{quarter.label} Utilization</p>
                       {quarter.value !== null && <StrategyPill tone="blue">{quarter.value}%</StrategyPill>}
@@ -873,7 +899,7 @@ function CycleProgressExplorer({
               </div>
             )}
 
-            <div className="mt-4 rounded-[22px] border border-[#DCE8F6] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#162339]">
+            <div className="hidden">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-bold text-[#0F172A] dark:text-white">{active.title} Progress</p>
@@ -903,7 +929,7 @@ function CycleProgressExplorer({
             </div>
           </div>
 
-          <div className="grid w-full min-w-0 grid-cols-1 gap-4">
+          <div className="hidden">
             <div className="min-w-0 rounded-[26px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-[#162339]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -1212,26 +1238,70 @@ export default function StrategyTeamDashboard() {
       {loading ? (
         <DashboardSkeleton />
       ) : (
-        <div className="space-y-6">
+        <div className="strategy-dashboard-surface space-y-5">
           {error ? (
             <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
               {error}
             </div>
           ) : null}
 
-          <CycleProgressExplorer
-            instances={instances}
-            budgets={budgets}
-            clarifications={clarifications}
-          />
+          <section className="rounded-[26px] border border-[#D9E6F5] bg-white px-5 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-white/10 dark:bg-[#162339]">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3 sm:min-w-[240px]">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#EEF5FF] text-[#286CFF] dark:bg-blue-500/15"><CalendarClock className="h-5 w-5" /></span>
+                <div><p className="text-xs font-medium text-[#64748B] dark:text-slate-300">Budget Cycle</p><p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{selectedCycle?.name || 'Active ICT Budget Cycle'}</p></div>
+              </div>
+              <span className="hidden h-11 w-px bg-[#DCE8F6] dark:bg-white/10 sm:block" />
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#F5EEFF] text-[#9333EA] dark:bg-purple-500/15"><ShieldAlert className="h-5 w-5" /></span>
+                <div><p className="text-xs font-medium text-[#64748B] dark:text-slate-300">Strategy Readiness</p><p className="mt-1 text-sm font-semibold text-[#0F172A] dark:text-white">{strategicAlignmentPending} alignment, {pendingQualityCheckReview} quality check, {pendingClarifications} clarification items</p></div>
+              </div>
+            </div>
+          </section>
 
-          <section className="grid items-stretch gap-5 xl:grid-cols-2">
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: 'Under Strategic Alignment', value: strategicAlignmentPending, note: 'Projects awaiting alignment review', href: '/strategy-team/strategic-alignment', icon: <Target className="h-5 w-5" />, iconClass: 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/20 dark:text-[#93C5FD]' },
+              { label: 'Under SME Review', value: sentToSmes, note: 'Projects with specialist reviewers', href: '/strategy-team/sme-tracker', icon: <Users className="h-5 w-5" />, iconClass: 'bg-[#F5EEFF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#C4B5FD]' },
+              { label: 'Quality Check', value: pendingQualityCheckReview, note: 'Projects awaiting strategy validation', href: '/strategy-team/quality-check', icon: <CheckCircle2 className="h-5 w-5" />, iconClass: 'bg-[#ECFDF5] text-[#059669] dark:bg-[#059669]/20 dark:text-[#6EE7B7]' },
+              { label: 'Strategic Priority Change Request', value: strategicPriorityCrPending, note: 'Requests awaiting strategy decision', href: '/strategy-team/strategic-priority-change-requests', icon: <ArrowRightLeft className="h-5 w-5" />, iconClass: 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/20 dark:text-[#FCD34D]' },
+            ].map((item) => (
+              <Link
+                key={item.label}
+                to={item.href}
+                className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#18263F] dark:hover:bg-[#1C2C48] sm:px-5 sm:py-6"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{item.label}</p>
+                    <div className="mt-4">
+                      <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{item.value}</span>
+                    </div>
+                    <p className="mb-2 mt-3 text-xs leading-5 text-[#64748B] dark:text-slate-300">{item.note}</p>
+                  </div>
+                  <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105', item.iconClass)}>{item.icon}</span>
+                </div>
+                <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-[10px] text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
+                  <span>Open Projects</span>
+                  <ArrowRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
+                </div>
+              </Link>
+            ))}
+          </section>
+
+          <section className="grid items-start gap-5 xl:grid-cols-2">
+            <CycleProgressExplorer
+              instances={instances}
+              budgets={budgets}
+              clarifications={clarifications}
+            />
+
             <div className="flex h-full flex-col overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <Target className="h-5 w-5 text-[#286CFF]" />
-                    <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Strategy Review</h2>
+                    <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">Strategy Review</h2>
                   </div>
                   <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
                     Strategy-side progress across alignment, strategic priority change requests, SME routing, quality check, and clarification blocks.
@@ -1278,31 +1348,6 @@ export default function StrategyTeamDashboard() {
               </div>
             </div>
 
-            <div className="flex h-full flex-col overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <MessageSquareMore className="h-5 w-5 text-[#286CFF]" />
-                    <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Clarification Monitor</h2>
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
-                    Directional health of clarification threads, separated by DGE internal, DGE to ADGE, and ADGE internal flows.
-                  </p>
-                </div>
-                <Button asChild className="h-10 shrink-0 rounded-2xl shadow-none">
-                  <Link to="/strategy-team/clarification-monitor">
-                    View More
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-
-              <div className="mt-5 grid gap-3">
-                <ClarificationDirectionCard label="DGE Internal" total={clarificationStats['within-dge'].total} onTrack={clarificationStats['within-dge'].onTrack} overdue={clarificationStats['within-dge'].overdue} accent="#286CFF" />
-                <ClarificationDirectionCard label="DGE -> ADGE" total={clarificationStats['dge-to-adge'].total} onTrack={clarificationStats['dge-to-adge'].onTrack} overdue={clarificationStats['dge-to-adge'].overdue} accent="#286CFF" />
-                <ClarificationDirectionCard label="ADGEs Internal" total={clarificationStats['adge-to-adge'].total} onTrack={clarificationStats['adge-to-adge'].onTrack} overdue={clarificationStats['adge-to-adge'].overdue} accent="#286CFF" />
-              </div>
-            </div>
           </section>
 
           <section className="grid items-stretch gap-5 xl:grid-cols-2">
@@ -1312,7 +1357,7 @@ export default function StrategyTeamDashboard() {
                   <div>
                     <div className="flex items-center gap-2">
                       <ShieldAlert className="h-5 w-5 text-[#D97706]" />
-                      <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Deadline and Exceptions</h2>
+                      <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">Deadline and Exceptions</h2>
                     </div>
                     <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
                       Deadline-driven exceptions based on planning, DGE review, allocation, and utilization signals.
@@ -1325,7 +1370,7 @@ export default function StrategyTeamDashboard() {
                 </div>
               </div>
 
-              <div className="grid gap-3 p-4">
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
                 {[
                   { title: 'Planning', icon: <CalendarClock className="h-4.5 w-4.5" />, items: exceptions.planning },
                   { title: 'DGE Review', icon: <Radar className="h-4.5 w-4.5" />, items: exceptions.dgeReview },
@@ -1337,20 +1382,20 @@ export default function StrategyTeamDashboard() {
               </div>
             </div>
 
-            <div className="grid h-full gap-5">
+            <div className="grid h-full min-w-0 grid-rows-2 gap-5">
               <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 text-[#A855F7]" />
-                      <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">DGE Focus Queue</h2>
+                      <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">DGE Focus Queue</h2>
                     </div>
                     <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
                       Recently active clarifications and exception-heavy areas to help Strategy Team decide where to intervene next.
                     </p>
                   </div>
                 </div>
-                <div className="mt-5 space-y-3">
+                <div className="mt-5 flex flex-1 flex-col gap-3 [&>div]:flex-1">
                   {recentlyActiveClarifications.map((item) => (
                     <Link
                       key={item.id}
@@ -1383,7 +1428,7 @@ export default function StrategyTeamDashboard() {
                     <Sparkles className="h-5 w-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-[#0F172A] dark:text-white">AI Governance Readout</h2>
+                    <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">AI Governance Readout</h2>
                     <p className="text-xs text-[#64748B] dark:text-slate-300">Priority signals for the strategy workspace</p>
                   </div>
                 </div>
@@ -1404,20 +1449,20 @@ export default function StrategyTeamDashboard() {
             </div>
           </section>
 
-          <section>
+          <section className="grid items-stretch gap-5 xl:grid-cols-2">
             <div className="flex h-full flex-col overflow-hidden rounded-[28px] border border-[#D9E6F5] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <GaugeCircle className="h-5 w-5 text-[#286CFF]" />
-                    <h2 className="text-xl font-bold text-[#0F172A] dark:text-white">Portfolio Snapshot</h2>
+                    <h2 className="text-lg font-semibold text-[#0F172A] dark:text-white">Portfolio Snapshot</h2>
                   </div>
                   <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">
                     Existing cycle overview with entity coverage, active review workload, and budget under governance.
                   </p>
                 </div>
               </div>
-              <div className="mt-5 grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-5 grid flex-1 gap-3 sm:grid-cols-2">
                 {[
                   { label: 'Entities', value: instances.length, note: 'In selected cycle', accent: '#286CFF' },
                   { label: 'Projects', value: budgets.length, note: 'Portfolio records', accent: '#0F9D8A' },
@@ -1431,6 +1476,28 @@ export default function StrategyTeamDashboard() {
                   </div>
                 ))}
               </div>
+              <div className="mt-4 grid gap-4 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Entity Distribution</p>
+                  <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Current entity position across the four lifecycle phases.</p>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { label: 'Planning', value: instances.filter((item) => item.statuscode === DGE_INSTANCE_STATUS.planning || item.statuscode === DGE_INSTANCE_STATUS.published).length, color: '#286CFF' },
+                    { label: 'DGE Review', value: instances.filter((item) => item.statuscode === DGE_INSTANCE_STATUS.underDgeReview || item.statuscode === DGE_INSTANCE_STATUS.reviewCompletedByDge).length, color: '#7C3AED' },
+                    { label: 'Allocation', value: instances.filter((item) => item.statuscode === DGE_INSTANCE_STATUS.allocation).length, color: '#0F9D8A' },
+                    { label: 'Utilization', value: instances.filter((item) => item.statuscode === DGE_INSTANCE_STATUS.utilization).length, color: '#D97706' },
+                  ].map((item) => (
+                    <div key={item.label} className="grid grid-cols-[90px_minmax(0,1fr)_28px] items-center gap-3">
+                      <span className="text-xs font-medium text-[#475569] dark:text-slate-200">{item.label}</span>
+                      <span className="h-2.5 overflow-hidden rounded-full bg-white shadow-inner dark:bg-white/10">
+                        <span className="block h-full rounded-full transition-[width] duration-700" style={{ width: `${instances.length ? Math.max(item.value ? 6 : 0, item.value / instances.length * 100) : 0}%`, backgroundColor: item.color }} />
+                      </span>
+                      <span className="text-right text-xs font-semibold tabular-nums text-[#0F172A] dark:text-white">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="mt-4 rounded-[22px] border border-[#DCE8F6] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -1441,7 +1508,14 @@ export default function StrategyTeamDashboard() {
                 </div>
               </div>
             </div>
+            <ClarificationMonitorPanel stats={clarificationStats} />
           </section>
+          <style>{`
+            .strategy-dashboard-surface .font-bold { font-weight: 600; }
+            .strategy-dashboard-surface h2,
+            .strategy-dashboard-surface h3 { letter-spacing: -0.015em; }
+            .strategy-dashboard-surface p { letter-spacing: -0.005em; }
+          `}</style>
         </div>
       )}
     </StrategyPageShell>
