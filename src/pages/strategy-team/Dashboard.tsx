@@ -7,6 +7,7 @@ import {
   Building2,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   GaugeCircle,
   MessageSquareMore,
@@ -418,7 +419,6 @@ function CycleProgressExplorer({
   clarifications: ClarificationMonitorItem[]
 }) {
   const [activeStage, setActiveStage] = useState<CycleStageKey>('dge-review')
-  const [hoverStage, setHoverStage] = useState<CycleStageKey | null>(null)
   const didAutoSelectStage = useRef(false)
 
   const planningBudgets = useMemo(
@@ -660,11 +660,10 @@ function CycleProgressExplorer({
 
   return (
     <section className="overflow-hidden rounded-[26px] border border-[#D9E6F5] bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#162339]">
-      <div className="flex flex-col gap-4 border-b border-[#EEF3F8] bg-[radial-gradient(circle_at_12%_0%,#EEF5FF_0%,#FFFFFF_45%,#F8FBFF_100%)] px-5 py-5 dark:border-white/10 dark:bg-none lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-4 border-b border-[#EEF3F8] bg-white px-5 py-5 dark:border-white/10 dark:bg-[#162339] lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-            <span className="absolute h-7 w-7 animate-ping rounded-xl border border-[#286CFF]/30" />
-            <Radar className="relative h-5 w-5" />
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+            <Radar className="h-5 w-5" />
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -683,65 +682,38 @@ function CycleProgressExplorer({
       </div>
 
       <div className="p-5">
-        <div className="grid grid-cols-2 gap-2" onMouseLeave={() => setHoverStage(null)}>
+        <div className="overflow-x-auto pb-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] dark:[scrollbar-color:#475569_transparent]">
+        <div className="flex w-max min-w-full items-center gap-2">
           {visibleStages.map((stage) => {
             const selected = visibleStage === stage.key
-            const highlighted = (hoverStage ?? visibleStage) === stage.key
             return (
               <button
                 key={stage.key}
                 type="button"
-                onPointerEnter={(event) => { if (event.pointerType === 'mouse') setHoverStage(stage.key) }}
-                onFocus={() => setHoverStage(stage.key)}
-                onBlur={() => setHoverStage(null)}
                 aria-pressed={selected}
                 onClick={() => {
                   didAutoSelectStage.current = true
-                  setHoverStage(null)
                   setActiveStage(stage.key)
                 }}
                 className={cn(
-                  'group relative min-w-0 overflow-hidden rounded-[18px] border px-3 py-3 text-left outline-none transition-[border-color,box-shadow,background-color] duration-300 focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10',
-                  highlighted
-                    ? 'border-[#80808024] dark:border-white/15 dark:[--cycle-card-base:#162339] dark:[--cycle-card-tint:color-mix(in_srgb,var(--cycle-card-accent)_18%,#162339)] dark:[--cycle-card-text:color-mix(in_srgb,var(--cycle-card-accent)_55%,white)]'
-                    : 'border-[#DCE8F6] bg-[#F8FBFF] hover:border-[#BFD4FF] hover:bg-[#EEF5FF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
+                  'inline-flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold outline-none transition-colors duration-200 focus-visible:ring-4 focus-visible:ring-[#DBE6FF] dark:focus-visible:ring-white/10',
+                  selected
+                    ? 'border-[#BFD4FF] bg-[#EEF5FF] text-[#286CFF] dark:border-[#286CFF]/50 dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]'
+                    : 'border-[#DCE8F6] bg-white text-[#475569] hover:border-[#BFD4FF] hover:text-[#286CFF] dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:border-white/20 dark:hover:text-white'
                 )}
-                style={
-                  highlighted
-                    ? {
-                        '--cycle-card-accent': stage.accent,
-                        background: `linear-gradient(135deg, var(--cycle-card-tint, ${stage.soft}) 0%, var(--cycle-card-base, #FFFFFF) 72%)`,
-                        boxShadow: selected ? `0 12px 28px ${stage.accent}1F` : `0 8px 20px ${stage.accent}14`,
-                      } as React.CSSProperties
-                    : undefined
-                }
               >
-                <div className="relative flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={cn(
-                        'relative grid h-9 w-9 shrink-0 place-items-center rounded-full border-4 border-white text-xs font-semibold shadow-sm transition-colors duration-200 dark:border-[#162339]',
-                        highlighted ? 'text-white' : 'bg-white dark:bg-white/10'
-                      )}
-                      style={{ backgroundColor: highlighted ? stage.accent : undefined, color: highlighted ? '#FFFFFF' : stage.accent }}
-                    >
-                      {highlighted ? (
-                        <span className="absolute inset-[-7px] rounded-full border opacity-30" style={{ borderColor: stage.accent }} />
-                      ) : null}
-                      {stage.number}
-                    </span>
-                    <div>
-                      <h3 className="min-w-0 max-w-full [overflow-wrap:anywhere] text-sm font-semibold text-[#0F172A] dark:text-white">{stage.title}</h3>
-                    </div>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#586A84] shadow-sm dark:bg-white/10 dark:text-slate-200">
-                    {stage.count} {stage.unit}
-                  </span>
-                </div>
-                <p className="relative mt-2 text-xs text-[#64748B] dark:text-slate-300">{stage.progress}% complete</p>
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.accent }} />
+                <span>{stage.title}</span>
+                <span className={cn(
+                  'rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold',
+                  selected ? 'bg-white text-[#286CFF] dark:bg-white/10 dark:text-[#BFDBFE]' : 'bg-[#F1F5F9] text-[#64748B] dark:bg-white/10 dark:text-slate-300'
+                )}>
+                  {stage.count}
+                </span>
               </button>
             )
           })}
+        </div>
         </div>
 
         <div className="mt-4 min-w-0">
@@ -753,6 +725,7 @@ function CycleProgressExplorer({
               </div>
             </div>
 
+            {visibleStage !== 'dge-review' ? (
             <div className="mb-4 grid overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white sm:grid-cols-2 dark:border-white/10 dark:bg-[#162339]">
               <div className="px-4 py-3">
                 <div className="flex items-start gap-3">
@@ -818,6 +791,7 @@ function CycleProgressExplorer({
                 </div>
               </div>
             </div>
+            ) : null}
 
             {visibleStage === 'planning' ? (
               <div className="grid min-w-0 overflow-hidden rounded-[18px] border border-[#DCE8F6] bg-white lg:grid-cols-[minmax(0,1fr)_220px] dark:border-white/10 dark:bg-[#162339]">
@@ -1261,10 +1235,10 @@ export default function StrategyTeamDashboard() {
 
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: 'Under Strategic Alignment', value: strategicAlignmentPending, note: 'Projects awaiting alignment review', href: '/strategy-team/strategic-alignment', icon: <Target className="h-5 w-5" />, iconClass: 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/20 dark:text-[#93C5FD]' },
-              { label: 'Under SME Review', value: sentToSmes, note: 'Projects with specialist reviewers', href: '/strategy-team/sme-tracker', icon: <Users className="h-5 w-5" />, iconClass: 'bg-[#F5EEFF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#C4B5FD]' },
-              { label: 'Quality Check', value: pendingQualityCheckReview, note: 'Projects awaiting strategy validation', href: '/strategy-team/quality-check', icon: <CheckCircle2 className="h-5 w-5" />, iconClass: 'bg-[#ECFDF5] text-[#059669] dark:bg-[#059669]/20 dark:text-[#6EE7B7]' },
-              { label: 'Strategic Priority Change Request', value: strategicPriorityCrPending, note: 'Requests awaiting strategy decision', href: '/strategy-team/strategic-priority-change-requests', icon: <ArrowRightLeft className="h-5 w-5" />, iconClass: 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/20 dark:text-[#FCD34D]' },
+              { label: 'Under Strategic Alignment', value: strategicAlignmentPending, status: 'Alignment', href: '/strategy-team/strategic-alignment', icon: <Target className="h-5 w-5" />, iconClass: 'bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/20 dark:text-[#93C5FD]' },
+              { label: 'Under SME Review', value: sentToSmes, status: 'SME Review', href: '/strategy-team/projects?phase=dge-review&statusTab=sme-review', icon: <Users className="h-5 w-5" />, iconClass: 'bg-[#F5EEFF] text-[#7C3AED] dark:bg-[#7C3AED]/20 dark:text-[#C4B5FD]' },
+              { label: 'Quality Check', value: pendingQualityCheckReview, status: 'Quality Check', href: '/strategy-team/quality-check', icon: <CheckCircle2 className="h-5 w-5" />, iconClass: 'bg-[#ECFDF5] text-[#059669] dark:bg-[#059669]/20 dark:text-[#6EE7B7]' },
+              { label: 'Strategic Priority Change Request', value: strategicPriorityCrPending, status: 'Change Request', href: '/strategy-team/strategic-priority-change-requests', icon: <ArrowRightLeft className="h-5 w-5" />, iconClass: 'bg-[#FFF7E6] text-[#D97706] dark:bg-[#D97706]/20 dark:text-[#FCD34D]' },
             ].map((item) => (
               <Link
                 key={item.label}
@@ -1272,18 +1246,22 @@ export default function StrategyTeamDashboard() {
                 className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-[#DCE8F6] bg-white px-4 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#286CFF] hover:bg-[#F8FBFF] hover:shadow-[0_16px_36px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#18263F] dark:hover:bg-[#1C2C48] sm:px-5 sm:py-6"
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{item.label}</p>
-                    <div className="mt-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="min-h-[3.25rem]">
+                      <p className="text-base font-semibold tracking-[0.02em] text-[#0F172A] dark:text-white">{item.label}</p>
+                    </div>
+                    <div className="mb-2 mt-3">
                       <span className="text-[40px] font-bold leading-none text-[#0F172A] dark:text-white">{item.value}</span>
                     </div>
-                    <p className="mb-2 mt-3 text-xs leading-5 text-[#64748B] dark:text-slate-300">{item.note}</p>
+                    <div className="mt-3 pb-3">
+                      <span className={cn('inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold', item.iconClass)}>{item.status}</span>
+                    </div>
                   </div>
                   <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-105', item.iconClass)}>{item.icon}</span>
                 </div>
                 <div className="mt-auto flex items-center justify-between border-t border-[#EEF3F8] pt-[10px] text-sm font-medium text-[#475569] dark:border-white/10 dark:text-slate-100">
                   <span>Open Projects</span>
-                  <ArrowRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
+                  <ChevronRight className="h-4 w-4 text-[#286CFF] transition-transform duration-300 group-hover:translate-x-0.5" />
                 </div>
               </Link>
             ))}
@@ -1511,7 +1489,6 @@ export default function StrategyTeamDashboard() {
             <ClarificationMonitorPanel stats={clarificationStats} />
           </section>
           <style>{`
-            .strategy-dashboard-surface .font-bold { font-weight: 600; }
             .strategy-dashboard-surface h2,
             .strategy-dashboard-surface h3 { letter-spacing: -0.015em; }
             .strategy-dashboard-surface p { letter-spacing: -0.005em; }

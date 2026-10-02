@@ -318,6 +318,8 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
   const [hasActiveTableFilters, setHasActiveTableFilters] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all-statuses')
   const [entityFilter, setEntityFilter] = useState('all-entities')
+  const [strategicPriorityFilter, setStrategicPriorityFilter] = useState('all-priorities')
+  const [classificationFilter, setClassificationFilter] = useState('all-classifications')
   const [aiFlagFilter, setAiFlagFilter] = useState('all-ai-review-flags')
   const [strategyPhase, setStrategyPhase] = useState<StrategyPhase>('dge-review')
   const [strategyStatusTab, setStrategyStatusTab] = useState<StrategyStatusTab>('all')
@@ -328,11 +330,18 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
     const status = searchParams.get('status')
     const entity = searchParams.get('entity')
     const phase = searchParams.get('phase')
+    const statusTab = searchParams.get('statusTab')
+    const priority = searchParams.get('priority')
+    const classification = searchParams.get('classification')
     setStatusFilter(status || 'all-statuses')
     setEntityFilter(entity || 'all-entities')
+    setStrategicPriorityFilter(priority || 'all-priorities')
+    setClassificationFilter(classification || 'all-classifications')
     if (role === 'strategy-team' && isStrategyPhase(phase)) {
       strategyPhaseTouchedRef.current = true
       setStrategyPhase(phase)
+      const validStatusTabs = STRATEGY_PHASE_STATUS_TABS[phase].some((tab) => tab.id === statusTab)
+      setStrategyStatusTab(validStatusTabs && statusTab ? statusTab : STRATEGY_PHASE_STATUS_TABS[phase][0]?.id ?? 'all')
     }
   }, [searchParams])
 
@@ -368,6 +377,10 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
   }, [role, selectedCycle?.id])
 
   const projects = useMemo(() => budgets.map(mapDgeBudgetToProject), [budgets])
+  const budgetByProjectId = useMemo(
+    () => new Map(budgets.map((budget) => [budget.id, budget])),
+    [budgets]
+  )
 
   const statusOptions = useMemo(
     () => Array.from(new Set(projects.map((project) => project.statusForAdgeLabel || project.status))).filter(Boolean).sort(),
@@ -377,6 +390,37 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
   const entityOptions = useMemo(
     () => Array.from(new Set(projects.map((project) => project.submittedBy).filter(Boolean))).sort(),
     [projects]
+  )
+
+  const strategicPriorityOptions = useMemo(
+    () => Array.from(
+      new Map(
+        budgets.map((budget) => {
+          const label = trimPriorityLabel(budget.strategicPriorityName) || 'Unclassified'
+          const value = budget.strategicPriorityId || label
+          return [value, { value, label }] as const
+        })
+      ).values()
+    ).sort((left, right) => left.label.localeCompare(right.label)),
+    [budgets]
+  )
+
+  const classificationOptions = useMemo(
+    () => Array.from(
+      new Map(
+        budgets
+          .filter((budget) =>
+            strategicPriorityFilter === 'all-priorities' ||
+            (budget.strategicPriorityId || trimPriorityLabel(budget.strategicPriorityName) || 'Unclassified') === strategicPriorityFilter
+          )
+          .map((budget) => {
+            const label = trimPriorityLabel(budget.strategicPriorityClassificationName) || 'Unclassified'
+            const value = budget.strategicPriorityClassificationId || label
+            return [value, { value, label }] as const
+          })
+      ).values()
+    ).sort((left, right) => left.label.localeCompare(right.label)),
+    [budgets, strategicPriorityFilter]
   )
 
   const strategyPhaseTabs = useMemo(
@@ -456,6 +500,9 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
     const dgeStatus = project.statusForAdgeLabel || project.status
     const aiFlagKeys = getProjectAiReviewFlags(project.aiReviewFlags).map((flag) => flag.key)
     const activeStrategyStatusTab = STRATEGY_PHASE_STATUS_TABS[strategyPhase].find((tab) => tab.id === strategyStatusTab)
+    const sourceBudget = project.ictBudgetId ? budgetByProjectId.get(project.ictBudgetId) : undefined
+    const projectPriorityValue = sourceBudget?.strategicPriorityId || project.strategicPriority
+    const projectClassificationValue = sourceBudget?.strategicPriorityClassificationId || project.classification
     const matchesSearch =
       !normalizedSearch ||
       project.name.toLowerCase().includes(normalizedSearch) ||
@@ -465,6 +512,8 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
       project.classification.toLowerCase().includes(normalizedSearch)
     const matchesStatus = statusFilter === 'all-statuses' || dgeStatus === statusFilter
     const matchesEntity = entityFilter === 'all-entities' || project.submittedBy === entityFilter
+    const matchesStrategicPriority = strategicPriorityFilter === 'all-priorities' || projectPriorityValue === strategicPriorityFilter
+    const matchesClassification = classificationFilter === 'all-classifications' || projectClassificationValue === classificationFilter
     const matchesAiFlag =
       aiFlagFilter === 'all-ai-review-flags' ||
       (aiFlagFilter === 'none' && aiFlagKeys.length === 0) ||
@@ -484,6 +533,8 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
       matchesSearch &&
       matchesStatus &&
       matchesEntity &&
+      matchesStrategicPriority &&
+      matchesClassification &&
       matchesAiFlag &&
       (role === 'strategy-team' ? matchesStrategyPhase && matchesStrategyStatusTab : matchesLegacyTab)
     )
@@ -531,6 +582,7 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
                   const next = new URLSearchParams(searchParams)
                   next.set('phase', phase.id)
                   next.delete('status')
+                  next.delete('statusTab')
                   setSearchParams(next, { replace: true })
                 }}
                 className={cn(
@@ -555,7 +607,13 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setStrategyStatusTab(tab.id)}
+                onClick={() => {
+                  setStrategyStatusTab(tab.id)
+                  const next = new URLSearchParams(searchParams)
+                  next.set('phase', strategyPhase)
+                  next.set('statusTab', tab.id)
+                  setSearchParams(next, { replace: true })
+                }}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
                   strategyStatusTab === tab.id
@@ -632,6 +690,60 @@ export default function DgeProjects({ role }: DgeProjectsProps) {
             </SelectContent>
           </Select>
         </div>
+        {role !== 'sme-team' ? <>
+        <div className="w-[240px]">
+          <Select
+            value={strategicPriorityFilter}
+            onValueChange={(value) => {
+              setStrategicPriorityFilter(value)
+              setClassificationFilter('all-classifications')
+              const next = new URLSearchParams(searchParams)
+              if (value === 'all-priorities') next.delete('priority')
+              else next.set('priority', value)
+              next.delete('classification')
+              setSearchParams(next, { replace: true })
+            }}
+          >
+            <SelectTrigger>
+              <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <SelectValue className="truncate" placeholder="Strategic Priority" />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-priorities">Strategic Priority</SelectItem>
+              {strategicPriorityOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-[260px]">
+          <Select
+            value={classificationFilter}
+            onValueChange={(value) => {
+              setClassificationFilter(value)
+              const next = new URLSearchParams(searchParams)
+              if (value === 'all-classifications') next.delete('classification')
+              else next.set('classification', value)
+              setSearchParams(next, { replace: true })
+            }}
+          >
+            <SelectTrigger>
+              <span className="inline-flex w-full items-center gap-2 whitespace-nowrap">
+                <ListFilter className="h-4 w-4 text-[var(--muted-foreground)]" />
+                <SelectValue className="truncate" placeholder="Strategic Priority Classification" />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all-classifications">Strategic Priority Classification</SelectItem>
+              {classificationOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        </> : null}
         <div className="w-[240px]">
           <Select
             value={entityFilter}

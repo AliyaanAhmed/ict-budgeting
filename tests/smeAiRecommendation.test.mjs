@@ -14,8 +14,8 @@ test('strategy suggestions start at quality check, not SME review', () => {
 })
 const payload = (quality) => JSON.stringify({ score_inputs: { sme_review_quality: quality } })
 test('decision matching compares both Yes and No without treating missing data as mismatch', () => {
-  const yes = payload({ scoring_mode: 'Recommendation' })
-  const no = payload({ scoring_mode: 'Rejection' })
+  const yes = payload({ ai_expected_sme_decision: 'Recommended' })
+  const no = payload({ ai_expected_sme_decision: 'Not Recommended' })
   assert.equal(exports.getSmeDecisionMatch(yes, 2), 'matched')
   assert.equal(exports.getSmeDecisionMatch(no, 1), 'matched')
   assert.equal(exports.getSmeDecisionMatch(yes, 1), 'mismatched')
@@ -24,19 +24,29 @@ test('decision matching compares both Yes and No without treating missing data a
   assert.equal(exports.getSmeDecisionMatch(yes, null), 'unavailable')
 })
 
-test('rejection maps to No and recognized AI reason', () => {
-  const result = parse(payload({ scoring_mode: 'Rejection', reason: 'Not Advised' }))
+test('AI expected SME decision overrides scoring mode and maps Not Recommended to No', () => {
+  const result = parse(payload({
+    scoring_mode: 'Recommendation',
+    ai_expected_sme_decision: 'Not Recommended',
+    criteria: {
+      recommendation_decision_correctness: {
+        reason: 'Recommendation is inappropriate while material inconsistencies remain unresolved.',
+      },
+      recommended_amount_correctness: { reason: 'This reason must not be displayed.' },
+    },
+  }))
   assert.equal(result.recommended, 1)
-  assert.equal(result.rejectionReason, 1)
+  assert.equal(result.rejectionReason, null)
+  assert.equal(result.reason, 'Recommendation is inappropriate while material inconsistencies remain unresolved.')
 })
-test('recommendation maps to Yes', () => {
-  assert.equal(parse(payload({ scoring_mode: 'Recommendation' })).recommended, 2)
+test('AI expected SME recommendation maps to Yes', () => {
+  assert.equal(parse(payload({ ai_expected_sme_decision: 'Recommend' })).recommended, 2)
 })
-test('historical SME reason is not an AI recommendation', () => {
-  const result = parse(payload({ scoring_mode: 'Rejection', actual_rejection_reason: 'Not Advised', criteria: { rejection_decision_correctness: { reason: 'Budget evidence is missing.' } } }))
+test('rejection decision correctness reason is supported without historical fallbacks', () => {
+  const result = parse(payload({ ai_expected_sme_decision: 'Not Recommended', actual_rejection_reason: 'Not Advised', criteria: { rejection_decision_correctness: { reason: 'Budget evidence is missing.' } } }))
   assert.equal(result.rejectionReason, null)
   assert.equal(result.reason, 'Budget evidence is missing.')
 })
 test('malformed, missing, and unknown decisions do not produce suggestions', () => {
-  for (const raw of [null, '', '{', 'null', '{}', payload({ scoring_mode: 'Needs Clarification' })]) assert.equal(parse(raw), null)
+  for (const raw of [null, '', '{', 'null', '{}', payload({ scoring_mode: 'Recommendation' }), payload({ ai_expected_sme_decision: 'Needs Clarification' })]) assert.equal(parse(raw), null)
 })

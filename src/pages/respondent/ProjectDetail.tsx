@@ -448,17 +448,56 @@ function AiFieldAssistTrigger({
   helperText,
 }: AiFieldAssistProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const onToggleRef = useRef(onToggle)
+  const [popupPosition, setPopupPosition] = useState({ left: 16, top: 16 })
+
+  useEffect(() => {
+    onToggleRef.current = onToggle
+  }, [onToggle])
 
   useEffect(() => {
     if (!isOpen) return
-    const handleMouseDown = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        onToggle()
+    const updatePosition = () => {
+      const trigger = wrapperRef.current?.getBoundingClientRect()
+      if (!trigger) return
+
+      const popupWidth = Math.min(288, window.innerWidth - 32)
+      const popupHeight = popupRef.current?.offsetHeight ?? 220
+      const left = Math.max(16, Math.min(trigger.right - popupWidth, window.innerWidth - popupWidth - 16))
+      const spaceBelow = window.innerHeight - trigger.bottom
+      const top = spaceBelow >= popupHeight + 16
+        ? trigger.bottom + 8
+        : Math.max(16, trigger.top - popupHeight - 8)
+
+      setPopupPosition({ left, top })
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!wrapperRef.current?.contains(target) && !popupRef.current?.contains(target)) {
+        onToggleRef.current()
       }
     }
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => document.removeEventListener('mousedown', handleMouseDown)
-  }, [isOpen, onToggle])
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onToggleRef.current()
+        wrapperRef.current?.querySelector('button')?.focus()
+      }
+    }
+
+    const frame = window.requestAnimationFrame(updatePosition)
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [isOpen])
 
   return (
     <div ref={wrapperRef} className="relative shrink-0">
@@ -471,8 +510,14 @@ function AiFieldAssistTrigger({
         <Sparkles className="h-3.5 w-3.5" />
       </button>
 
-      {isOpen ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-2xl border border-[#E9D5FF] bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#1E293B]">
+      {isOpen && typeof document !== 'undefined' ? createPortal(
+        <div
+          ref={popupRef}
+          role="dialog"
+          aria-label={`${fieldLabel} AI suggestion`}
+          className="fixed z-[1000] max-h-[calc(100vh-2rem)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-[#E9D5FF] bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#1E293B]"
+          style={popupPosition}
+        >
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
               <Sparkles className="h-4 w-4" />
@@ -499,7 +544,8 @@ function AiFieldAssistTrigger({
               {helperText ?? 'Switch the form to Edit mode to apply this AI suggestion.'}
             </p>
           )}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   )
@@ -3204,6 +3250,8 @@ export default function ProjectDetail() {
     currentRole === 'Strategy Team' ||
     (currentRole === 'Strategy Director' && !isAllocationOrUtilizationPhase) ||
     (!isDgeRole && canCurrentRoleEdit && !isAllocationOrUtilizationPhase)
+  const lockStrategyFieldsDuringSmeReview =
+    currentRole === 'Strategy Team' && project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const canEditDgeRecommendationOnly =
     currentRole === 'SME Team' &&
     canSmeEditRecommendedOnly &&
@@ -5656,6 +5704,9 @@ export default function ProjectDetail() {
               savedItem.totalBudgetUtilized !== item.totalBudgetUtilized
             )
           })
+          const newBudgetLineItems = budgetLineItems.filter(
+            (item) => !savedBudgetLineItems.some((saved) => saved.id === item.id)
+          )
 
           if (changedBudgetLineItems.length > 0 && canEditFullForm) {
             await Promise.all(
@@ -5692,8 +5743,20 @@ export default function ProjectDetail() {
             )
           }
 
+          if (newBudgetLineItems.length > 0) {
+            if (!canEditFullForm) {
+              throw new Error('New budget account codes cannot be saved in the current form mode.')
+            }
+            await createBudgetLineItems(ictBudgetId, newBudgetLineItems.map(toBudgetItemDraft))
+          }
+
+          const persistedBudgetLineItems = newBudgetLineItems.length > 0
+            ? await getBudgetLineItemsByBudgetId(ictBudgetId)
+            : budgetLineItems
+
           setSavedFormValues(formValues)
-          setSavedBudgetLineItems(budgetLineItems)
+          setBudgetLineItems(persistedBudgetLineItems)
+          setSavedBudgetLineItems(persistedBudgetLineItems)
           setIctBudgetRecommendedLabel(formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : null)
           setIctBudgetRejectedByName(formValues.recommended === 1 ? currentUser.name : null)
           setSavedTechnologyProductNames(
@@ -5789,6 +5852,12 @@ export default function ProjectDetail() {
         : current
     )
     setProjectReloadToken((current) => current + 1)
+  }
+
+  const scrollFormToTop = () => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+    })
   }
 
   const prepareWorkflowAction = async (action: WorkflowAction) => {
@@ -5903,6 +5972,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5935,6 +6005,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5971,6 +6042,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -6003,6 +6075,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -6028,6 +6101,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -6054,6 +6128,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -6106,6 +6181,7 @@ export default function ProjectDetail() {
       }
     )
     setPendingWorkflowAction(null)
+    scrollFormToTop()
   }
 
   const handleCreateWorkStream = async () => {
@@ -6352,7 +6428,7 @@ export default function ProjectDetail() {
         return
       }
 
-      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
       if (existingIds.has(draft.id)) {
         showErrorToast('Already added', 'This account code is already in the budget line items.')
         return
@@ -6441,7 +6517,7 @@ export default function ProjectDetail() {
       if (selectedAccountCodes.length > 0) {
         const classificationRecords = await getClassificationRecords()
         const { nodeMap } = buildClassificationTree(classificationRecords)
-        const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+        const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
         const draftsToAdd: BudgetLineItemRecord[] = []
 
         selectedAccountCodes.forEach((suggestion) => {
@@ -7132,7 +7208,7 @@ export default function ProjectDetail() {
     try {
       const classificationRecords = await getClassificationRecords()
       const { nodeMap } = buildClassificationTree(classificationRecords)
-      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
       const nextBudgetLineItems: BudgetLineItemRecord[] = []
       const failedMessages: string[] = []
 
@@ -7580,6 +7656,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const buildCurrentWorkflowBudget = () => {
@@ -7659,6 +7736,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
@@ -7687,6 +7765,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailSendToSme = async () => {
@@ -7709,6 +7788,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailRouteToDirector = async () => {
@@ -7730,6 +7810,7 @@ export default function ProjectDetail() {
         minDurationMs: 1200,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailCompleteDirectorReview = async () => {
@@ -7751,21 +7832,27 @@ export default function ProjectDetail() {
         minDurationMs: 1200,
       }
     )
+    scrollFormToTop()
   }
 
   const handleConfirmDeleteBudgetLineItem = async () => {
     if (!lineItemToDelete) return
 
     const lineItemId = lineItemToDelete.id
+    const isPersistedLineItem = savedBudgetLineItems.some((item) => item.id === lineItemId)
     setDeletingBudgetLineItemId(lineItemId)
 
     try {
       await runActionToast(
         async () => {
-          await deleteBudgetLineItem(lineItemId)
-          await invalidateBudgetOverviewRecord(ictBudgetId!)
+          if (isPersistedLineItem) {
+            await deleteBudgetLineItem(lineItemId)
+            await invalidateBudgetOverviewRecord(ictBudgetId!)
+          }
           setBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
-          setSavedBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+          if (isPersistedLineItem) {
+            setSavedBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+          }
         },
         {
           processingTitle: 'Deleting budget line item',
@@ -8302,7 +8389,7 @@ export default function ProjectDetail() {
                           label: priority.name,
                         }))}
                         icon={Layers}
-                        disabled={lookupLoading || ictBudgetLoading}
+                        disabled={lockStrategyFieldsDuringSmeReview || lookupLoading || ictBudgetLoading}
                         invalid={Boolean(fieldErrors.strategicPriorityId)}
                       />
                     </EditField>
@@ -8324,7 +8411,12 @@ export default function ProjectDetail() {
                           label: priority.name,
                         }))}
                         icon={FolderKanban}
-                        disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
+                        disabled={
+                          lockStrategyFieldsDuringSmeReview ||
+                          !formValues.strategicPriorityId ||
+                          lookupLoading ||
+                          ictBudgetLoading
+                        }
                         invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                       />
                     </EditField>

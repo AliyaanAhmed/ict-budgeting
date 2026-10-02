@@ -13,15 +13,18 @@ export function parseSmeAiRecommendation(raw: string | null | undefined) {
   try {
     const data = JSON.parse(raw)
     const quality = data?.score_inputs?.sme_review_quality
-    const mode = String(quality?.scoring_mode ?? '').trim().toLowerCase()
-    const recommended = mode === 'rejection' ? 1 : ['recommendation', 'recommended'].includes(mode) ? 2 : null
+    const expectedDecision = String(quality?.ai_expected_sme_decision ?? '').trim().toLowerCase()
+    const recommended = ['not recommended', 'not recommend'].includes(expectedDecision)
+      ? 1
+      : ['recommended', 'recommend'].includes(expectedDecision)
+        ? 2
+        : null
     if (!recommended) return null
-    const reason = typeof quality.reason === 'string' ? quality.reason :
-      quality.criteria?.rejection_decision_correctness?.reason ?? ''
-    // Actual SME values are historical decisions, not AI suggestions.
-    const category = String(quality.suggested_rejection_reason ?? quality.rejection_reason ?? quality.reason ?? '').trim().toLowerCase()
-    const rejectionReason = category === 'not advised' ? 1 : category === 'not ict related' ? 2 : category === 'no evidence provided' ? 3 : null
-    return { recommended: recommended as 1 | 2, reason: typeof reason === 'string' ? reason : '', rejectionReason: rejectionReason as 1 | 2 | 3 | null }
+    const decisionCriterion = quality?.criteria?.recommendation_decision_correctness ??
+      quality?.criteria?.rejection_decision_correctness
+    const reason = typeof decisionCriterion?.reason === 'string' ? decisionCriterion.reason : ''
+
+    return { recommended: recommended as 1 | 2, reason, rejectionReason: null }
   } catch {
     return null
   }

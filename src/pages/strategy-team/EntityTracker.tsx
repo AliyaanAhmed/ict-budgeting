@@ -13,8 +13,12 @@ import { useCycle } from '@/context/CycleContext'
 import { useToast } from '@/context/ToastContext'
 import { sendEntityBackToPlanning } from '@/services/smeReviewResetService'
 import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
-import { Dga_ict_ai_summariesService } from '@/generated/services/Dga_ict_ai_summariesService'
-import type { Dga_ict_ai_summaries } from '@/generated/models/Dga_ict_ai_summariesModel'
+import {
+  getCurrentCycleIdFromStorage,
+  getCycleAiSummaryByCycleId,
+  getEntityAiSummariesByInstanceIds,
+  type EntityAiSummary,
+} from '@/services/entityTrackerAiSummaryService'
 import {
   DGE_BUDGET_STATUS,
   DGE_INSTANCE_STATUS,
@@ -28,16 +32,6 @@ import {
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
 type ExtendMode = 'allocation' | 'utilization' | 'sme-review'
-type EntityAiSummary = {
-  id: string
-  name: string | null
-  referenceRecordId: string
-  modifiedOn: string | null
-  responseJson: string
-  parsed: Record<string, unknown> | null
-  isValid: boolean | null
-}
-
 const stepIcons = {
   Planning: Clock3,
   'DGE Review': Route,
@@ -48,25 +42,6 @@ const stepIcons = {
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10', className)} />
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size))
-  }
-  return chunks
-}
-
-function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
-  if (!value?.trim()) return null
-
-  try {
-    const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
-  } catch {
-    return null
-  }
 }
 
 function getNestedObject(source: Record<string, unknown> | null, path: string[]) {
@@ -167,122 +142,6 @@ function getTemplateValueMap(source: Record<string, unknown> | null) {
 function resolveSummaryTemplate(template: string, source: Record<string, unknown> | null) {
   const values = getTemplateValueMap(source)
   return template.replace(/\{([^}]+)\}/g, (_, key: string) => String(values[key as keyof typeof values] ?? 0))
-}
-
-function extractOpenAiOutputJson(responseJson: string) {
-  const wrapper = parseJsonObject(responseJson)
-  if (!wrapper) return null
-
-  const output = wrapper.output
-  if (Array.isArray(output)) {
-    for (const outputItem of output) {
-      if (!outputItem || typeof outputItem !== 'object') continue
-      const content = (outputItem as Record<string, unknown>).content
-      if (!Array.isArray(content)) continue
-
-      for (const contentItem of content) {
-        if (!contentItem || typeof contentItem !== 'object') continue
-        const text = (contentItem as Record<string, unknown>).text
-        const parsedText = typeof text === 'string' ? parseJsonObject(text) : null
-        if (parsedText) return parsedText
-      }
-    }
-  }
-
-  return wrapper
-}
-
-function toEntityAiSummary(record: Dga_ict_ai_summaries): EntityAiSummary | null {
-  if (!record.dga_ict_ai_summaryid || !record._dga_referencerecordid_value) return null
-  const responseJson = typeof record.dga_response_json === 'string' ? record.dga_response_json : ''
-
-  return {
-    id: record.dga_ict_ai_summaryid,
-    name: record.dga_name ?? null,
-    referenceRecordId: record._dga_referencerecordid_value,
-    modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
-    responseJson,
-    parsed: extractOpenAiOutputJson(responseJson),
-    isValid: typeof record.dga_is_valid === 'boolean' ? record.dga_is_valid : null,
-  }
-}
-
-async function getEntityAiSummariesByInstanceIds(instanceIds: string[]) {
-  const summariesByInstance = new Map<string, EntityAiSummary>()
-  const uniqueInstanceIds = Array.from(new Set(instanceIds.filter(Boolean)))
-  if (!uniqueInstanceIds.length) return summariesByInstance
-
-  const chunks = chunkArray(uniqueInstanceIds, 15)
-  const results = await Promise.all(
-    chunks.map((chunk) =>
-      Dga_ict_ai_summariesService.getAll({
-        select: [
-          'dga_ict_ai_summaryid',
-          '_dga_referencerecordid_value',
-          'dga_response_json',
-          'dga_name',
-          'dga_summary_category',
-          'dga_summary_type',
-          'dga_is_valid',
-          'modifiedon',
-          'createdon',
-        ],
-        filter: `(${chunk.map((instanceId) => `_dga_referencerecordid_value eq ${instanceId}`).join(' or ')})`,
-        orderBy: ['modifiedon desc', 'createdon desc'],
-        maxPageSize: 500,
-      })
-    )
-  )
-
-  results
-    .flatMap((result) => result.data ?? [])
-    .map(toEntityAiSummary)
-    .filter((summary): summary is EntityAiSummary => Boolean(summary))
-    .forEach((summary) => {
-      if (!summariesByInstance.has(summary.referenceRecordId)) {
-        summariesByInstance.set(summary.referenceRecordId, summary)
-      }
-    })
-
-  return summariesByInstance
-}
-
-function getCurrentCycleIdFromStorage() {
-  if (typeof window === 'undefined') return null
-  const rawCycle = window.sessionStorage.getItem('currentCycle')
-  if (!rawCycle) return null
-
-  try {
-    const parsed = JSON.parse(rawCycle) as { id?: unknown }
-    return typeof parsed.id === 'string' && parsed.id.trim() ? parsed.id.trim() : null
-  } catch {
-    return null
-  }
-}
-
-async function getCycleAiSummaryByCycleId(cycleId: string) {
-  if (!cycleId) return null
-
-  const result = await Dga_ict_ai_summariesService.getAll({
-    select: [
-      'dga_ict_ai_summaryid',
-      '_dga_referencerecordid_value',
-      'dga_response_json',
-      'dga_name',
-      'dga_summary_category',
-      'dga_summary_type',
-      'dga_is_valid',
-      'modifiedon',
-      'createdon',
-    ],
-    filter: `_dga_referencerecordid_value eq ${cycleId}`,
-    orderBy: ['modifiedon desc', 'createdon desc'],
-    top: 1,
-    maxPageSize: 1,
-  })
-
-  const record = result.data?.[0]
-  return record ? toEntityAiSummary(record) : null
 }
 
 function getActiveStepIndex(instance: DgeInstanceRecord) {
@@ -482,16 +341,18 @@ function getEntityAiInsightRows(summary: EntityAiSummary | null) {
   ].filter((item): item is { label: string; count: number | null; text: string; projectIds: string[] } => Boolean(item))
 }
 
-function EntityAiPortfolioInsights({
+export function EntityAiPortfolioInsights({
   entity,
   summary,
   loading,
   error,
+  projectBasePath = '/strategy-team/projects',
 }: {
   entity: DgeInstanceRecord
   summary: EntityAiSummary | null
   loading: boolean
   error: string | null
+  projectBasePath?: string
 }) {
   if (summary?.isValid === false) {
     return (
@@ -558,7 +419,7 @@ function EntityAiPortfolioInsights({
                           normalizeId(budget.budgetRefId || '') === normalizeId(projectId)
                         )
                         return project ? (
-                          <Link key={projectId} to={`/strategy-team/projects/${project.id}`} title={project.name} className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]">
+                          <Link key={projectId} to={`${projectBasePath}/${project.id}`} title={project.name} className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]">
                             {project.budgetRefId || project.name}
                           </Link>
                         ) : (
@@ -969,7 +830,7 @@ function ExtendPortfolioModal({
   )
 }
 
-function EntityTrackerSummary({
+export function EntityTrackerSummary({
   summary,
   loading,
   error,

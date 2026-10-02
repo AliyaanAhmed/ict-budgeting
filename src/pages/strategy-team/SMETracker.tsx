@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useId, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, ChevronDown, Search, Workflow } from 'lucide-react'
+import { ArrowRight, Search, Workflow } from 'lucide-react'
 import { useCycle } from '@/context/CycleContext'
 import { StrategyPageShell, StrategyProgressBar } from './StrategyTeamShell'
 import { DGE_BUDGET_STATUS, getDgePortfolioData, getSmeTrackerGroups, type DgeBudgetRecord } from '@/services/dgePortfolioService'
@@ -47,78 +47,7 @@ function SummaryStrip({ summary }: { summary: ReviewSummary }) {
   )
 }
 
-function ClassificationDetails({ budgets, projectBasePath }: { budgets: DgeBudgetRecord[]; projectBasePath: string }) {
-  const [query, setQuery] = useState('')
-  const [clarificationsOnly, setClarificationsOnly] = useState(false)
-  const [page, setPage] = useState(1)
-  const pageSize = 8
-  const search = query.trim().toLowerCase()
-  const filtered = budgets.filter((budget) =>
-    (!clarificationsOnly || budget.statuscode === DGE_BUDGET_STATUS.clarificationPending) &&
-    [budget.budgetRefId, budget.name, budget.entityName, budget.instanceName, budget.smeReviewerTeamName, budget.ownerName, budget.statusLabel]
-      .some((value) => value?.toLowerCase().includes(search))
-  )
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const currentPage = Math.min(page, pageCount)
-  const start = (currentPage - 1) * pageSize
-  const visibleProjects = filtered.slice(start, start + pageSize)
-  const controlClass = 'rounded-lg border border-[#D8E4F3] bg-white px-3 py-1.5 text-xs font-medium text-[#475569] transition-colors hover:border-[#286CFF] hover:text-[#286CFF] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/5 dark:text-slate-300'
-  return (
-    <div className="min-w-0 overflow-hidden rounded-xl border border-[#D3E2FA] bg-[#EEF5FF] dark:border-[#314B70] dark:bg-[#1B2E49]">
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-        <h4 className="text-sm font-semibold text-[#0F172A] dark:text-white">Projects <span className="ml-1 text-xs font-normal text-[#64748B] dark:text-slate-400">{budgets.length}</span></h4>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            aria-pressed={clarificationsOnly}
-            onClick={() => { setClarificationsOnly((current) => !current); setPage(1) }}
-            className={cn(
-              'inline-flex items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]',
-              clarificationsOnly
-                ? 'border-[#286CFF] bg-[#286CFF] text-white hover:bg-[#1D4ED8]'
-                : 'border-[#D3E2FA] bg-white text-[#475569] hover:border-[#286CFF] hover:text-[#286CFF] dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-blue-300'
-            )}
-          >
-            Clarifications Only
-          </button>
-          <label className="flex items-center gap-2 rounded-lg border border-[#D8E4F3] bg-white px-3 py-2 focus-within:border-[#286CFF] dark:border-white/10 dark:bg-white/5">
-            <Search className="h-3.5 w-3.5 text-[#64748B]" />
-            <input aria-label="Search projects in this classification" placeholder="Search projects or entities" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} className="w-48 bg-transparent text-xs text-[#0F172A] outline-none dark:text-white" />
-          </label>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] table-fixed text-left text-xs">
-          <caption className="sr-only">Projects in this classification</caption>
-          <thead className="border-y border-[#E3EBF5] text-[#64748B] dark:border-white/10 dark:text-slate-400">
-            <tr><th scope="col" className="w-[36%] px-4 py-2 font-medium">Project</th><th scope="col" className="w-[22%] px-3 py-2 font-medium">Entity</th><th scope="col" className="w-[22%] px-3 py-2 font-medium">Status</th><th scope="col" className="w-[20%] px-3 py-2 font-medium">Assigned To</th></tr>
-          </thead>
-          <tbody className="divide-y divide-[#E3EBF5] bg-white/60 dark:divide-white/10 dark:bg-white/[0.02]">
-            {visibleProjects.map((budget) => <tr key={budget.id} className="transition-colors hover:bg-[#E3EEFF] dark:hover:bg-white/5">
-              <td className="px-4 py-2.5"><Link to={`${projectBasePath}/${budget.id}`} className="block truncate font-semibold text-[#286CFF] hover:underline dark:text-blue-300" title={`${budget.budgetRefId} ${budget.name}`}>{budget.budgetRefId || budget.name}</Link>{budget.budgetRefId && <p title={budget.name} className="mt-0.5 truncate text-[#475569] dark:text-slate-300">{budget.name}</p>}</td>
-              <td className="px-3 py-2.5 text-[#475569] dark:text-slate-300"><span className="block truncate" title={budget.entityName || budget.instanceName || 'Entity unavailable'}>{budget.entityName || budget.instanceName || 'Entity unavailable'}</span></td>
-              <td className="px-3 py-2.5"><span title={budget.statusLabel} className={cn('block truncate', budget.statuscode === DGE_BUDGET_STATUS.clarificationPending ? 'text-[#9F1239] dark:text-rose-300' : 'text-[#475569] dark:text-slate-300')}>{budget.statusLabel}</span></td>
-              <td className="px-3 py-2.5 text-[#475569] dark:text-slate-300"><span className="block truncate" title={budget.smeReviewerTeamName || budget.ownerName || 'Not assigned'}>{budget.smeReviewerTeamName || budget.ownerName || 'Not assigned'}</span></td>
-            </tr>)}
-            {!filtered.length && <tr><td colSpan={4} className="px-4 py-8 text-center text-[#64748B] dark:text-slate-400">No projects match these filters.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E3EBF5] px-4 py-3 text-xs text-[#64748B] dark:border-white/10 dark:text-slate-400">
-        <span role="status">{filtered.length ? `${start + 1}-${Math.min(start + pageSize, filtered.length)} of ${filtered.length} projects` : '0 projects'}</span>
-        <div className="flex items-center gap-3">
-          <button type="button" className={controlClass} disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
-          <span>Page {currentPage} of {pageCount}</span>
-          <button type="button" className={controlClass} disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ClassificationTable({ budgets, projectBasePath }: { budgets: DgeBudgetRecord[]; projectBasePath: string }) {
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const tableId = useId()
+function ClassificationTable({ budgets, projectBasePath, strategicPriority }: { budgets: DgeBudgetRecord[]; projectBasePath: string; strategicPriority: string }) {
   const classifications = new Map<string, { name: string; budgets: DgeBudgetRecord[] }>()
   budgets.forEach((budget) => {
     const name = budget.strategicPriorityClassificationName?.trim() || 'Unclassified'
@@ -137,20 +66,16 @@ function ClassificationTable({ budgets, projectBasePath }: { budgets: DgeBudgetR
             <th scope="col" className="min-w-[115px] px-3 py-0 align-middle font-semibold">Progress</th><th scope="col" className="px-4 py-0 align-middle font-semibold">Status</th>
           </tr></thead>
           <tbody className="divide-y divide-[#E8EEF5] dark:divide-white/10">
-            {[...classifications.entries()].map(([key, group], index) => {
+            {[...classifications.entries()].map(([key, group]) => {
               const summary = getSummary(group.budgets)
               const pending = summary.sme + summary.adge > 0
-              const isOpen = expanded === key
-              const detailsId = `${tableId}-${index}`
-              return <Fragment key={key}>
-                <tr className={cn('transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/5', isOpen && 'bg-[#F8FBFF] dark:bg-white/5')}>
-                  <th scope="row" className="px-5 py-4 font-medium"><button type="button" aria-expanded={isOpen} aria-controls={isOpen ? detailsId : undefined} onClick={() => setExpanded(isOpen ? null : key)} className="flex w-full items-center gap-3 rounded text-left text-[#0F172A] outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] dark:text-white"><ChevronDown className={cn('h-4 w-4 shrink-0 text-[#64748B] transition-transform motion-reduce:transition-none', !isOpen && '-rotate-90')} /><span className="break-words leading-5">{group.name}</span></button></th>
+              const href = `${projectBasePath}?priority=${encodeURIComponent(strategicPriority)}&classification=${encodeURIComponent(key)}`
+              return <tr key={key} className="transition-colors hover:bg-[#F8FBFF] dark:hover:bg-white/5">
+                  <th scope="row" className="px-5 py-4 font-medium"><Link to={href} className="group inline-flex max-w-full items-center gap-2 rounded text-left font-semibold text-[#286CFF] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#286CFF] dark:text-blue-300"><span className="break-words leading-5">{group.name}</span><ArrowRight className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5" /></Link></th>
                   {metrics.map((metric) => <td key={metric.key} className="px-2 py-4 text-center"><span className="inline-flex min-w-8 justify-center rounded-full px-2 py-1 text-xs font-semibold tabular-nums dark:brightness-90" style={{ color: summary[metric.key] ? metric.color : '#64748B', backgroundColor: summary[metric.key] ? metric.tint : 'transparent' }}>{summary[metric.key]}</span></td>)}
                   <td className="px-3 py-4"><Progress summary={summary} /></td>
                   <td className="px-4 py-4"><span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium', pending ? 'bg-[#FFF1F2] text-[#9F1239] dark:bg-red-900/25 dark:text-rose-300' : summary.reviewed === summary.total ? 'bg-[#ECFDF5] text-[#047857] dark:bg-emerald-900/25 dark:text-emerald-300' : 'bg-[#F1F5F9] text-[#475569] dark:bg-white/10 dark:text-slate-300')}>{pending ? 'Needs Clarification' : summary.reviewed === summary.total ? 'Reviewed' : summary.awaiting ? 'Awaiting Review' : 'In Progress'}</span></td>
                 </tr>
-                {isOpen && <tr id={detailsId}><td colSpan={8} className="p-4"><ClassificationDetails budgets={group.budgets} projectBasePath={projectBasePath} /></td></tr>}
-              </Fragment>
             })}
           </tbody>
         </table>
@@ -172,7 +97,7 @@ function PrioritySection({ group, projectBasePath, queueHref, queueLabel }: { gr
       <Link to={queueHref} className="inline-flex items-center gap-3 rounded-xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]">{queueLabel}<ArrowRight className="h-4 w-4" /></Link>
     </div>
     <SummaryStrip summary={summary} />
-    <ClassificationTable budgets={group.budgets} projectBasePath={projectBasePath} />
+    <ClassificationTable budgets={group.budgets} projectBasePath={projectBasePath} strategicPriority={group.budgets.find((budget) => budget.strategicPriorityId)?.strategicPriorityId || group.assignment.strategicPriorityId || group.assignment.strategicPriorityName} />
   </section>
 }
 
@@ -233,7 +158,13 @@ export function SMETrackerView({ eyebrow, description, projectBasePath, queueHre
     const summary = getSummary(group.budgets)
     return value === 'clarification' ? summary.sme + summary.adge > 0 : value === 'awaiting' ? summary.awaiting > 0 : true
   }
-  const visible = groups.filter((group) => matchesFilter(group, filter) && `${group.assignment.strategicPriorityName} ${group.assignment.teamName} ${group.budgets.map((b) => b.strategicPriorityClassificationName || '').join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
+  const visible = groups
+    .filter((group) => matchesFilter(group, filter) && `${group.assignment.strategicPriorityName} ${group.assignment.teamName} ${group.budgets.map((b) => b.strategicPriorityClassificationName || '').join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((left, right) => {
+      const leftHasClassification = left.budgets.some((budget) => Boolean(budget.strategicPriorityClassificationName?.trim()))
+      const rightHasClassification = right.budgets.some((budget) => Boolean(budget.strategicPriorityClassificationName?.trim()))
+      return Number(rightHasClassification) - Number(leftHasClassification)
+    })
   return <StrategyPageShell eyebrow={eyebrow} title="SME Tracker" description={description}>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">

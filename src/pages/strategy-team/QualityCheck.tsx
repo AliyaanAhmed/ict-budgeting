@@ -488,9 +488,29 @@ export default function QualityCheck() {
                         {item.budgetRefId} · {item.entityName || item.instanceName || 'Unknown Entity'}
                       </p>
                     </div>
-                    <div className="shrink-0 text-left lg:text-right">
-                      <CurrencyAmount amount={item.recommendedBudget || item.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
-                      <p className="text-xs text-[#64748B] dark:text-slate-300">Recommended Budget</p>
+                    <div className="flex shrink-0 items-center gap-4">
+                      <div className="text-left lg:text-right">
+                        <CurrencyAmount amount={item.recommendedBudget || item.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+                        <p className="text-xs text-[#64748B] dark:text-slate-300">Recommended Budget</p>
+                      </div>
+                      <div className="flex items-center gap-2.5 border-l border-[#E2E8F0] pl-4 dark:border-white/10">
+                        <div
+                          role="meter"
+                          aria-label="AI Confidence Score"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={hasConfidence ? Math.min(100, Math.max(0, confidence)) : undefined}
+                          className="relative grid h-16 w-16 shrink-0 place-items-center rounded-full"
+                          style={{ background: `conic-gradient(${!hasConfidence ? '#CBD5E1' : confidence >= 80 ? '#10B981' : confidence >= 60 ? '#F59E0B' : '#EF4444'} ${hasConfidence ? Math.min(100, Math.max(0, confidence)) : 0}%, #E8EEF5 0)` }}
+                        >
+                          <span className="absolute inset-[5px] rounded-full bg-white dark:bg-[#162339]" />
+                          <span className={`relative text-sm font-bold tabular-nums ${confidenceColor}`}>{hasConfidence ? `${confidence}%` : '–'}</span>
+                        </div>
+                        <div className="max-w-24">
+                          <div className="flex items-center gap-1 text-[#A855F7] dark:text-purple-200"><Sparkles className="h-3.5 w-3.5" /><span className="text-[11px] font-semibold">AI Confidence</span></div>
+                          <p className="mt-1 text-[11px] leading-4 text-[#64748B] dark:text-slate-300">Model certainty</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -500,11 +520,6 @@ export default function QualityCheck() {
 
                   <div className="flex flex-wrap items-center gap-2">
                     {decisionMatch !== 'unavailable' && <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${decisionMatch === 'matched' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'}`}>AI Decision: {decisionMatch === 'matched' ? 'Matched' : 'Mismatched'}</span>}
-                    <span className="inline-flex flex-wrap items-center gap-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FBFF] px-3 py-1 text-xs font-semibold dark:border-white/10 dark:bg-white/5">
-                      <Sparkles aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-[#A855F7] dark:text-purple-200" />
-                      <span className="text-[#64748B] dark:text-slate-300">AI Confidence Score:</span>
-                      <span className={`tabular-nums ${confidenceColor}`}>{hasConfidence ? `${confidence}%` : 'Not Available'}</span>
-                    </span>
                   </div>
                   {reviewFlags.length > 0 && <div className="flex flex-wrap items-center gap-2"><p className="mr-1 text-xs font-semibold text-[#64748B] dark:text-slate-300">AI Review Flags</p>{reviewFlags.map((flag) => {
                     const key = flagKeys[flag.code as keyof typeof flagKeys]
