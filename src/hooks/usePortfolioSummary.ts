@@ -45,7 +45,8 @@ export function usePortfolioSummary(_role: PortfolioRole, instanceId: string | n
 
   return {
     record,
-    summary: record?.parsedSummary ?? null,
+    summary: record?.isValid ? record.parsedSummary : null,
+    processing: record?.isValid === false,
     loading,
     error,
   }

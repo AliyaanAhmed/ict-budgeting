@@ -18,7 +18,7 @@ interface ToastContextValue {
       processingTitle: string
       processingDescription?: string
       successTitle: string
-      successDescription?: string
+      successDescription?: string | ((result: T) => string)
       errorTitle?: string
       minDurationMs?: number
     }
@@ -60,7 +60,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       processingTitle: string
       processingDescription?: string
       successTitle: string
-      successDescription?: string
+      successDescription?: string | ((result: T) => string)
       errorTitle?: string
       minDurationMs?: number
     }
@@ -108,7 +108,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 ...toast,
                 state: 'success',
                 title: options.successTitle,
-                description: options.successDescription,
+                description: typeof options.successDescription === 'function'
+                  ? options.successDescription(result)
+                  : options.successDescription,
                 progress: 100,
               }
             : toast

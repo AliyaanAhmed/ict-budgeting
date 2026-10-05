@@ -21,12 +21,16 @@ import ApproverProjects from '@/pages/approver/Projects'
 
 import StrategyTeamDashboard from '@/pages/strategy-team/Dashboard'
 import StrategyAlignment from '@/pages/strategy-team/StrategicAlignment'
+import StrategicPriorityChangeRequests from '@/pages/strategy-team/StrategicPriorityChangeRequests'
 import StrategyEntityTracker from '@/pages/strategy-team/EntityTracker'
 import StrategySMETracker from '@/pages/strategy-team/SMETracker'
 import StrategyQualityCheck from '@/pages/strategy-team/QualityCheck'
+import StrategyClarificationMonitor from '@/pages/strategy-team/ClarificationMonitor'
 import StrategyDirectorDashboard from '@/pages/strategy-director/Dashboard'
 import StrategyDirectorReviewerQueue from '@/pages/strategy-director/ReviewerQueue'
 import StrategyDirectorEntityTracker from '@/pages/strategy-director/EntityTracker'
+import StrategyDirectorSMETracker from '@/pages/strategy-director/SMETracker'
+import StrategyDirectorQualityCheckTracker from '@/pages/strategy-director/QualityCheckTracker'
 import SmeTeamDashboard from '@/pages/sme-team/Dashboard'
 import SmeTeamReviews from '@/pages/sme-team/Reviews'
 import DgeProjects from '@/pages/dge-projects/Projects'
@@ -67,9 +71,11 @@ export default function App() {
                     <Route path="/strategy-team/projects" element={<DgeProjects role="strategy-team" />} />
                     <Route path="/strategy-team/projects/:id" element={<ProjectDetail />} />
                     <Route path="/strategy-team/strategic-alignment" element={<StrategyAlignment />} />
+                    <Route path="/strategy-team/strategic-priority-change-requests" element={<StrategicPriorityChangeRequests />} />
                     <Route path="/strategy-team/entity-tracker" element={<StrategyEntityTracker />} />
                     <Route path="/strategy-team/sme-tracker" element={<StrategySMETracker />} />
                     <Route path="/strategy-team/quality-check" element={<StrategyQualityCheck />} />
+                    <Route path="/strategy-team/clarification-monitor" element={<StrategyClarificationMonitor />} />
                     {/* Strategy Director */}
                     <Route path="/strategy-director/dashboard" element={<StrategyDirectorDashboard />} />
                     <Route path="/strategy-director/projects" element={<DgeProjects role="strategy-director" />} />
@@ -77,6 +83,8 @@ export default function App() {
                     <Route path="/strategy-director/reviewer-queue" element={<StrategyDirectorReviewerQueue />} />
                     <Route path="/strategy-director/reviewer-queue/:id" element={<ProjectDetail />} />
                     <Route path="/strategy-director/entity-tracker" element={<StrategyDirectorEntityTracker />} />
+                    <Route path="/strategy-director/sme-tracker" element={<StrategyDirectorSMETracker />} />
+                    <Route path="/strategy-director/quality-check-tracker" element={<StrategyDirectorQualityCheckTracker />} />
                     {/* SME Team */}
                     <Route path="/sme-team/dashboard" element={<SmeTeamDashboard />} />
                     <Route path="/sme-team/projects" element={<DgeProjects role="sme-team" />} />

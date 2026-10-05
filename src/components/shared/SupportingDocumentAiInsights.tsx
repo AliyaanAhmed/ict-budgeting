@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { SupportingDocumentEvaluationSummary } from '@/services/aiSupportingDocumentEvaluationService'
+import type { DocumentAnalysisStatus } from '@/services/largeDocumentAnalysisService'
 
 export interface SupportingDocumentAiInsightItem {
   id: string
@@ -20,7 +21,7 @@ export interface SupportingDocumentAiInsightItem {
     name: string
     size?: number | null
   }
-  status: 'queued' | 'analyzing' | 'complete' | 'error'
+  status: DocumentAnalysisStatus
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
   error?: string | null
@@ -146,7 +147,7 @@ function InsightSection({
   )
 }
 
-function AnalyzingState({ fileName }: { fileName: string }) {
+function AnalyzingState({ fileName, queued = false, uploading = false }: { fileName: string; queued?: boolean; uploading?: boolean }) {
   const { Icon, color, bg } = getFileTypeIcon(fileName)
 
   return (
@@ -166,14 +167,14 @@ function AnalyzingState({ fileName }: { fileName: string }) {
             <div className="min-w-0">
               <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-[#E9D5FF] bg-white/80 px-2.5 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:border-white/10 dark:bg-white/10 dark:text-[#E9D5FF]">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                AI Analyzing
+                {uploading ? 'Uploading' : queued ? 'Queued' : 'AI Analyzing'}
               </div>
               <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{fileName}</p>
             </div>
           </div>
           <div className="hidden items-center gap-2 rounded-xl border border-[#F0D9FF] bg-white/80 px-3 py-2 text-xs font-medium text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF] sm:flex">
             <Bot className="h-3.5 w-3.5 animate-pulse" />
-            Preparing insights
+            {uploading ? 'Uploading file and starting analysis' : queued ? 'Waiting for analysis' : 'Preparing insights'}
           </div>
           <div className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 opacity-[0.12] sm:block dark:opacity-[0.16]">
             <div className="relative h-16 w-24">
@@ -199,10 +200,16 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
   const evidenceReason = toDisplayText(evidence?.reason)
   const documentPurpose = toDisplayText(profile?.document_purpose)
 
-  if (item.status === 'analyzing' || item.status === 'queued') {
-    return <AnalyzingState fileName={item.file.name} />
+  if (item.status === 'analyzing' || item.status === 'uploading' || item.status === 'queued') {
+    return <AnalyzingState fileName={item.file.name} queued={item.status === 'queued'} uploading={item.status === 'uploading'} />
   }
 
+  if (item.status === 'cancelled' || item.status === 'incomplete') {
+    return <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+      <p className="font-semibold">{item.status === 'cancelled' ? 'Analysis Cancelled' : 'Analysis Incomplete'}</p>
+      <p className="mt-1">{item.status === 'cancelled' ? 'Processing was cancelled. Your uploaded file remains available.' : 'The analysis did not finish. Your uploaded file remains available.'}</p>
+    </div>
+  }
   if (item.status === 'error') {
     return (
       <div className="rounded-2xl border border-[#F5C2C7] bg-[#FFF1F3] p-4 dark:border-[#B42318]/30 dark:bg-[#3B1118]">
@@ -329,8 +336,8 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
     return items
       .map((item, index) => ({ item, index }))
       .sort((left, right) => {
-        const leftActive = left.item.status === 'queued' || left.item.status === 'analyzing'
-        const rightActive = right.item.status === 'queued' || right.item.status === 'analyzing'
+        const leftActive = left.item.status === 'uploading' || left.item.status === 'queued' || left.item.status === 'analyzing'
+        const rightActive = right.item.status === 'uploading' || right.item.status === 'queued' || right.item.status === 'analyzing'
 
         if (leftActive !== rightActive) {
           return leftActive ? -1 : 1
@@ -349,15 +356,15 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
     const previousItems = previousItemsRef.current
     const previousActiveIds = new Set(
       previousItems
-        .filter((item) => item.status === 'queued' || item.status === 'analyzing')
+        .filter((item) => item.status === 'uploading' || item.status === 'queued' || item.status === 'analyzing')
         .map((item) => item.id)
     )
     const currentActiveItem = orderedItems.find(
-      (item) => item.status === 'queued' || item.status === 'analyzing'
+      (item) => item.status === 'uploading' || item.status === 'queued' || item.status === 'analyzing'
     )
     const newestActiveItem = orderedItems.find(
       (item) =>
-        (item.status === 'queued' || item.status === 'analyzing') &&
+        (item.status === 'uploading' || item.status === 'queued' || item.status === 'analyzing') &&
         !previousActiveIds.has(item.id)
     )
 
@@ -371,7 +378,7 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
       const previousExpanded = previousItems.find((item) => item.id === expandedId)
       const currentExpanded = items.find((item) => item.id === expandedId)
       const wasActive =
-        previousExpanded?.status === 'queued' || previousExpanded?.status === 'analyzing'
+        previousExpanded?.status === 'uploading' || previousExpanded?.status === 'queued' || previousExpanded?.status === 'analyzing'
       const isNowComplete = currentExpanded?.status === 'complete'
 
       if (wasActive && isNowComplete) {
@@ -403,7 +410,7 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
   }
 
   const completedCount = items.filter((item) => item.status === 'complete').length
-  const analyzingCount = items.filter((item) => item.status === 'analyzing' || item.status === 'queued').length
+  const analyzingCount = items.filter((item) => item.status === 'analyzing' || item.status === 'uploading' || item.status === 'queued').length
 
   const handleDelete = async (item: SupportingDocumentAiInsightItem) => {
     if (!onDeleteItem || deletingId) return
@@ -446,7 +453,7 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
 
       <div className="space-y-3">
         {orderedItems.map((item) => {
-          const isActive = item.status === 'queued' || item.status === 'analyzing'
+          const isActive = item.status === 'uploading' || item.status === 'queued' || item.status === 'analyzing'
           const expanded = expandedId === item.id || isActive
           const evidenceScore = item.parsedSummary?.evidence_assessment?.evidence_score
           const { Icon, color, bg, label } = getFileTypeIcon(item.file.name)
@@ -482,7 +489,7 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
                     <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm dark:bg-[#0F172A]">
                       <CheckCircle2 className="h-3.5 w-3.5 text-[#16A34A]" />
                     </span>
-                  ) : item.status === 'error' ? (
+                  ) : item.status === 'error' || item.status === 'cancelled' || item.status === 'incomplete' ? (
                     <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm dark:bg-[#0F172A]">
                       <AlertTriangle className="h-3.5 w-3.5 text-[#B42318] dark:text-[#FCA5A5]" />
                     </span>
@@ -496,6 +503,9 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-sm font-bold text-[#0F172A] dark:text-white">{item.file.name}</p>
+                    <span className={cn('rounded-full px-2 py-1 text-[11px] font-semibold', item.status === 'complete' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : item.status === 'error' ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300' : 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300')}>
+                      {item.status === 'complete' ? 'Completed' : item.status === 'error' ? 'Failed' : item.status === 'cancelled' ? 'Cancelled' : 'Incomplete'}
+                    </span>
                     <span
                       className="rounded-full px-2 py-0.5 text-[10px] font-bold leading-none"
                       style={{ backgroundColor: bg, color }}
@@ -514,7 +524,7 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
                     </p>
                   ) : (
                     <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
-                      {item.status === 'error' ? 'Analysis failed' : 'AI is extracting structured evidence'}
+                      {item.status === 'error' ? 'Analysis failed' : item.status === 'cancelled' ? 'Analysis cancelled' : item.status === 'incomplete' ? 'Analysis incomplete' : 'AI is extracting structured evidence'}
                     </p>
                   )}
                 </div>

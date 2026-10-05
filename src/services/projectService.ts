@@ -26,7 +26,9 @@ export const REVIEWER_SENT_TO_APPROVER_STATUSES: ProjectStatus[] = [
 
 export const APPROVER_SUBMITTED_TO_DGE_STATUSES: ProjectStatus[] = ['Submitted to DGE']
 
-export function isRespondentSubmittedProjectStatus(status: ProjectStatus) {
+export function isRespondentSubmittedProjectStatus(status: ProjectStatus, statusCode?: number | null) {
+  // Downstream records retain broad submitted labels; do not count them as planning submissions.
+  if (statusCode != null && [776140011, 776140012, 776140013, 776140014, 776140015].includes(statusCode)) return false
   return RESPONDENT_SUBMITTED_STATUSES.includes(status)
 }
 

@@ -183,6 +183,37 @@
           "x-ms-schema-name": "dga_extension_provided_in_allocationName",
           "x-ms-read-only": true
         },
+        "dga_extension_provided_in_utilization": {
+          "type": "string",
+          "title": "Extension Provided In Utilization",
+          "x-ms-dataverse-attribute": "dga_extension_provided_in_utilization",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "dga_extension_provided_in_utilization",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "41938c86-4c48-f111-bec6-70a8a522d043",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Extension Provided",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "dga_extension_provided_in_utilizationname": {
+          "type": "string",
+          "title": "dga_extension_provided_in_utilizationname",
+          "x-ms-dataverse-attribute": "dga_extension_provided_in_utilizationname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "dga_extension_provided_in_utilizationName",
+          "x-ms-read-only": true
+        },
         "dga_ict_budget_instanceid": {
           "type": "string",
           "title": "ICT Budget Instance",
@@ -240,12 +271,27 @@
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "dga_previous_allocation_date"
         },
+        "dga_previous_utilization_date": {
+          "type": "string",
+          "title": "Previous Utilization Date",
+          "x-ms-dataverse-attribute": "dga_previous_utilization_date",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "dga_previous_utilization_date"
+        },
         "dga_utilization_end_date": {
           "type": "string",
           "title": "Utilization End Date",
           "x-ms-dataverse-attribute": "dga_utilization_end_date",
           "x-ms-dataverse-type": "DateTimeType",
           "x-ms-schema-name": "dga_utilization_end_date"
+        },
+        "dga_utilization_extension_reason": {
+          "type": "string",
+          "title": "Utilization Extension Reason",
+          "x-ms-dataverse-attribute": "dga_utilization_extension_reason",
+          "x-ms-dataverse-type": "MemoType",
+          "x-ms-schema-name": "dga_utilization_extension_reason",
+          "maxLength": 1048576
         },
         "dga_utilization_start_date": {
           "type": "string",

@@ -2,6 +2,7 @@ import { Dga_ict_budgetsService } from '@/generated/services/Dga_ict_budgetsServ
 import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_budget_instancesService'
 import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
 import { getStoredCurrentSme, getStoredSmeAssignments, type DgeSmeAssignment } from '@/services/dgeRoleContextService'
+import { getBudgetOverviewRecordsByBudgetIds } from '@/services/documentAiSummaryStoreService'
 
 export const DGE_BUDGET_STATUS = {
   draft: 1,
@@ -53,16 +54,26 @@ export interface DgeBudgetRecord {
   strategicPriorityName: string | null
   strategicPriorityClassificationId: string | null
   strategicPriorityClassificationName: string | null
+  suggestedStrategicPriorityName?: string | null
+  suggestedStrategicPriorityClassificationName?: string | null
   previousStrategicPriorityId: string | null
   previousStrategicPriorityName: string | null
   previousStrategicPriorityClassificationId: string | null
   previousStrategicPriorityClassificationName: string | null
   requestedBudget: number
   recommendedBudget: number
+  recommended?: number | null
+  rejectionReason?: number | null
+  projectPortfolioForDge?: string | null
   allocatedBudget: number
   utilizedBudget: number
+  utilizedBudgetQ1?: number
+  utilizedBudgetQ2?: number
+  utilizedBudgetQ3?: number
+  utilizedBudgetQ4?: number
   planningOutcome: number | null
   addedInAllocation: number | null
+  smeReviewScore?: number | null
   aiConfidenceScore: number | null
   aiReviewFlags: Dga_ict_budgetsdga_ai_flags[]
   ownerId: string | null
@@ -86,6 +97,14 @@ export interface DgeInstanceRecord {
   planningStartDate: string | null
   planningEndDate: string | null
   submissionDate: string | null
+  allocationStartDate: string | null
+  allocationEndDate: string | null
+  previousAllocationDate: string | null
+  utilizationStartDate: string | null
+  utilizationEndDate: string | null
+  previousUtilizationDate: string | null
+  extensionProvidedInAllocation: number | null
+  extensionProvidedInUtilization: number | null
   statuscode: number
   statusLabel: string
   budgets: DgeBudgetRecord[]
@@ -241,16 +260,26 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     strategicPriorityName,
     strategicPriorityClassificationId: record._dga_strategic_priority_classification_value ?? null,
     strategicPriorityClassificationName,
+    suggestedStrategicPriorityName: null,
+    suggestedStrategicPriorityClassificationName: null,
     previousStrategicPriorityId: record._dga_previous_strategic_priority_value ?? null,
     previousStrategicPriorityName,
     previousStrategicPriorityClassificationId: record._dga_previous_strategic_priorityclassification_value ?? null,
     previousStrategicPriorityClassificationName,
     requestedBudget: Number(record.dga_total_budget_requested ?? 0),
     recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
+    recommended: record.dga_recommended ?? null,
+    rejectionReason: record.dga_rejection_reason ?? null,
+    projectPortfolioForDge: record.dga_project_portfolio_for_dge ?? null,
     allocatedBudget: Number(record.dga_total_budget_allocated ?? 0),
     utilizedBudget: Number(record.dga_total_budget_utilized ?? 0),
+    utilizedBudgetQ1: Number(record.dga_total_budget_utilized_q1 ?? 0),
+    utilizedBudgetQ2: Number(record.dga_total_budget_utilized_q2 ?? 0),
+    utilizedBudgetQ3: Number(record.dga_total_budget_utilized_q3 ?? 0),
+    utilizedBudgetQ4: Number(record.dga_total_budget_utilized_q4 ?? 0),
     planningOutcome: typeof record.dga_planning_outcome === 'number' ? record.dga_planning_outcome : null,
     addedInAllocation: typeof record.dga_added_in_allocation === 'number' ? record.dga_added_in_allocation : null,
+    smeReviewScore: typeof record.dga_sme_review_score === 'number' ? record.dga_sme_review_score : null,
     aiConfidenceScore:
       typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : null,
     aiReviewFlags: record.dga_ai_flags ?? [],
@@ -279,6 +308,14 @@ function mapInstanceRecord(record: Awaited<ReturnType<typeof Dga_ict_budget_inst
     planningStartDate: record.dga_planning_start_date ?? null,
     planningEndDate: record.dga_planning_end_date ?? null,
     submissionDate: record.dga_entity_submission_date ?? null,
+    allocationStartDate: record.dga_allocation_start_date ?? null,
+    allocationEndDate: record.dga_allocation_end_date ?? null,
+    previousAllocationDate: record.dga_previous_allocation_date ?? null,
+    utilizationStartDate: record.dga_utilization_start_date ?? null,
+    utilizationEndDate: record.dga_utilization_end_date ?? null,
+    previousUtilizationDate: record.dga_previous_utilization_date ?? null,
+    extensionProvidedInAllocation: typeof record.dga_extension_provided_in_allocation === 'number' ? record.dga_extension_provided_in_allocation : null,
+    extensionProvidedInUtilization: typeof record.dga_extension_provided_in_utilization === 'number' ? record.dga_extension_provided_in_utilization : null,
     statuscode: Number(record.statuscode ?? 0),
     statusLabel: getInstanceStatusLabel(record.statuscode ?? null, record.statuscodename ?? null),
     budgets: [],
@@ -302,11 +339,19 @@ async function fetchBudgetsByInstanceIds(instanceIds: string[]): Promise<DgeBudg
     '_dga_strategic_priority_classification_value',
     '_dga_previous_strategic_priority_value',
     '_dga_previous_strategic_priorityclassification_value',
+    'dga_sme_review_score',
     'dga_ai_confidence_score',
     'dga_total_budget_requested',
     'dga_total_budget_recommended',
+    'dga_recommended',
+    'dga_rejection_reason',
+    'dga_project_portfolio_for_dge',
     'dga_total_budget_allocated',
     'dga_total_budget_utilized',
+    'dga_total_budget_utilized_q1',
+    'dga_total_budget_utilized_q2',
+    'dga_total_budget_utilized_q3',
+    'dga_total_budget_utilized_q4',
     'dga_planning_outcome',
     'dga_added_in_allocation',
     'ownerid',
@@ -352,9 +397,17 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
       '_dga_entity_value',
       'dga_entity_abbr',
       'dga_entity_submission_date',
+      'dga_allocation_end_date',
+      'dga_allocation_start_date',
       'dga_name',
       'dga_planning_end_date',
       'dga_planning_start_date',
+      'dga_previous_allocation_date',
+      'dga_previous_utilization_date',
+      'dga_extension_provided_in_allocation',
+      'dga_extension_provided_in_utilization',
+      'dga_utilization_end_date',
+      'dga_utilization_start_date',
       'statuscode',
     ],
     expand: ['dga_entity($select=name)'],
@@ -372,6 +425,7 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
   }
 
   const budgets = await fetchBudgetsByInstanceIds(instances.map((instance) => instance.id))
+  const budgetOverviewLookup = await getBudgetOverviewRecordsByBudgetIds(budgets.map((budget) => budget.id))
   const budgetsByInstance = new Map<string, DgeBudgetRecord[]>()
 
   budgets.forEach((budget) => {
@@ -390,10 +444,20 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
 
   const hydratedBudgets = budgets.map((budget) => {
     const linkedInstance = budget.instanceId ? instanceLookup.get(budget.instanceId) : null
+    const budgetOverview = budgetOverviewLookup.get(budget.id)?.parsedData?.strategic_alignment
+    const suggestedOption = budgetOverview?.recommended_options?.[0]
     return {
       ...budget,
       instanceName: budget.instanceName || linkedInstance?.instanceName || null,
       entityName: budget.entityName || linkedInstance?.entityName || linkedInstance?.instanceName || null,
+      suggestedStrategicPriorityName:
+        suggestedOption?.strategic_priority?.trim() ||
+        budgetOverview?.recommended_change?.strategic_priority?.trim() ||
+        null,
+      suggestedStrategicPriorityClassificationName:
+        suggestedOption?.strategic_priority_classification?.trim() ||
+        budgetOverview?.recommended_change?.strategic_priority_classification?.trim() ||
+        null,
     }
   })
 
@@ -414,6 +478,36 @@ export async function getDgePortfolioData(cycleId: string): Promise<DgePortfolio
     instances: hydratedInstances,
     budgets: hydratedBudgets,
   }
+}
+
+export async function extendDgePortfolioInstances(
+  mode: 'allocation' | 'utilization',
+  instances: DgeInstanceRecord[],
+  newEndDate: string,
+  reason: string
+) {
+  const endDateIso = new Date(`${newEndDate}T00:00:00`).toISOString()
+
+  await Promise.all(
+    instances.map((instance) => {
+      const payload =
+        mode === 'allocation'
+          ? {
+              dga_previous_allocation_date: instance.allocationEndDate ?? undefined,
+              dga_allocation_end_date: endDateIso,
+              dga_allocation_extension_reason: reason.trim(),
+              dga_extension_provided_in_allocation: 2 as const,
+            }
+          : {
+              dga_previous_utilization_date: instance.utilizationEndDate ?? undefined,
+              dga_utilization_end_date: endDateIso,
+              dga_utilization_extension_reason: reason.trim(),
+              dga_extension_provided_in_utilization: 2 as const,
+            }
+
+      return Dga_ict_budget_instancesService.update(instance.id, payload)
+    })
+  )
 }
 
 export function getStrategyAlignmentBudgets(data: DgePortfolioData) {

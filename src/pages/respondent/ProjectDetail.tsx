@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { aiFlagTone } from '@/components/shared/aiRiskStyles'
 import { useBeforeUnload, useLocation, useParams, Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -75,6 +76,7 @@ import { ConfirmationModal } from '@/components/shared/ConfirmationModal'
 import { ClassificationPickerModal } from '@/components/shared/ClassificationPickerModal'
 import { useInstance } from '@/context/InstanceContext'
 import { useToast } from '@/context/ToastContext'
+import { notifyApproverWhenInstanceIsReady } from '@/services/approverReviewNotificationService'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { cn } from '@/lib/utils'
 import { formatAEDFull } from '@/lib/utils'
@@ -184,6 +186,7 @@ import {
   type ComputedSupportingDocumentAccountCodeSuggestion,
 } from '@/features/supportingDocumentAccountCodes'
 import { prepareSupportingDocumentFile } from '@/services/supportingDocumentPreparationService'
+import { LARGE_DOCUMENT_THRESHOLD, getDocumentAnalysisStatus, startLargeDocumentAnalysis, type DocumentAnalysisStatus } from '@/services/largeDocumentAnalysisService'
 import {
   createDocumentSummaryRecords,
   deleteDocumentSummaryRecordsByDocumentName,
@@ -216,6 +219,7 @@ interface PolicyMatchGroup {
 }
 
 const PENDING_NEW_AI_RECORD = '__pending_new_ai_record__'
+const HISTORY_BACK_NAVIGATION = '__history_back__'
 
 const ADGE_RECOMMENDATION_VISIBLE_INSTANCE_STATUSES = new Set<number>([
   DGE_INSTANCE_STATUS.reviewCompletedByDge,
@@ -444,17 +448,56 @@ function AiFieldAssistTrigger({
   helperText,
 }: AiFieldAssistProps) {
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const onToggleRef = useRef(onToggle)
+  const [popupPosition, setPopupPosition] = useState({ left: 16, top: 16 })
+
+  useEffect(() => {
+    onToggleRef.current = onToggle
+  }, [onToggle])
 
   useEffect(() => {
     if (!isOpen) return
-    const handleMouseDown = (event: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
-        onToggle()
+    const updatePosition = () => {
+      const trigger = wrapperRef.current?.getBoundingClientRect()
+      if (!trigger) return
+
+      const popupWidth = Math.min(288, window.innerWidth - 32)
+      const popupHeight = popupRef.current?.offsetHeight ?? 220
+      const left = Math.max(16, Math.min(trigger.right - popupWidth, window.innerWidth - popupWidth - 16))
+      const spaceBelow = window.innerHeight - trigger.bottom
+      const top = spaceBelow >= popupHeight + 16
+        ? trigger.bottom + 8
+        : Math.max(16, trigger.top - popupHeight - 8)
+
+      setPopupPosition({ left, top })
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!wrapperRef.current?.contains(target) && !popupRef.current?.contains(target)) {
+        onToggleRef.current()
       }
     }
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => document.removeEventListener('mousedown', handleMouseDown)
-  }, [isOpen, onToggle])
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onToggleRef.current()
+        wrapperRef.current?.querySelector('button')?.focus()
+      }
+    }
+
+    const frame = window.requestAnimationFrame(updatePosition)
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [isOpen])
 
   return (
     <div ref={wrapperRef} className="relative shrink-0">
@@ -467,8 +510,14 @@ function AiFieldAssistTrigger({
         <Sparkles className="h-3.5 w-3.5" />
       </button>
 
-      {isOpen ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-30 w-72 rounded-2xl border border-[#E9D5FF] bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#1E293B]">
+      {isOpen && typeof document !== 'undefined' ? createPortal(
+        <div
+          ref={popupRef}
+          role="dialog"
+          aria-label={`${fieldLabel} AI suggestion`}
+          className="fixed z-[1000] max-h-[calc(100vh-2rem)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-[#E9D5FF] bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#1E293B]"
+          style={popupPosition}
+        >
           <div className="flex items-start gap-2.5">
             <div className="mt-0.5 shrink-0 text-[#A855F7] dark:text-[#E9D5FF]">
               <Sparkles className="h-4 w-4" />
@@ -495,7 +544,8 @@ function AiFieldAssistTrigger({
               {helperText ?? 'Switch the form to Edit mode to apply this AI suggestion.'}
             </p>
           )}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   )
@@ -505,11 +555,13 @@ function Field({
   label,
   value,
   aiAssist,
+  labelAdornment,
   highlighted = false,
 }: {
   label: string
   value?: string | null
   aiAssist?: React.ReactNode
+  labelAdornment?: React.ReactNode
   highlighted?: boolean
 }) {
   return (
@@ -522,7 +574,10 @@ function Field({
         <div className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(90deg,rgba(168,85,247,0)_0%,rgba(168,85,247,0.06)_28%,rgba(216,180,254,0.12)_50%,rgba(168,85,247,0.06)_72%,rgba(168,85,247,0)_100%)] animate-aiMagicSweep" />
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+          {labelAdornment}
+        </div>
         {aiAssist}
       </div>
       <p className="text-sm font-medium text-[#0F172A] dark:text-white">{value || '-'}</p>
@@ -589,6 +644,7 @@ function EditField({
   error,
   children,
   aiAssist,
+  labelAdornment,
   highlighted = false,
 }: {
   label: string
@@ -596,14 +652,18 @@ function EditField({
   error?: string
   children: React.ReactNode
   aiAssist?: React.ReactNode
+  labelAdornment?: React.ReactNode
   highlighted?: boolean
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-3">
-        <label className="text-sm font-medium text-[#0F172A] dark:text-white">
-          {label}{required && <span className="ml-1 text-red-500">*</span>}
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-[#0F172A] dark:text-white">
+            {label}{required && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          {labelAdornment}
+        </div>
         {aiAssist}
       </div>
       {children}
@@ -634,6 +694,8 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
     }))
     .sort((left, right) => left.id.localeCompare(right.id))
 }
+
+import { CalendarMonthYearSelect } from '@/components/shared/CalendarMonthYearSelect'
 
 function EditDatePickerField({
   value,
@@ -719,8 +781,8 @@ function EditDatePickerField({
                 </button>
               </nav>
 
-              <div className="flex h-8 w-full items-center justify-center px-8">
-                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMMM yyyy')}</span>
+              <div className="relative mx-8 flex h-8 items-center justify-center">
+                <CalendarMonthYearSelect month={viewMonth} onChange={setViewMonth} />
               </div>
 
               <div className="grid w-56 grid-cols-7 gap-y-2">
@@ -1457,6 +1519,7 @@ function BudgetItemsTable({
   showAllocatedBudget,
   showUtilizedBudget,
   showActions,
+  canDeleteItem,
   savingId,
   deletingId,
   onChangeBudgetRequested,
@@ -1476,6 +1539,7 @@ function BudgetItemsTable({
   showAllocatedBudget: boolean
   showUtilizedBudget: boolean
   showActions: boolean
+  canDeleteItem: (item: BudgetLineItemRecord) => boolean
   savingId: string | null
   deletingId: string | null
   onChangeBudgetRequested: (lineItemId: string, amount: number) => void
@@ -1545,9 +1609,14 @@ function BudgetItemsTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#DDEBFF] bg-white dark:border-white/10 dark:bg-[#0F172A]/20">
-      <table className="w-full text-sm">
-        <thead className="hidden bg-[#F8FAFC] md:table-header-group dark:bg-white/5">
+    <div
+      role="region"
+      aria-label="Budget account codes table, scroll horizontally for more columns"
+      tabIndex={0}
+      className="min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-xl border border-[#DDEBFF] bg-white [scrollbar-width:thin] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#286CFF] dark:border-white/10 dark:bg-[#0F172A]/20"
+    >
+      <table className="w-full min-w-[760px] text-sm">
+        <thead className="bg-[#F8FAFC] dark:bg-white/5">
           <tr>
             {[
               'Account Name',
@@ -1592,18 +1661,18 @@ function BudgetItemsTable({
             const isDeleting = deletingId === item.id
 
             return (
-              <tr key={item.id} className="block border-t border-[#F1F5F9] p-4 dark:border-white/5 md:table-row md:p-0">
-                <td className="block py-2 font-medium text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">{item.accountName}</td>
-                <td className="block py-2 md:table-cell md:px-4 md:py-3">
+              <tr key={item.id} className="table-row border-t border-[#F1F5F9] dark:border-white/5">
+                <td className="table-cell px-4 py-3 font-medium text-[#0F172A] dark:text-white">{item.accountName}</td>
+                <td className="table-cell px-4 py-3">
                   <div className="text-xs text-[#475569] dark:text-slate-200">{item.l1} / {item.l2} / {item.l3}</div>
                   <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium', isCapex ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400')}>
                     {classificationLabel}
                   </span>
                 </td>
-                <td className="block py-2 text-xs font-mono text-[#475569] dark:text-slate-200 md:table-cell md:px-4 md:py-3">
+                <td className="table-cell px-4 py-3 text-xs font-mono text-[#475569] dark:text-slate-200">
                   EBS {item.ebsCode} / Fusion {item.fusionCode}
                 </td>
-                <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                   {editableRequested ? (
                     <div className="relative min-w-[190px]">
                       <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1641,7 +1710,7 @@ function BudgetItemsTable({
                   )}
                 </td>
                 {showRecommendedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                     {editableRecommended ? (
                       <div className="relative min-w-[190px]">
                         <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1680,7 +1749,7 @@ function BudgetItemsTable({
                   </td>
                 ) : null}
                 {showAllocatedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
                     {editableAllocated ? (
                       <div className="relative min-w-[190px]">
                         <DirhamIcon width={16} height={16} color="#286CFF" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1709,18 +1778,17 @@ function BudgetItemsTable({
                   </td>
                 ) : null}
                 {showUtilizedBudget ? (
-                  <td className="block py-2 font-semibold text-[#0F172A] dark:text-white md:table-cell md:px-4 md:py-3">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <td className="table-cell px-4 py-3 font-semibold text-[#0F172A] dark:text-white">
+                    <div className="flex min-w-[150px] items-center gap-2">
                       {item.totalBudgetUtilized > 0 ? (
-                        <CurrencyAmount amount={item.totalBudgetUtilized} full className="font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
+                        <CurrencyAmount amount={item.totalBudgetUtilized} full className="min-w-0 shrink font-semibold text-[#0F172A] dark:text-white" iconSize={14} />
                       ) : (
-                        <span className="text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
+                        <span className="min-w-0 shrink text-sm font-semibold text-[#94A3B8] dark:text-slate-400">-</span>
                       )}
                       {editableUtilization ? (
                         <Button
                           type="button"
-                          variant="outline"
-                          className="h-8 rounded-lg border-[#BFD8FF] px-2.5 text-xs font-semibold text-[#286CFF] shadow-none hover:bg-[#EEF5FF]"
+                          className="h-8 shrink-0 rounded-lg border border-[#286CFF] bg-[#286CFF] px-2.5 text-xs font-semibold text-white shadow-none hover:bg-[#0C65F5]"
                           onClick={() => {
                             setUtilizationModalItem(item)
                             setUtilizationDraft([
@@ -1732,16 +1800,16 @@ function BudgetItemsTable({
                           }}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          Add Quarter
+                          Add
                         </Button>
                       ) : null}
                     </div>
                   </td>
                 ) : null}
                 {showActions ? (
-                  <td className="block py-2 md:table-cell md:px-4 md:py-3">
+                  <td className="table-cell px-4 py-3">
                   <div className="flex items-center gap-2">
-                    {editableRequested ? (
+                    {canDeleteItem(item) ? (
                       <>
                         <Button
                           size="sm"
@@ -1756,8 +1824,8 @@ function BudgetItemsTable({
                         </Button>
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Synced
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Existing line
                       </span>
                     )}
                   </div>
@@ -1862,7 +1930,7 @@ interface UploadedSupportingDocumentAnalysis {
   fileSize: number | null
   fileLastModified: number | null
   uploadedToSharePoint: boolean
-  status: 'queued' | 'analyzing' | 'complete' | 'error'
+  status: DocumentAnalysisStatus
   parsedSummary: SupportingDocumentEvaluationSummary | null
   rawSummary?: string
   responseTimeMs?: number | null
@@ -1895,7 +1963,7 @@ function createUploadedSupportingDocumentAnalysis(file: File): UploadedSupportin
     fileSize: file.size,
     fileLastModified: file.lastModified,
     uploadedToSharePoint: false,
-    status: 'queued',
+    status: 'uploading',
     parsedSummary: null,
     rawSummary: '',
     responseTimeMs: null,
@@ -2545,16 +2613,6 @@ function InteractiveBudgetOverviewCard({
     .filter((flag): flag is { key: string; label: string; severity: string; reason: string } => Boolean(flag))
     .filter((flag) => flag.severity.trim().toLowerCase() !== 'low')
 
-  function aiFlagTone(severity?: string) {
-    const normalized = severity?.toLowerCase()
-    if (normalized === 'high') {
-      return 'border-[#F5C2C7] bg-[#FFF1F3] text-[#B42318] dark:border-[#B42318]/30 dark:bg-[#3B1118] dark:text-[#FCA5A5]'
-    }
-    if (normalized === 'medium') {
-      return 'border-[#E2E8F0] bg-white text-[#92400E] dark:border-white/10 dark:bg-white/5 dark:text-[#F6D28A]'
-    }
-    return 'border-[#E2E8F0] bg-white text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-[#CBD5E1]'
-  }
 
   const togglePolicyTextSection = (sectionKey: string) => {
     setExpandedPolicyTextSections((current) => ({
@@ -2566,7 +2624,7 @@ function InteractiveBudgetOverviewCard({
   const renderPolicyCards = () => <BudgetConsiderationCompactCards groups={policyMatchGroups} />
 
   function fileEvidenceTone(score: number | null, status: SupportingDocumentAiInsightItem['status']) {
-    if (status === 'analyzing' || status === 'queued') {
+    if (status === 'uploading' || status === 'analyzing' || status === 'queued') {
       return {
         card: 'border-[#E9D5FF] bg-[#FDF7FF] dark:border-white/10 dark:bg-white/5',
         score: 'text-[#A855F7] dark:text-[#E9D5FF]',
@@ -3033,6 +3091,15 @@ export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
   const { pathname } = location
+  const navigationState = location.state as { backTo?: string; backLabel?: string } | null
+  const contextualBackHref =
+    typeof navigationState?.backTo === 'string' && navigationState.backTo.startsWith('/')
+      ? navigationState.backTo
+      : null
+  const contextualBackLabel =
+    typeof navigationState?.backLabel === 'string' && navigationState.backLabel.trim()
+      ? navigationState.backLabel.trim()
+      : null
   const navigate = useNavigate()
   const { instanceId } = useInstance()
   const { runActionToast, showErrorToast, showSuccessToast } = useToast()
@@ -3101,7 +3168,7 @@ export default function ProjectDetail() {
   const roleProjectScope =
     currentRole === 'Reviewer' ? 'reviewer' : currentRole === 'Approver' ? 'approver' : 'respondent'
   const { items: cycleProjects } = useRoleProjects(roleProjectScope, instanceId)
-  const backHref = isReviewerView
+  const fallbackBackHref = isReviewerView
     ? '/reviewer/review-queue'
     : isApproverView
       ? '/approver/approval-queue'
@@ -3112,6 +3179,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? '/sme-team/reviews'
           : '/respondent/projects'
+  const backHref = contextualBackHref ?? fallbackBackHref
   const homeHref = isReviewerView
     ? '/reviewer/dashboard'
     : isApproverView
@@ -3123,7 +3191,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? '/sme-team/dashboard'
           : '/respondent/dashboard'
-  const queueLabel = isReviewerView
+  const fallbackQueueLabel = isReviewerView
     ? 'Review Queue'
     : isApproverView
       ? 'Approval Queue'
@@ -3134,6 +3202,7 @@ export default function ProjectDetail() {
         : isSmeView
           ? 'SME Review Queue'
           : 'My Projects'
+  const queueLabel = contextualBackLabel ?? fallbackQueueLabel
   const pageTitle = project.name
   const confidence = typeof project.aiScore === 'number' ? project.aiScore : 0
   const confidenceTone = confidence >= 80 ? 'green' : confidence >= 60 ? 'amber' : 'red'
@@ -3192,6 +3261,8 @@ export default function ProjectDetail() {
     currentRole === 'Strategy Team' ||
     (currentRole === 'Strategy Director' && !isAllocationOrUtilizationPhase) ||
     (!isDgeRole && canCurrentRoleEdit && !isAllocationOrUtilizationPhase)
+  const lockStrategyFieldsDuringSmeReview =
+    currentRole === 'Strategy Team' && project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const canEditDgeRecommendationOnly =
     currentRole === 'SME Team' &&
     canSmeEditRecommendedOnly &&
@@ -3204,6 +3275,11 @@ export default function ProjectDetail() {
     ((currentRole === 'Respondent' || currentRole === 'Approver') &&
       isCurrentOwner &&
       (isAllocationInProgress || isAllocationInReview))
+  const isAllocationBudgetLineItemMode = isAllocationInProgress || isAllocationInReview
+  const canManageAllocationBudgetLineItems =
+    hasDataverseBudgetProject &&
+    isAllocationBudgetLineItemMode &&
+    canEditAllocationFields
   const canEditUtilizationFields =
     (canEditFullForm && isUtilizationInProgress) ||
     (currentRole === 'Respondent' && isCurrentOwner && isUtilizationInProgress)
@@ -3377,6 +3453,17 @@ export default function ProjectDetail() {
 
   // ── Edit Mode State ──────────────────────────────────────────────────────────
   const [isEditMode, setIsEditMode] = useState(false)
+  function handleEnterEditMode() {
+    setIsEditMode(true)
+    if (isSmeView && project?.statusCode === DGE_BUDGET_STATUS.underSmeReview) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById('sec-budget')?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start',
+        })
+      }))
+    }
+  }
   const [showLogs, setShowLogs] = useState(false)
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupError, setLookupError] = useState<string | null>(null)
@@ -3440,6 +3527,8 @@ export default function ProjectDetail() {
   const supportingDocumentAnalysisInFlightRef = useRef<Set<string>>(new Set())
   const [documentUploadInFlight, setDocumentUploadInFlight] = useState(false)
   const [persistedDocumentSummaries, setPersistedDocumentSummaries] = useState<StoredDocumentSummaryRecord[]>([])
+  const persistedDocumentSummariesRef = useRef<StoredDocumentSummaryRecord[]>([])
+  useEffect(() => { persistedDocumentSummariesRef.current = persistedDocumentSummaries }, [persistedDocumentSummaries])
   const [persistedDocumentSummariesLoading, setPersistedDocumentSummariesLoading] = useState(false)
   const [persistedDocumentSummariesError, setPersistedDocumentSummariesError] = useState<string | null>(null)
   const [supportingDocumentCumulativeAnalysis, setSupportingDocumentCumulativeAnalysis] = useState<UploadedSupportingDocumentCumulativeAnalysis>({
@@ -3452,8 +3541,15 @@ export default function ProjectDetail() {
     scopeKey: null,
   })
   const supportingDocumentCumulativeInFlightRef = useRef<string | null>(null)
+  const documentUploadAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    documentUploadAbortRef.current = controller
+    return () => controller.abort()
+  }, [ictBudgetId])
   const [storedCumulativeSummaryRecord, setStoredCumulativeSummaryRecord] = useState<StoredBudgetAiSummaryRecord | null>(null)
   const [budgetOverviewRecord, setBudgetOverviewRecord] = useState<StoredBudgetOverviewRecord | null>(null)
+  const [projectPortfolioForDge, setProjectPortfolioForDge] = useState<string | null>(null)
   const lastSyncedBudgetOverviewAiFlagsKeyRef = useRef<string | null>(null)
   const [pendingBudgetOverviewRefreshModifiedOn, setPendingBudgetOverviewRefreshModifiedOn] = useState<string | null>(null)
   const [pendingCumulativeRefreshModifiedOn, setPendingCumulativeRefreshModifiedOn] = useState<string | null>(null)
@@ -3692,7 +3788,7 @@ export default function ProjectDetail() {
     documentStatus === 'Complete' ? 'green' : documentStatus === 'Loading' ? 'blue' : 'red'
   const detailEntityName = getStoredInstanceDetail()?.name?.trim() || currentUser.entity
 
-  const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean }) => {
+  const refreshPersistedDocumentSummaries = useCallback(async (options?: { quiet?: boolean; summariesOnly?: boolean }) => {
     if (!ictBudgetId) return
 
     if (!options?.quiet) {
@@ -3701,7 +3797,7 @@ export default function ProjectDetail() {
     setPersistedDocumentSummariesError(null)
     try {
       const [documentSummaries, { cumulativeRecord, budgetOverviewRecord: overviewRecord }] = await Promise.all([
-        getDocumentSummaryRecordsByBudgetId(ictBudgetId),
+        options?.summariesOnly ? Promise.resolve(persistedDocumentSummariesRef.current) : getDocumentSummaryRecordsByBudgetId(ictBudgetId),
         getAllAiSummaryRecordsByBudgetId(ictBudgetId),
       ])
 
@@ -3744,7 +3840,7 @@ export default function ProjectDetail() {
         setPendingCumulativeRefreshModifiedOn(null)
       }
 
-      setPersistedDocumentSummaries(documentSummaries)
+      if (!options?.summariesOnly) setPersistedDocumentSummaries(documentSummaries)
       setBudgetOverviewRecord(overviewRecord)
       setStoredCumulativeSummaryRecord(cumulativeRecord)
       setSupportingDocumentCumulativeAnalysis((current) => {
@@ -3773,7 +3869,7 @@ export default function ProjectDetail() {
         }
       })
 
-      if (id) {
+      if (id && !options?.summariesOnly) {
         const refreshedProject = await projectService.getProjectById(id)
         if (refreshedProject) {
           setProjectData(refreshedProject)
@@ -3914,14 +4010,14 @@ export default function ProjectDetail() {
       const stored = persistedDocumentSummaryByName.get(name.toLowerCase()) ?? null
       const localAnalysis = localAnalysisByName.get(name.toLowerCase()) ?? null
 
-      if (!stored && localAnalysis && localAnalysis.status !== 'error') {
+      if (localAnalysis) {
         return null
       }
 
       return {
         id: stored?.id ?? `stored:${name.toLowerCase()}`,
         file: { name, size: null },
-        status: stored ? 'complete' : 'error',
+        status: stored ? getDocumentAnalysisStatus(stored) : 'error',
         parsedSummary: stored?.parsedSummary ?? null,
         rawSummary: stored?.documentSummary,
         error: stored ? null : 'No persisted AI summary is currently available for this document.',
@@ -3929,14 +4025,6 @@ export default function ProjectDetail() {
     }).filter(Boolean) as SupportingDocumentAiInsightItem[]
 
     for (const [signature, analysis] of Object.entries(supportingDocumentAnalyses)) {
-      const normalizedName = analysis.fileName.trim().toLowerCase()
-      const hasPersistedSummary = persistedDocumentSummaryByName.has(normalizedName)
-      if (analysis.status === 'complete' && hasPersistedSummary) {
-        continue
-      }
-      if (analysis.status === 'error' && hasPersistedSummary) {
-        continue
-      }
 
       items.unshift({
         id: signature,
@@ -3965,7 +4053,7 @@ export default function ProjectDetail() {
           }
 
           const nextStatus =
-            analysis.status === 'queued'
+            analysis.status === 'uploading'
               ? 'uploading'
               : analysis.status === 'analyzing'
                 ? 'analyzing'
@@ -3986,6 +4074,7 @@ export default function ProjectDetail() {
       persistedDocumentSummaries
         .filter(
           (item) =>
+            getDocumentAnalysisStatus(item) === 'complete' &&
             item.documentSummary.trim() &&
             !clarificationDocumentNames.has(item.documentName.trim().toLowerCase())
         )
@@ -5031,6 +5120,25 @@ export default function ProjectDetail() {
     }
   }
 
+  const navigateToPreviousScreen = () => {
+    const historyIndex = typeof window !== 'undefined' ? window.history.state?.idx : 0
+    if (typeof historyIndex === 'number' && historyIndex > 0) {
+      navigate(-1)
+      return
+    }
+
+    navigate(backHref)
+  }
+
+  const handleProtectedBackNavigation = () => {
+    if (isEditMode && hasUnsavedChanges) {
+      setPendingNavigationHref(HISTORY_BACK_NAVIGATION)
+      return
+    }
+
+    navigateToPreviousScreen()
+  }
+
   useEffect(() => {
     let cancelled = false
     let budgetStage = false
@@ -5066,6 +5174,7 @@ export default function ProjectDetail() {
 
           if (cancelled) return
 
+          setProjectPortfolioForDge(retrievedBudget.projectPortfolioForDge)
           setFormValues(retrievedBudget.formValues)
           setSavedFormValues(retrievedBudget.formValues)
           setSavedTechnologyProductNames(retrievedBudget.displayTechnologyProducts)
@@ -5152,22 +5261,6 @@ export default function ProjectDetail() {
 
   useEffect(() => {
     if (!ictBudgetId) return
-    if (persistedDocumentSummariesLoading) return
-    if (budgetOverviewRecord) return
-    if (pendingBudgetOverviewRefreshModifiedOn !== null) return
-    if (persistedDocumentSummariesError) return
-
-    setPendingBudgetOverviewRefreshModifiedOn(PENDING_NEW_AI_RECORD)
-  }, [
-    budgetOverviewRecord,
-    ictBudgetId,
-    pendingBudgetOverviewRefreshModifiedOn,
-    persistedDocumentSummariesError,
-    persistedDocumentSummariesLoading,
-  ])
-
-  useEffect(() => {
-    if (!ictBudgetId) return
 
     const shouldPoll =
       pendingCumulativeRefreshModifiedOn !== null ||
@@ -5176,7 +5269,7 @@ export default function ProjectDetail() {
     if (!shouldPoll) return
 
     const intervalId = window.setInterval(() => {
-      void refreshPersistedDocumentSummaries({ quiet: true })
+      void refreshPersistedDocumentSummaries({ quiet: true, summariesOnly: true })
     }, 5000)
 
     return () => window.clearInterval(intervalId)
@@ -5197,7 +5290,7 @@ export default function ProjectDetail() {
           return true
         }
 
-        if (analysis.status === 'queued' || analysis.status === 'analyzing') {
+        if (analysis.status === 'uploading' || analysis.status === 'queued' || analysis.status === 'analyzing') {
           return true
         }
 
@@ -5205,7 +5298,7 @@ export default function ProjectDetail() {
           return !persistedDocumentSummaryByName.has(analysis.fileName.trim().toLowerCase())
         }
 
-        return false
+        return analysis.uploadedToSharePoint === true && !persistedDocumentSummaryByName.has(analysis.fileName.trim().toLowerCase())
       })
       return Object.fromEntries(nextEntries)
     })
@@ -5232,7 +5325,7 @@ export default function ProjectDetail() {
     const queuedFiles = uploadedFiles.filter((file) => {
       const signature = getUploadedFileSignature(file)
       return (
-        supportingDocumentAnalyses[signature]?.status === 'queued' &&
+        supportingDocumentAnalyses[signature]?.status === 'uploading' &&
         !supportingDocumentAnalysisInFlightRef.current.has(signature)
       )
     })
@@ -5241,6 +5334,8 @@ export default function ProjectDetail() {
 
     for (const file of queuedFiles) {
       const signature = getUploadedFileSignature(file)
+      const signal = documentUploadAbortRef.current?.signal
+      if (!signal || signal.aborted) continue
       supportingDocumentAnalysisInFlightRef.current.add(signature)
       setDocumentUploadInFlight(true)
 
@@ -5250,6 +5345,53 @@ export default function ProjectDetail() {
           const uploadedFileName = preparedUpload.preparedFile.name.trim().toLowerCase()
 
           await uploadFilesToRecord(ictBudgetId, [file])
+          signal.throwIfAborted()
+
+          if (file.size > LARGE_DOCUMENT_THRESHOLD) {
+            setUploadedFiles((current) => current.filter((existing) => getUploadedFileSignature(existing) !== signature))
+            setSupportingDocumentAnalyses((current) => ({
+              ...current,
+              [signature]: {
+                ...(current[signature] ?? createUploadedSupportingDocumentAnalysis(file)),
+                fileName: preparedUpload.preparedFile.name,
+                uploadedToSharePoint: true,
+                status: 'uploading',
+                error: null,
+              },
+            }))
+            await refreshSharepointDocs()
+            signal.throwIfAborted()
+            await startLargeDocumentAnalysis({
+              budgetId: ictBudgetId,
+              file: preparedUpload.preparedFile,
+              signal,
+              onAccepted: () => {
+                setSupportingDocumentAnalyses((current) => ({
+                  ...current,
+                  [signature]: { ...current[signature], status: 'queued' },
+                }))
+              },
+              onStatus: (record) => {
+                const status = getDocumentAnalysisStatus(record)
+                setSupportingDocumentAnalyses((current) => ({
+                  ...current,
+                  [signature]: {
+                    ...(current[signature] ?? createUploadedSupportingDocumentAnalysis(file)),
+                    fileName: preparedUpload.preparedFile.name,
+                    uploadedToSharePoint: true,
+                    status,
+                    parsedSummary: status === 'complete' ? record.parsedSummary : null,
+                    rawSummary: record.documentSummary,
+                    error: status === 'error' ? 'Document analysis failed.' : status === 'cancelled' ? 'Document analysis was cancelled.' : status === 'incomplete' ? 'Document analysis is incomplete.' : null,
+                  },
+                }))
+                setPersistedDocumentSummaries((current) => [...current.filter((item) => item.id !== record.id), record])
+              },
+            })
+            signal.throwIfAborted()
+            await refreshPersistedDocumentSummaries({ quiet: true })
+            return
+          }
 
           const refreshedDocs = await refreshSharepointDocs()
           const uploadedDocumentConfirmed = (refreshedDocs ?? []).some((doc) => {
@@ -5301,6 +5443,7 @@ export default function ProjectDetail() {
               },
             ])
             await syncCumulativeSummaryForBudget(ictBudgetId)
+            await invalidateBudgetOverviewRecord(ictBudgetId)
             const [refreshed] = await Promise.all([
               refreshPersistedDocumentSummaries({ quiet: true }),
               refreshSharepointDocs(),
@@ -5308,12 +5451,16 @@ export default function ProjectDetail() {
             setPendingCumulativeRefreshModifiedOn(
               refreshed?.cumulativeRecord?.modifiedOn ?? storedCumulativeSummaryRecord?.modifiedOn ?? null
             )
+            setPendingBudgetOverviewRefreshModifiedOn(
+              refreshed?.budgetOverviewRecord?.modifiedOn ?? budgetOverviewRecord?.modifiedOn ?? null
+            )
           }
 
           setUploadedFiles((current) =>
             current.filter((existing) => getUploadedFileSignature(existing) !== signature)
           )
         } catch (error) {
+          if (signal.aborted) return
           setSupportingDocumentAnalyses((current) => ({
             ...current,
             [signature]: {
@@ -5324,7 +5471,7 @@ export default function ProjectDetail() {
           }))
         } finally {
           supportingDocumentAnalysisInFlightRef.current.delete(signature)
-          setDocumentUploadInFlight(supportingDocumentAnalysisInFlightRef.current.size > 0)
+          if (!signal.aborted) setDocumentUploadInFlight(supportingDocumentAnalysisInFlightRef.current.size > 0)
         }
       })()
     }
@@ -5573,6 +5720,9 @@ export default function ProjectDetail() {
               savedItem.totalBudgetUtilized !== item.totalBudgetUtilized
             )
           })
+          const newBudgetLineItems = budgetLineItems.filter(
+            (item) => !savedBudgetLineItems.some((saved) => saved.id === item.id)
+          )
 
           if (changedBudgetLineItems.length > 0 && canEditFullForm) {
             await Promise.all(
@@ -5609,8 +5759,28 @@ export default function ProjectDetail() {
             )
           }
 
+          if (newBudgetLineItems.length > 0) {
+            if (!canEditFullForm && !canManageAllocationBudgetLineItems) {
+              throw new Error('New budget account codes cannot be saved in the current form mode.')
+            }
+            await createBudgetLineItems(
+              ictBudgetId,
+              newBudgetLineItems.map((item) => ({
+                ...toBudgetItemDraft(item),
+                // Allocation records store the entered amount as allocated, never requested.
+                budgetRequested: isAllocationBudgetLineItemMode ? item.budgetAllocated : item.budgetRequested,
+              })),
+              { allocationMode: isAllocationBudgetLineItemMode }
+            )
+          }
+
+          const persistedBudgetLineItems = newBudgetLineItems.length > 0
+            ? await getBudgetLineItemsByBudgetId(ictBudgetId)
+            : budgetLineItems
+
           setSavedFormValues(formValues)
-          setSavedBudgetLineItems(budgetLineItems)
+          setBudgetLineItems(persistedBudgetLineItems)
+          setSavedBudgetLineItems(persistedBudgetLineItems)
           setIctBudgetRecommendedLabel(formValues.recommended === 2 ? 'Yes' : formValues.recommended === 1 ? 'No' : null)
           setIctBudgetRejectedByName(formValues.recommended === 1 ? currentUser.name : null)
           setSavedTechnologyProductNames(
@@ -5667,14 +5837,22 @@ export default function ProjectDetail() {
 
     const saveSucceeded = await saveProjectChanges({ exitEditMode: false })
     if (saveSucceeded) {
-      navigate(pendingNavigationHref)
+      if (pendingNavigationHref === HISTORY_BACK_NAVIGATION) {
+        navigateToPreviousScreen()
+      } else {
+        navigate(pendingNavigationHref)
+      }
       setPendingNavigationHref(null)
     }
   }
 
   const handleDiscardAndNavigate = () => {
     if (!pendingNavigationHref) return
-    navigate(pendingNavigationHref)
+    if (pendingNavigationHref === HISTORY_BACK_NAVIGATION) {
+      navigateToPreviousScreen()
+    } else {
+      navigate(pendingNavigationHref)
+    }
     setPendingNavigationHref(null)
   }
 
@@ -5698,6 +5876,12 @@ export default function ProjectDetail() {
         : current
     )
     setProjectReloadToken((current) => current + 1)
+  }
+
+  const scrollFormToTop = () => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+    })
   }
 
   const prepareWorkflowAction = async (action: WorkflowAction) => {
@@ -5812,6 +5996,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5844,6 +6029,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5863,6 +6049,7 @@ export default function ProjectDetail() {
             'Reviewer',
             'A budget item has been submitted to Approver for final review.'
           )
+          await notifyApproverWhenInstanceIsReady()
           await invalidateBudgetOverviewRecord(ictBudgetId)
           syncLocalWorkflowState('Submitted to Approver')
           setIsEditMode(false)
@@ -5879,6 +6066,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5911,6 +6099,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5936,6 +6125,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -5962,6 +6152,7 @@ export default function ProjectDetail() {
         }
       )
       setPendingWorkflowAction(null)
+      scrollFormToTop()
       return
     }
 
@@ -6014,6 +6205,7 @@ export default function ProjectDetail() {
       }
     )
     setPendingWorkflowAction(null)
+    scrollFormToTop()
   }
 
   const handleCreateWorkStream = async () => {
@@ -6260,7 +6452,7 @@ export default function ProjectDetail() {
         return
       }
 
-      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
       if (existingIds.has(draft.id)) {
         showErrorToast('Already added', 'This account code is already in the budget line items.')
         return
@@ -6349,7 +6541,7 @@ export default function ProjectDetail() {
       if (selectedAccountCodes.length > 0) {
         const classificationRecords = await getClassificationRecords()
         const { nodeMap } = buildClassificationTree(classificationRecords)
-        const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+        const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
         const draftsToAdd: BudgetLineItemRecord[] = []
 
         selectedAccountCodes.forEach((suggestion) => {
@@ -6445,12 +6637,15 @@ export default function ProjectDetail() {
   }
 
   // ── Clarification State ──────────────────────────────────────────────────────
+  const fallbackClarifications = ictBudgetId ? null : project.clarifications
+
   useEffect(() => {
     let cancelled = false
 
     const loadClarifications = async () => {
       if (!ictBudgetId) {
-        setLocalClarifications(project.clarifications)
+        setLocalClarifications(fallbackClarifications ?? [])
+        setClarificationsLoading(false)
         return
       }
 
@@ -6478,7 +6673,7 @@ export default function ProjectDetail() {
     return () => {
       cancelled = true
     }
-  }, [ictBudgetId, project.clarifications])
+  }, [ictBudgetId, fallbackClarifications])
 
   const handleDeleteDocument = async (doc: WebApiPortalDocument) => {
     if (doc.sharepointdocumentid.startsWith('clarification-url:')) {
@@ -7037,7 +7232,7 @@ export default function ProjectDetail() {
     try {
       const classificationRecords = await getClassificationRecords()
       const { nodeMap } = buildClassificationTree(classificationRecords)
-      const existingIds = new Set(displayedBudgetItems.map((item) => item.id))
+      const existingIds = new Set(displayedBudgetItems.map((item) => item.classificationId ?? item.id))
       const nextBudgetLineItems: BudgetLineItemRecord[] = []
       const failedMessages: string[] = []
 
@@ -7066,9 +7261,11 @@ export default function ProjectDetail() {
           expenseTypeLabel: draft.expenseTypeLabel,
           ebsCode: draft.ebsCode,
           fusionCode: draft.fusionCode,
-          budgetRequested: suggestion.mappedBudget,
+          budgetRequested: isAllocationBudgetLineItemMode ? 0 : suggestion.mappedBudget,
           budgetRecommended: 0,
+          // During allocation, AI can add the account code only. The user enters the allocated amount.
           budgetAllocated: 0,
+          addedInAllocation: isAllocationBudgetLineItemMode ? 2 : 1,
           totalBudgetUtilized: 0,
           utilizationQuarter1: 0,
           utilizationQuarter2: 0,
@@ -7116,10 +7313,14 @@ export default function ProjectDetail() {
         fieldLabel="Budget Account Codes"
         suggestedValue={suggestionLabel}
         isOpen={openAiAssistField === 'budgetItems'}
-        canApply={isEditMode}
+        canApply={isEditMode && (canEditFullForm || canManageAllocationBudgetLineItems)}
         onToggle={() => setOpenAiAssistField((current) => (current === 'budgetItems' ? null : 'budgetItems'))}
         onApply={() => void applyPendingAiAccountCodeSuggestions()}
-        helperText="Switch the form to Edit mode to add the AI-suggested account codes from here."
+        helperText={
+          isAllocationBudgetLineItemMode
+            ? 'AI-suggested account codes are added without a requested amount; enter the allocated budget manually during allocation.'
+            : 'Switch the form to Edit mode to add the AI-suggested account codes from here.'
+        }
       />
     )
   }
@@ -7270,9 +7471,16 @@ export default function ProjectDetail() {
       return
     }
 
+    if (!canEditFullForm && !canManageAllocationBudgetLineItems) {
+      showErrorToast('Budget account codes are locked', 'New account codes can only be added while editing this project.')
+      return
+    }
+
     const createdItems = await runActionToast(
       async () => {
-        await createBudgetLineItems(ictBudgetId!, items)
+        await createBudgetLineItems(ictBudgetId!, items, {
+          allocationMode: isAllocationBudgetLineItemMode,
+        })
         await invalidateBudgetOverviewRecord(ictBudgetId!)
         const refreshedItems = await getBudgetLineItemsByBudgetId(ictBudgetId!)
         setBudgetLineItems(refreshedItems)
@@ -7485,6 +7693,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const buildCurrentWorkflowBudget = () => {
@@ -7564,6 +7773,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailReviewChangeRequest = async (decision: 'approve' | 'reject') => {
@@ -7592,6 +7802,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailSendToSme = async () => {
@@ -7614,6 +7825,7 @@ export default function ProjectDetail() {
         minDurationMs: 1400,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailRouteToDirector = async () => {
@@ -7635,6 +7847,7 @@ export default function ProjectDetail() {
         minDurationMs: 1200,
       }
     )
+    scrollFormToTop()
   }
 
   const handleDetailCompleteDirectorReview = async () => {
@@ -7656,21 +7869,40 @@ export default function ProjectDetail() {
         minDurationMs: 1200,
       }
     )
+    scrollFormToTop()
   }
 
   const handleConfirmDeleteBudgetLineItem = async () => {
     if (!lineItemToDelete) return
 
+    if (
+      isAllocationBudgetLineItemMode &&
+      lineItemToDelete.addedInAllocation !== 2 &&
+      lineItemToDelete.budgetRequested > 0
+    ) {
+      showErrorToast(
+        'Existing account code is locked',
+        'Account codes with an existing requested budget cannot be deleted during allocation.'
+      )
+      setLineItemToDelete(null)
+      return
+    }
+
     const lineItemId = lineItemToDelete.id
+    const isPersistedLineItem = savedBudgetLineItems.some((item) => item.id === lineItemId)
     setDeletingBudgetLineItemId(lineItemId)
 
     try {
       await runActionToast(
         async () => {
-          await deleteBudgetLineItem(lineItemId)
-          await invalidateBudgetOverviewRecord(ictBudgetId!)
+          if (isPersistedLineItem) {
+            await deleteBudgetLineItem(lineItemId)
+            await invalidateBudgetOverviewRecord(ictBudgetId!)
+          }
           setBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
-          setSavedBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+          if (isPersistedLineItem) {
+            setSavedBudgetLineItems((current) => current.filter((item) => item.id !== lineItemId))
+          }
         },
         {
           processingTitle: 'Deleting budget line item',
@@ -7781,6 +8013,9 @@ export default function ProjectDetail() {
   const canAdgeViewDgeRecommendationFields =
     !isDgeRole &&
     isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
+  const showStrategyAiRecommendation = isStrategyView && canShowStrategyAiRecommendation(project.statusCode)
+  const showSmeAiRecommendation =
+    isSmeView && project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const showDgeRecommendationFields =
     !isAddedInAllocationBudget &&
     ((isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields)
@@ -7855,10 +8090,14 @@ export default function ProjectDetail() {
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <Link to={backHref} onClick={(event) => handleProtectedNavigation(event, backHref)} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200">
+            <button
+              type="button"
+              onClick={handleProtectedBackNavigation}
+              className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#475569] transition-colors hover:text-[#286CFF] dark:text-slate-200"
+            >
               <ArrowLeft className="h-4 w-4" />
               Back
-            </Link>
+            </button>
             {display.budgetRefId ? (
               <p className="mb-1 text-xs font-medium text-[#475569] dark:text-slate-300">
                 {display.budgetRefId}
@@ -7945,7 +8184,7 @@ export default function ProjectDetail() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setIsEditMode(true)}
+                  onClick={handleEnterEditMode}
                   className="h-9 gap-2 rounded-xl border-[#DDEBFF] text-[#475569] hover:border-[#286CFF] hover:text-[#286CFF] dark:border-white/10 dark:text-slate-200"
                 >
                   <Pencil className="h-4 w-4" />
@@ -7955,6 +8194,9 @@ export default function ProjectDetail() {
             </div>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+              {(isStrategyView || isStrategyDirectorView) && (
+                <SmeReviewScore status={project.statusCode} score={project.smeReviewScore} variant="card" />
+              )}
               <div
                 className={cn(
                   'rounded-xl px-3 py-3 text-center dark:bg-white/5',
@@ -8146,7 +8388,7 @@ export default function ProjectDetail() {
         {/* ── Left column: view or edit content ──────────────────────────────── */}
         <div
           key={isEditMode ? 'edit-mode' : 'view-mode'}
-          className="space-y-5"
+          className="min-w-0 space-y-5"
           style={{ animation: 'fadeInUp 0.25s ease-out' }}
         >
           {isEditMode ? (
@@ -8199,7 +8441,7 @@ export default function ProjectDetail() {
                           label: priority.name,
                         }))}
                         icon={Layers}
-                        disabled={lookupLoading || ictBudgetLoading}
+                        disabled={lockStrategyFieldsDuringSmeReview || lookupLoading || ictBudgetLoading}
                         invalid={Boolean(fieldErrors.strategicPriorityId)}
                       />
                     </EditField>
@@ -8221,7 +8463,12 @@ export default function ProjectDetail() {
                           label: priority.name,
                         }))}
                         icon={FolderKanban}
-                        disabled={!formValues.strategicPriorityId || lookupLoading || ictBudgetLoading}
+                        disabled={
+                          lockStrategyFieldsDuringSmeReview ||
+                          !formValues.strategicPriorityId ||
+                          lookupLoading ||
+                          ictBudgetLoading
+                        }
                         invalid={Boolean(fieldErrors.strategicPriorityClassificationId)}
                       />
                     </EditField>
@@ -8474,8 +8721,27 @@ export default function ProjectDetail() {
                   )}
 
                   {showDgeRecommendationFields && (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <EditField label="Recommended">
+                    <div id="sme-recommendation-fields" className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {showStrategyAiRecommendation && (
+                        <div className="order-1 md:col-span-2">
+                          <SmeAiRecommendation raw={projectPortfolioForDge} onApply={(suggestion) => {
+                            applyRecommendedDecisionToBudgetLines(suggestion.recommended)
+                            setFormValues((prev) => ({ ...prev, recommended: suggestion.recommended,
+                              rejectionReason: suggestion.recommended === 1 ? suggestion.rejectionReason : null,
+                              rejectionJustification: suggestion.recommended === 1 ? suggestion.reason : '',
+                              rejectedById: suggestion.recommended === 1 ? sessionStorage.getItem(SESSION_USER_ID_KEY)?.trim() || prev.rejectedById : '',
+                            }))
+                          }} />
+                        </div>
+                      )}
+                      <EditField
+                        label="Recommended"
+                        labelAdornment={
+                          showSmeAiRecommendation
+                            ? <SmeAiRecommendation raw={projectPortfolioForDge} />
+                            : undefined
+                        }
+                      >
                         <Select
                           value={formValues.recommended ? String(formValues.recommended) : ''}
                           onValueChange={(value) => {
@@ -8606,7 +8872,7 @@ export default function ProjectDetail() {
                     </div>
                   )}
                 </div>
-                {hasDataverseBudgetProject && canEditFullForm && (
+                {isEditMode && hasDataverseBudgetProject && (canEditFullForm || canManageAllocationBudgetLineItems) && (
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Layers className="h-4 w-4" />
@@ -8618,14 +8884,14 @@ export default function ProjectDetail() {
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editableRequested={canEditFullForm}
+                  editableRequested={canEditFullForm && !isAllocationBudgetLineItemMode}
                   editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
-                  editableAllocated={canEditAllocationFields && (isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
+                  editableAllocated={canEditAllocationFields && (isAllocationBudgetLineItemMode || isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
                   editableUtilization={canEditUtilizationFields}
                   showRecommendedBudget={showDgeRecommendationFields}
                   showAllocatedBudget={showAllocationFields}
                   showUtilizedBudget={showUtilizationFields}
-                  showActions={canEditFullForm}
+                  showActions={canEditFullForm || canManageAllocationBudgetLineItems}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
@@ -8633,6 +8899,11 @@ export default function ProjectDetail() {
                   onChangeBudgetAllocated={handleBudgetAllocatedChange}
                   onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
+                  canDeleteItem={(item) =>
+                    !isAllocationBudgetLineItemMode ||
+                    item.addedInAllocation === 2 ||
+                    item.budgetRequested <= 0
+                  }
                 />
                 {fieldErrors.budgetItems && (
                   <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>
@@ -8946,7 +9217,16 @@ export default function ProjectDetail() {
 
                   {showDgeRecommendationFields ? (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <Field label="Recommended" value={display.recommended} />
+                      <Field
+                        label="Recommended"
+                        value={display.recommended}
+                        aiAssist={showStrategyAiRecommendation ? <SmeAiRecommendation raw={projectPortfolioForDge} /> : undefined}
+                        labelAdornment={
+                          showSmeAiRecommendation
+                            ? <SmeAiRecommendation raw={projectPortfolioForDge} />
+                            : undefined
+                        }
+                      />
                       {formValues.recommended === 1 ? (
                         <>
                           <Field label="Rejection Reason" value={display.rejectionReason} />
@@ -8991,6 +9271,7 @@ export default function ProjectDetail() {
                   onChangeBudgetAllocated={handleBudgetAllocatedChange}
                   onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
+                  canDeleteItem={() => false}
                 />
                 {fieldErrors.budgetItems && (
                   <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>
@@ -9088,7 +9369,7 @@ export default function ProjectDetail() {
                       <Button
                         variant="outline"
                         className="w-full justify-start gap-2"
-                        onClick={() => setIsEditMode(true)}
+                        onClick={handleEnterEditMode}
                       >
                         <Pencil className="h-4 w-4" />
                         Edit Details
@@ -9305,7 +9586,7 @@ export default function ProjectDetail() {
                         <Button
                           variant="outline"
                           className="w-full justify-start gap-2"
-                          onClick={() => setIsEditMode(true)}
+                          onClick={handleEnterEditMode}
                         >
                           <Edit className="h-4 w-4" />
                           Edit Project
@@ -9904,3 +10185,6 @@ export default function ProjectDetail() {
     </div>
   )
 }
+import { SmeReviewScore } from '@/components/shared/SmeReviewScore'
+import { SmeAiRecommendation } from '@/components/shared/SmeAiRecommendation'
+import { canShowStrategyAiRecommendation } from '@/services/smeAiRecommendation'

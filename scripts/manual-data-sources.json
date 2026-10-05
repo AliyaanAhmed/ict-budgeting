@@ -1,0 +1,181 @@
+{
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "tablename",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "guid1",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "targettable",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "role",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "endpoint",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "apikey",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "model",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "prompt",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "summarycategory",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarystage",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarytype",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  },
+  "audits": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "auditid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "actionName",
+            "in": "body",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "isAdmin",
+            "in": "body",
+            "required": true,
+            "type": "boolean"
+          },
+          {
+            "name": "userId",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fetchXml",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relationship",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

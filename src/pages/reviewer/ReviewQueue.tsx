@@ -29,6 +29,7 @@ import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { projectService } from '@/services/projectService'
 import { getAllAiSummaryRecordsByBudgetId, invalidateBudgetOverviewRecord, type StoredBudgetOverviewRecord } from '@/services/documentAiSummaryStoreService'
 import { DGE_INSTANCE_STATUS } from '@/services/dgePortfolioService'
+import { notifyApproverWhenInstanceIsReady } from '@/services/approverReviewNotificationService'
 import type { ClarificationPayload, ReviewQueueProject } from '@/domain/types'
 
 function toDisplayText(value: unknown): string {
@@ -489,7 +490,7 @@ export default function ReviewQueue() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest')
   const [clarificationProject, setClarificationProject] = useState<ReviewQueueProject | null>(null)
   const [bulkClarificationOpen, setBulkClarificationOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [storedSelectedIds, setSelectedIds] = useState<string[]>([])
   const [pendingSubmit, setPendingSubmit] = useState<string[] | null>(null)
   const { runActionToast, showErrorToast } = useToast()
   const { setReviewCount } = useQueueCounts()
@@ -566,6 +567,15 @@ export default function ReviewQueue() {
     )
 
   const visibleActionableIds = filtered.filter(isProjectActionable).map(p => p.id)
+  const selectedIds = storedSelectedIds.filter(id => visibleActionableIds.includes(id))
+  const selectionScope = JSON.stringify(visibleActionableIds)
+  useEffect(() => {
+    const visibleIds = new Set<string>(JSON.parse(selectionScope))
+    setSelectedIds(current => {
+      const next = current.filter(id => visibleIds.has(id))
+      return next.length === current.length ? current : next
+    })
+  }, [selectionScope])
   const allVisibleSelected = visibleActionableIds.length > 0 && visibleActionableIds.every(id => selectedIds.includes(id))
   const completableSelected = hasCycleDgeSubmission
     ? []
@@ -589,7 +599,7 @@ export default function ReviewQueue() {
     .map((id) => projects.find((project) => project.id === id))
     .filter((project): project is ReviewQueueProject => Boolean(project))
   const selectedStatusKeys = Array.from(
-    new Set(selectedProjects.map((project) => `${project.status}|${project.statusForAdgeLabel ?? ''}`))
+    new Set(selectedProjects.map((project) => project.status))
   )
   const hasMixedSelectedStatuses = selectedStatusKeys.length > 1
   const guardedBulkAction = (action: () => void) => {
@@ -609,11 +619,12 @@ export default function ReviewQueue() {
       if (!project || !isProjectActionable(project)) {
         return prev
       }
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      const visibleSelection = prev.filter(value => visibleActionableIds.includes(value))
+      const next = visibleSelection.includes(id) ? visibleSelection.filter(x => x !== id) : [...visibleSelection, id]
       const nextProjects = next
         .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
         .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
-      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      const nextStatusCount = new Set(nextProjects.map((candidate) => candidate.status)).size
       if (nextStatusCount > 1) {
         showErrorToast(
           'Mixed statuses selected',
@@ -626,12 +637,12 @@ export default function ReviewQueue() {
   const toggleAllVisible = () =>
     setSelectedIds(prev => {
       const next = allVisibleSelected
-        ? prev.filter(id => !visibleActionableIds.includes(id))
-        : Array.from(new Set([...prev, ...visibleActionableIds]))
+        ? []
+        : [...visibleActionableIds]
       const nextProjects = next
         .map((selectedId) => projects.find((candidate) => candidate.id === selectedId))
         .filter((candidate): candidate is ReviewQueueProject => Boolean(candidate))
-      const nextStatusCount = new Set(nextProjects.map((candidate) => `${candidate.status}|${candidate.statusForAdgeLabel ?? ''}`)).size
+      const nextStatusCount = new Set(nextProjects.map((candidate) => candidate.status)).size
       if (nextStatusCount > 1) {
         showErrorToast(
           'Mixed statuses selected',
@@ -678,6 +689,7 @@ export default function ReviewQueue() {
         for (const id of projectIds) {
           await projectService.reviewerApprove(getIctId(id))
         }
+        await notifyApproverWhenInstanceIsReady()
         await Promise.allSettled(projectIds.map(id => {
           const ictId = getIctId(id)
           return ictId ? invalidateBudgetOverviewRecord(ictId) : Promise.resolve()

@@ -11,7 +11,7 @@ import {
   Eye,
   Sparkles,
 } from 'lucide-react'
-import type { Project, ProjectStatus } from '@/domain/types'
+import type { Project } from '@/domain/types'
 import { useRoleProjects } from '@/hooks/useRoleProjects'
 import { useCycle } from '@/context/CycleContext'
 import { useInstance } from '@/context/InstanceContext'
@@ -40,8 +40,11 @@ type FilterTab =
   | 'clarification'
   | 'submitted-reviewer'
   | 'allocation-in-progress'
+  | 'allocation-in-review'
+  | 'allocation-completed'
   | 'utilization-in-progress'
-type StatusFilter = 'all-statuses' | ProjectStatus
+  | 'utilization-completed'
+type StatusFilter = 'all-statuses' | string
 type BudgetTypeFilter =
   | 'all-budget-types'
   | 'Operational Recurring'
@@ -219,7 +222,7 @@ export default function RespondentProjects() {
   const { runActionToast } = useToast()
   const cycleName = selectedCycle?.name ?? 'ICT Budget Cycle'
   const { items: projects, loading, error } = useRoleProjects('respondent', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
   const [search, setSearch] = useState('')
@@ -230,8 +233,22 @@ export default function RespondentProjects() {
   const [aiReviewFlagFilter, setAiReviewFlagFilter] = useState<AiReviewFlagFilter>('all-ai-review-flags')
   const [exporting, setExporting] = useState(false)
   const activeInstanceStatusCode = getStoredInstanceDetail()?.statuscode ?? null
-  const instanceInAllocation = activeInstanceStatusCode === DGE_INSTANCE_STATUS.allocation
-  const instanceInUtilization = activeInstanceStatusCode === DGE_INSTANCE_STATUS.utilization
+  const instanceInAllocation =
+    activeInstanceStatusCode === DGE_INSTANCE_STATUS.allocation ||
+    (activeInstanceStatusCode == null && projects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.allocationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationInReview ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+    ))
+  const instanceInUtilization =
+    activeInstanceStatusCode === DGE_INSTANCE_STATUS.utilization ||
+    projects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted
+    )
+  const statusOptions = Array.from(
+    new Set(projects.map((project) => project.statusForAdgeLabel || project.status).filter(Boolean))
+  )
   const aiReviewFlagOptions = Array.from(
     new Map(
       projects
@@ -245,15 +262,37 @@ export default function RespondentProjects() {
       : aiReviewFlagOptions.find((option) => option.key === aiReviewFlagFilter)?.label ?? 'AI Review Flag'
 
   useEffect(() => {
+    if (statusFilter !== 'all-statuses' && !statusOptions.includes(statusFilter)) {
+      setStatusFilter('all-statuses')
+    }
+  }, [statusFilter, statusOptions])
+
+  useEffect(() => {
     const tab = searchParams.get('tab')
     if (
       tab === 'needs-work' ||
       tab === 'clarification' ||
       tab === 'submitted-reviewer' ||
       (tab === 'allocation-in-progress' && instanceInAllocation) ||
+      (tab === 'allocation-in-review' && instanceInAllocation) ||
+      (tab === 'allocation-completed' && instanceInAllocation) ||
       (tab === 'utilization-in-progress' && instanceInUtilization) ||
+      (tab === 'utilization-completed' && instanceInUtilization) ||
       tab === 'all'
     ) {
+      const planningOnlyTabs = tab === 'needs-work' || tab === 'submitted-reviewer' || tab === 'clarification'
+      const allocationOnlyTabs = tab === 'allocation-in-progress' || tab === 'allocation-in-review' || tab === 'allocation-completed'
+      const utilizationOnlyTabs = tab === 'utilization-in-progress' || tab === 'utilization-completed'
+      if (
+        (instanceInUtilization && planningOnlyTabs) ||
+        (instanceInAllocation && planningOnlyTabs) ||
+        (!instanceInAllocation && allocationOnlyTabs) ||
+        (!instanceInUtilization && utilizationOnlyTabs)
+      ) {
+        setActiveTab('all')
+        return
+      }
+
       setActiveTab(tab)
       return
     }
@@ -272,14 +311,38 @@ export default function RespondentProjects() {
           },
         ]
       : []),
-    { id: 'clarification', label: 'Clarification Required', count: projects.filter((p) => p.status === 'Clarification Required').length },
-    { id: 'submitted-reviewer', label: 'Submitted to Reviewer', count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status)).length },
+    ...(!instanceInAllocation && !instanceInUtilization
+      ? [
+          {
+            id: 'clarification' as const,
+            label: 'Clarification Required',
+            count: projects.filter((p) => p.status === 'Clarification Required').length,
+          },
+        ]
+      : []),
+    ...(!instanceInAllocation && !instanceInUtilization
+      ? [{
+          id: 'submitted-reviewer' as const,
+          label: 'Submitted to Reviewer',
+          count: projects.filter((p) => isRespondentSubmittedProjectStatus(p.status, p.statusCode)).length,
+        }]
+      : []),
     ...(instanceInAllocation
       ? [
           {
             id: 'allocation-in-progress' as const,
             label: 'Allocation In Progress',
             count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInProgress).length,
+          },
+          {
+            id: 'allocation-in-review' as const,
+            label: 'Allocation In Review',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationInReview).length,
+          },
+          {
+            id: 'allocation-completed' as const,
+            label: 'Allocation Completed',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.allocationCompleted).length,
           },
         ]
       : []),
@@ -289,6 +352,11 @@ export default function RespondentProjects() {
             id: 'utilization-in-progress' as const,
             label: 'Utilization In Progress',
             count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.utilizationInProgress).length,
+          },
+          {
+            id: 'utilization-completed' as const,
+            label: 'Utilization Completed',
+            count: projects.filter((p) => p.statusCode === DGE_BUDGET_STATUS.utilizationCompleted).length,
           },
         ]
       : []),
@@ -304,10 +372,14 @@ export default function RespondentProjects() {
       activeTab === 'all' ||
       (activeTab === 'needs-work' && project.status === 'Draft') ||
       (activeTab === 'clarification' && project.status === 'Clarification Required') ||
-      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status)) ||
+      (activeTab === 'submitted-reviewer' && isRespondentSubmittedProjectStatus(project.status, project.statusCode)) ||
       (activeTab === 'allocation-in-progress' && project.statusCode === DGE_BUDGET_STATUS.allocationInProgress) ||
-      (activeTab === 'utilization-in-progress' && project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress)
-    const matchesStatus = statusFilter === 'all-statuses' || project.status === statusFilter
+      (activeTab === 'allocation-in-review' && project.statusCode === DGE_BUDGET_STATUS.allocationInReview) ||
+      (activeTab === 'allocation-completed' && project.statusCode === DGE_BUDGET_STATUS.allocationCompleted) ||
+      (activeTab === 'utilization-in-progress' && project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress) ||
+      (activeTab === 'utilization-completed' && project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted)
+    const projectStatusLabel = project.statusForAdgeLabel || project.status
+    const matchesStatus = statusFilter === 'all-statuses' || projectStatusLabel === statusFilter
     const matchesBudgetType =
       budgetTypeFilter === 'all-budget-types' || project.budgetType === budgetTypeFilter
     const matchesAiReviewFlag =
@@ -397,6 +469,7 @@ export default function RespondentProjects() {
         role="respondent"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={projects}
         variant="projects"
@@ -418,13 +491,11 @@ export default function RespondentProjects() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all-statuses">Status</SelectItem>
-              <SelectItem value="Draft">Draft</SelectItem>
-              <SelectItem value="Clarification Required">Clarification Required</SelectItem>
-              <SelectItem value="Submitted to Reviewer">Submitted to Reviewer</SelectItem>
-              <SelectItem value="Reviewer Review Completed">Reviewer Review Completed</SelectItem>
-              <SelectItem value="Submitted to Approver">Submitted to Approver</SelectItem>
-              <SelectItem value="Approved">Approved</SelectItem>
-              <SelectItem value="Submitted to DGE">Submitted to DGE</SelectItem>
+              {statusOptions.map((status) => (
+                <SelectItem key={status} value={status}>
+                  {status}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

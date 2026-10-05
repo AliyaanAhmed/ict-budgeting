@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Building2, CheckCircle2, Rocket, Sparkles, Clock3, Route, CircleCheckBig, Waypoints } from 'lucide-react'
+import { ArrowRight, Building2, CheckCircle2, Rocket, Clock3, Route, CircleCheckBig, Waypoints } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,16 @@ import {
 } from '@/services/dgePortfolioService'
 import { publishDgeReviewedInstance, startInstanceAllocation } from '@/services/dgeWorkflowService'
 import { StrategyPageShell, StrategyPill } from '@/pages/strategy-team/StrategyTeamShell'
+import {
+  EntityAiPortfolioInsights,
+  EntityTrackerSummary,
+} from '@/pages/strategy-team/EntityTracker'
+import {
+  getCurrentCycleIdFromStorage,
+  getCycleAiSummaryByCycleId,
+  getEntityAiSummariesByInstanceIds,
+  type EntityAiSummary,
+} from '@/services/entityTrackerAiSummaryService'
 
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
@@ -152,6 +162,12 @@ export default function DirectorEntityTracker() {
   const { runActionToast } = useToast()
   const [activeStage, setActiveStage] = useState<(typeof stages)[number]>('All Stages')
   const [instances, setInstances] = useState<DgeInstanceRecord[]>([])
+  const [aiSummariesByInstance, setAiSummariesByInstance] = useState<Map<string, EntityAiSummary>>(new Map())
+  const [aiSummariesLoading, setAiSummariesLoading] = useState(false)
+  const [aiSummariesError, setAiSummariesError] = useState<string | null>(null)
+  const [cycleAiSummary, setCycleAiSummary] = useState<EntityAiSummary | null>(null)
+  const [cycleAiSummaryLoading, setCycleAiSummaryLoading] = useState(false)
+  const [cycleAiSummaryError, setCycleAiSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -172,7 +188,37 @@ export default function DirectorEntityTracker() {
       setError(null)
       try {
         const portfolio = await getDgePortfolioData(selectedCycle.id)
-        if (!cancelled) setInstances(portfolio.instances)
+        if (!cancelled) {
+          setInstances(portfolio.instances)
+          setAiSummariesLoading(true)
+          setCycleAiSummaryLoading(true)
+          setAiSummariesError(null)
+          setCycleAiSummaryError(null)
+        }
+        try {
+          const cycleId = getCurrentCycleIdFromStorage() ?? selectedCycle.id
+          const [summaries, cycleSummary] = await Promise.all([
+            getEntityAiSummariesByInstanceIds(portfolio.instances.map((instance) => instance.id)),
+            getCycleAiSummaryByCycleId(cycleId),
+          ])
+          if (!cancelled) {
+            setAiSummariesByInstance(summaries)
+            setCycleAiSummary(cycleSummary)
+          }
+        } catch (summaryError) {
+          if (!cancelled) {
+            const message = summaryError instanceof Error ? summaryError.message : 'Unable to load AI entity summaries.'
+            setAiSummariesByInstance(new Map())
+            setCycleAiSummary(null)
+            setAiSummariesError(message)
+            setCycleAiSummaryError(message)
+          }
+        } finally {
+          if (!cancelled) {
+            setAiSummariesLoading(false)
+            setCycleAiSummaryLoading(false)
+          }
+        }
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker.')
       } finally {
@@ -243,17 +289,7 @@ export default function DirectorEntityTracker() {
       description="Director-level entity readiness, publication, and allocation launch controls."
     >
       <section className="space-y-5">
-        <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
-          <div className="flex items-start gap-4 bg-gradient-to-b from-[#FDF8FF] via-white to-white px-6 py-5 dark:from-[#2A123D] dark:via-[#1F1B2E] dark:to-[#1E293B]">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
-              <Sparkles className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Director Entity Summary</h2>
-              <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">Publish is enabled only when every project in the entity has completed DGE review.</p>
-            </div>
-          </div>
-        </section>
+        <EntityTrackerSummary summary={cycleAiSummary} loading={cycleAiSummaryLoading} error={cycleAiSummaryError} />
 
         {error ? <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C]">{error}</div> : null}
 
@@ -290,13 +326,13 @@ export default function DirectorEntityTracker() {
                 <Card key={entity.id} className="overflow-hidden rounded-[20px] border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-[#162339]">
                   <CardContent className="p-0">
                     <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <div className="flex min-h-11 min-w-11 max-w-[35%] shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] px-2 py-2 text-center text-sm font-bold leading-5 [overflow-wrap:anywhere] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
                           {entity.entityAbbr || entity.name.slice(0, 3).toUpperCase()}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
+                            <p className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
                             <StrategyPill tone={canStartAllocation ? 'teal' : publishReady ? 'violet' : 'blue'}>{entity.statusLabel}</StrategyPill>
                           </div>
                           <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.budgets.length} projects in cycle</p>
@@ -332,6 +368,15 @@ export default function DirectorEntityTracker() {
                       </div>
                       <div className="mt-4">
                         <EntityProgress entity={entity} />
+                      </div>
+                      <div className="mt-4">
+                        <EntityAiPortfolioInsights
+                          entity={entity}
+                          summary={aiSummariesByInstance.get(entity.id) ?? null}
+                          loading={aiSummariesLoading}
+                          error={aiSummariesError}
+                          projectBasePath="/strategy-director/projects"
+                        />
                       </div>
                       <div className="mt-4 rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
                         <div className="flex items-center gap-2">

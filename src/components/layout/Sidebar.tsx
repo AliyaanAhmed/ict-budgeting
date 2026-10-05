@@ -14,7 +14,8 @@ import {
   Users,
   ShieldCheck,
   ShieldAlert,
-  Sparkles,
+  MessageSquareMore,
+  GitPullRequestArrow,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRole } from '@/context/RoleContext'
@@ -88,15 +89,19 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
       { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-team/dashboard' },
       { label: 'Projects', icon: FolderOpen, href: '/strategy-team/projects' },
       { label: 'Strategic Alignment', icon: ScanSearch, href: '/strategy-team/strategic-alignment' },
+      { label: 'Strategic Priority CR', icon: GitPullRequestArrow, href: '/strategy-team/strategic-priority-change-requests' },
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-team/entity-tracker' },
       { label: 'SME Tracker', icon: Users, href: '/strategy-team/sme-tracker' },
       { label: 'Quality Check', icon: ShieldCheck, href: '/strategy-team/quality-check' },
+      { label: 'Clarification Monitor', icon: MessageSquareMore, href: '/strategy-team/clarification-monitor' },
     ],
     'ICT - Strategy Director': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/strategy-director/dashboard' },
       { label: 'Projects', icon: FolderOpen, href: '/strategy-director/projects' },
       { label: 'Director Review Queue', icon: ShieldAlert, href: '/strategy-director/reviewer-queue' },
       { label: 'Entity Tracker', icon: Table2, href: '/strategy-director/entity-tracker' },
+      { label: 'SME Tracker', icon: Users, href: '/strategy-director/sme-tracker' },
+      { label: 'Quality Check Tracker', icon: ShieldCheck, href: '/strategy-director/quality-check-tracker' },
     ],
     'ICT - SME Team': [
       { label: 'Dashboard', icon: LayoutDashboard, href: '/sme-team/dashboard' },
@@ -150,7 +155,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-bold text-[var(--foreground)] leading-tight truncate">ICT Budgeting</p>
+            <p className="truncate text-sm font-semibold leading-tight text-[var(--foreground)]">ICT Budgeting</p>
             <p className="text-xs text-[var(--muted-foreground)] leading-tight truncate">Department of Government Enablement</p>
           </div>
         )}
@@ -189,7 +194,7 @@ export function Sidebar({ collapsed, onToggle, isRTL }: SidebarProps) {
               <item.icon className="h-4 w-4 shrink-0" />
               {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
               {!collapsed && 'badge' in item && item.badge != null && (item.badge as number) > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-[var(--primary)] text-white text-xs font-bold px-1">
+                <span className="ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--primary)] px-1 text-xs font-semibold text-white">
                   {item.badge as number}
                 </span>
               )}

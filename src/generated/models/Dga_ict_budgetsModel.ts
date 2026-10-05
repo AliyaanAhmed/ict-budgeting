@@ -108,6 +108,7 @@ export interface Dga_ict_budgetsBase {
   dga_abbr_of_entity?: string;
   dga_activity_type?: Dga_ict_budgetsdga_activity_type;
   dga_added_in_allocation?: Dga_ict_budgetsdga_added_in_allocation;
+  dga_sme_review_score?: number;
   dga_ai_confidence_score?: number;
   dga_ai_flags?: Dga_ict_budgetsdga_ai_flags[];
   dga_allocation_cancelation_reason?: string;
@@ -128,6 +129,7 @@ export interface Dga_ict_budgetsBase {
   "dga_previous_strategic_priorityclassification@odata.bind"?: string;
   "dga_quality_checker@odata.bind"?: string;
   dga_quality_checkeridtype?: string;
+  dga_project_portfolio_for_dge?: string;
   dga_recommended?: Dga_ict_budgetsdga_recommended;
   "dga_rejected_by@odata.bind"?: string;
   dga_rejection_justification?: string;

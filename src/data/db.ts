@@ -122,6 +122,7 @@ export interface Project {
   summary: string
   documents: ProjectDocument[]
   clarifications: Clarification[]
+  smeReviewScore?: number | null
   aiScore: number
   riskLevel: RiskLevel | null
   capex: number

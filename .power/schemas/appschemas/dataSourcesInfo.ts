@@ -12,13 +12,6 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "audits": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "auditid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "dga_ai_prompts": {
     "tableId": "",
     "version": "",
@@ -46,6 +39,97 @@ export const dataSourcesInfo = {
     "primaryKey": "dga_cycleid",
     "dataSourceType": "Dataverse",
     "apis": {}
+  },
+  "dga_customwebapi": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_CustomWebApi": {
+        "path": "/api/data/v9.2/dga_CustomWebApi",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "tablename",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "guid1",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "action",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "targettable",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "role",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "endpoint",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "apikey",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "model",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "prompt",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "summarycategory",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarystage",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "name": "summarytype",
+            "in": "body",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          }
+        }
+      }
+    }
   },
   "dga_ict_budget_dga_technology_productset": {
     "tableId": "",
@@ -110,13 +194,6 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
-  "dga_module_types": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "dga_module_typeid",
-    "dataSourceType": "Dataverse",
-    "apis": {}
-  },
   "roles": {
     "tableId": "",
     "version": "",
@@ -172,49 +249,6 @@ export const dataSourcesInfo = {
     "primaryKey": "dga_work_streamid",
     "dataSourceType": "Dataverse",
     "apis": {}
-  },
-  "dga_customwebapi": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_CustomWebApi": {
-        "path": "/api/data/v9.2/dga_CustomWebApi",
-        "method": "POST",
-        "parameters": [
-          { "name": "action", "in": "body", "required": true, "type": "string" },
-          { "name": "endpoint", "in": "body", "required": true, "type": "string" },
-          { "name": "apikey", "in": "body", "required": true, "type": "string" },
-          { "name": "model", "in": "body", "required": true, "type": "string" },
-          { "name": "prompt", "in": "body", "required": true, "type": "string" }
-        ]
-      }
-    }
-  },
-  "dga_webapiforportal": {
-    "tableId": "",
-    "version": "",
-    "primaryKey": "",
-    "dataSourceType": "Dataverse",
-    "apis": {
-      "dga_WebApiForPortal": {
-        "path": "/api/data/v9.2/dga_WebApiForPortal",
-        "method": "POST",
-        "parameters": [
-          { "name": "actionName", "in": "body", "required": true, "type": "string" },
-          { "name": "isAdmin", "in": "body", "required": true, "type": "boolean" },
-          { "name": "userId", "in": "body", "required": false, "type": "string" },
-          { "name": "fetchXml", "in": "body", "required": false, "type": "string" },
-          { "name": "targetTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedTableName", "in": "body", "required": false, "type": "string" },
-          { "name": "targetId", "in": "body", "required": false, "type": "string" },
-          { "name": "relatedId", "in": "body", "required": false, "type": "string" },
-          { "name": "relationship", "in": "body", "required": false, "type": "string" },
-          { "name": "tableName", "in": "body", "required": false, "type": "string" }
-        ]
-      }
-    }
   },
   "ictbudget_clarificaitons_deletefilefromsharepoint": {
     "tableId": "",
@@ -288,6 +322,46 @@ export const dataSourcesInfo = {
         "responseInfo": {
           "202": {
             "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "ondemand_sendentitybacktoplanning_fromsmereview": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
+          },
+          "default": {
+            "type": "object"
           }
         }
       }
@@ -410,6 +484,43 @@ export const dataSourcesInfo = {
       }
     }
   },
+  "powerappv2_getdocumentsummaryfromcompass_largefile": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
   "powerappv2_getictbudgetaioverview": {
     "tableId": "",
     "version": "",
@@ -442,6 +553,205 @@ export const dataSourcesInfo = {
         "responseInfo": {
           "202": {
             "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_getictbudgetaioverview_dge_": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_ictbudget_onmodifystatustounderapproverreview_sendemailtoapprover": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "powerappv2_onsubmittodgebyapprover_sendemailtostrategyteam": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Connector",
+    "apis": {
+      "Run": {
+        "path": "/{connectionId}/triggers/manual/run",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "body",
+            "required": true,
+            "type": "object"
+          },
+          {
+            "name": "api-version",
+            "in": "query",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "202": {
+            "type": "void"
+          }
+        }
+      }
+    }
+  },
+  "audits": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "auditid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "dga_webapiforportal": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "",
+    "dataSourceType": "Dataverse",
+    "apis": {
+      "dga_WebApiForPortal": {
+        "path": "/api/data/v9.2/dga_WebApiForPortal",
+        "method": "POST",
+        "parameters": [
+          {
+            "name": "actionName",
+            "in": "body",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "isAdmin",
+            "in": "body",
+            "required": true,
+            "type": "boolean"
+          },
+          {
+            "name": "userId",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "fetchXml",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetId",
+            "in": "body",
+            "required": false,
+            "type": "string",
+            "format": "guid"
+          },
+          {
+            "name": "targetTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relatedTableName",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "relationship",
+            "in": "body",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "object"
           }
         }
       }
