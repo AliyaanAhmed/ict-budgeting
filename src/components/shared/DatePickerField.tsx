@@ -13,6 +13,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { CalendarMonthYearSelect } from '@/components/shared/CalendarMonthYearSelect'
 
 interface DatePickerFieldProps {
   value: string
@@ -134,7 +135,7 @@ export function DatePickerField({
                 </nav>
 
                 <div className="flex h-8 w-full items-center justify-center px-8">
-                  <span className="select-none text-sm font-medium">{format(viewMonth, 'MMMM yyyy')}</span>
+                  <CalendarMonthYearSelect month={viewMonth} onChange={setViewMonth} />
                 </div>
 
                 <div className="grid w-56 grid-cols-7 gap-y-2">

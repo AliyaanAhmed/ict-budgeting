@@ -20,9 +20,9 @@ export function parseSmeAiRecommendation(raw: string | null | undefined) {
         ? 2
         : null
     if (!recommended) return null
-    const decisionCriterion = quality?.criteria?.recommendation_decision_correctness ??
-      quality?.criteria?.rejection_decision_correctness
-    const reason = typeof decisionCriterion?.reason === 'string' ? decisionCriterion.reason : ''
+    const reason = typeof quality?.ai_expected_decision_reason === 'string'
+      ? quality.ai_expected_decision_reason
+      : ''
 
     return { recommended: recommended as 1 | 2, reason, rejectionReason: null }
   } catch {

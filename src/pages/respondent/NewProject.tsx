@@ -1537,7 +1537,7 @@ function LookupSelect({
   )
 }
 
-import { CalendarYearSelect } from '@/components/shared/CalendarYearSelect'
+import { CalendarMonthYearSelect } from '@/components/shared/CalendarMonthYearSelect'
 
 function DatePickerField({
   value,
@@ -1638,9 +1638,8 @@ function DatePickerField({
                 </button>
               </nav>
 
-              <div className="relative mx-8 flex h-8 items-center justify-center gap-1">
-                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMM')}</span>
-                <CalendarYearSelect month={viewMonth} onChange={setViewMonth} />
+              <div className="relative mx-8 flex h-8 items-center justify-center">
+                <CalendarMonthYearSelect month={viewMonth} onChange={setViewMonth} />
               </div>
 
               <div className="grid w-56 grid-cols-7 gap-y-2">

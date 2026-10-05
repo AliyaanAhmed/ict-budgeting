@@ -129,6 +129,18 @@
         "workflowDisplayName": "PowerAppV2 - ICT Budget - On Modify Status to Under Approver Review - Send Email to Approver",
         "workflowName": "c143d079-ea51-d6ba-19c8-d838a4659ab3"
       }
+    },
+    "a3f6af9e-f693-4ef8-850d-bbc4bd055267": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+      "displayName": "Logic flows",
+      "dataSources": [
+        "powerappv2_getictbudgetaioverview_dge_"
+      ],
+      "workflowDetails": {
+        "workflowEntityId": "0bf6e737-af6b-f111-ab0d-70a8a51fd6b1",
+        "workflowDisplayName": "PowerAppV2 - Get ICT Budget AI Overview (DGE)",
+        "workflowName": "c0011671-c936-9acf-7abd-546136a4bef9"
+      }
     }
   },
   "databaseReferences": {

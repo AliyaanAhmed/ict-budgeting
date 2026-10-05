@@ -555,11 +555,13 @@ function Field({
   label,
   value,
   aiAssist,
+  labelAdornment,
   highlighted = false,
 }: {
   label: string
   value?: string | null
   aiAssist?: React.ReactNode
+  labelAdornment?: React.ReactNode
   highlighted?: boolean
 }) {
   return (
@@ -572,7 +574,10 @@ function Field({
         <div className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(90deg,rgba(168,85,247,0)_0%,rgba(168,85,247,0.06)_28%,rgba(216,180,254,0.12)_50%,rgba(168,85,247,0.06)_72%,rgba(168,85,247,0)_100%)] animate-aiMagicSweep" />
       ) : null}
       <div className="mb-1 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-[#64748B] dark:text-slate-200">{label}</p>
+          {labelAdornment}
+        </div>
         {aiAssist}
       </div>
       <p className="text-sm font-medium text-[#0F172A] dark:text-white">{value || '-'}</p>
@@ -639,6 +644,7 @@ function EditField({
   error,
   children,
   aiAssist,
+  labelAdornment,
   highlighted = false,
 }: {
   label: string
@@ -646,14 +652,18 @@ function EditField({
   error?: string
   children: React.ReactNode
   aiAssist?: React.ReactNode
+  labelAdornment?: React.ReactNode
   highlighted?: boolean
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-3">
-        <label className="text-sm font-medium text-[#0F172A] dark:text-white">
-          {label}{required && <span className="ml-1 text-red-500">*</span>}
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-[#0F172A] dark:text-white">
+            {label}{required && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          {labelAdornment}
+        </div>
         {aiAssist}
       </div>
       {children}
@@ -685,7 +695,7 @@ function normalizeBudgetLineItemsForComparison(items: BudgetLineItemRecord[]) {
     .sort((left, right) => left.id.localeCompare(right.id))
 }
 
-import { CalendarYearSelect } from '@/components/shared/CalendarYearSelect'
+import { CalendarMonthYearSelect } from '@/components/shared/CalendarMonthYearSelect'
 
 function EditDatePickerField({
   value,
@@ -771,9 +781,8 @@ function EditDatePickerField({
                 </button>
               </nav>
 
-              <div className="relative mx-8 flex h-8 items-center justify-center gap-1">
-                <span className="select-none text-sm font-medium">{format(viewMonth, 'MMM')}</span>
-                <CalendarYearSelect month={viewMonth} onChange={setViewMonth} />
+              <div className="relative mx-8 flex h-8 items-center justify-center">
+                <CalendarMonthYearSelect month={viewMonth} onChange={setViewMonth} />
               </div>
 
               <div className="grid w-56 grid-cols-7 gap-y-2">
@@ -1510,6 +1519,7 @@ function BudgetItemsTable({
   showAllocatedBudget,
   showUtilizedBudget,
   showActions,
+  canDeleteItem,
   savingId,
   deletingId,
   onChangeBudgetRequested,
@@ -1529,6 +1539,7 @@ function BudgetItemsTable({
   showAllocatedBudget: boolean
   showUtilizedBudget: boolean
   showActions: boolean
+  canDeleteItem: (item: BudgetLineItemRecord) => boolean
   savingId: string | null
   deletingId: string | null
   onChangeBudgetRequested: (lineItemId: string, amount: number) => void
@@ -1798,7 +1809,7 @@ function BudgetItemsTable({
                 {showActions ? (
                   <td className="table-cell px-4 py-3">
                   <div className="flex items-center gap-2">
-                    {editableRequested ? (
+                    {canDeleteItem(item) ? (
                       <>
                         <Button
                           size="sm"
@@ -1813,8 +1824,8 @@ function BudgetItemsTable({
                         </Button>
                       </>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-300">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Synced
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Existing line
                       </span>
                     )}
                   </div>
@@ -3264,6 +3275,11 @@ export default function ProjectDetail() {
     ((currentRole === 'Respondent' || currentRole === 'Approver') &&
       isCurrentOwner &&
       (isAllocationInProgress || isAllocationInReview))
+  const isAllocationBudgetLineItemMode = isAllocationInProgress || isAllocationInReview
+  const canManageAllocationBudgetLineItems =
+    hasDataverseBudgetProject &&
+    isAllocationBudgetLineItemMode &&
+    canEditAllocationFields
   const canEditUtilizationFields =
     (canEditFullForm && isUtilizationInProgress) ||
     (currentRole === 'Respondent' && isCurrentOwner && isUtilizationInProgress)
@@ -5744,10 +5760,18 @@ export default function ProjectDetail() {
           }
 
           if (newBudgetLineItems.length > 0) {
-            if (!canEditFullForm) {
+            if (!canEditFullForm && !canManageAllocationBudgetLineItems) {
               throw new Error('New budget account codes cannot be saved in the current form mode.')
             }
-            await createBudgetLineItems(ictBudgetId, newBudgetLineItems.map(toBudgetItemDraft))
+            await createBudgetLineItems(
+              ictBudgetId,
+              newBudgetLineItems.map((item) => ({
+                ...toBudgetItemDraft(item),
+                // Allocation records store the entered amount as allocated, never requested.
+                budgetRequested: isAllocationBudgetLineItemMode ? item.budgetAllocated : item.budgetRequested,
+              })),
+              { allocationMode: isAllocationBudgetLineItemMode }
+            )
           }
 
           const persistedBudgetLineItems = newBudgetLineItems.length > 0
@@ -7237,9 +7261,11 @@ export default function ProjectDetail() {
           expenseTypeLabel: draft.expenseTypeLabel,
           ebsCode: draft.ebsCode,
           fusionCode: draft.fusionCode,
-          budgetRequested: suggestion.mappedBudget,
+          budgetRequested: isAllocationBudgetLineItemMode ? 0 : suggestion.mappedBudget,
           budgetRecommended: 0,
+          // During allocation, AI can add the account code only. The user enters the allocated amount.
           budgetAllocated: 0,
+          addedInAllocation: isAllocationBudgetLineItemMode ? 2 : 1,
           totalBudgetUtilized: 0,
           utilizationQuarter1: 0,
           utilizationQuarter2: 0,
@@ -7287,10 +7313,14 @@ export default function ProjectDetail() {
         fieldLabel="Budget Account Codes"
         suggestedValue={suggestionLabel}
         isOpen={openAiAssistField === 'budgetItems'}
-        canApply={isEditMode}
+        canApply={isEditMode && (canEditFullForm || canManageAllocationBudgetLineItems)}
         onToggle={() => setOpenAiAssistField((current) => (current === 'budgetItems' ? null : 'budgetItems'))}
         onApply={() => void applyPendingAiAccountCodeSuggestions()}
-        helperText="Switch the form to Edit mode to add the AI-suggested account codes from here."
+        helperText={
+          isAllocationBudgetLineItemMode
+            ? 'AI-suggested account codes are added without a requested amount; enter the allocated budget manually during allocation.'
+            : 'Switch the form to Edit mode to add the AI-suggested account codes from here.'
+        }
       />
     )
   }
@@ -7441,9 +7471,16 @@ export default function ProjectDetail() {
       return
     }
 
+    if (!canEditFullForm && !canManageAllocationBudgetLineItems) {
+      showErrorToast('Budget account codes are locked', 'New account codes can only be added while editing this project.')
+      return
+    }
+
     const createdItems = await runActionToast(
       async () => {
-        await createBudgetLineItems(ictBudgetId!, items)
+        await createBudgetLineItems(ictBudgetId!, items, {
+          allocationMode: isAllocationBudgetLineItemMode,
+        })
         await invalidateBudgetOverviewRecord(ictBudgetId!)
         const refreshedItems = await getBudgetLineItemsByBudgetId(ictBudgetId!)
         setBudgetLineItems(refreshedItems)
@@ -7838,6 +7875,19 @@ export default function ProjectDetail() {
   const handleConfirmDeleteBudgetLineItem = async () => {
     if (!lineItemToDelete) return
 
+    if (
+      isAllocationBudgetLineItemMode &&
+      lineItemToDelete.addedInAllocation !== 2 &&
+      lineItemToDelete.budgetRequested > 0
+    ) {
+      showErrorToast(
+        'Existing account code is locked',
+        'Account codes with an existing requested budget cannot be deleted during allocation.'
+      )
+      setLineItemToDelete(null)
+      return
+    }
+
     const lineItemId = lineItemToDelete.id
     const isPersistedLineItem = savedBudgetLineItems.some((item) => item.id === lineItemId)
     setDeletingBudgetLineItemId(lineItemId)
@@ -7964,6 +8014,8 @@ export default function ProjectDetail() {
     !isDgeRole &&
     isAdgeRecommendationVisibleInstanceStatus(storedInstanceStatusCode)
   const showStrategyAiRecommendation = isStrategyView && canShowStrategyAiRecommendation(project.statusCode)
+  const showSmeAiRecommendation =
+    isSmeView && project.statusCode === DGE_BUDGET_STATUS.underSmeReview
   const showDgeRecommendationFields =
     !isAddedInAllocationBudget &&
     ((isDgeRole && isSubmittedToDgeBudget) || canAdgeViewDgeRecommendationFields)
@@ -8682,7 +8734,14 @@ export default function ProjectDetail() {
                           }} />
                         </div>
                       )}
-                      <EditField label="Recommended">
+                      <EditField
+                        label="Recommended"
+                        labelAdornment={
+                          showSmeAiRecommendation
+                            ? <SmeAiRecommendation raw={projectPortfolioForDge} />
+                            : undefined
+                        }
+                      >
                         <Select
                           value={formValues.recommended ? String(formValues.recommended) : ''}
                           onValueChange={(value) => {
@@ -8813,7 +8872,7 @@ export default function ProjectDetail() {
                     </div>
                   )}
                 </div>
-                {hasDataverseBudgetProject && canEditFullForm && (
+                {isEditMode && hasDataverseBudgetProject && (canEditFullForm || canManageAllocationBudgetLineItems) && (
                   <div className="mb-4 flex justify-end">
                     <Button onClick={() => setBudgetModalOpen(true)} className="gap-2 rounded-xl text-white" style={{ backgroundColor: '#286CFF' }}>
                       <Layers className="h-4 w-4" />
@@ -8825,14 +8884,14 @@ export default function ProjectDetail() {
                   items={displayedBudgetItems}
                   loading={budgetItemsLoading}
                   error={budgetItemsError}
-                  editableRequested={canEditFullForm}
+                  editableRequested={canEditFullForm && !isAllocationBudgetLineItemMode}
                   editableRecommended={showDgeRecommendationFields && (canEditFullForm || canEditDgeRecommendationOnly) && formValues.recommended === 2}
-                  editableAllocated={canEditAllocationFields && (isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
+                  editableAllocated={canEditAllocationFields && (isAllocationBudgetLineItemMode || isAddedInAllocationBudget || formValues.allocationOutcome === 2)}
                   editableUtilization={canEditUtilizationFields}
                   showRecommendedBudget={showDgeRecommendationFields}
                   showAllocatedBudget={showAllocationFields}
                   showUtilizedBudget={showUtilizationFields}
-                  showActions={canEditFullForm}
+                  showActions={canEditFullForm || canManageAllocationBudgetLineItems}
                   savingId={savingBudgetLineItemId}
                   deletingId={deletingBudgetLineItemId}
                   onChangeBudgetRequested={handleBudgetRequestedChange}
@@ -8840,6 +8899,11 @@ export default function ProjectDetail() {
                   onChangeBudgetAllocated={handleBudgetAllocatedChange}
                   onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
+                  canDeleteItem={(item) =>
+                    !isAllocationBudgetLineItemMode ||
+                    item.addedInAllocation === 2 ||
+                    item.budgetRequested <= 0
+                  }
                 />
                 {fieldErrors.budgetItems && (
                   <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>
@@ -9153,7 +9217,16 @@ export default function ProjectDetail() {
 
                   {showDgeRecommendationFields ? (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <Field label="Recommended" value={display.recommended} aiAssist={showStrategyAiRecommendation ? <SmeAiRecommendation raw={projectPortfolioForDge} /> : undefined} />
+                      <Field
+                        label="Recommended"
+                        value={display.recommended}
+                        aiAssist={showStrategyAiRecommendation ? <SmeAiRecommendation raw={projectPortfolioForDge} /> : undefined}
+                        labelAdornment={
+                          showSmeAiRecommendation
+                            ? <SmeAiRecommendation raw={projectPortfolioForDge} />
+                            : undefined
+                        }
+                      />
                       {formValues.recommended === 1 ? (
                         <>
                           <Field label="Rejection Reason" value={display.rejectionReason} />
@@ -9198,6 +9271,7 @@ export default function ProjectDetail() {
                   onChangeBudgetAllocated={handleBudgetAllocatedChange}
                   onChangeUtilizationQuarters={handleUtilizationQuarterChange}
                   onDelete={setLineItemToDelete}
+                  canDeleteItem={() => false}
                 />
                 {fieldErrors.budgetItems && (
                   <p className="mt-3 text-xs font-medium text-[#B42318]">{fieldErrors.budgetItems}</p>

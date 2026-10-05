@@ -11,6 +11,7 @@ import {
   type DgeBudgetRecord,
 } from '@/services/dgePortfolioService'
 import { ICT_BUDGET_STATUS } from '@/services/ictBudgetDraftService'
+import { triggerDgeBudgetAiOverview } from '@/services/dgeBudgetAiOverviewService'
 import { grantIctBudgetAccessToTeam, revokeIctBudgetAccessFromTeam } from '@/services/recordShareService'
 
 function assertSuccess(success: boolean | undefined, message: string, error?: { message?: string } | null) {
@@ -213,6 +214,8 @@ export async function sendBudgetsToSme(budgets: DgeBudgetRecord[]) {
         'Strategy Team assigned this budget to your SME review queue.',
         'send-to-sme'
       )
+
+      await triggerDgeBudgetAiOverview(budget.id)
     })
   )
 }

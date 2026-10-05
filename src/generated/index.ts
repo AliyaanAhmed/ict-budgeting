@@ -32,6 +32,7 @@ export * as PowerAppV2_GetCumulativeDocumentSummaryfromCompassModel from './mode
 export * as PowerAppV2_GetDocumentSummaryfromCompassModel from './models/PowerAppV2_GetDocumentSummaryfromCompassModel';
 export * as PowerAppV2_GetDocumentSummaryfromCompass_LargeFileModel from './models/PowerAppV2_GetDocumentSummaryfromCompass_LargeFileModel';
 export * as PowerAppV2_GetICTBudgetAIOverviewModel from './models/PowerAppV2_GetICTBudgetAIOverviewModel';
+export * as PowerAppV2_GetICTBudgetAIOverview_DGE_Model from './models/PowerAppV2_GetICTBudgetAIOverview_DGE_Model';
 export * as PowerAppV2_ICTBudget_OnModifyStatustoUnderApproverReview_SendEmailtoApproverModel from './models/PowerAppV2_ICTBudget_OnModifyStatustoUnderApproverReview_SendEmailtoApproverModel';
 export * as PowerAppV2_OnSubmittoDGEbyApprover_SendEmailtoStrategyTeamModel from './models/PowerAppV2_OnSubmittoDGEbyApprover_SendEmailtoStrategyTeamModel';
 export * as RolesModel from './models/RolesModel';
@@ -69,6 +70,7 @@ export * from './services/PowerAppV2_GetCumulativeDocumentSummaryfromCompassServ
 export * from './services/PowerAppV2_GetDocumentSummaryfromCompassService';
 export * from './services/PowerAppV2_GetDocumentSummaryfromCompass_LargeFileService';
 export * from './services/PowerAppV2_GetICTBudgetAIOverviewService';
+export * from './services/PowerAppV2_GetICTBudgetAIOverview_DGE_Service';
 export * from './services/PowerAppV2_ICTBudget_OnModifyStatustoUnderApproverReview_SendEmailtoApproverService';
 export * from './services/PowerAppV2_OnSubmittoDGEbyApprover_SendEmailtoStrategyTeamService';
 export * from './services/RolesService';
