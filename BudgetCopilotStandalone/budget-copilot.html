@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Budget Copilot | ICT Budgeting</title>
+  <link rel="stylesheet" href="styles/budget-copilot.css" />
+</head>
+<body>
+  <div class="app-frame">
+    <aside class="debug-sidebar" aria-label="Model request and response log">
+      <div class="debug-head">
+        <div>
+          <strong>Model Calls</strong>
+          <span>Request and response inspector</span>
+        </div>
+      </div>
+
+      <p class="debug-note">Every AI request is shown here with API keys and file bytes redacted. Items are collapsed by default.</p>
+      <div id="modelLogList" class="model-log-list">
+        <div class="model-log-empty">No model calls yet.</div>
+      </div>
+
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input type="search" placeholder="Search..." aria-label="Search" />
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-button" type="button">GB English</button>
+          <button class="ghost-button" type="button">Local Dev</button>
+        </div>
+      </header>
+
+      <section class="page-heading">
+        <div>
+          <div class="breadcrumbs">Home › My Dashboard › New Budget Item</div>
+          <h1>New Budget Item</h1>
+          <p>Create a new budget request with AI assistance</p>
+        </div>
+        <div class="mode-toggle" aria-label="Mode">
+          <span>Manual</span>
+          <span class="toggle is-on" aria-hidden="true"></span>
+          <strong>AI Copilot</strong>
+        </div>
+      </section>
+
+      <div class="main-grid">
+        <section class="copilot-panel" aria-label="Budget Copilot">
+          <div class="copilot-head">
+            <div class="copilot-title">
+              <div class="copilot-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3.5 14 9l5.5 2-5.5 2-2 5.5L10 13l-5.5-2L10 9l2-5.5Zm6 12 1 2.4 2.5 1-2.5.9-1 2.2-1-2.2-2.5-.9 2.5-1 1-2.4Z" fill="currentColor"/></svg>
+              </div>
+              <div>
+                <h2>Budget Copilot</h2>
+                <p>Interactive AI Assistant</p>
+              </div>
+            </div>
+            <div class="copilot-tools">
+              <button id="settingsToggle" class="tool-button" type="button">Settings</button>
+              <button id="clearButton" class="tool-button" type="button">Clear</button>
+            </div>
+          </div>
+
+          <div id="settingsPanel" class="settings-panel" hidden>
+            <label>
+              <span>Entity name</span>
+              <input id="entityNameInput" type="text" autocomplete="off" placeholder="Submitting entity name" />
+            </label>
+            <label>
+              <span>Local proxy URL</span>
+              <input id="proxyBaseUrlInput" type="text" autocomplete="off" placeholder="http://localhost:8087" />
+            </label>
+            <label>
+              <span>Active AI provider</span>
+              <select id="providerInput">
+                <option value="core42">Core42 Compass</option>
+                <option value="foundry">Microsoft Foundry</option>
+              </select>
+            </label>
+            <div class="provider-settings" data-provider-settings="core42">
+              <label>
+                <span>Core42 API key</span>
+                <input id="core42ApiKeyInput" type="password" autocomplete="off" placeholder="Enter Core42 local dev API key" />
+              </label>
+              <label>
+                <span>Core42 model</span>
+                <input id="core42ModelInput" type="text" value="gpt-5.1" />
+              </label>
+            </div>
+            <div class="provider-settings" data-provider-settings="foundry">
+              <label>
+                <span>Foundry API key</span>
+                <input id="foundryApiKeyInput" type="password" autocomplete="off" placeholder="Enter Microsoft Foundry local dev API key" />
+              </label>
+              <label>
+                <span>Foundry model / deployment</span>
+                <input id="foundryModelInput" type="text" value="gpt-5.1" />
+              </label>
+              <label>
+                <span>Foundry Responses endpoint</span>
+                <input id="foundryEndpointInput" type="text" readonly />
+              </label>
+            </div>
+            <p>Local development only. Do not deploy with browser-side keys. API keys are stored in the browser, but AI requests still go through the local proxy URL above.</p>
+          </div>
+
+          <div id="activityStatus" class="activity-status" hidden>
+            <span class="activity-spinner" aria-hidden="true"></span>
+            <div>
+              <strong id="activityTitle">Working</strong>
+              <small id="activityDetail">Please wait before sending another message.</small>
+            </div>
+          </div>
+
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+
+          <div class="quick-actions">
+            <button id="uploadQuickAction" type="button">Upload Document</button>
+            <button id="suggestProjectFieldsButton" type="button" disabled>Suggest Project Fields</button>
+            <button id="checkBudgetConsiderationsButton" type="button" disabled>Check DGE Budget Considerations</button>
+          </div>
+
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" type="text" placeholder="Describe your project or ask a question..." autocomplete="off" />
+            <button type="submit" aria-label="Send message">
+              <svg viewBox="0 0 24 24"><path d="M4 12 20 4l-5.2 16-3.1-6.8L4 12Zm7.7 1.2L20 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </form>
+          <p class="prompt-hint">Try: "Cloud migration project for AED 2M starting Q1 2026"</p>
+          <input id="fileInput" type="file" hidden accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.jpg,.jpeg,.png,.webp" />
+        </section>
+
+        <section class="form-column" aria-label="Budget item form">
+          <form id="projectForm" class="budget-form">
+            <article class="form-card">
+              <div class="section-title"><span>1</span><h2>Budget Item Details</h2></div>
+              <div class="form-grid">
+                <label class="field span-2">
+                  <span>Initiative / Budget Item Name <b>*</b></span>
+                  <input data-field="project_name" type="text" placeholder="Enter initiative name" />
+                </label>
+                <label class="field">
+                  <span>Strategic Priorities <b>*</b></span>
+                  <select data-field="strategic_priority">
+                    <option value="">Select priority</option>
+                    <option>Artificial Intelligence</option>
+                    <option>Cybersecurity</option>
+                    <option>Digital Infrastructure and Cloud</option>
+                    <option>ICT Enabler</option>
+                    <option>Government Services</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Strategic Priority Classifications <b>*</b></span>
+                  <select data-field="strategic_priority_classification">
+                    <option value="">Select classification</option>
+                    <option>Use Case Development</option>
+                    <option>Security Solution Implementation</option>
+                    <option>Infrastructure as a service (IaaS)</option>
+                    <option>Consultancy (Digital Strategy Development/Refresh/Others)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Work Stream / Program Name</span>
+                  <select data-field="work_stream">
+                    <option value="">Select work stream</option>
+                    <option>Digital Transformation</option>
+                    <option>Cloud and Infrastructure</option>
+                    <option>Cybersecurity</option>
+                    <option>Data and AI</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>ICT Budget Items Type <b>*</b></span>
+                  <select data-field="budget_item_type">
+                    <option value="">Select type</option>
+                    <option>New Strategic Initiative</option>
+                    <option>New CAPEX</option>
+                    <option>Inorganic Growth</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Technology (Company)</span>
+                  <select data-field="technology_company">
+                    <option value="">Select company</option>
+                    <option>Hardware (General)</option>
+                    <option>Microsoft</option>
+                    <option>Amazon (AWS)</option>
+                    <option>Oracle</option>
+                    <option>Software</option>
+                    <option>Cisco</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Technology (Product)</span>
+                  <input data-field="technology_products" type="text" placeholder="Select product" />
+                </label>
+                <label class="field">
+                  <span>Category</span>
+                  <select data-field="category">
+                    <option value="">Select category</option>
+                    <option>ICT Only</option>
+                    <option>Part of Any Other Project</option>
+                  </select>
+                </label>
+              </div>
+            </article>
+
+            <article class="form-card">
+              <div class="section-title"><span>2</span><h2>Budget Item Timelines</h2></div>
+              <div class="form-grid">
+                <label class="field">
+                  <span>Planned Start Date <b>*</b></span>
+                  <input data-field="planned_start_date" type="date" />
+                </label>
+                <label class="field">
+                  <span>Planned End Date <b>*</b></span>
+                  <input data-field="planned_end_date" type="date" />
+                </label>
+              </div>
+            </article>
+
+            <article class="form-card">
+              <div class="section-title"><span>3</span><h2>Summary</h2></div>
+              <label class="field">
+                <span>Summary / Description <b>*</b></span>
+                <textarea data-field="project_description" rows="4" placeholder="Provide a detailed description of the budget item..."></textarea>
+              </label>
+            </article>
+
+            <article class="form-card">
+              <div class="section-title"><span>4</span><h2>Budget Type</h2></div>
+              <label class="field">
+                <span>Budget Type <b>*</b></span>
+                <select data-field="budget_item_classification">
+                  <option value="">Select budget type</option>
+                  <option>Operational Recurring</option>
+                  <option>Operational Non-Recurring</option>
+                  <option>New Project</option>
+                  <option>Project Continuation</option>
+                </select>
+              </label>
+              <div class="total-band">
+                <span>Total Requested Budget</span>
+                <strong id="totalBudget">AED 0</strong>
+              </div>
+            </article>
+
+            <article class="form-card">
+              <div class="section-title with-action">
+                <div><span>5</span><h2>Budget Items</h2></div>
+                <button id="addBudgetItem" class="primary-button small" type="button">Add Budget Item</button>
+              </div>
+              <div class="budget-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Account Name</th>
+                      <th>Classification (L1/L2/L3)</th>
+                      <th>Budget Requested</th>
+                    </tr>
+                  </thead>
+                  <tbody id="budgetRows">
+                    <tr><td colspan="3" class="empty-row">No budget items added</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="form-card documents-card">
+              <div class="section-title with-action">
+                <div><h2>Documents</h2></div>
+                <button id="uploadDocumentButton" class="outline-button" type="button">Upload Document</button>
+              </div>
+              <div id="documentsList" class="documents-list"></div>
+            </article>
+
+            <div class="form-actions">
+              <button class="ghost-button" type="button">Cancel</button>
+              <button id="saveDraftButton" class="outline-button" type="button">Save Draft</button>
+              <button id="submitButton" class="primary-button" type="button">Submit for Review</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="scripts/budget-copilot.js"></script>
+</body>
+</html>

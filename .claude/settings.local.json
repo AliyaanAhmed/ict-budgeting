@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(npx power-apps *)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@microsoft/power-apps/package.json'\\); console.log\\(JSON.stringify\\(pkg.exports || pkg.main || 'no exports', null, 2\\)\\)\")",
+      "Bash(xargs grep -l \"getClientUrl\\\\|IXrmContext\\\\|window.Xrm\\\\|xrmContext\\\\|xrm\\\\.\")",
+      "Bash(del \"c:\\\\ICT-Budgeting-2026\\\\src\\\\services\\\\xrmContextService.ts\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "PowerShell(Get-ChildItem \"c:\\\\ICT-Budgeting-2026\" -File | Where-Object { $_.Extension -eq \".md\" } | Select-Object Name)",
+      "Bash(Copy-Item \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx\" \"c:\\\\ICT-Budgeting-2026\\\\src\\\\pages\\\\respondent\\\\NewProject.tsx.bak\" -Force)",
+      "Bash(Write-Host \"Backup created.\")",
+      "Bash(cp \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx\" \"c:/ICT-Budgeting-2026/src/pages/respondent/NewProject.tsx.bak\" && echo \"Backup created.\")",
+      "Bash(git checkout *)",
+      "Bash(dir /s /b \"c:\\\\ICT-Budgeting-2026\\\\Data.md\" \"c:\\\\ICT-Budgeting-2026\\\\Workflow.md\" \"c:\\\\ICT-Budgeting-2026\\\\AI_SERVICES_DETAILED_GUIDE.md\" 2>nul)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/recharts/package.json'\\).version\\)\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\ICT-Budgeting-2026\\\\src\" -Recurse -Filter \"*.tsx\" -File)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(head -20)"
+    ],
+    "additionalDirectories": [
+      "c:\\ICT-Budgeting-2026\\src\\pages\\respondent",
+      "c:\\ICT-Budgeting-2026"
+    ]
+  }
+}
