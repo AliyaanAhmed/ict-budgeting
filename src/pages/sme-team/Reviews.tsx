@@ -706,17 +706,6 @@ export default function SmeTeamReviews() {
                           : 'Low confidence'
                   const hasLinkedDocument = Boolean(budget.sharePointUrl)
                   const aiSuggestion = parseSmeAiRecommendation(budget.projectPortfolioForDge)
-                  const secondaryBudgetTotals = [
-                    ...(budget.recommendedBudget > 0
-                      ? [{ label: 'Recommended', amount: budget.recommendedBudget, color: 'text-[#9333EA]' }]
-                      : []),
-                    ...(budget.allocatedBudget > 0
-                      ? [{ label: 'Allocated', amount: budget.allocatedBudget, color: 'text-[#0F9D8A]' }]
-                      : []),
-                    ...(budget.utilizedBudget > 0
-                      ? [{ label: 'Utilized', amount: budget.utilizedBudget, color: 'text-[#D97706]' }]
-                      : []),
-                  ]
                   const reviewInsight =
                     budget.statuscode === DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview
                       ? 'This project is waiting for Strategy Team to review the requested strategic priority change before SME review can resume.'
@@ -729,8 +718,8 @@ export default function SmeTeamReviews() {
                       key={budget.id}
                       className="overflow-hidden rounded-[22px] border border-[#D9E6F5] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[#162339]"
                     >
-                      <div className="p-4 sm:p-5">
-                        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-col gap-5 px-5 py-5 sm:px-7 sm:py-6 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="rounded-full bg-[#F1F5F9] px-3 py-1 text-xs font-semibold text-[#64748B] dark:bg-white/10 dark:text-slate-200">{budget.budgetRefId}</span>
@@ -769,32 +758,22 @@ export default function SmeTeamReviews() {
                             </div>
                           </div>
 
-                          <div className="w-full shrink-0 overflow-hidden rounded-[16px] border border-[#DDEBFF] bg-[#F3F8FF] dark:border-white/10 dark:bg-white/5 lg:w-[270px]">
-                            <div className="flex items-center gap-3 px-4 py-4">
-                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[#286CFF] shadow-sm dark:bg-[#286CFF]/15 dark:text-[#93C5FD]">
+                          <div className="w-full shrink-0 rounded-xl border border-[#CFE0FF] bg-[#F3F8FF] dark:border-white/10 dark:bg-white/5 lg:w-[305px]">
+                            <div className="flex min-h-[86px] items-center gap-4 px-5 py-4">
+                              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-[#286CFF] shadow-sm dark:bg-[#286CFF]/15 dark:text-[#93C5FD]">
                                 <Coins className="h-5 w-5" />
                               </span>
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-[#64748B] dark:text-slate-300">Requested Budget</p>
-                                <CurrencyAmount amount={budget.requestedBudget} className="mt-1 text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+                                <CurrencyAmount amount={budget.requestedBudget} className="mt-1 text-2xl font-bold text-[#0F172A] dark:text-white" iconSize={18} />
                               </div>
                             </div>
-                            {secondaryBudgetTotals.length > 0 ? (
-                              <div className="grid grid-cols-2 gap-px border-t border-[#DDEBFF] bg-[#DDEBFF] dark:border-white/10 dark:bg-white/10">
-                                {secondaryBudgetTotals.map((total) => (
-                                  <div key={total.label} className="min-w-0 bg-white px-3 py-2 dark:bg-[#1B2A41]">
-                                    <p className={cn('truncate text-[10px] font-semibold', total.color)}>{total.label}</p>
-                                    <CurrencyAmount amount={total.amount} className="mt-0.5 text-xs font-bold text-[#0F172A] dark:text-white" iconSize={10} />
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
                           </div>
                         </div>
 
-                        <div className="mt-5 overflow-hidden rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] shadow-[0_10px_26px_rgba(168,85,247,0.06)] dark:border-white/10 dark:bg-[#2A123D]">
-                          <div className="grid lg:grid-cols-[1.45fr_0.8fr_1.1fr]">
-                            <div className="flex gap-4 p-4 sm:p-5">
+                        <div className="border-y border-[#E9D5FF] bg-[#FDF8FF] dark:border-white/10 dark:bg-[#2A123D]">
+                          <div className="grid lg:grid-cols-[1.45fr_0.8fr_1.125fr]">
+                            <div className="flex gap-4 px-5 py-5 sm:px-7 sm:py-6">
                               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
                                 <BrainCircuit className="h-6 w-6" />
                               </span>
@@ -804,7 +783,7 @@ export default function SmeTeamReviews() {
                               </div>
                             </div>
 
-                            <div className="border-t border-[#E9D5FF] p-4 sm:p-5 lg:border-l lg:border-t-0 dark:border-white/10">
+                            <div className="border-t border-[#E9D5FF] px-5 py-5 sm:px-6 sm:py-6 lg:border-l lg:border-t-0 dark:border-white/10">
                               <div className="flex items-start gap-3">
                                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F3E8FF] text-[#9333EA] shadow-sm dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
                                   <BarChart3 className="h-4 w-4" />
@@ -815,7 +794,7 @@ export default function SmeTeamReviews() {
                                 </div>
                               </div>
                               <span className={cn(
-                                'mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                                'mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold',
                                 !hasLinkedDocument
                                   ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/25 dark:text-rose-200'
                                   : confidenceTone === 'emerald'
@@ -827,7 +806,7 @@ export default function SmeTeamReviews() {
                                 {!hasLinkedDocument ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
                                 {!hasLinkedDocument ? 'Evidence gap' : confidenceLabel}
                               </span>
-                              <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="mt-2 flex items-center justify-between gap-3">
                                 <span className="text-xs font-semibold text-[#64748B] dark:text-slate-300">AI Confidence</span>
                                 <span className={cn(
                                   'font-mono text-sm font-bold',
@@ -849,7 +828,7 @@ export default function SmeTeamReviews() {
                               </div>
                             </div>
 
-                            <div className="border-t border-[#E9D5FF] p-4 sm:p-5 lg:border-l lg:border-t-0 dark:border-white/10">
+                            <div className="border-t border-[#E9D5FF] px-5 py-5 sm:px-6 sm:py-6 lg:border-l lg:border-t-0 dark:border-white/10">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="inline-flex items-center gap-2 text-sm font-semibold text-[#A855F7] dark:text-[#E9D5FF]">
                                   <Sparkles className="h-4 w-4" />
@@ -873,8 +852,8 @@ export default function SmeTeamReviews() {
                           </div>
                         </div>
 
-                        <div className="mt-4 grid gap-3 lg:grid-cols-[1.7fr_0.9fr]">
-                          <div className="rounded-[16px] border border-[#DCE8F6] bg-white p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                        <div className="grid lg:grid-cols-[2fr_1fr]">
+                          <div className="px-5 py-5 sm:px-7 sm:py-6">
                             <div className="flex items-start gap-3">
                               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#93C5FD]">
                                 <FileText className="h-4 w-4" />
@@ -888,8 +867,8 @@ export default function SmeTeamReviews() {
                             </div>
                           </div>
 
-                          <div className="grid gap-3">
-                            <div className="flex items-center gap-3 rounded-[16px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+                          <div className="border-t border-[#DCE8F6] lg:border-l lg:border-t-0 dark:border-white/10">
+                            <div className="flex min-h-[58px] items-center gap-3 px-5 py-3 sm:px-6">
                               <span className={cn(
                                 'grid h-10 w-10 shrink-0 place-items-center rounded-full',
                                 hasLinkedDocument
@@ -904,10 +883,9 @@ export default function SmeTeamReviews() {
                                   {hasLinkedDocument ? 'Evidence linked' : 'Evidence missing'}
                                 </p>
                               </div>
-                              <FileText className="h-4 w-4 shrink-0 text-[#94A3B8]" />
                             </div>
 
-                            <div className="flex items-center gap-3 rounded-[16px] border border-[#DCE8F6] bg-white px-4 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+                            <div className="flex min-h-[58px] items-center gap-3 border-t border-[#DCE8F6] px-5 py-3 sm:px-6 dark:border-white/10">
                               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#F3E8FF] text-[#9333EA] dark:bg-purple-900/35 dark:text-purple-200">
                                 <Users className="h-4 w-4" />
                               </span>
@@ -915,11 +893,10 @@ export default function SmeTeamReviews() {
                                 <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Assigned SME</p>
                                 <p className="mt-0.5 truncate text-xs text-[#64748B] dark:text-slate-300" title={targetSme}>{targetSme}</p>
                               </div>
-                              <Users className="h-4 w-4 shrink-0 text-[#94A3B8]" />
                             </div>
                           </div>
                         </div>
-                        <div className="-mx-4 -mb-4 mt-4 flex flex-col gap-2 border-t border-[#EEF3F8] bg-[#FBFDFF] px-4 py-3 dark:border-white/10 dark:bg-white/[0.02] sm:-mx-5 sm:-mb-5 sm:flex-row sm:flex-wrap sm:justify-end sm:px-5">
+                        <div className="flex flex-col gap-2 border-t border-[#DCE8F6] bg-[#FBFDFF] px-5 py-3 dark:border-white/10 dark:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:justify-end sm:px-7">
                           <Button variant="outline" size="sm" className="h-10 w-full rounded-lg px-4 sm:w-auto" asChild>
                             <Link to={`/sme-team/reviews/${budget.id}`}>
                               <Eye className="mr-1 h-4 w-4" />
