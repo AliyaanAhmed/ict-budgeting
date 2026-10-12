@@ -14,15 +14,25 @@ export function useRoleProjects(
     let mounted = true
 
     const load = async () => {
+      if (!instanceId) {
+        if (mounted) {
+          setItems([])
+          setLoading(false)
+          setError(null)
+        }
+        return
+      }
+
       setLoading(true)
       setError(null)
 
       try {
+        const filters = { instanceId }
         const data = role === 'respondent'
-          ? await projectService.getRespondentProjects()
+          ? await projectService.getRespondentProjects(filters)
           : role === 'reviewer'
-            ? await projectService.getReviewerProjects()
-            : await projectService.getApproverProjects()
+            ? await projectService.getReviewerProjects(filters)
+            : await projectService.getApproverProjects(filters)
 
         if (mounted) {
           setItems(data)

@@ -22,8 +22,9 @@ export default {
         DEFAULT: 'var(--radius)',
       },
       fontFamily: {
-        sans: ['DM Sans', 'sans-serif'],
-        mono: ['Outfit', 'DM Sans', 'sans-serif'],
+        sans: ['Plus Jakarta Sans', 'Source Sans 3', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'Source Sans 3', 'system-ui', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
       },
       keyframes: {
         fadeInUp: {

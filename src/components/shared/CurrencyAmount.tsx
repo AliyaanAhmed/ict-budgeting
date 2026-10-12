@@ -21,7 +21,7 @@ export function CurrencyAmount({
   const value = full ? formatAEDFull(amount) : formatAED(amount)
 
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-1.5 font-semibold tracking-tight', className)}>
+    <span className={cn('inline-flex min-w-0 items-center gap-1.5 font-mono font-semibold tracking-tight', className)}>
       <DirhamIcon width={iconSize} height={iconSize} color={iconColor} />
       <span className={cn('min-w-0', valueClassName)}>{value}</span>
     </span>

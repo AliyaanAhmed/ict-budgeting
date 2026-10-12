@@ -334,7 +334,7 @@ export default function RespondentDashboard() {
   const dashboardBudgetMetric = getDashboardBudgetMetricForInstanceStatus(dashboardInstanceStatus)
   const dashboardBudgetMetricLabel = DASHBOARD_BUDGET_METRIC_LABEL[dashboardBudgetMetric]
   const { items: liveProjects, loading, error } = useRoleProjects('respondent', instanceId)
-  const { summary: portfolioSummary, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
+  const { summary: portfolioSummary, processing: portfolioProcessing, loading: portfolioLoading, error: portfolioError } = usePortfolioSummary('respondent', instanceId)
   const budgetByCategory = useBudgetByCategoryChart(liveProjects, dashboardBudgetMetrics)
   const {
     comparisonData,
@@ -385,7 +385,7 @@ export default function RespondentDashboard() {
     : 0
 
   const draftProjects = liveProjects.filter((project) => project.status === 'Draft')
-  const submittedToReviewerProjects = liveProjects.filter((project) => isRespondentSubmittedProjectStatus(project.status))
+  const submittedToReviewerProjects = liveProjects.filter((project) => isRespondentSubmittedProjectStatus(project.status, project.statusCode))
   const clarificationRequiredProjects = liveProjects.filter((project) => project.status === 'Clarification Required')
   const submittedToApproverProjects = liveProjects.filter((project) => project.status === 'Submitted to Approver')
   const approvedProjects = liveProjects.filter((project) => project.status === 'Approved')
@@ -395,6 +395,9 @@ export default function RespondentDashboard() {
   )
   const utilizationInProgressProjects = liveProjects.filter(
     (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationInProgress
+  )
+  const utilizationCompletedProjects = liveProjects.filter(
+    (project) => project.statusCode === DGE_BUDGET_STATUS.utilizationCompleted
   )
   const reviewerStageProjects = liveProjects.filter(
     (project) => project.status === 'Submitted to Reviewer' || project.status === 'Reviewer Review Completed'
@@ -439,8 +442,17 @@ export default function RespondentDashboard() {
   )
   const storedInstanceDetail = getStoredInstanceDetail()
   const activeInstanceDetail = instanceDetail ?? storedInstanceDetail
-  const instanceInAllocation = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.allocation
-  const instanceInUtilization = activeInstanceDetail?.statuscode === DGE_INSTANCE_STATUS.utilization
+  const instanceInAllocation =
+    dashboardInstanceStatus === DGE_INSTANCE_STATUS.allocation ||
+    (dashboardInstanceStatus == null && liveProjects.some((project) =>
+      project.statusCode === DGE_BUDGET_STATUS.allocationInProgress ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationInReview ||
+      project.statusCode === DGE_BUDGET_STATUS.allocationCompleted
+    ))
+  const instanceInUtilization =
+    dashboardInstanceStatus === DGE_INSTANCE_STATUS.utilization ||
+    utilizationInProgressProjects.length > 0 ||
+    utilizationCompletedProjects.length > 0
   const planningSummaryPreview = useMemo(
     () => truncateAtWordBoundary(planningSummary || 'Current cycle status: respondent submissions are open, drafts are being prepared, and projects are moving through review readiness checks before governance submission.', 210),
     [planningSummary]
@@ -629,16 +641,18 @@ export default function RespondentDashboard() {
       </section>
 
       <section className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]">
-        <div className="grid h-full grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <ActionMetricCard
-            title="Submitted to Reviewer"
-            value={submittedToReviewer}
-            accent={dashboardPalette.seaBlue}
-            badge="In Review"
-            icon={<Radar className="h-5 w-5" />}
-            href="/respondent/projects?tab=submitted-reviewer"
-            description="Projects already sent forward and now tracked in review flow."
-          />
+        <div className={cn('grid h-full grid-cols-1 gap-4 sm:grid-cols-2', instanceInUtilization ? 'xl:grid-cols-2' : 'xl:grid-cols-3')}>
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title="Submitted to Reviewer"
+              value={submittedToReviewer}
+              accent={dashboardPalette.seaBlue}
+              badge="In Review"
+              icon={<Radar className="h-5 w-5" />}
+              href="/respondent/projects?tab=submitted-reviewer"
+              description="Projects already sent forward and now tracked in review flow."
+            />
+          )}
           {!instanceInAllocation && !instanceInUtilization && (
             <ActionMetricCard
               title="Needs Work / Draft"
@@ -650,24 +664,48 @@ export default function RespondentDashboard() {
               description="Draft items still waiting for respondent updates and submit."
             />
           )}
-          <ActionMetricCard
-            title="Clarification Required"
-            value={clarificationRequired}
-            accent={dashboardPalette.aeRed}
-            badge="Urgent"
-            icon={<MessageSquareMore className="h-5 w-5" />}
-            href="/respondent/projects?tab=clarification"
-            description="Projects returned for clarification before review can resume."
-          />
+          {!instanceInAllocation && !instanceInUtilization && (
+            <ActionMetricCard
+              title="Clarification Required"
+              value={clarificationRequired}
+              accent={dashboardPalette.aeRed}
+              badge="Urgent"
+              icon={<MessageSquareMore className="h-5 w-5" />}
+              href="/respondent/projects?tab=clarification"
+              description="Projects returned for clarification before review can resume."
+            />
+          )}
           {instanceInAllocation && (
             <ActionMetricCard
               title="Allocation In Progress"
               value={allocationInProgressProjects.length}
               accent={dashboardPalette.seaBlue}
-              badge="Allocation"
+              badge="Respondent"
               icon={<WalletCards className="h-5 w-5" />}
               href="/respondent/projects?tab=allocation-in-progress"
               description="Allocation-stage projects currently owned by the respondent team."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation In Review"
+              value={liveProjects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationInReview).length}
+              accent={dashboardPalette.camelYellow}
+              badge="Review"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-in-review"
+              description="Allocation submissions awaiting approver review."
+            />
+          )}
+          {instanceInAllocation && (
+            <ActionMetricCard
+              title="Allocation Completed"
+              value={liveProjects.filter((project) => project.statusCode === DGE_BUDGET_STATUS.allocationCompleted).length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=allocation-completed"
+              description="Projects with completed allocation."
             />
           )}
           {instanceInUtilization && (
@@ -679,6 +717,17 @@ export default function RespondentDashboard() {
               icon={<WalletCards className="h-5 w-5" />}
               href="/respondent/projects?tab=utilization-in-progress"
               description="Utilization-stage projects currently owned by the respondent team."
+            />
+          )}
+          {instanceInUtilization && (
+            <ActionMetricCard
+              title="Utilization Completed"
+              value={utilizationCompletedProjects.length}
+              accent={dashboardPalette.aeGreen}
+              badge="Completed"
+              icon={<ClipboardCheck className="h-5 w-5" />}
+              href="/respondent/projects?tab=utilization-completed"
+              description="Utilization projects completed by the respondent team."
             />
           )}
         </div>
@@ -718,6 +767,7 @@ export default function RespondentDashboard() {
         role="respondent"
         summary={portfolioSummary}
         loading={portfolioLoading}
+        processing={portfolioProcessing}
         error={portfolioError}
         projects={liveProjects}
         variant="dashboard"
@@ -1148,7 +1198,7 @@ export default function RespondentDashboard() {
                 Distribution of {dashboardBudgetMetricLabel.toLowerCase()} by budget type
               </p>
             </div>
-            <div className="mx-auto mt-12 max-w-2xl">
+            <div className="mx-auto mt-12">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {budgetTypeBreakdown.map((item) => (
                   <div key={item.key} className={`rounded-[22px] border bg-white p-4 shadow-[0_8px_20px_rgba(15,23,42,0.04)] dark:bg-[#18263F] ${item.bgClass}`}>

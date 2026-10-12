@@ -15,6 +15,7 @@ const SELECT_FIELDS = [
   'dga_budget_requested',
   'dga_budget_recommended',
   'dga_budget_allocated',
+  'dga_added_in_allocation',
   'dga_total_budget_utilized',
   'dga_utilization_quarter_1',
   'dga_utilization_quarter_2',
@@ -44,6 +45,8 @@ export interface BudgetLineItemRecord {
   budgetRequested: number
   budgetRecommended: number
   budgetAllocated: number
+  /** Marks account codes added after the project entered allocation. */
+  addedInAllocation?: number | null
   totalBudgetUtilized: number
   utilizationQuarter1: number
   utilizationQuarter2: number
@@ -121,6 +124,7 @@ function normalizeLineItem(
     budgetRequested: asNumber(record.dga_budget_requested) ?? 0,
     budgetRecommended: asNumber(record.dga_budget_recommended) ?? 0,
     budgetAllocated: asNumber(record.dga_budget_allocated) ?? 0,
+    addedInAllocation: asNumber(record.dga_added_in_allocation) ?? null,
     totalBudgetUtilized: asNumber(record.dga_total_budget_utilized) ?? 0,
     utilizationQuarter1: asNumber(record.dga_utilization_quarter_1) ?? 0,
     utilizationQuarter2: asNumber(record.dga_utilization_quarter_2) ?? 0,

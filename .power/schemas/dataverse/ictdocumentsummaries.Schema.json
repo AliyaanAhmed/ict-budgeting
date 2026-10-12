@@ -308,13 +308,28 @@
           "x-ms-schema-name": "statuscode",
           "enum": [
             "Active",
-            "Inactive"
+            "Inactive",
+            "Completed",
+            "Failed",
+            "Cancelled",
+            "Incomplete",
+            "Queued"
           ],
           "x-ms-enum-values": [
             1,
-            2
+            2,
+            576610001,
+            576610002,
+            576610003,
+            576610004,
+            576610005
           ],
           "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
             null,
             null
           ],

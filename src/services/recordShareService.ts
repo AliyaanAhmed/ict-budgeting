@@ -79,7 +79,6 @@ export async function shareIctBudgetWithRoleTeam(
     fetchXml: 'read',
   }
 
-  debugger
   console.log('[RecordShareService] Calling dga_WebApiForPortal grant access:', {
     budgetId,
     role,
@@ -98,7 +97,6 @@ export async function shareIctBudgetWithRoleTeam(
     },
   })
 
-  debugger
   console.log('[RecordShareService] Grant access response:', result)
   console.log('[RecordShareService] result.success:', result.success)
   console.log('[RecordShareService] result.data:', result.data)

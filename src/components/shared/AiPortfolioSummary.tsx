@@ -37,6 +37,7 @@ import {
   getPortfolioCounts,
   getPortfolioProjectInsight,
   getPortfolioSummaryRoleView,
+  getPortfolioRoleStatusSummary,
   getRoleRecommendedActions,
   resolvePortfolioTemplate,
 } from '@/services/portfolioSummaryService'
@@ -47,6 +48,7 @@ interface AiPortfolioSummaryProps {
   role: PortfolioRole
   summary: PortfolioSummaryPayload | null
   loading: boolean
+  processing?: boolean
   error: string | null
   projects?: Project[]
   variant?: Variant
@@ -325,10 +327,41 @@ function EmptyBlock({ message }: { message: string }) {
   )
 }
 
+export function AiSummaryProcessingState({
+  title = 'AI Portfolio Summary is being calculated',
+  description = 'The latest portfolio analysis is processing. Refresh or return later to view the completed summary.',
+}: {
+  title?: string
+  description?: string
+}) {
+  return (
+    <section aria-live="polite" className="relative isolate overflow-hidden rounded-2xl border border-[#E9D5FF] bg-gradient-to-br from-[#FDF7FF] via-white to-[#F4F8FF] px-5 py-5 shadow-[0_8px_24px_rgba(168,85,247,0.07)] dark:border-white/10 dark:from-[#2A123D] dark:via-[#1E293B] dark:to-[#17243A]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        <Sparkles className="absolute left-[8%] top-3 h-4 w-4 animate-pulse text-[#A855F7]/15 dark:text-[#E9D5FF]/15" />
+        <Sparkles className="absolute right-[12%] bottom-4 h-5 w-5 animate-pulse text-[#286CFF]/15 dark:text-blue-200/15" />
+      </div>
+      <div className="relative flex items-center gap-4">
+        <div className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-[#E9D5FF] bg-white/80 text-[#9333EA] shadow-sm dark:border-white/10 dark:bg-white/10 dark:text-purple-200">
+          <span className="absolute inset-1 animate-pulse rounded-xl bg-[#F3E8FF]/70 dark:bg-purple-900/30" aria-hidden="true" />
+          <RefreshCcw className="relative h-5 w-5 animate-spin [animation-duration:2.4s] motion-reduce:animate-none" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-base font-semibold leading-6 tracking-[-0.01em] text-[#0F172A] dark:text-white">{title}</p>
+            <span className="rounded-full border border-[#E9D5FF] bg-white/80 px-2.5 py-1 text-xs font-medium text-[#7E22CE] dark:border-white/10 dark:bg-white/5 dark:text-purple-200">In Progress</span>
+          </div>
+          <p className="mt-1 max-w-2xl text-sm font-normal leading-5 text-[#64748B] dark:text-slate-300">{description}</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export function AiPortfolioSummary({
   role,
   summary,
   loading,
+  processing = false,
   error,
   projects = [],
   variant = 'dashboard',
@@ -351,8 +384,8 @@ export function AiPortfolioSummary({
   const counts = useMemo(() => getPortfolioCounts(summary), [summary])
   const roleView = useMemo(() => getPortfolioSummaryRoleView(summary, role), [summary, role])
   const roleSummary = useMemo(
-    () => toDisplayText(resolvePortfolioTemplate(roleView?.summary_template ?? roleView?.summary, summary)),
-    [roleView?.summary_template, roleView?.summary, summary]
+    () => getPortfolioRoleStatusSummary(summary, role),
+    [summary, role]
   )
   const planningSummary = useMemo(
     () => toDisplayText(resolvePortfolioTemplate(roleView?.planning_cycle_summary_template, summary)),
@@ -547,6 +580,7 @@ export function AiPortfolioSummary({
 
   if (loading) return <LoadingBlock compact={compact} />
   if (error) return <EmptyBlock message={error} />
+  if (processing) return <AiSummaryProcessingState />
   if (!summary)
     return (
       <EmptyBlock message="No portfolio intelligence record is available yet for this planning instance." />

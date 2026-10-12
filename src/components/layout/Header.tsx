@@ -440,7 +440,7 @@ export function Header({
                 >
                   <div
                     className={cn(
-                      'h-8 w-8 rounded-lg bg-white/70 border border-[var(--border)] flex items-center justify-center shrink-0 mt-0.5',
+                      'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-white/70 text-[var(--foreground)] transition-colors dark:border-white/10 dark:bg-white/10 dark:text-slate-200',
                       isActive &&
                         'dark:bg-[#286CFF]/30 dark:border-[#4F98FF]/50 dark:text-white'
                     )}

@@ -1,10 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, ChevronDown, Clock3, CircleCheckBig, Route, Sparkles, Waypoints } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight, CalendarPlus, Check, ChevronDown, Clock3, CircleCheckBig, RefreshCcw, Route, Search, Sparkles, Waypoints } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { DatePickerField } from '@/components/shared/DatePickerField'
+import { AiSummaryProcessingState } from '@/components/shared/AiPortfolioSummary'
 import { cn } from '@/lib/utils'
 import { useCycle } from '@/context/CycleContext'
+import { useToast } from '@/context/ToastContext'
+import { sendEntityBackToPlanning } from '@/services/smeReviewResetService'
 import { StrategyPageShell, StrategyPill } from './StrategyTeamShell'
 import {
+  getCurrentCycleIdFromStorage,
+  getCycleAiSummaryByCycleId,
+  getEntityAiSummariesByInstanceIds,
+  type EntityAiSummary,
+} from '@/services/entityTrackerAiSummaryService'
+import {
+  DGE_BUDGET_STATUS,
+  DGE_INSTANCE_STATUS,
+  extendDgePortfolioInstances,
   getBudgetStageBucket,
   getDgePortfolioData,
   getInstanceStageFilterLabel,
@@ -13,7 +31,7 @@ import {
 
 const stages = ['All Stages', 'Planning', 'DGE Review', 'Allocation', 'Utilization'] as const
 const stepStages = ['Planning', 'DGE Review', 'Review Completed', 'Allocation', 'Utilization'] as const
-
+type ExtendMode = 'allocation' | 'utilization' | 'sme-review'
 const stepIcons = {
   Planning: Clock3,
   'DGE Review': Route,
@@ -24,6 +42,106 @@ const stepIcons = {
 
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-[#EAF0F6] dark:bg-white/10', className)} />
+}
+
+function getNestedObject(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return null
+    current = (current as Record<string, unknown>)[key]
+  }
+  return current && typeof current === 'object' && !Array.isArray(current) ? current as Record<string, unknown> : null
+}
+
+function getProjectIds(source: Record<string, unknown> | null, path: string[]) {
+  const node = getNestedObject(source, path)
+  const projectIds = node?.project_ids
+  return Array.isArray(projectIds) ? projectIds.filter((item): item is string => typeof item === 'string') : []
+}
+
+function getStringValue(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return ''
+    current = (current as Record<string, unknown>)[key]
+  }
+  return typeof current === 'string' ? current.trim() : ''
+}
+
+function getStringArray(source: Record<string, unknown> | null, path: string[]) {
+  let current: unknown = source
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return []
+    current = (current as Record<string, unknown>)[key]
+  }
+  return Array.isArray(current) ? current.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+}
+
+function getHighlightTemplates(source: Record<string, unknown> | null) {
+  const highlights = source?.cycle_highlights
+  if (!Array.isArray(highlights)) return []
+  const values = getTemplateValueMap(source)
+
+  return highlights
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const highlight = item as Record<string, unknown>
+      const includeWhen = highlight.include_when
+      if (includeWhen && typeof includeWhen === 'object') {
+        const condition = includeWhen as Record<string, unknown>
+        const metric = typeof condition.metric === 'string' ? condition.metric : ''
+        const operator = typeof condition.operator === 'string' ? condition.operator : ''
+        const value = typeof condition.value === 'number' ? condition.value : 0
+        const current = values[metric as keyof typeof values] ?? 0
+        const shouldInclude =
+          operator === '>'
+            ? current > value
+            : operator === '>='
+              ? current >= value
+              : operator === '<'
+                ? current < value
+                : operator === '<='
+                  ? current <= value
+                  : operator === '=='
+                    ? current === value
+                    : true
+        if (!shouldInclude) return null
+      }
+
+      return highlight.text_template
+    })
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+function getTemplateValueMap(source: Record<string, unknown> | null) {
+  const calculationSources = getNestedObject(source, ['calculation_sources'])
+  const planning = getNestedObject(calculationSources, ['planning'])
+  const allocation = getNestedObject(calculationSources, ['allocation'])
+  const utilization = getNestedObject(calculationSources, ['utilization'])
+  const entityIds = calculationSources?.entity_ids
+
+  return {
+    total_entity_count: Array.isArray(entityIds) ? entityIds.length : 0,
+    submitted_to_dge_count: getStringArray(planning, ['submitted_to_dge_entity_ids']).length,
+    not_submitted_to_dge_count: getStringArray(planning, ['not_submitted_to_dge_entity_ids']).length,
+    under_dge_review_count: getStringArray(planning, ['under_dge_review_entity_ids']).length,
+    dge_review_completed_count: getStringArray(planning, ['dge_review_completed_entity_ids']).length,
+    currently_in_allocation_count: getStringArray(allocation, ['currently_in_allocation_entity_ids']).length,
+    allocation_not_started_count: getStringArray(allocation, ['not_started_entity_ids']).length,
+    allocation_in_progress_count: getStringArray(allocation, ['in_progress_entity_ids']).length,
+    allocation_with_approver_count: getStringArray(allocation, ['with_approver_entity_ids']).length,
+    allocation_partially_completed_count: getStringArray(allocation, ['partially_completed_entity_ids']).length,
+    allocation_completed_count: getStringArray(allocation, ['completed_entity_ids']).length,
+    currently_in_utilization_count: getStringArray(utilization, ['currently_in_utilization_entity_ids']).length,
+    utilization_in_progress_count: getStringArray(utilization, ['in_progress_entity_ids']).length,
+    utilization_partially_completed_count: getStringArray(utilization, ['partially_completed_entity_ids']).length,
+    utilization_completed_count: getStringArray(utilization, ['completed_entity_ids']).length,
+  }
+}
+
+function resolveSummaryTemplate(template: string, source: Record<string, unknown> | null) {
+  const values = getTemplateValueMap(source)
+  return template.replace(/\{([^}]+)\}/g, (_, key: string) => String(values[key as keyof typeof values] ?? 0))
 }
 
 function getActiveStepIndex(instance: DgeInstanceRecord) {
@@ -37,8 +155,718 @@ function getActiveStepIndex(instance: DgeInstanceRecord) {
   return 0
 }
 
-function EntityTrackerSummary() {
+function parseDeadlineDate(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+function formatLongDate(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return null
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function getDeadlineDays(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000)
+}
+
+function getEntityDeadline(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Planning') return instance.submissionDate
+  if (phase === 'DGE Review') return instance.allocationStartDate
+  if (phase === 'Allocation') return instance.allocationEndDate
+  if (phase === 'Utilization') return instance.utilizationEndDate
+  return null
+}
+
+function getExtensionCapsuleLabel(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Allocation' && instance.extensionProvidedInAllocation === 2) return 'Allocation Extended'
+  if (phase === 'Utilization' && instance.extensionProvidedInUtilization === 2) return 'Utilization Extended'
+  return null
+}
+
+function getEntityInitials(instance: DgeInstanceRecord) {
+  const source = (instance.entityAbbr || instance.entityName || instance.name).trim()
+  if (!source) return '--'
+
+  const words = source.split(/\s+/).filter(Boolean)
+  if (words.length >= 2) {
+    return `${words[0][0] ?? ''}${words[1][0] ?? ''}`.toUpperCase()
+  }
+
+  return source.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '--'
+}
+
+function getEntityProjectPhaseParam(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+  if (phase === 'Planning') return 'planning'
+  if (phase === 'DGE Review') return 'dge-review'
+  if (phase === 'Allocation') return 'allocation'
+  if (phase === 'Utilization') return 'utilization'
+  return 'planning'
+}
+
+function formatRemaining(days: number | null) {
+  if (days === null) return null
+  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} overdue`
+  return `${days} day${days === 1 ? '' : 's'} remaining`
+}
+
+function formatCurrency(amount: number) {
+  return `AED ${amount.toLocaleString('en-AE')}`
+}
+
+function countStatuses(instance: DgeInstanceRecord, statuses: number[]) {
+  return instance.budgets.filter((budget) => statuses.includes(budget.statuscode)).length
+}
+
+function sumBudgetField(instance: DgeInstanceRecord, field: 'requestedBudget' | 'recommendedBudget' | 'allocatedBudget' | 'utilizedBudget' | 'utilizedBudgetQ1' | 'utilizedBudgetQ2' | 'utilizedBudgetQ3' | 'utilizedBudgetQ4') {
+  return instance.budgets.reduce((sum, budget) => sum + (budget[field] ?? 0), 0)
+}
+
+function getEntityPhaseStats(instance: DgeInstanceRecord) {
+  const phase = getInstanceStageFilterLabel(instance.statuscode)
+
+  if (phase === 'DGE Review') {
+    return [
+      { label: 'Strategic Alignment', value: countStatuses(instance, [DGE_BUDGET_STATUS.underStrategicAlignmentReview]) },
+      { label: 'SME Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underSmeReview]) },
+      { label: 'Quality Check', value: countStatuses(instance, [DGE_BUDGET_STATUS.underQualityCheck]) },
+      { label: 'Director Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underFinalReview]) },
+      { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+    ]
+  }
+
+  if (phase === 'Allocation') {
+    return [
+      { label: 'Allocation In Progress', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationInProgress]) },
+      { label: 'Allocation In Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationInReview]) },
+      { label: 'Allocation Completed', value: countStatuses(instance, [DGE_BUDGET_STATUS.allocationCompleted]) },
+      { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
+    ]
+  }
+
+  if (phase === 'Utilization') {
+    return [
+      { label: 'Recommended Budget', value: formatCurrency(sumBudgetField(instance, 'recommendedBudget')) },
+      { label: 'Allocated Budget', value: formatCurrency(sumBudgetField(instance, 'allocatedBudget')) },
+      { label: 'Utilized Budget', value: formatCurrency(sumBudgetField(instance, 'utilizedBudget')) },
+      { label: 'Q1 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ1')) },
+      { label: 'Q2 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ2')) },
+      { label: 'Q3 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ3')) },
+      { label: 'Q4 Utilization', value: formatCurrency(sumBudgetField(instance, 'utilizedBudgetQ4')) },
+    ]
+  }
+
+  return [
+    { label: 'Draft', value: countStatuses(instance, [DGE_BUDGET_STATUS.draft]) },
+    { label: 'Review', value: countStatuses(instance, [DGE_BUDGET_STATUS.underReviewerReview, DGE_BUDGET_STATUS.reviewerReviewCompleted]) },
+    { label: 'Approval', value: countStatuses(instance, [DGE_BUDGET_STATUS.underApproverReview, DGE_BUDGET_STATUS.approvedByApprover]) },
+    { label: 'Requested Budget', value: formatCurrency(sumBudgetField(instance, 'requestedBudget')) },
+  ]
+}
+
+function getEntityAiInsightRows(summary: EntityAiSummary | null) {
+  const parsed = summary?.parsed
+  if (!parsed) return []
+
+  const highRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'issue_severity', 'high'])
+  const evidenceRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'ai_review_flags', 'evidence_risk'])
+  const strategicRiskProjects = getProjectIds(parsed, ['portfolio_statistics', 'ai_review_flags', 'strategic_alignment_risk'])
+  const clarificationProjects = getProjectIds(parsed, ['portfolio_statistics', 'clarification', 'attention_union'])
+  const recommendedActions = parsed.recommended_next_actions
+  const firstAction =
+    Array.isArray(recommendedActions)
+      ? recommendedActions
+          .map((item) => (item && typeof item === 'object' ? (item as Record<string, unknown>).text : null))
+          .find((text): text is string => typeof text === 'string' && text.trim().length > 0)
+      : null
+
+  return [
+    {
+      label: 'High Severity',
+      projectIds: highRiskProjects,
+      count: highRiskProjects.length,
+      text:
+        highRiskProjects.length > 0
+          ? `${highRiskProjects.length} project${highRiskProjects.length === 1 ? ' has' : 's have'} high-severity AI findings and should be prioritized for governance follow-up.`
+          : 'No high-severity AI findings are currently reported for this entity.',
+    },
+    {
+      label: 'Evidence Risk',
+      projectIds: evidenceRiskProjects,
+      count: evidenceRiskProjects.length,
+      text:
+        evidenceRiskProjects.length > 0
+          ? `${evidenceRiskProjects.length} project${evidenceRiskProjects.length === 1 ? ' has' : 's have'} evidence gaps or weak supporting documentation.`
+          : 'No evidence-risk projects are currently reported for this entity.',
+    },
+    {
+      label: 'Strategic Alignment Risk',
+      projectIds: strategicRiskProjects,
+      count: strategicRiskProjects.length,
+      text:
+        strategicRiskProjects.length > 0
+          ? `${strategicRiskProjects.length} project${strategicRiskProjects.length === 1 ? '' : 's'} may need strategic priority or classification correction.`
+          : 'No strategic alignment risks are currently reported for this entity.',
+    },
+    {
+      label: 'Clarification Attention',
+      projectIds: clarificationProjects,
+      count: clarificationProjects.length,
+      text:
+        clarificationProjects.length > 0
+          ? `${clarificationProjects.length} project${clarificationProjects.length === 1 ? ' has an open or potential clarification' : 's have open or potential clarifications'}.`
+          : 'No clarification attention items are currently reported for this entity.',
+    },
+    firstAction
+      ? {
+          label: 'Recommended Action',
+          projectIds: [] as string[],
+          count: null,
+          text: firstAction,
+        }
+      : null,
+  ].filter((item): item is { label: string; count: number | null; text: string; projectIds: string[] } => Boolean(item))
+}
+
+export function EntityAiPortfolioInsights({
+  entity,
+  summary,
+  loading,
+  error,
+  projectBasePath = '/strategy-team/projects',
+}: {
+  entity: DgeInstanceRecord
+  summary: EntityAiSummary | null
+  loading: boolean
+  error: string | null
+  projectBasePath?: string
+}) {
+  if (summary?.isValid === false) {
+    return (
+      <AiSummaryProcessingState
+        title="AI Portfolio Insights are being calculated"
+        description={`The latest analysis for ${entity.name} is processing. Refresh or return later to view the completed insights.`}
+      />
+    )
+  }
+
+  const rows = getEntityAiInsightRows(summary)
+
+  return (
+    <details className="group/insights rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
+      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#A855F7] [&::-webkit-details-marker]:hidden">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
+          <Sparkles className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-[#0F172A] dark:text-white">AI Portfolio Insights</p>
+            {summary?.name ? (
+              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#A855F7] dark:bg-white/10 dark:text-[#E9D5FF]">
+                {summary.name}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.name}</p>
+        </div>
+        <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-[#A855F7] transition-transform group-open/insights:rotate-180 motion-reduce:transition-none" />
+      </summary>
+
+      <div className="mt-4 space-y-2">
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <SkeletonBlock key={index} className="h-[58px] rounded-[16px] bg-white/80 dark:bg-white/10" />
+          ))
+        ) : error ? (
+          <div className="rounded-[16px] border border-[#FECACA] bg-white px-3 py-2.5 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-white/5 dark:text-[#FCA5A5]">
+            {error}
+          </div>
+        ) : rows.length > 0 ? (
+          rows.slice(0, 5).map((insight) => (
+            <div key={`${insight.label}-${insight.text}`} className="flex items-start gap-2 rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+              <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#A855F7]" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">{insight.label}</p>
+                  {typeof insight.count === 'number' ? (
+                    <span className="rounded-full border border-[#E2E8F0] bg-[#F8FBFF] px-2 py-0.5 text-[11px] font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                      {insight.count}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-0.5 text-sm leading-6 text-[#475569] dark:text-slate-200">{insight.text}</p>
+                {insight.projectIds.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] font-semibold text-[#64748B] dark:text-slate-400">Related Projects</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {[...new Set(insight.projectIds)].map((projectId) => {
+                        const normalizeId = (value: string) => value.trim().replace(/[{}]/g, '').toLowerCase()
+                        const project = entity.budgets.find((budget) =>
+                          normalizeId(budget.id) === normalizeId(projectId) ||
+                          normalizeId(budget.budgetRefId || '') === normalizeId(projectId)
+                        )
+                        return project ? (
+                          <Link key={projectId} to={`${projectBasePath}/${project.id}`} title={project.name} className="rounded-full border border-[#D7E4F4] bg-[#F8FBFF] px-2.5 py-1 text-[11px] font-medium text-[#286CFF] transition-colors hover:border-[#A855F7] hover:text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#BFDBFE] dark:hover:text-[#E9D5FF]">
+                            {project.budgetRefId || project.name}
+                          </Link>
+                        ) : (
+                          <span key={projectId} title="This project is not available in the current entity portfolio." className="rounded-full border border-[#E2E8F0] px-2.5 py-1 text-[11px] text-[#64748B] dark:border-white/10 dark:text-slate-400">{projectId}</span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+            <p className="text-sm font-semibold text-[#0F172A] dark:text-white">No AI summary yet</p>
+            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+              AI portfolio insights have not been generated for this entity yet.
+            </p>
+          </div>
+        )}
+      </div>
+    </details>
+  )
+}
+
+function formatShortDate(value: string | null | undefined) {
+  const date = parseDeadlineDate(value)
+  if (!date) return '-'
+  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function getModeEndDate(instance: DgeInstanceRecord, mode: ExtendMode) {
+  if (mode === 'allocation') return instance.allocationEndDate
+  if (mode === 'utilization') return instance.utilizationEndDate
+  return null
+}
+
+const SME_REVIEW_RESET_STATUSES = new Set<number>([
+  DGE_BUDGET_STATUS.underStrategicAlignmentReview,
+  DGE_BUDGET_STATUS.underSmeReview,
+  DGE_BUDGET_STATUS.strategicPriorityChangeUnderReview,
+])
+
+function canResetSmeReviewEntity(instance: DgeInstanceRecord) {
+  return instance.statuscode === DGE_INSTANCE_STATUS.underDgeReview &&
+    instance.budgets.length > 0 &&
+    instance.budgets.every((budget) => SME_REVIEW_RESET_STATUSES.has(budget.statuscode))
+}
+
+function isNewDateLater(newDate: string, currentDate: string | null | undefined) {
+  const next = parseDeadlineDate(newDate)
+  const current = parseDeadlineDate(currentDate)
+  if (!next || !current) return false
+  return next.getTime() > current.getTime()
+}
+
+function ExtendPortfolioModal({
+  open,
+  onOpenChange,
+  instances,
+  onExtended,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  instances: DgeInstanceRecord[]
+  onExtended: () => Promise<void>
+}) {
+  const { runActionToast } = useToast()
+  const [mode, setMode] = useState<ExtendMode>('allocation')
+  const [newEndDate, setNewEndDate] = useState('')
+  const [reason, setReason] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [validationMessage, setValidationMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setSelectedIds([])
+    setSearchTerm('')
+    setNewEndDate('')
+    setReason('')
+    setValidationMessage(null)
+  }, [mode])
+
+  useEffect(() => {
+    if (!open) {
+      setMode('allocation')
+      setNewEndDate('')
+      setReason('')
+      setSearchTerm('')
+      setSelectedIds([])
+      setValidationMessage(null)
+      setSaving(false)
+    }
+  }, [open])
+
+  const modeInstances = useMemo(
+    () =>
+      instances.filter((instance) =>
+        mode === 'allocation'
+          ? instance.statuscode === DGE_INSTANCE_STATUS.allocation
+          : mode === 'utilization'
+            ? instance.statuscode === DGE_INSTANCE_STATUS.utilization
+            : canResetSmeReviewEntity(instance)
+      ),
+    [instances, mode]
+  )
+
+  const filteredInstances = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+    if (!normalizedSearch) return modeInstances
+    return modeInstances.filter(
+      (instance) =>
+        instance.name.toLowerCase().includes(normalizedSearch) ||
+        instance.entityName.toLowerCase().includes(normalizedSearch) ||
+        instance.entityAbbr.toLowerCase().includes(normalizedSearch)
+    )
+  }, [modeInstances, searchTerm])
+
+  const selectedInstances = useMemo(
+    () => modeInstances.filter((instance) => selectedIds.includes(instance.id)),
+    [modeInstances, selectedIds]
+  )
+
+  const toggleSelected = (instanceId: string) => {
+    setSelectedIds((current) => {
+      if (current.includes(instanceId)) return current.filter((id) => id !== instanceId)
+      return mode === 'sme-review' ? [instanceId] : [...current, instanceId]
+    })
+    setValidationMessage(null)
+  }
+
+  const validate = () => {
+    if (selectedInstances.length === 0) return mode === 'sme-review' ? 'Select an eligible entity to move back to Planning.' : 'Select at least one entity to extend.'
+    if (mode === 'sme-review') return null
+    if (!newEndDate) return `New ${mode === 'allocation' ? 'allocation' : 'utilization'} end date is required.`
+    if (!reason.trim()) return 'Reason is required.'
+
+    const missingCurrentDate = selectedInstances.find((instance) => !getModeEndDate(instance, mode))
+    if (missingCurrentDate) {
+      return `${missingCurrentDate.entityName || missingCurrentDate.name} does not have a current ${mode === 'allocation' ? 'allocation' : 'utilization'} end date.`
+    }
+
+    const invalidDateEntity = selectedInstances.find((instance) => !isNewDateLater(newEndDate, getModeEndDate(instance, mode)))
+    if (invalidDateEntity) {
+      return `New end date must be later than the current end date for ${invalidDateEntity.entityName || invalidDateEntity.name}.`
+    }
+
+    return null
+  }
+
+  const handleSubmit = async () => {
+    const validation = validate()
+    if (validation) {
+      setValidationMessage(validation)
+      return
+    }
+
+    if (mode === 'sme-review') {
+      const selectedInstance = selectedInstances[0]
+      const instanceId = selectedInstance?.id
+      if (!instanceId) {
+        setValidationMessage('The selected entity does not have a valid ICT budget instance ID.')
+        return
+      }
+
+      setSaving(true)
+      try {
+        await runActionToast(
+          async () => {
+            const response = await sendEntityBackToPlanning(instanceId)
+            await onExtended()
+            return response
+          },
+          {
+            processingTitle: 'Moving entity to Planning',
+            processingDescription: `${selectedInstance.entityName || selectedInstance.name} and its projects are being moved back to the Planning stage. This may take a moment.`,
+            successTitle: 'Entity moved to Planning',
+            successDescription: (response) => response,
+            errorTitle: 'Unable to move entity',
+            minDurationMs: 1200,
+          }
+        )
+        onOpenChange(false)
+      } catch (submitError) {
+        setValidationMessage(submitError instanceof Error ? submitError.message : 'Unable to move the entity back to Planning.')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
+    setSaving(true)
+    try {
+      await runActionToast(
+        async () => {
+          await extendDgePortfolioInstances(mode, selectedInstances, newEndDate, reason)
+          await onExtended()
+        },
+        {
+          processingTitle: 'Extending portfolio',
+          processingDescription: `Updating ${selectedInstances.length} ${selectedInstances.length === 1 ? 'entity' : 'entities'}.`,
+          successTitle: 'Portfolio extended',
+          successDescription: `${mode === 'allocation' ? 'Allocation' : 'Utilization'} end date updated successfully.`,
+          errorTitle: 'Extension failed',
+          minDurationMs: 1200,
+        }
+      )
+      onOpenChange(false)
+    } catch (submitError) {
+      setValidationMessage(submitError instanceof Error ? submitError.message : 'Unable to extend portfolio.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const modeLabel = mode === 'allocation' ? 'Allocation' : mode === 'utilization' ? 'Utilization' : 'Under SME Review'
+  const currentDateLabel = mode === 'allocation' ? 'Allocation dates' : 'Utilization dates'
+  const modeOptions: Array<{ id: ExtendMode; label: string; description: string }> = [
+    { id: 'allocation', label: 'Allocation', description: 'Extend allocation end dates' },
+    { id: 'utilization', label: 'Utilization', description: 'Extend utilization end dates' },
+    { id: 'sme-review', label: 'Under SME Review', description: 'Return an eligible entity to Planning' },
+  ]
+
+  return (
+    <Dialog open={open} onOpenChange={saving ? undefined : onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden rounded-[30px] border border-[#D9E6F5] bg-white p-0 shadow-[0_28px_70px_rgba(15,23,42,0.18)] dark:border-white/10 dark:bg-[#162339]">
+        <div className="border-b border-[#EEF3F8] px-6 py-5 dark:border-white/10">
+          <DialogHeader className="pr-12">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EEF5FF] text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
+                <CalendarPlus className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-semibold text-[#0F172A] dark:text-white">Extend Portfolio</DialogTitle>
+                <DialogDescription className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                  Extend an active phase or prepare an eligible SME review portfolio to return to Planning.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+        </div>
+
+        <div className="max-h-[calc(90vh-154px)] overflow-y-auto px-6 py-5">
+          <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+            <div className="space-y-4">
+              <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
+                <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Choose portfolio action</p>
+                <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">Only entities eligible for the selected action will be listed.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                  {modeOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={mode === option.id}
+                      disabled={saving}
+                      onClick={() => setMode(option.id)}
+                      className={cn(
+                        'rounded-2xl border px-3 py-3 text-left transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#286CFF]',
+                        mode === option.id
+                          ? 'border-[#286CFF] bg-white shadow-[0_8px_20px_rgba(40,108,255,0.10)] dark:border-[#4F98FF] dark:bg-[#286CFF]/15'
+                          : 'border-[#DDEBFF] bg-white/60 hover:border-[#9EC1FF] dark:border-white/10 dark:bg-white/5'
+                      )}
+                    >
+                      <span className={cn('block text-xs font-semibold', mode === option.id ? 'text-[#286CFF] dark:text-blue-300' : 'text-[#0F172A] dark:text-white')}>{option.label}</span>
+                      <span className="mt-1 block text-[11px] leading-4 text-[#64748B] dark:text-slate-300">{option.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {mode === 'sme-review' ? (
+                <div className="rounded-[20px] border border-[#E9D5FF] bg-gradient-to-br from-[#FDF8FF] to-white p-4 dark:border-white/10 dark:from-[#2A123D] dark:to-[#162339]">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#F3E8FF] text-[#9333EA] dark:bg-purple-900/30 dark:text-purple-200"><RefreshCcw className="h-4 w-4" /></span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Return to Planning</p>
+                      <p className="mt-1 text-xs leading-5 text-[#64748B] dark:text-slate-300">The selected entity and its projects will be moved back to the Planning draft stage by the upcoming automation.</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <DatePickerField
+                    id="portfolio-extension-date"
+                    label={`New ${modeLabel} End Date`}
+                    value={newEndDate}
+                    required
+                    disabled={saving}
+                    onChange={(value) => {
+                      setNewEndDate(value)
+                      setValidationMessage(null)
+                    }}
+                  />
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-[#0F172A] dark:text-white" htmlFor="portfolio-extension-reason">
+                      Reason <span className="text-[#EA4F49]">*</span>
+                    </label>
+                    <Textarea
+                      id="portfolio-extension-reason"
+                      value={reason}
+                      onChange={(event) => {
+                        setReason(event.target.value)
+                        setValidationMessage(null)
+                      }}
+                      disabled={saving}
+                      placeholder={`Enter ${modeLabel.toLowerCase()} extension reason`}
+                      className="min-h-[150px] rounded-xl"
+                    />
+                  </div>
+                </>
+              )}
+
+              {validationMessage ? (
+                <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+                  {validationMessage}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Entities</p>
+                  <p className="mt-1 text-xs text-[#64748B] dark:text-slate-300">
+                    {selectedInstances.length} selected from {modeInstances.length} eligible {modeLabel.toLowerCase()} entities
+                  </p>
+                </div>
+                <div className="relative sm:w-[260px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
+                  <Input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search entity..."
+                    disabled={saving}
+                    className="h-10 rounded-xl pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {filteredInstances.length === 0 ? (
+                  <div className="rounded-[18px] border border-dashed border-[#CFE0F5] bg-[#F8FBFF] px-4 py-8 text-center text-sm text-[#64748B] dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                    No {modeLabel.toLowerCase()} entities found.
+                  </div>
+                ) : (
+                  filteredInstances.map((instance) => {
+                    const selected = selectedIds.includes(instance.id)
+                    return (
+                      <button
+                        key={instance.id}
+                        type="button"
+                        onClick={() => toggleSelected(instance.id)}
+                        disabled={saving}
+                        className={cn(
+                          'flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left transition-colors',
+                          selected
+                            ? 'border-[#286CFF] bg-[#EEF5FF] dark:border-[#4F98FF] dark:bg-[#286CFF]/15'
+                            : 'border-[#EAF0F6] bg-white hover:border-[#BFD8FF] hover:bg-[#F8FBFF] dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border leading-none',
+                            selected ? 'border-[#286CFF] bg-[#286CFF] text-white' : 'border-[#CBD5E1] bg-white dark:bg-[#162339]'
+                          )}
+                        >
+                          {selected ? <Check className="block h-3.5 w-3.5" strokeWidth={3} /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{instance.entityName || instance.name}</span>
+                            <StrategyPill tone={mode === 'allocation' ? 'amber' : mode === 'utilization' ? 'teal' : 'violet'}>{instance.statusLabel}</StrategyPill>
+                          </span>
+                          {mode === 'sme-review' ? (
+                            <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                              {instance.entityAbbr || instance.name.slice(0, 3).toUpperCase()} {' / '}{instance.budgets.length} eligible project{instance.budgets.length === 1 ? '' : 's'}
+                            </span>
+                          ) : (
+                          <span className="mt-1 block text-xs leading-5 text-[#64748B] dark:text-slate-300">
+                            {instance.entityAbbr || instance.name.slice(0, 3).toUpperCase()} · {currentDateLabel}:{' '}
+                            {mode === 'allocation'
+                              ? `${formatShortDate(instance.allocationStartDate)} to ${formatShortDate(instance.allocationEndDate)}`
+                              : `${formatShortDate(instance.utilizationStartDate)} to ${formatShortDate(instance.utilizationEndDate)}`}
+                          </span>
+                          )}
+                        </span>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="border-t border-[#EEF3F8] px-6 py-4 dark:border-white/10">
+          <Button variant="outline" className="rounded-2xl border-[#D7E4F4] text-[#286CFF]" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button className="rounded-2xl" onClick={() => void handleSubmit()} disabled={saving}>
+            {saving ? (mode === 'sme-review' ? 'Moving...' : 'Saving...') : mode === 'sme-review' ? 'Move to Planning' : `Extend ${modeLabel}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function EntityTrackerSummary({
+  summary,
+  loading,
+  error,
+}: {
+  summary: EntityAiSummary | null
+  loading: boolean
+  error: string | null
+}) {
   const [expanded, setExpanded] = useState(false)
+
+  if (summary?.isValid === false) {
+    return (
+      <AiSummaryProcessingState
+        title="AI Entity Tracker Summary is being calculated"
+        description="The latest cycle-level entity analysis is processing. Refresh or return later to view the completed summary."
+      />
+    )
+  }
+
+  const parsed = summary?.parsed ?? null
+  const executiveSummaryTemplate = getStringValue(parsed, ['cycle_summary', 'executive_summary_template'])
+  const executiveSummary = executiveSummaryTemplate
+    ? resolveSummaryTemplate(executiveSummaryTemplate, parsed)
+    : 'Portfolio-level progress across every participating entity, with stage pressure, routing signals, and governance focus.'
+  const highlights = getHighlightTemplates(parsed)
+  const resolvedHighlights =
+    highlights.length > 0
+      ? highlights.map((item) => resolveSummaryTemplate(item, parsed))
+      : [
+          getStringValue(parsed, ['cycle_summary', 'planning_summary_template']),
+          getStringValue(parsed, ['cycle_summary', 'allocation_summary_template']),
+          getStringValue(parsed, ['cycle_summary', 'utilization_summary_template']),
+        ].filter(Boolean).map((item) => resolveSummaryTemplate(item, parsed))
+  const recommendedActions = getStringArray(parsed, ['recommended_next_actions']).map((item) => resolveSummaryTemplate(item, parsed))
+  const displayItems = [...resolvedHighlights, ...recommendedActions].filter(Boolean)
+
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
       <button
@@ -54,11 +882,11 @@ function EntityTrackerSummary() {
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[16px] font-semibold text-[#0F172A] dark:text-white">AI Entity Tracker Summary</h2>
               <span className="inline-flex rounded-full bg-[#F5EEFF] px-2.5 py-1 text-xs font-semibold text-[#A855F7] dark:bg-[#A855F7]/15 dark:text-[#E9D5FF]">
-                Governing View
+                {loading ? 'Loading' : summary?.name ?? 'Governing View'}
               </span>
             </div>
             <p className="mt-1 text-sm leading-6 text-[#475569] dark:text-slate-100">
-              Portfolio-level progress across every participating entity, with stage pressure, routing signals, and governance focus.
+              {loading ? 'Loading latest AI cycle summary...' : error ? 'Unable to load AI cycle summary right now.' : executiveSummary}
             </p>
           </div>
         </div>
@@ -67,17 +895,32 @@ function EntityTrackerSummary() {
 
       {expanded ? (
         <div className="border-t border-[#DDEBFF] px-6 py-5 dark:border-white/10">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {[
-              'Planning pressure remains highest where ADGE submissions are still incomplete.',
-              'Entities already in DGE review should be watched for routing and clarification bottlenecks.',
-              'Allocation and utilization readiness depends on how smoothly projects clear review completed status.',
-            ].map((item) => (
-              <div key={item} className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                {item}
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <SkeletonBlock key={index} className="h-24 rounded-[18px] bg-[#FDF8FF] dark:bg-white/10" />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] p-4 text-sm leading-6 text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
+              {error}
+            </div>
+          ) : displayItems.length > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {displayItems.slice(0, 6).map((item) => (
+                <div key={item} className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 text-sm leading-6 text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                  {item}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[18px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-white/5">
+              <p className="text-sm font-semibold text-[#0F172A] dark:text-white">No AI cycle summary yet</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-300">
+                AI Entity Tracker Summary has not been generated for the selected cycle yet.
+              </p>
+            </div>
+          )}
         </div>
       ) : null}
     </section>
@@ -155,13 +998,13 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
   return (
     <div className="space-y-4">
       <div className="rounded-[20px] border border-[#DDEBFF] bg-white px-4 py-4 dark:border-white/10 dark:bg-[#1E293B]">
-        <div className="flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <ol className="grid min-w-0 grid-cols-1 sm:grid-cols-5">
           {stepStages.map((stage, index) => {
             const StageIcon = stepIcons[stage]
             const active = index <= activeIndex
             return (
-              <div key={stage} className="flex min-w-0 flex-1 items-center">
-                <div className="flex min-w-0 flex-1 items-center gap-3">
+              <li key={stage} aria-current={index === activeIndex ? 'step' : undefined} className="relative min-w-0 pb-6 last:pb-0 sm:pb-0">
+                <div className="relative z-10 flex min-w-0 items-center gap-3 sm:flex-col sm:gap-2 sm:px-2">
                   <div
                     className={cn(
                       'flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-sm font-bold transition-all duration-200',
@@ -172,23 +1015,21 @@ function EntityStageTracker({ instance }: { instance: DgeInstanceRecord }) {
                   >
                     <StageIcon className="h-4.5 w-4.5" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{stage}</p>
-                    <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-400">{active ? 'Active' : 'Upcoming'}</p>
+                  <div className="min-w-0 sm:w-full sm:text-center">
+                    <p className="whitespace-normal break-words text-sm font-semibold leading-5 text-[#0F172A] dark:text-white">{stage}</p>
                   </div>
                 </div>
                 {index < stepStages.length - 1 ? (
-                  <div className="mx-2 h-0.5 min-w-[18px] flex-1 overflow-hidden rounded-full bg-[#EEF3F8] dark:bg-white/10">
+                  <div aria-hidden="true" className="absolute bottom-0 left-5 top-10 w-0.5 -translate-x-1/2 rounded-full bg-[#EEF3F8] dark:bg-white/10 sm:bottom-auto sm:left-[calc(50%+20px)] sm:top-5 sm:h-0.5 sm:w-[calc(100%-40px)] sm:translate-x-0">
                     <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{ width: index < activeIndex ? '100%' : '0%', backgroundColor: '#286CFF' }}
+                      className={cn('h-full w-full rounded-full bg-[#286CFF] transition-opacity duration-300', index < activeIndex ? 'opacity-100' : 'opacity-0')}
                     />
                   </div>
                 ) : null}
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ol>
       </div>
 
       <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-white/5">
@@ -246,37 +1087,74 @@ export default function EntityTracker() {
   const { selectedCycle } = useCycle()
   const [activeStage, setActiveStage] = useState<(typeof stages)[number]>('All Stages')
   const [instances, setInstances] = useState<DgeInstanceRecord[]>([])
+  const [aiSummariesByInstance, setAiSummariesByInstance] = useState<Map<string, EntityAiSummary>>(new Map())
+  const [aiSummariesLoading, setAiSummariesLoading] = useState(false)
+  const [aiSummariesError, setAiSummariesError] = useState<string | null>(null)
+  const [cycleAiSummary, setCycleAiSummary] = useState<EntityAiSummary | null>(null)
+  const [cycleAiSummaryLoading, setCycleAiSummaryLoading] = useState(false)
+  const [cycleAiSummaryError, setCycleAiSummaryError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [extendModalOpen, setExtendModalOpen] = useState(false)
+
+  const loadPortfolio = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!selectedCycle?.id) {
+      setInstances([])
+      setAiSummariesByInstance(new Map())
+      setAiSummariesError(null)
+      setAiSummariesLoading(false)
+      setCycleAiSummary(null)
+      setCycleAiSummaryError(null)
+      setCycleAiSummaryLoading(false)
+      setLoading(false)
+      return
+    }
+
+    if (!options.silent) setLoading(true)
+    setError(null)
+    try {
+      const portfolio = await getDgePortfolioData(selectedCycle.id)
+      setInstances(portfolio.instances)
+      setAiSummariesLoading(true)
+      setCycleAiSummaryLoading(true)
+      setAiSummariesError(null)
+      setCycleAiSummaryError(null)
+      try {
+        const cycleId = getCurrentCycleIdFromStorage() ?? selectedCycle.id
+        const [summaries, cycleSummary] = await Promise.all([
+          getEntityAiSummariesByInstanceIds(portfolio.instances.map((instance) => instance.id)),
+          getCycleAiSummaryByCycleId(cycleId),
+        ])
+        setAiSummariesByInstance(summaries)
+        setCycleAiSummary(cycleSummary)
+      } catch (summaryError) {
+        setAiSummariesByInstance(new Map())
+        setCycleAiSummary(null)
+        setAiSummariesError(summaryError instanceof Error ? summaryError.message : 'Unable to load AI portfolio insights.')
+        setCycleAiSummaryError(summaryError instanceof Error ? summaryError.message : 'Unable to load AI entity tracker summary.')
+      } finally {
+        setAiSummariesLoading(false)
+        setCycleAiSummaryLoading(false)
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker data.')
+      setAiSummariesByInstance(new Map())
+      setAiSummariesError(null)
+      setAiSummariesLoading(false)
+      setCycleAiSummary(null)
+      setCycleAiSummaryError(null)
+      setCycleAiSummaryLoading(false)
+    } finally {
+      if (!options.silent) setLoading(false)
+    }
+  }, [selectedCycle?.id])
 
   useEffect(() => {
     let cancelled = false
 
     const load = async () => {
-      if (!selectedCycle?.id) {
-        if (!cancelled) {
-          setInstances([])
-          setLoading(false)
-        }
-        return
-      }
-
-      setLoading(true)
-      setError(null)
-      try {
-        const portfolio = await getDgePortfolioData(selectedCycle.id)
-        if (!cancelled) {
-          setInstances(portfolio.instances)
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load entity tracker data.')
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
+      if (cancelled) return
+      await loadPortfolio()
     }
 
     void load()
@@ -284,7 +1162,7 @@ export default function EntityTracker() {
     return () => {
       cancelled = true
     }
-  }, [selectedCycle?.id])
+  }, [loadPortfolio])
 
   const stageCounts = useMemo(
     () =>
@@ -311,9 +1189,19 @@ export default function EntityTracker() {
       eyebrow="ICT - Strategy Team"
       title="Entity Tracker"
       description="Portfolio-level monitoring for every participating government entity across the budgeting cycle."
+      actions={
+        <Button className="h-11 rounded-2xl shadow-none" onClick={() => setExtendModalOpen(true)}>
+          <CalendarPlus className="h-4 w-4" />
+          Extend Portfolio
+        </Button>
+      }
     >
       <section className="space-y-5">
-        <EntityTrackerSummary />
+        <EntityTrackerSummary
+          summary={cycleAiSummary}
+          loading={cycleAiSummaryLoading}
+          error={cycleAiSummaryError}
+        />
         {error ? (
           <div className="rounded-[18px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B91C1C] dark:border-[#7F1D1D] dark:bg-[#3A1717] dark:text-[#FCA5A5]">
             {error}
@@ -354,6 +1242,13 @@ export default function EntityTracker() {
               const reviewCompletedCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'reviewCompleted').length
               const allocationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'allocation').length
               const utilizationCount = entity.budgets.filter((budget) => getBudgetStageBucket(budget) === 'utilization').length
+              const deadline = getEntityDeadline(entity)
+              const deadlineLabel = formatLongDate(deadline)
+              const remainingDays = getDeadlineDays(deadline)
+              const remainingLabel = formatRemaining(remainingDays)
+              const extensionCapsuleLabel = getExtensionCapsuleLabel(entity)
+              const phaseStats = getEntityPhaseStats(entity)
+              const entityBudgetUrl = `/strategy-team/projects?entity=${encodeURIComponent(entity.entityName || entity.name)}&phase=${getEntityProjectPhaseParam(entity)}`
 
               return (
                 <Card
@@ -365,14 +1260,34 @@ export default function EntityTracker() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#EEF5FF] text-sm font-bold text-[#286CFF] dark:bg-[#286CFF]/15 dark:text-[#BFDBFE]">
-                            {entity.entityAbbr || entity.name.slice(0, 3).toUpperCase()}
+                            {getEntityInitials(entity)}
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="truncate text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
+                              <p className="min-w-0 max-w-full [overflow-wrap:anywhere] text-lg font-bold text-[#0F172A] dark:text-white">{entity.name}</p>
                               <StrategyPill tone={entity.statusLabel === 'Planning' ? 'blue' : entity.statusLabel === 'Under DGE Review' ? 'violet' : entity.statusLabel === 'Allocation' ? 'amber' : 'teal'}>
                                 {entity.statusLabel}
                               </StrategyPill>
+                              <span className="inline-flex items-center rounded-full border border-[#DDEBFF] bg-[#F8FBFF] px-2.5 py-1 text-xs font-semibold text-[#475569] dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+                                End date: {deadlineLabel ?? 'Deadline not set'}
+                              </span>
+                              {remainingLabel ? (
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold',
+                                    remainingDays !== null && remainingDays < 0
+                                      ? 'bg-[#FEF2F2] text-[#B91C1C] dark:bg-[#7F1D1D]/30 dark:text-[#FCA5A5]'
+                                      : 'bg-[#ECFDF5] text-[#047857] dark:bg-emerald-900/20 dark:text-emerald-300'
+                                  )}
+                                >
+                                  {remainingLabel}
+                                </span>
+                              ) : null}
+                              {extensionCapsuleLabel ? (
+                                <span className="inline-flex items-center rounded-full bg-[#F5EEFF] px-2.5 py-1 text-xs font-semibold text-[#9333EA] dark:bg-[#9333EA]/15 dark:text-[#E9D5FF]">
+                                  {extensionCapsuleLabel}
+                                </span>
+                              ) : null}
                             </div>
                             <p className="text-xs text-[#64748B] dark:text-slate-300">
                               {entity.planningStartDate?.slice(0, 10) || '-'} to {entity.planningEndDate?.slice(0, 10) || '-'}
@@ -380,48 +1295,48 @@ export default function EntityTracker() {
                           </div>
                         </div>
                       </div>
-                      <button
-                        type="button"
+                      <Link
+                        to={entityBudgetUrl}
                         className="inline-flex items-center gap-2 rounded-2xl bg-[#286CFF] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1F5BFF]"
                       >
                         View Entity Budgets
                         <ArrowRight className="h-4 w-4" />
-                      </button>
+                      </Link>
                     </div>
 
                     <div className="border-t border-[#EEF3F8] px-5 py-5 dark:border-white/10">
-                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                        {[
-                          { label: 'Budget Items', value: entity.budgets.length },
-                          { label: 'Requested Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.requestedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Recommended Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.recommendedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Allocation Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.allocatedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Utilization Budget', value: `AED ${entity.budgets.reduce((sum, budget) => sum + budget.utilizedBudget, 0).toLocaleString('en-AE')}` },
-                          { label: 'Pending ADGE Clarification', value: entity.budgets.filter((budget) => budget.statuscode === 776140010).length },
-                        ].map((item) => (
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        {phaseStats.map((item) => (
                           <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-[#F8FBFF] px-4 py-3 dark:border-white/10 dark:bg-white/5">
                             <p className="text-[12px] font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
-                            <p className="mt-2 text-sm font-bold text-[#0F172A] dark:text-white">{item.value}</p>
+                            <p className="mt-2 text-sm font-semibold text-[#0F172A] dark:text-white">{item.value}</p>
                           </div>
                         ))}
                       </div>
 
                       <div className="mt-4">
+                        {getInstanceStageFilterLabel(entity.statuscode) === 'Utilization' && (
+                          <p className="mb-3 text-xs text-[#64748B] dark:text-slate-400">
+                            Utilization Entered: {entity.budgets.filter((budget) => budget.utilizedBudget > 0 || budget.statuscode === DGE_BUDGET_STATUS.utilizationCompleted).length} / {entity.budgets.length} Projects
+                          </p>
+                        )}
                         <EntityStageTracker instance={entity} />
                       </div>
 
-                      <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.95fr]">
-                        <div className="rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
-                          <div className="flex items-center gap-2">
+                      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1fr_0.95fr]">
+                        <details className="group/summary rounded-[20px] border border-[#DDEBFF] bg-[#F8FBFF] p-4 dark:border-white/10 dark:bg-[#1E293B]">
+                          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#286CFF] [&::-webkit-details-marker]:hidden">
                             <Clock3 className="h-4.5 w-4.5 text-[#286CFF]" />
                             <p className="text-sm font-semibold text-[#0F172A] dark:text-white">Portfolio Summary</p>
-                          </div>
+                            <ChevronDown aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-[#286CFF] transition-transform group-open/summary:rotate-180 motion-reduce:transition-none" />
+                          </summary>
                           <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             {[
                               { label: 'Planning', value: planningRisk },
                               { label: 'DGE Review', value: dgeReviewCount },
                               { label: 'Review Completed', value: reviewCompletedCount },
-                              { label: 'Allocation / Utilization', value: allocationCount + utilizationCount },
+                              { label: 'Allocation', value: allocationCount },
+                              { label: 'Utilization', value: utilizationCount },
                             ].map((item) => (
                               <div key={item.label} className="rounded-[18px] border border-[#EAF0F6] bg-white p-3 dark:border-white/10 dark:bg-white/5">
                                 <p className="text-[12px] font-medium text-[#64748B] dark:text-slate-300">{item.label}</p>
@@ -429,31 +1344,14 @@ export default function EntityTracker() {
                               </div>
                             ))}
                           </div>
-                        </div>
+                        </details>
 
-                        <div className="rounded-[20px] border border-[#E9D5FF] bg-[#FDF8FF] p-4 dark:border-white/10 dark:bg-[#2A123D]">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#A855F7] text-white shadow-[0_12px_24px_rgba(168,85,247,0.24)]">
-                              <Sparkles className="h-4 w-4" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[#0F172A] dark:text-white">AI Portfolio Insights</p>
-                              <p className="text-xs text-[#64748B] dark:text-slate-300">{entity.name}</p>
-                            </div>
-                          </div>
-                          <div className="mt-4 space-y-2">
-                            {[
-                              `${planningRisk} projects are still in planning-side workflow states.`,
-                              `${dgeReviewCount} projects remain active in DGE review stages for this entity.`,
-                              `${reviewCompletedCount} projects have cleared DGE review and are ready for the next stage.`,
-                            ].map((insight) => (
-                              <div key={insight} className="flex items-start gap-2 rounded-[16px] border border-[#E9D5FF] bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#A855F7]" />
-                                <p className="text-sm leading-6 text-[#475569] dark:text-slate-200">{insight}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
+                        <EntityAiPortfolioInsights
+                          entity={entity}
+                          summary={aiSummariesByInstance.get(entity.id) ?? null}
+                          loading={aiSummariesLoading}
+                          error={aiSummariesError}
+                        />
                       </div>
                     </div>
                   </CardContent>
@@ -463,6 +1361,12 @@ export default function EntityTracker() {
           )}
         </div>
       </section>
+      <ExtendPortfolioModal
+        open={extendModalOpen}
+        onOpenChange={setExtendModalOpen}
+        instances={instances}
+        onExtended={() => loadPortfolio({ silent: true })}
+      />
     </StrategyPageShell>
   )
 }

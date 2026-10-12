@@ -124,6 +124,13 @@
           "x-ms-schema-name": "dga_planned_start_date",
           "required": true
         },
+        "dga_sme_review_phase_end_date": {
+          "type": "string",
+          "title": "SME Review Phase End Date",
+          "x-ms-dataverse-attribute": "dga_sme_review_phase_end_date",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "dga_sme_review_phase_end_date"
+        },
         "importsequencenumber": {
           "type": "string",
           "title": "Import Sequence Number",

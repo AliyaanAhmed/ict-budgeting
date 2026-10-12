@@ -91,6 +91,7 @@ export interface PortfolioSummaryPayload {
 export interface PortfolioSummaryRecord {
   id: string
   instanceId: string
+  isValid: boolean
   modifiedOn: string | null
   responseJson: string
   parsedSummary: PortfolioSummaryPayload | null
@@ -456,6 +457,29 @@ export function getPortfolioProjectInsight(
   }
 }
 
+export function getPortfolioRoleStatusSummary(
+  summary: PortfolioSummaryPayload | null | undefined,
+  role: PortfolioRole
+) {
+  const statuses = summary?.calculation_sources?.status_project_ids
+  if (!statuses) return ''
+
+  const count = (status: string) => new Set(
+    (statuses[status] ?? []).filter((id) => typeof id === 'string' && id.trim())
+      .map((id) => id.trim().toUpperCase())
+  ).size
+  const projects = (value: number) => `${value} project${value === 1 ? '' : 's'}`
+
+  switch (role) {
+    case 'respondent':
+      return `You have ${projects(count('Draft'))} in Draft and ${projects(count('Clarification Pending'))} with clarifications pending.`
+    case 'reviewer':
+      return `You have ${projects(count('Under Reviewer Review'))} under review and ${projects(count('Reviewer Review Completed'))} reviewed but not yet routed to the approver.`
+    case 'approver':
+      return `You have ${projects(count('Under Approver Review'))} pending with you and ${projects(count('Approved by Approver'))} approved by you.`
+  }
+}
+
 export function getPortfolioCounts(summary: PortfolioSummaryPayload | null | undefined) {
   const clarification = getClarificationGroups(summary)
   return {
@@ -515,6 +539,7 @@ export async function getLatestPortfolioSummaryByCurrentInstance() {
     select: [
       'dga_ict_ai_summaryid',
       'dga_response_json',
+      'dga_is_valid',
       'dga_summary_category',
       'dga_summary_stage',
       'dga_summary_type',
@@ -537,6 +562,7 @@ export async function getLatestPortfolioSummaryByCurrentInstance() {
   return {
     id: record.dga_ict_ai_summaryid,
     instanceId,
+    isValid: record.dga_is_valid === true,
     modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     responseJson,
     parsedSummary: responseJson ? parsePortfolioSummaryData(responseJson) : null,
@@ -551,6 +577,7 @@ export async function getLatestPlanningPortfolioSummaryByCurrentInstance() {
     select: [
       'dga_ict_ai_summaryid',
       'dga_response_json',
+      'dga_is_valid',
       'dga_summary_category',
       'dga_summary_stage',
       'dga_summary_type',
@@ -575,6 +602,7 @@ export async function getLatestPlanningPortfolioSummaryByCurrentInstance() {
   return {
     id: record.dga_ict_ai_summaryid,
     instanceId,
+    isValid: record.dga_is_valid === true,
     modifiedOn: typeof record.modifiedon === 'string' ? record.modifiedon : null,
     responseJson,
     parsedSummary: responseJson ? parsePortfolioSummaryData(responseJson) : null,

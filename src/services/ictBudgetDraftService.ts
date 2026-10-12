@@ -58,6 +58,7 @@ export interface RetrievedIctBudgetDraft {
   reviewerName: string | null
   approverName: string | null
   smeReviewerTeamId: string | null
+  projectPortfolioForDge: string | null
   recommendedLabel: string | null
   addedInAllocation: number | null
   planningOutcome: number | null
@@ -382,6 +383,7 @@ function mapRetrievedBudgetRecord(
     addedInAllocation: record.dga_added_in_allocation ?? null,
     planningOutcome: record.dga_planning_outcome ?? null,
     allocationOutcome: record.dga_allocation_outcome ?? null,
+    projectPortfolioForDge: record.dga_project_portfolio_for_dge ?? null,
     recommendedLabel:
       getFormattedAnnotation(
         record,
@@ -509,6 +511,7 @@ export async function getIctBudgetDraftById(
         'dga_status_for_adge',
         'dga_added_in_allocation',
         'dga_planning_outcome',
+        'dga_project_portfolio_for_dge',
         'dga_recommended',
         'dga_rejection_reason',
         'dga_rejection_justification',

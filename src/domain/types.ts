@@ -24,6 +24,7 @@ export interface ReviewQueueProject {
   submittedDate: string
   submittedDateRaw: string
   updatedDate: string
+  smeReviewScore?: number | null
   aiScore: number
   aiConfidence: number
   clarificationWith?: string
@@ -85,4 +86,5 @@ export interface ClarificationPayload {
 export interface RoleProjectFilters {
   search?: string
   status?: ProjectStatus[]
+  instanceId?: string | null
 }

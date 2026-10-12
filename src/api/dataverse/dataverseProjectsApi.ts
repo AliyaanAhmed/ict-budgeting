@@ -54,6 +54,7 @@ const ICT_BUDGET_SELECT_FIELDS = [
   'dga_total_budget_utilized',
   'dga_planning_outcome',
   'dga_added_in_allocation',
+  'dga_sme_review_score',
   'dga_ai_confidence_score',
   'createdon',
   'modifiedon',
@@ -421,6 +422,7 @@ function mapBudgetRecordToProject(
     summary: toPlainTextSummary(record.dga_summary),
     documents: [],
     clarifications,
+    smeReviewScore: typeof record.dga_sme_review_score === 'number' ? record.dga_sme_review_score : null,
     aiScore: typeof record.dga_ai_confidence_score === 'number' ? record.dga_ai_confidence_score : 0,
     riskLevel: portfolioInsight.riskLevel,
     capex: 0,
@@ -442,13 +444,13 @@ function applyFilters(items: Project[], filters?: RoleProjectFilters) {
   })
 }
 
-async function getAllBudgetProjects() {
+async function getAllBudgetProjects(instanceId?: string | null) {
   const portfolioSummary =
     (await getLatestPlanningPortfolioSummaryByCurrentInstance()) ??
     (await getLatestPortfolioSummaryByCurrentInstance())
   const result = await Dga_ict_budgetsService.getAll({
     select: [...ICT_BUDGET_SELECT_FIELDS],
-    filter: getInstanceFilter(),
+    filter: getInstanceFilter(instanceId),
     orderBy: ['modifiedon desc'],
   })
 
@@ -477,8 +479,8 @@ function escapeODataString(value: string) {
   return value.replace(/'/g, "''")
 }
 
-function getInstanceFilter(): string | undefined {
-  const id = sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
+function getInstanceFilter(instanceId?: string | null): string | undefined {
+  const id = instanceId ?? sessionStorage.getItem(SESSION_INSTANCE_ID_KEY)
   return id ? `_dga_ict_budget_instance_value eq ${id}` : undefined
 }
 
@@ -490,15 +492,15 @@ function combineFilters(...parts: (string | undefined)[]): string | undefined {
 
 export const dataverseProjectsApi: ProjectsApi = {
   async getRespondentProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getReviewerProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getApproverProjects(filters?: RoleProjectFilters) {
-    return applyFilters(await getAllBudgetProjects(), filters)
+    return applyFilters(await getAllBudgetProjects(filters?.instanceId), filters)
   },
 
   async getProjectById(projectId: string) {

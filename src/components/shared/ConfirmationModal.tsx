@@ -46,7 +46,7 @@ export function ConfirmationModal({
 
         {/* Header */}
         <div
-          className="px-6 py-5 border-b dark:border-white/10"
+          className="border-b px-6 py-5 pr-20 dark:border-white/10"
           style={{ background: headerBg, borderBottomColor: headerBorder }}
         >
           <div className="flex items-start gap-4">
