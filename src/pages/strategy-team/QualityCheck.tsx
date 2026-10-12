@@ -459,6 +459,12 @@ export default function QualityCheck() {
             const confidenceColor = !hasConfidence ? 'text-[#64748B] dark:text-slate-300' : confidence >= 80 ? 'text-[#059669] dark:text-emerald-300' : confidence >= 60 ? 'text-[#D97706] dark:text-amber-300' : 'text-[#DC2626] dark:text-red-300'
             const hasScore = typeof item.smeReviewScore === 'number' && Number.isFinite(item.smeReviewScore)
             const decisionMatch = canShowStrategyAiRecommendation(item.statuscode) ? getSmeDecisionMatch(item.projectPortfolioForDge, item.recommended) : 'unavailable'
+            const visibleBudgetTotals = [
+              { label: 'Requested Budget', amount: item.requestedBudget, color: 'text-[#286CFF]' },
+              ...(item.recommendedBudget > 0 ? [{ label: 'Recommended Budget', amount: item.recommendedBudget, color: 'text-[#9333EA]' }] : []),
+              ...(item.allocatedBudget > 0 ? [{ label: 'Allocated Budget', amount: item.allocatedBudget, color: 'text-[#0F9D8A]' }] : []),
+              ...(item.utilizedBudget > 0 ? [{ label: 'Utilized Budget', amount: item.utilizedBudget, color: 'text-[#D97706]' }] : []),
+            ]
             const isDirectorClarification = directorClarificationBudgetIds.has(item.id)
             const isDirectorClarificationAssignedToStrategy =
               isDirectorClarification &&
@@ -488,10 +494,14 @@ export default function QualityCheck() {
                         {item.budgetRefId} · {item.entityName || item.instanceName || 'Unknown Entity'}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-4">
-                      <div className="text-left lg:text-right">
-                        <CurrencyAmount amount={item.recommendedBudget || item.requestedBudget} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
-                        <p className="text-xs text-[#64748B] dark:text-slate-300">Recommended Budget</p>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-4">
+                      <div className={`grid gap-x-4 gap-y-2 ${visibleBudgetTotals.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                        {visibleBudgetTotals.map((total) => (
+                          <div key={total.label} className="min-w-[112px] text-left lg:text-right">
+                            <CurrencyAmount amount={total.amount} className="text-xl font-bold text-[#0F172A] dark:text-white" iconSize={16} />
+                            <p className={`mt-1 text-[11px] font-semibold ${total.color}`}>{total.label}</p>
+                          </div>
+                        ))}
                       </div>
                       <div className="flex items-center gap-2.5 border-l border-[#E2E8F0] pl-4 dark:border-white/10">
                         <div

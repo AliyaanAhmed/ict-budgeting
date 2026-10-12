@@ -8738,7 +8738,23 @@ export default function ProjectDetail() {
                         label="Recommended"
                         labelAdornment={
                           showSmeAiRecommendation
-                            ? <SmeAiRecommendation raw={projectPortfolioForDge} />
+                            ? (
+                              <SmeAiRecommendation
+                                raw={projectPortfolioForDge}
+                                applyInPopup={isEditMode}
+                                onApply={isEditMode
+                                  ? (suggestion) => {
+                                    setFormValues((prev) => ({
+                                      ...prev,
+                                      recommended: suggestion.recommended,
+                                      rejectionReason: suggestion.recommended === 1 ? prev.rejectionReason : null,
+                                      rejectionJustification: suggestion.recommended === 1 ? prev.rejectionJustification : '',
+                                      rejectedById: suggestion.recommended === 1 ? prev.rejectedById : '',
+                                    }))
+                                  }
+                                  : undefined}
+                              />
+                            )
                             : undefined
                         }
                       >

@@ -3,6 +3,7 @@ import { Dga_ict_budget_instancesService } from '@/generated/services/Dga_ict_bu
 import type { Dga_ict_budgetsdga_ai_flags } from '@/generated/models/Dga_ict_budgetsModel'
 import { getStoredCurrentSme, getStoredSmeAssignments, type DgeSmeAssignment } from '@/services/dgeRoleContextService'
 import { getBudgetOverviewRecordsByBudgetIds } from '@/services/documentAiSummaryStoreService'
+import { getAiPortfolioRecommendedBudget } from '@/services/smeAiRecommendation'
 
 export const DGE_BUDGET_STATUS = {
   draft: 1,
@@ -267,7 +268,9 @@ function mapBudgetRecord(record: Awaited<ReturnType<typeof Dga_ict_budgetsServic
     previousStrategicPriorityClassificationId: record._dga_previous_strategic_priorityclassification_value ?? null,
     previousStrategicPriorityClassificationName,
     requestedBudget: Number(record.dga_total_budget_requested ?? 0),
-    recommendedBudget: Number(record.dga_total_budget_recommended ?? 0),
+    recommendedBudget: record.dga_total_budget_recommended != null
+      ? Number(record.dga_total_budget_recommended)
+      : (getAiPortfolioRecommendedBudget(record.dga_project_portfolio_for_dge) ?? 0),
     recommended: record.dga_recommended ?? null,
     rejectionReason: record.dga_rejection_reason ?? null,
     projectPortfolioForDge: record.dga_project_portfolio_for_dge ?? null,

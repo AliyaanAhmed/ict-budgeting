@@ -220,6 +220,12 @@ export default function StrategyDirectorQualityCheckTracker() {
                   const decisionMatch = canShowStrategyAiRecommendation(budget.statuscode)
                     ? getSmeDecisionMatch(budget.projectPortfolioForDge, budget.recommended)
                     : 'unavailable'
+                  const visibleBudgetTotals = [
+                    { label: 'Requested Budget', amount: budget.requestedBudget, color: 'text-[#286CFF]' },
+                    ...(budget.recommendedBudget > 0 ? [{ label: 'Recommended Budget', amount: budget.recommendedBudget, color: 'text-[#9333EA]' }] : []),
+                    ...(budget.allocatedBudget > 0 ? [{ label: 'Allocated Budget', amount: budget.allocatedBudget, color: 'text-[#0F9D8A]' }] : []),
+                    ...(budget.utilizedBudget > 0 ? [{ label: 'Utilized Budget', amount: budget.utilizedBudget, color: 'text-[#D97706]' }] : []),
+                  ]
 
                   return (
                     <Card key={budget.id} className="group rounded-[20px] border-[#DCE6F1] bg-white shadow-[0_4px_16px_rgba(15,23,42,0.035)] transition-[border-color,box-shadow] duration-200 hover:border-[#BFD4FF] hover:shadow-[0_8px_22px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#162339]">
@@ -232,7 +238,7 @@ export default function StrategyDirectorQualityCheckTracker() {
                               </div>
                               <p className="mt-1 text-sm text-[#64748B] dark:text-slate-300">{budget.budgetRefId} · {budget.entityName || budget.instanceName || 'Unknown Entity'}</p>
                             </div>
-                            <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                            <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
                               <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 dark:border-white/10 dark:bg-white/5">
                                 <p className="text-[10px] font-semibold text-[#64748B] dark:text-slate-300">SME Score</p>
                                 <p className="mt-1 text-lg font-bold tabular-nums text-[#0F172A] dark:text-white">{hasScore ? `${budget.smeReviewScore}%` : '–'}</p>
@@ -241,10 +247,12 @@ export default function StrategyDirectorQualityCheckTracker() {
                                 <p className="flex items-center gap-1 text-[10px] font-semibold text-[#7E22CE] dark:text-purple-200"><Sparkles className="h-3 w-3" />AI Confidence</p>
                                 <p className={`mt-1 text-lg font-bold tabular-nums ${confidenceColor}`}>{hasConfidence ? `${confidence}%` : '–'}</p>
                               </div>
-                              <div className="col-span-2 rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-white/5 sm:col-span-1 sm:text-right">
-                                <p className="text-[10px] font-semibold text-[#64748B] dark:text-slate-300">Recommended Budget</p>
-                                <CurrencyAmount amount={budget.recommendedBudget || budget.requestedBudget} className="mt-1 text-base font-bold text-[#0F172A] dark:text-white" iconSize={14} />
-                              </div>
+                              {visibleBudgetTotals.map((total) => (
+                                <div key={total.label} className="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 text-left dark:border-white/10 dark:bg-white/5 sm:text-right">
+                                  <p className={`text-[10px] font-semibold ${total.color}`}>{total.label}</p>
+                                  <CurrencyAmount amount={total.amount} className="mt-1 text-base font-bold text-[#0F172A] dark:text-white" iconSize={14} />
+                                </div>
+                              ))}
                             </div>
                           </div>
 

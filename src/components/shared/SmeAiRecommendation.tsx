@@ -3,8 +3,18 @@ import { createPortal } from 'react-dom'
 import { useEffect, useId, useRef, useState } from 'react'
 import { parseSmeAiRecommendation } from '@/services/smeAiRecommendation'
 
-export function SmeAiRecommendation({ raw, onApply, variant = 'icon' }: { raw?: string | null; variant?: 'icon' | 'panel' | 'static'; onApply?: (value: NonNullable<ReturnType<typeof parseSmeAiRecommendation>>) => void }) {
-  const isPanel = Boolean(onApply) || variant === 'panel'
+export function SmeAiRecommendation({
+  raw,
+  onApply,
+  variant = 'icon',
+  applyInPopup = false,
+}: {
+  raw?: string | null
+  variant?: 'icon' | 'panel' | 'static'
+  onApply?: (value: NonNullable<ReturnType<typeof parseSmeAiRecommendation>>) => void
+  applyInPopup?: boolean
+}) {
+  const isPanel = variant === 'panel' || (Boolean(onApply) && !applyInPopup)
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
   const popup = useRef<HTMLDivElement>(null)
@@ -58,9 +68,22 @@ export function SmeAiRecommendation({ raw, onApply, variant = 'icon' }: { raw?: 
     </div>
   )
   const content = <>
-    <p className="text-sm font-semibold text-[#9333EA] dark:text-[#E9D5FF]">{isPanel ? 'Reason' : `AI Recommendation: ${suggestion.recommended === 2 ? 'Recommended' : 'Not Recommended'}`}</p>
+    <p className="text-sm text-[#9333EA] dark:text-[#E9D5FF]">
+      {isPanel ? 'Reason' : <><span className="font-semibold">AI Suggestion: </span><span className="font-semibold">{suggestion.recommended === 2 ? 'Recommended' : 'Not Recommended'}</span></>}
+    </p>
     <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-[#475569] dark:text-slate-200">{suggestion.reason || 'No explanation was provided with this AI recommendation.'}</p>
-    {onApply && <button type="button" onClick={() => onApply(suggestion)} className="mt-3 rounded-full border border-[#D8B4FE] px-3 py-1.5 text-xs font-semibold text-[#9333EA] hover:bg-[#F3E8FF] dark:text-[#E9D5FF] dark:hover:bg-white/10">Apply AI Recommendation</button>}
+    {onApply && (
+      <button
+        type="button"
+        onClick={() => {
+          onApply(suggestion)
+          setOpen(false)
+        }}
+        className="mt-3 rounded-full border border-[#D8B4FE] px-3 py-1.5 text-xs font-semibold text-[#9333EA] hover:bg-[#F3E8FF] dark:text-[#E9D5FF] dark:hover:bg-white/10"
+      >
+        {applyInPopup ? 'Apply AI Suggestion' : 'Apply AI Recommendation'}
+      </button>
+    )}
   </>
   return isPanel ? <div className="relative isolate overflow-hidden rounded-xl border border-[#E9D5FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#FDF7FF] to-white dark:from-[#2A123D] dark:to-[#1E293B]" />
@@ -80,7 +103,7 @@ export function SmeAiRecommendation({ raw, onApply, variant = 'icon' }: { raw?: 
     <div className="relative p-4">{content}</div>
   </div> :
     <div ref={root} className="relative inline-block">
-      <button type="button" aria-label="View AI recommendation" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)} className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors hover:bg-[#FAF5FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]"><Sparkles className="h-3.5 w-3.5" /></button>
-      {open && createPortal(<div ref={popup} id={id} role="region" aria-label="AI recommendation" style={position} className="fixed z-[1000] max-h-[min(18rem,calc(100vh-2rem))] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-lg dark:border-white/10 dark:bg-[#1E293B]">{content}</div>, document.body)}
+      <button type="button" aria-label="View AI suggestion" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)} className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-[#E9D5FF] bg-[#FDF7FF] text-[#A855F7] transition-colors hover:bg-[#FAF5FF] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF]"><Sparkles className="h-3.5 w-3.5" /></button>
+      {open && createPortal(<div ref={popup} id={id} role="region" aria-label="AI suggestion" style={position} className="fixed z-[1000] max-h-[min(18rem,calc(100vh-2rem))] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-[#E9D5FF] bg-white p-4 shadow-lg dark:border-white/10 dark:bg-[#1E293B]">{content}</div>, document.body)}
     </div>
 }

@@ -24,7 +24,7 @@ test('decision matching compares both Yes and No without treating missing data a
   assert.equal(exports.getSmeDecisionMatch(yes, null), 'unavailable')
 })
 
-test('AI expected SME decision overrides scoring mode and maps Not Recommended to No', () => {
+test('AI expected SME decision maps Not Recommended to No without using criteria reasons', () => {
   const result = parse(payload({
     scoring_mode: 'Recommendation',
     ai_expected_sme_decision: 'Not Recommended',
@@ -37,15 +37,41 @@ test('AI expected SME decision overrides scoring mode and maps Not Recommended t
   }))
   assert.equal(result.recommended, 1)
   assert.equal(result.rejectionReason, null)
-  assert.equal(result.reason, 'Recommendation is inappropriate while material inconsistencies remain unresolved.')
+  assert.equal(result.reason, '')
 })
 test('AI expected SME recommendation maps to Yes', () => {
   assert.equal(parse(payload({ ai_expected_sme_decision: 'Recommend' })).recommended, 2)
 })
-test('rejection decision correctness reason is supported without historical fallbacks', () => {
+test('double-encoded portfolio JSON still produces an AI suggestion', () => {
+  const result = parse(JSON.stringify(payload({
+    ai_expected_sme_decision: 'Not Recommended',
+    ai_expected_decision_reason: 'The supporting evidence does not validate the budget.',
+  })))
+  assert.equal(result.recommended, 1)
+  assert.equal(result.reason, 'The supporting evidence does not validate the budget.')
+})
+test('Responses API event arrays unwrap their final output_text portfolio', () => {
+  const portfolio = payload({
+    ai_expected_sme_decision: 'Recommended',
+    ai_expected_decision_reason: 'The evidence supports this project.',
+  })
+  const result = parse(JSON.stringify([
+    { type: 'reasoning', content: [] },
+    { type: 'message', content: [{ type: 'output_text', text: portfolio }] },
+  ]))
+  assert.equal(result.recommended, 2)
+  assert.equal(result.reason, 'The evidence supports this project.')
+})
+test('AI portfolio recommended amount is available when the Dataverse aggregate is absent', () => {
+  const raw = payload({})
+  const portfolio = JSON.parse(raw)
+  portfolio.role_views = { sme_reviewer: { recommended_amounts: { overall_recommended_amount: 6315 } } }
+  assert.equal(exports.getAiPortfolioRecommendedBudget(JSON.stringify(portfolio)), 6315)
+})
+test('criteria reasons are ignored when the expected decision reason is unavailable', () => {
   const result = parse(payload({ ai_expected_sme_decision: 'Not Recommended', actual_rejection_reason: 'Not Advised', criteria: { rejection_decision_correctness: { reason: 'Budget evidence is missing.' } } }))
   assert.equal(result.rejectionReason, null)
-  assert.equal(result.reason, 'Budget evidence is missing.')
+  assert.equal(result.reason, '')
 })
 test('malformed, missing, and unknown decisions do not produce suggestions', () => {
   for (const raw of [null, '', '{', 'null', '{}', payload({ scoring_mode: 'Recommendation' }), payload({ ai_expected_sme_decision: 'Needs Clarification' })]) assert.equal(parse(raw), null)

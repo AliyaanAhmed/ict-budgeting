@@ -147,7 +147,19 @@ function InsightSection({
   )
 }
 
-function AnalyzingState({ fileName, queued = false, uploading = false }: { fileName: string; queued?: boolean; uploading?: boolean }) {
+function AnalyzingState({
+  fileName,
+  queued = false,
+  uploading = false,
+  onDelete,
+  deleting = false,
+}: {
+  fileName: string
+  queued?: boolean
+  uploading?: boolean
+  onDelete?: () => void
+  deleting?: boolean
+}) {
   const { Icon, color, bg } = getFileTypeIcon(fileName)
 
   return (
@@ -172,9 +184,22 @@ function AnalyzingState({ fileName, queued = false, uploading = false }: { fileN
               <p className="truncate text-sm font-semibold text-[#0F172A] dark:text-white">{fileName}</p>
             </div>
           </div>
-          <div className="hidden items-center gap-2 rounded-xl border border-[#F0D9FF] bg-white/80 px-3 py-2 text-xs font-medium text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF] sm:flex">
-            <Bot className="h-3.5 w-3.5 animate-pulse" />
-            {uploading ? 'Uploading file and starting analysis' : queued ? 'Waiting for analysis' : 'Preparing insights'}
+          <div className="relative z-10 flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 rounded-xl border border-[#F0D9FF] bg-white/80 px-3 py-2 text-xs font-medium text-[#A855F7] dark:border-white/10 dark:bg-white/5 dark:text-[#E9D5FF] sm:flex">
+              <Bot className="h-3.5 w-3.5 animate-pulse" />
+              {uploading ? 'Uploading file and starting analysis' : queued ? 'Waiting for analysis' : 'Preparing insights'}
+            </div>
+            {onDelete ? (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 transition-all hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-red-50 disabled:text-red-300 dark:bg-red-900/20 dark:text-red-300"
+                aria-label={`Delete ${fileName}`}
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
+            ) : null}
           </div>
           <div className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 opacity-[0.12] sm:block dark:opacity-[0.16]">
             <div className="relative h-16 w-24">
@@ -189,7 +214,15 @@ function AnalyzingState({ fileName, queued = false, uploading = false }: { fileN
   )
 }
 
-function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
+function InsightContent({
+  item,
+  onDelete,
+  deleting = false,
+}: {
+  item: SupportingDocumentAiInsightItem
+  onDelete?: () => void
+  deleting?: boolean
+}) {
   const summary = item.parsedSummary
   const profile = summary?.document_profile
   const fileSummary = summary?.file_summary
@@ -201,7 +234,15 @@ function InsightContent({ item }: { item: SupportingDocumentAiInsightItem }) {
   const documentPurpose = toDisplayText(profile?.document_purpose)
 
   if (item.status === 'analyzing' || item.status === 'uploading' || item.status === 'queued') {
-    return <AnalyzingState fileName={item.file.name} queued={item.status === 'queued'} uploading={item.status === 'uploading'} />
+    return (
+      <AnalyzingState
+        fileName={item.file.name}
+        queued={item.status === 'queued'}
+        uploading={item.status === 'uploading'}
+        onDelete={onDelete}
+        deleting={deleting}
+      />
+    )
   }
 
   if (item.status === 'cancelled' || item.status === 'incomplete') {
@@ -460,19 +501,12 @@ export function SupportingDocumentAiInsights({ items, onDeleteItem }: Supporting
 
           if (isActive) {
             return (
-              <div key={item.id} className="relative overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
-                {onDeleteItem && (
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(item)}
-                    disabled={deletingId === item.id}
-                    className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-red-50 text-red-500 transition-all hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:bg-red-50 disabled:text-red-300 dark:bg-red-900/20 dark:text-red-300"
-                    aria-label={`Delete ${item.file.name}`}
-                  >
-                    {deletingId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </button>
-                )}
-                <InsightContent item={item} />
+              <div key={item.id} className="overflow-hidden rounded-[24px] border border-[#F0D9FF] bg-white dark:border-white/10 dark:bg-[#1E293B]">
+                <InsightContent
+                  item={item}
+                  onDelete={onDeleteItem ? () => void handleDelete(item) : undefined}
+                  deleting={deletingId === item.id}
+                />
               </div>
             )
           }
